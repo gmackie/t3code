@@ -1,5 +1,6 @@
 import type {
   GitCheckoutInput,
+  GitActionProgressEvent,
   GitCheckoutResult,
   GitCreateBranchInput,
   GitPreparePullRequestThreadInput,
@@ -14,6 +15,8 @@ import type {
   GitPullResult,
   GitRemoveWorktreeInput,
   GitResolvePullRequestResult,
+  GitRunStackedActionInput,
+  GitRunStackedActionResult,
   GitStatusInput,
   GitStatusResult,
   GitCreateBranchResult,
@@ -52,7 +55,7 @@ import type {
   OrchestrationSubscribeThreadInput,
   OrchestrationThreadStreamItem,
 } from "./orchestration.ts";
-import type { EnvironmentId } from "./baseSchemas.ts";
+import type { EnvironmentId, ThreadId } from "./baseSchemas.ts";
 import { EditorId } from "./editor.ts";
 import { ServerSettings, type ClientSettings, type ServerSettingsPatch } from "./settings.ts";
 
@@ -146,7 +149,59 @@ export interface DesktopServerExposureState {
 export interface PickFolderOptions {
   initialPath?: string | null;
 }
+export interface BrowserBounds {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
 
+export interface BrowserTabRuntimeState {
+  url: string;
+  title: string | null;
+  faviconUrl: string | null;
+  isLoading: boolean;
+  canGoBack: boolean;
+  canGoForward: boolean;
+  lastError: string | null;
+}
+
+export interface BrowserEnsureTabInput {
+  threadId: ThreadId;
+  tabId: string;
+  url?: string;
+}
+
+export interface BrowserNavigateInput {
+  threadId: ThreadId;
+  tabId: string;
+  url: string;
+}
+
+export interface BrowserTabTargetInput {
+  threadId: ThreadId;
+  tabId: string;
+}
+
+export interface BrowserSyncHostInput {
+  threadId: ThreadId;
+  tabId: string | null;
+  visible: boolean;
+  bounds: BrowserBounds | null;
+}
+
+export interface BrowserClearThreadInput {
+  threadId: ThreadId;
+}
+
+export interface BrowserTabStateEvent {
+  type: "tab-state";
+  threadId: ThreadId;
+  tabId: string;
+  state: BrowserTabRuntimeState;
+}
+
+export type BrowserEvent = BrowserTabStateEvent;
 export interface DesktopBridge {
   getAppBranding: () => DesktopAppBranding | null;
   getLocalEnvironmentBootstrap: () => DesktopEnvironmentBootstrap | null;
@@ -169,6 +224,15 @@ export interface DesktopBridge {
     position?: { x: number; y: number },
   ) => Promise<T | null>;
   openExternal: (url: string) => Promise<boolean>;
+  browserEnsureTab: (input: BrowserEnsureTabInput) => Promise<void>;
+  browserNavigate: (input: BrowserNavigateInput) => Promise<void>;
+  browserGoBack: (input: BrowserTabTargetInput) => Promise<void>;
+  browserGoForward: (input: BrowserTabTargetInput) => Promise<void>;
+  browserReload: (input: BrowserTabTargetInput) => Promise<void>;
+  browserCloseTab: (input: BrowserTabTargetInput) => Promise<void>;
+  browserSyncHost: (input: BrowserSyncHostInput) => Promise<void>;
+  browserClearThread: (input: BrowserClearThreadInput) => Promise<void>;
+  onBrowserEvent: (listener: (event: BrowserEvent) => void) => () => void;
   onMenuAction: (listener: (action: string) => void) => () => void;
   getUpdateState: () => Promise<DesktopUpdateState>;
   setUpdateChannel: (channel: DesktopUpdateChannel) => Promise<DesktopUpdateState>;

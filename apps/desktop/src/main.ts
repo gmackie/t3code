@@ -21,6 +21,12 @@ import {
 import type { MenuItemConstructorOptions, OpenDialogOptions } from "electron";
 import type {
   ClientSettings,
+  BrowserClearThreadInput,
+  BrowserEnsureTabInput,
+  BrowserEvent,
+  BrowserNavigateInput,
+  BrowserSyncHostInput,
+  BrowserTabTargetInput,
   DesktopTheme,
   DesktopAppBranding,
   DesktopServerExposureMode,
@@ -61,6 +67,7 @@ import { waitForBackendStartupReady } from "./backendStartupReadiness.ts";
 import { getAutoUpdateDisabledReason, shouldBroadcastDownloadProgress } from "./updateState.ts";
 import { doesVersionMatchDesktopUpdateChannel } from "./updateChannels.ts";
 import { ServerListeningDetector } from "./serverListeningDetector.ts";
+import { createBrowserManager } from "./browserManager";
 import {
   createInitialDesktopUpdateState,
   reduceDesktopUpdateStateOnCheckFailure,
@@ -84,6 +91,15 @@ const CONFIRM_CHANNEL = "desktop:confirm";
 const SET_THEME_CHANNEL = "desktop:set-theme";
 const CONTEXT_MENU_CHANNEL = "desktop:context-menu";
 const OPEN_EXTERNAL_CHANNEL = "desktop:open-external";
+const BROWSER_ENSURE_TAB_CHANNEL = "desktop:browser-ensure-tab";
+const BROWSER_NAVIGATE_CHANNEL = "desktop:browser-navigate";
+const BROWSER_GO_BACK_CHANNEL = "desktop:browser-go-back";
+const BROWSER_GO_FORWARD_CHANNEL = "desktop:browser-go-forward";
+const BROWSER_RELOAD_CHANNEL = "desktop:browser-reload";
+const BROWSER_CLOSE_TAB_CHANNEL = "desktop:browser-close-tab";
+const BROWSER_SYNC_HOST_CHANNEL = "desktop:browser-sync-host";
+const BROWSER_CLEAR_THREAD_CHANNEL = "desktop:browser-clear-thread";
+const BROWSER_EVENT_CHANNEL = "desktop:browser-event";
 const MENU_ACTION_CHANNEL = "desktop:menu-action";
 const UPDATE_STATE_CHANNEL = "desktop:update-state";
 const UPDATE_GET_STATE_CHANNEL = "desktop:update-get-state";
@@ -504,6 +520,125 @@ function ensureInitialBackendWindowOpen(): void {
   backendInitialWindowOpenInFlight = nextOpen;
 }
 
+function getSafeNonEmptyString(value: unknown): string | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function getSafeBrowserTabTargetInput(rawInput: unknown): BrowserTabTargetInput | null {
+  if (typeof rawInput !== "object" || rawInput === null) {
+    return null;
+  }
+  const threadId = getSafeNonEmptyString(Reflect.get(rawInput, "threadId"));
+  const tabId = getSafeNonEmptyString(Reflect.get(rawInput, "tabId"));
+  if (!threadId || !tabId) {
+    return null;
+  }
+  return {
+    threadId: threadId as BrowserTabTargetInput["threadId"],
+    tabId,
+  } satisfies BrowserTabTargetInput;
+}
+
+function getSafeBrowserEnsureTabInput(rawInput: unknown): BrowserEnsureTabInput | null {
+  const target = getSafeBrowserTabTargetInput(rawInput);
+  if (!target) {
+    return null;
+  }
+  const urlRaw = Reflect.get(rawInput as object, "url");
+  const url = urlRaw === undefined ? undefined : getSafeNonEmptyString(urlRaw);
+  if (urlRaw !== undefined && !url) {
+    return null;
+  }
+  return {
+    ...target,
+    ...(url ? { url } : {}),
+  };
+}
+
+function getSafeBrowserNavigateInput(rawInput: unknown): BrowserNavigateInput | null {
+  const target = getSafeBrowserTabTargetInput(rawInput);
+  if (!target) {
+    return null;
+  }
+  const url = getSafeNonEmptyString(Reflect.get(rawInput as object, "url"));
+  if (!url) {
+    return null;
+  }
+  return {
+    ...target,
+    url,
+  };
+}
+
+function getSafeBrowserBounds(rawBounds: unknown): BrowserSyncHostInput["bounds"] {
+  if (rawBounds === null) {
+    return null;
+  }
+  if (typeof rawBounds !== "object" || rawBounds === null) {
+    return null;
+  }
+  const x = Reflect.get(rawBounds, "x");
+  const y = Reflect.get(rawBounds, "y");
+  const width = Reflect.get(rawBounds, "width");
+  const height = Reflect.get(rawBounds, "height");
+  if (
+    !Number.isFinite(x) ||
+    !Number.isFinite(y) ||
+    !Number.isFinite(width) ||
+    !Number.isFinite(height)
+  ) {
+    return null;
+  }
+  return {
+    x,
+    y,
+    width,
+    height,
+  } satisfies NonNullable<BrowserSyncHostInput["bounds"]>;
+}
+
+function getSafeBrowserSyncHostInput(rawInput: unknown): BrowserSyncHostInput | null {
+  if (typeof rawInput !== "object" || rawInput === null) {
+    return null;
+  }
+  const threadId = getSafeNonEmptyString(Reflect.get(rawInput, "threadId"));
+  if (!threadId) {
+    return null;
+  }
+  const rawTabId = Reflect.get(rawInput, "tabId");
+  const tabId =
+    rawTabId === null
+      ? null
+      : typeof rawTabId === "string"
+        ? getSafeNonEmptyString(rawTabId)
+        : null;
+  const visible = Reflect.get(rawInput, "visible");
+  if (typeof visible !== "boolean") {
+    return null;
+  }
+  return {
+    threadId: threadId as BrowserSyncHostInput["threadId"],
+    tabId,
+    visible,
+    bounds: getSafeBrowserBounds(Reflect.get(rawInput, "bounds")),
+  };
+}
+
+function getSafeBrowserClearThreadInput(rawInput: unknown): BrowserClearThreadInput | null {
+  if (typeof rawInput !== "object" || rawInput === null) {
+    return null;
+  }
+  const threadId = getSafeNonEmptyString(Reflect.get(rawInput, "threadId"));
+  if (!threadId) {
+    return null;
+  }
+  return { threadId: threadId as BrowserClearThreadInput["threadId"] };
+}
+
 function writeDesktopStreamChunk(
   streamName: "stdout" | "stderr",
   chunk: unknown,
@@ -628,6 +763,22 @@ let updateDownloadInFlight = false;
 let updateInstallInFlight = false;
 let updaterConfigured = false;
 let updateState: DesktopUpdateState = initialUpdateState();
+const browserManager = createBrowserManager({
+  emitEvent: (event: BrowserEvent) => {
+    for (const window of BrowserWindow.getAllWindows()) {
+      if (window.isDestroyed()) continue;
+      window.webContents.send(BROWSER_EVENT_CHANNEL, event);
+    }
+  },
+  getWindow: () => mainWindow,
+  openExternal: (url) => {
+    const externalUrl = getSafeExternalUrl(url);
+    if (!externalUrl) {
+      return;
+    }
+    void shell.openExternal(externalUrl);
+  },
+});
 
 function resolveUpdaterErrorContext(): DesktopUpdateErrorContext {
   if (updateInstallInFlight) return "install";
@@ -1784,6 +1935,78 @@ function registerIpcHandlers(): void {
     }
   });
 
+  ipcMain.removeHandler(BROWSER_ENSURE_TAB_CHANNEL);
+  ipcMain.handle(BROWSER_ENSURE_TAB_CHANNEL, async (_event, rawInput: unknown) => {
+    const input = getSafeBrowserEnsureTabInput(rawInput);
+    if (!input) {
+      return;
+    }
+    await browserManager.ensureTab(input);
+  });
+
+  ipcMain.removeHandler(BROWSER_NAVIGATE_CHANNEL);
+  ipcMain.handle(BROWSER_NAVIGATE_CHANNEL, async (_event, rawInput: unknown) => {
+    const input = getSafeBrowserNavigateInput(rawInput);
+    if (!input) {
+      return;
+    }
+    await browserManager.navigate(input);
+  });
+
+  ipcMain.removeHandler(BROWSER_GO_BACK_CHANNEL);
+  ipcMain.handle(BROWSER_GO_BACK_CHANNEL, async (_event, rawInput: unknown) => {
+    const input = getSafeBrowserTabTargetInput(rawInput);
+    if (!input) {
+      return;
+    }
+    await browserManager.goBack(input);
+  });
+
+  ipcMain.removeHandler(BROWSER_GO_FORWARD_CHANNEL);
+  ipcMain.handle(BROWSER_GO_FORWARD_CHANNEL, async (_event, rawInput: unknown) => {
+    const input = getSafeBrowserTabTargetInput(rawInput);
+    if (!input) {
+      return;
+    }
+    await browserManager.goForward(input);
+  });
+
+  ipcMain.removeHandler(BROWSER_RELOAD_CHANNEL);
+  ipcMain.handle(BROWSER_RELOAD_CHANNEL, async (_event, rawInput: unknown) => {
+    const input = getSafeBrowserTabTargetInput(rawInput);
+    if (!input) {
+      return;
+    }
+    await browserManager.reload(input);
+  });
+
+  ipcMain.removeHandler(BROWSER_CLOSE_TAB_CHANNEL);
+  ipcMain.handle(BROWSER_CLOSE_TAB_CHANNEL, async (_event, rawInput: unknown) => {
+    const input = getSafeBrowserTabTargetInput(rawInput);
+    if (!input) {
+      return;
+    }
+    await browserManager.closeTab(input);
+  });
+
+  ipcMain.removeHandler(BROWSER_SYNC_HOST_CHANNEL);
+  ipcMain.handle(BROWSER_SYNC_HOST_CHANNEL, async (_event, rawInput: unknown) => {
+    const input = getSafeBrowserSyncHostInput(rawInput);
+    if (!input) {
+      return;
+    }
+    browserManager.syncHost(input);
+  });
+
+  ipcMain.removeHandler(BROWSER_CLEAR_THREAD_CHANNEL);
+  ipcMain.handle(BROWSER_CLEAR_THREAD_CHANNEL, async (_event, rawInput: unknown) => {
+    const input = getSafeBrowserClearThreadInput(rawInput);
+    if (!input) {
+      return;
+    }
+    browserManager.clearThread(input);
+  });
+
   ipcMain.removeHandler(UPDATE_GET_STATE_CHANNEL);
   ipcMain.handle(UPDATE_GET_STATE_CHANNEL, async () => updateState);
 
@@ -2109,6 +2332,7 @@ app.on("before-quit", () => {
   writeDesktopLogHeader("before-quit received");
   clearUpdatePollTimer();
   cancelBackendReadinessWait();
+  browserManager.destroyAll();
   stopBackend();
   restoreStdIoCapture?.();
 });
