@@ -47,6 +47,24 @@ it.effect("parses keybinding rules", () =>
     });
     assert.strictEqual(parsedCommandPalette.command, "commandPalette.toggle");
 
+    const parsedBrowserToggle = yield* decode(KeybindingRule, {
+      key: "mod+b",
+      command: "browser.toggle",
+    });
+    assert.strictEqual(parsedBrowserToggle.command, "browser.toggle");
+
+    const parsedBrowserNewTab = yield* decode(KeybindingRule, {
+      key: "mod+t",
+      command: "browser.newTab",
+    });
+    assert.strictEqual(parsedBrowserNewTab.command, "browser.newTab");
+
+    const parsedBrowserCloseTab = yield* decode(KeybindingRule, {
+      key: "mod+w",
+      command: "browser.closeTab",
+    });
+    assert.strictEqual(parsedBrowserCloseTab.command, "browser.closeTab");
+
     const parsedLocal = yield* decode(KeybindingRule, {
       key: "mod+shift+n",
       command: "chat.newLocal",
