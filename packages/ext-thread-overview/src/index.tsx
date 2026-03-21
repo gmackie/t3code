@@ -1,6 +1,6 @@
-import type { T3ExtensionDefinition } from "@t3tools/extension-api";
+import type { PanelDefinition } from "@t3tools/extension-api";
 
-export const threadOverviewExtension: T3ExtensionDefinition = {
+export const threadOverviewExtension: PanelDefinition = {
   id: "thread-overview",
   title: "Thread Overview",
   surface: "thread.sidePanel",

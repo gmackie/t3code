@@ -9,7 +9,7 @@ import { useCopyToClipboard } from "../../hooks/useCopyToClipboard";
 import { readNativeApi } from "../../nativeApi";
 import { proposedPlanTitle } from "../../proposedPlan";
 import { toastManager } from "../../components/ui/toast";
-import type { T3ExtensionDefinition } from "../types";
+import type { PanelDefinition } from "../types";
 import {
   buildPlanningRequirementsMarkdown,
   buildPlanningTaskDrafts,
@@ -53,7 +53,7 @@ function saveArtifact(params: {
     });
 }
 
-export const planningWorkbenchExtension: T3ExtensionDefinition = {
+export const planningWorkbenchExtension: PanelDefinition = {
   id: "planning-workbench",
   title: "Planning",
   surface: "thread.sidePanel",
@@ -65,7 +65,7 @@ export const planningWorkbenchExtension: T3ExtensionDefinition = {
 function PlanningWorkbenchPanel({
   context,
 }: {
-  context: Parameters<T3ExtensionDefinition["render"]>[0];
+  context: Parameters<PanelDefinition["render"]>[0];
 }) {
   const threadView = context.threadView;
   const { copyToClipboard, isCopied } = useCopyToClipboard();

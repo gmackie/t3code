@@ -1,13 +1,13 @@
-import type { ExtensionContext, ExtensionSurface, T3ExtensionDefinition } from "./types";
+import type { PanelContext, PanelDefinition, PanelSurface } from "./types";
 
-export function getAvailableExtensionsForSurface(
-  extensions: ReadonlyArray<T3ExtensionDefinition>,
-  surface: ExtensionSurface,
-  context: ExtensionContext,
-): T3ExtensionDefinition[] {
-  return extensions
-    .filter((extension) => extension.surface === surface)
-    .filter((extension) => extension.isAvailable(context))
+export function getAvailablePanelsForSurface(
+  panels: ReadonlyArray<PanelDefinition>,
+  surface: PanelSurface,
+  context: PanelContext,
+): PanelDefinition[] {
+  return panels
+    .filter((panel) => panel.surface === surface)
+    .filter((panel) => panel.isAvailable(context))
     .toSorted((left, right) => {
       const byOrder = (left.order ?? 0) - (right.order ?? 0);
       if (byOrder !== 0) return byOrder;

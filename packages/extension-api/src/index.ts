@@ -1,26 +1,26 @@
 /**
- * @t3tools/extension-api — Public contract for T3 Code extensions.
+ * @t3tools/extension-api — Public contract for T3 Code panels.
  *
- * Extensions implement T3ExtensionDefinition and receive ExtensionContext
- * from the host. This package defines the stable API boundary between
- * the extension host (in the web app) and extension implementations
- * (which can live in separate packages or repos).
+ * Panels implement PanelDefinition and receive PanelContext from the host.
+ * This package defines the stable API boundary between the panel host
+ * (in the web app) and panel implementations (which can live in separate
+ * packages or repos).
  *
  * ARCHITECTURE:
  *
  *   @t3tools/extension-api (this package)
- *   ├── T3ExtensionDefinition — what extensions implement
- *   ├── ExtensionContext — what the host provides
- *   └── ExtensionThreadView — read-only thread state
+ *   ├── PanelDefinition — what panels implement
+ *   ├── PanelContext — what the host provides
+ *   └── PanelThreadView — read-only thread state
  *
- *   Extension package (e.g., @t3tools/ext-planning-workbench)
+ *   Panel package (e.g., @t3tools/ext-planning-workbench)
  *   ├── depends on @t3tools/extension-api
- *   └── exports a T3ExtensionDefinition
+ *   └── exports a PanelDefinition
  *
  *   @t3tools/web (the app)
- *   ├── depends on extension packages
- *   ├── registers extensions in builtinRegistry.ts
- *   └── hosts them via ExtensionHost.tsx
+ *   ├── depends on panel packages
+ *   ├── registers panels in panelRegistry.ts
+ *   └── hosts them via PanelHost.tsx
  */
 
 import type { ReactNode } from "react";
@@ -36,9 +36,9 @@ import type {
   OrchestrationLatestTurn,
 } from "@t3tools/contracts";
 
-// ─── Thread & Project (read-only views for extensions) ───
+// ─── Thread & Project (read-only views for panels) ───
 
-export interface ExtensionProject {
+export interface PanelProject {
   id: ProjectId;
   name: string;
   cwd: string;
@@ -46,7 +46,7 @@ export interface ExtensionProject {
   scripts: ProjectScript[];
 }
 
-export interface ExtensionThread {
+export interface PanelThread {
   id: ThreadId;
   projectId: ProjectId;
   title: string;
@@ -59,7 +59,7 @@ export interface ExtensionThread {
   latestTurn: OrchestrationLatestTurn | null;
 }
 
-// ─── Derived session state (read-only for extensions) ───
+// ─── Derived session state (read-only for panels) ───
 
 export interface ActivePlanState {
   createdAt: string;
@@ -104,13 +104,13 @@ export interface WorkLogEntry {
   tone: "thinking" | "tool" | "info" | "error";
 }
 
-// ─── Extension API ───
+// ─── Panel API ───
 
-export type ExtensionSurface = "thread.sidePanel" | "thread.headerActions" | "project.toolView";
+export type PanelSurface = "thread.sidePanel";
 
-export interface ExtensionThreadView {
-  thread: ExtensionThread;
-  project: ExtensionProject | null;
+export interface PanelThreadView {
+  thread: PanelThread;
+  project: PanelProject | null;
   activePlan: ActivePlanState | null;
   latestProposedPlan: LatestProposedPlanState | null;
   pendingApprovals: PendingApproval[];
@@ -119,26 +119,16 @@ export interface ExtensionThreadView {
   latestTurnId: TurnId | null;
 }
 
-export interface HostWorkflowAction {
-  id: string;
-  label: string;
-  disabled?: boolean;
-  run: () => Promise<void> | void;
-}
-
-export interface ExtensionContext {
+export interface PanelContext {
   activeThreadId: ThreadId | null;
-  threadView: ExtensionThreadView | null;
-  openSidePanel: (panelId: string) => void;
-  closeSidePanel: () => void;
-  actions: ReadonlyArray<HostWorkflowAction>;
+  threadView: PanelThreadView | null;
 }
 
-export interface T3ExtensionDefinition {
+export interface PanelDefinition {
   id: string;
   title: string;
-  surface: ExtensionSurface;
+  surface: PanelSurface;
   order?: number;
-  isAvailable: (context: ExtensionContext) => boolean;
-  render: (context: ExtensionContext) => ReactNode;
+  isAvailable: (context: PanelContext) => boolean;
+  render: (context: PanelContext) => ReactNode;
 }

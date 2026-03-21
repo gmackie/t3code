@@ -28,43 +28,16 @@ import {
   PlayIcon,
   RefreshCwIcon,
 } from "lucide-react";
-import type { T3ExtensionDefinition } from "../types";
+import type { PanelDefinition } from "../types";
+import {
+  DEFAULT_PREVIEW_URL,
+  getPersistedPreviewUrl,
+  persistPreviewUrl,
+} from "@t3tools/ext-preview-workspace";
 
-const DEFAULT_PREVIEW_URL = "http://localhost:3000";
-export const PREVIEW_URL_STORAGE_PREFIX = "t3code:preview-url:";
+export { removeOrphanedPreviewUrls } from "@t3tools/ext-preview-workspace";
 
-export function removeOrphanedPreviewUrls(activeThreadIds: Set<string>): void {
-  try {
-    for (let i = localStorage.length - 1; i >= 0; i--) {
-      const key = localStorage.key(i);
-      if (!key?.startsWith(PREVIEW_URL_STORAGE_PREFIX)) continue;
-      const threadId = key.slice(PREVIEW_URL_STORAGE_PREFIX.length);
-      if (!activeThreadIds.has(threadId)) {
-        localStorage.removeItem(key);
-      }
-    }
-  } catch {
-    // localStorage unavailable
-  }
-}
-
-function getPersistedPreviewUrl(threadId: string): string {
-  try {
-    return localStorage.getItem(`${PREVIEW_URL_STORAGE_PREFIX}${threadId}`) ?? DEFAULT_PREVIEW_URL;
-  } catch {
-    return DEFAULT_PREVIEW_URL;
-  }
-}
-
-function persistPreviewUrl(threadId: string, url: string): void {
-  try {
-    localStorage.setItem(`${PREVIEW_URL_STORAGE_PREFIX}${threadId}`, url);
-  } catch {
-    // localStorage unavailable
-  }
-}
-
-export const previewWorkspaceExtension: T3ExtensionDefinition = {
+export const previewWorkspaceExtension: PanelDefinition = {
   id: "preview-workspace",
   title: "Preview",
   surface: "thread.sidePanel",
@@ -76,7 +49,7 @@ export const previewWorkspaceExtension: T3ExtensionDefinition = {
 function PreviewWorkspacePanel({
   context,
 }: {
-  context: Parameters<T3ExtensionDefinition["render"]>[0];
+  context: Parameters<PanelDefinition["render"]>[0];
 }) {
   const threadView = context.threadView;
   const threadId = context.activeThreadId;

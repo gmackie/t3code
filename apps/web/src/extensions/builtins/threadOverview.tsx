@@ -1,8 +1,8 @@
 import { Badge } from "../../components/ui/badge";
 import { ScrollArea } from "../../components/ui/scroll-area";
-import type { T3ExtensionDefinition } from "../types";
+import type { PanelDefinition } from "../types";
 
-export const threadOverviewExtension: T3ExtensionDefinition = {
+export const threadOverviewExtension: PanelDefinition = {
   id: "thread-overview",
   title: "Thread Overview",
   surface: "thread.sidePanel",

@@ -3,7 +3,7 @@ import { planningWorkbenchExtension } from "./builtins/planningWorkbench";
 import { previewWorkspaceExtension } from "./builtins/previewWorkspace";
 import { threadOverviewExtension } from "./builtins/threadOverview";
 
-export const BUILTIN_EXTENSIONS = [
+export const BUILTIN_PANELS = [
   threadOverviewExtension,
   planningWorkbenchExtension,
   previewWorkspaceExtension,

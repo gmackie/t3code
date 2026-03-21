@@ -7,7 +7,7 @@ import {
 } from "@t3tools/contracts";
 import { describe, expect, it } from "vitest";
 
-import { selectExtensionThreadView, type ExtensionSelectorState } from "./extensionSelectors";
+import { selectPanelThreadView, type PanelSelectorState } from "./panelSelectors";
 import {
   DEFAULT_INTERACTION_MODE,
   DEFAULT_RUNTIME_MODE,
@@ -95,16 +95,16 @@ function makeThread(overrides: Partial<Thread> = {}): Thread {
   };
 }
 
-describe("selectExtensionThreadView", () => {
+describe("selectPanelThreadView", () => {
   it("derives extension-safe thread state for the active thread", () => {
     const thread = makeThread();
-    const state: ExtensionSelectorState = {
+    const state: PanelSelectorState = {
       projects: [makeProject()],
       threads: [thread],
       threadsHydrated: true,
     };
 
-    const view = selectExtensionThreadView(state, thread.id);
+    const view = selectPanelThreadView(state, thread.id);
 
     expect(view?.thread.id).toBe(thread.id);
     expect(view?.project?.id).toBe(thread.projectId);
