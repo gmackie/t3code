@@ -1,0 +1,122 @@
+import {
+  EventId,
+  ProjectId,
+  ThreadId,
+  TurnId,
+  type OrchestrationThreadActivity,
+} from "@t3tools/contracts";
+import { describe, expect, it } from "vitest";
+
+import { selectExtensionThreadView, type ExtensionSelectorState } from "./extensionSelectors";
+import {
+  DEFAULT_INTERACTION_MODE,
+  DEFAULT_RUNTIME_MODE,
+  type Project,
+  type Thread,
+} from "../types";
+
+function makeProject(overrides: Partial<Project> = {}): Project {
+  return {
+    id: ProjectId.makeUnsafe("project-1"),
+    name: "Project",
+    cwd: "/tmp/project",
+    model: "gpt-5-codex",
+    expanded: true,
+    scripts: [],
+    ...overrides,
+  };
+}
+
+function makeActivity(
+  kind: string,
+  payload: Record<string, unknown>,
+  overrides: Partial<OrchestrationThreadActivity> = {},
+): OrchestrationThreadActivity {
+  return {
+    id: EventId.makeUnsafe(`event-${kind}`),
+    tone: "info",
+    kind,
+    summary: kind,
+    payload,
+    turnId: overrides.turnId ?? null,
+    createdAt: overrides.createdAt ?? "2026-03-21T00:00:00.000Z",
+    ...overrides,
+  };
+}
+
+function makeThread(overrides: Partial<Thread> = {}): Thread {
+  const turnId = TurnId.makeUnsafe("turn-1");
+  return {
+    id: ThreadId.makeUnsafe("thread-1"),
+    codexThreadId: null,
+    projectId: ProjectId.makeUnsafe("project-1"),
+    title: "Thread",
+    model: "gpt-5-codex",
+    runtimeMode: DEFAULT_RUNTIME_MODE,
+    interactionMode: DEFAULT_INTERACTION_MODE,
+    session: null,
+    messages: [],
+    turnDiffSummaries: [],
+    activities: [
+      makeActivity(
+        "approval.requested",
+        {
+          requestId: "approval-1",
+          requestKind: "command",
+          detail: "Run bun lint",
+        },
+        { createdAt: "2026-03-21T00:01:00.000Z", turnId },
+      ),
+    ],
+    proposedPlans: [
+      {
+        id: "plan-1",
+        turnId,
+        planMarkdown: "# Build extension host\n\n- Add registry\n- Add selectors",
+        implementedAt: null,
+        implementationThreadId: null,
+        createdAt: "2026-03-21T00:02:00.000Z",
+        updatedAt: "2026-03-21T00:02:00.000Z",
+      },
+    ],
+    error: null,
+    createdAt: "2026-03-21T00:00:00.000Z",
+    latestTurn: {
+      turnId,
+      state: "completed",
+      requestedAt: "2026-03-21T00:00:00.000Z",
+      startedAt: "2026-03-21T00:00:05.000Z",
+      completedAt: "2026-03-21T00:02:30.000Z",
+      assistantMessageId: null,
+    },
+    branch: "feature/extensions",
+    worktreePath: "/tmp/project",
+    ...overrides,
+  };
+}
+
+describe("selectExtensionThreadView", () => {
+  it("derives extension-safe thread state for the active thread", () => {
+    const thread = makeThread();
+    const state: ExtensionSelectorState = {
+      projects: [makeProject()],
+      threads: [thread],
+      threadsHydrated: true,
+    };
+
+    const view = selectExtensionThreadView(state, thread.id);
+
+    expect(view?.thread.id).toBe(thread.id);
+    expect(view?.project?.id).toBe(thread.projectId);
+    expect(view?.latestProposedPlan?.id).toBe("plan-1");
+    expect(view?.pendingApprovals).toEqual([
+      {
+        requestId: "approval-1",
+        requestKind: "command",
+        createdAt: "2026-03-21T00:01:00.000Z",
+        detail: "Run bun lint",
+      },
+    ]);
+    expect(view?.latestTurnId).toBe("turn-1");
+  });
+});

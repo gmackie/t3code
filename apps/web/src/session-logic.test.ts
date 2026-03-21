@@ -11,6 +11,8 @@ import {
   deriveCompletionDividerBeforeEntryId,
   deriveActiveWorkStartedAt,
   deriveActivePlanState,
+  derivePhase,
+  PROVIDER_OPTIONS,
   derivePendingApprovals,
   derivePendingUserInputs,
   deriveTimelineEntries,
@@ -1442,6 +1444,15 @@ describe("isLatestTurnSettled", () => {
     ).toBe(true);
   });
 
+  it("returns true once the active turn is cleared even if the session still says running", () => {
+    expect(
+      isLatestTurnSettled(latestTurn, {
+        orchestrationStatus: "running",
+        activeTurnId: undefined,
+      }),
+    ).toBe(true);
+  });
+
   it("returns false when turn timestamps are incomplete", () => {
     expect(
       isLatestTurnSettled(
@@ -1514,5 +1525,55 @@ describe("deriveActiveWorkStartedAt", () => {
         "2026-02-27T21:11:00.000Z",
       ),
     ).toBe("2026-02-27T21:11:00.000Z");
+  });
+
+  it("uses sendStartedAt when the runtime cleared the active turn but session status lags", () => {
+    expect(
+      deriveActiveWorkStartedAt(
+        latestTurn,
+        {
+          orchestrationStatus: "running",
+          activeTurnId: undefined,
+        },
+        "2026-02-27T21:11:00.000Z",
+      ),
+    ).toBe("2026-02-27T21:11:00.000Z");
+  });
+});
+
+describe("PROVIDER_OPTIONS", () => {
+  it("advertises Claude as available while keeping Cursor as a placeholder", () => {
+    const claude = PROVIDER_OPTIONS.find((option) => option.value === "claudeAgent");
+    const cursor = PROVIDER_OPTIONS.find((option) => option.value === "cursor");
+    expect(PROVIDER_OPTIONS).toEqual([
+      { value: "codex", label: "Codex", available: true },
+      { value: "claudeAgent", label: "Claude", available: true },
+      { value: "cursor", label: "Cursor", available: false },
+    ]);
+    expect(claude).toEqual({
+      value: "claudeAgent",
+      label: "Claude",
+      available: true,
+    });
+    expect(cursor).toEqual({
+      value: "cursor",
+      label: "Cursor",
+      available: false,
+    });
+  });
+});
+
+describe("derivePhase", () => {
+  it("treats a running session without an active turn as ready", () => {
+    expect(
+      derivePhase({
+        provider: "codex",
+        status: "running",
+        orchestrationStatus: "running",
+        activeTurnId: undefined,
+        createdAt: "2026-02-27T21:10:00.000Z",
+        updatedAt: "2026-02-27T21:10:06.000Z",
+      }),
+    ).toBe("ready");
   });
 });
