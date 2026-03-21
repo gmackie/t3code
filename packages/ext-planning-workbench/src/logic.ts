@@ -9,7 +9,30 @@ export interface PlanningTaskDraft {
 }
 
 function stripFencedCodeBlocks(text: string): string {
-  return text.replace(/^(`{3,}|~{3,}).*\n[\s\S]*?\n\1\s*$/gm, "");
+  const lines = text.split("\n");
+  const result: string[] = [];
+  let fenceChar: string | null = null;
+  let fenceLen = 0;
+
+  for (const line of lines) {
+    if (fenceChar === null) {
+      const match = line.match(/^(\s{0,3})(`{3,}|~{3,})/);
+      if (match) {
+        fenceChar = match[2]![0]!;
+        fenceLen = match[2]!.length;
+      } else {
+        result.push(line);
+      }
+    } else {
+      const closeMatch = line.match(/^(\s{0,3})(`{3,}|~{3,})\s*$/);
+      if (closeMatch && closeMatch[2]![0] === fenceChar && closeMatch[2]!.length >= fenceLen) {
+        fenceChar = null;
+        fenceLen = 0;
+      }
+    }
+  }
+
+  return result.join("\n");
 }
 
 function extractPlanTitle(planMarkdown: string): string | null {

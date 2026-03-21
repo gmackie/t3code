@@ -12,7 +12,7 @@
  * BrowserWindow. In browser mode, it opens in a new tab.
  */
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { isElectron } from "../../env";
 import { readNativeApi } from "../../nativeApi";
@@ -95,11 +95,15 @@ function PreviewWorkspacePanel({
     [scripts],
   );
 
+  const persistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (persistTimerRef.current) clearTimeout(persistTimerRef.current); }, []);
+
   const handleUrlChange = useCallback(
     (value: string) => {
       setPreviewUrl(value);
       if (threadId) {
-        persistPreviewUrl(threadId, value);
+        if (persistTimerRef.current) clearTimeout(persistTimerRef.current);
+        persistTimerRef.current = setTimeout(() => persistPreviewUrl(threadId, value), 500);
       }
     },
     [threadId],

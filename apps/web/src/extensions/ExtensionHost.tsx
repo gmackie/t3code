@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 
 import { ExtensionSidePanel } from "./ExtensionSidePanel";
 import { getAvailableExtensionsForSurface } from "./registry";
@@ -16,24 +16,19 @@ export function ExtensionHost(props: ExtensionHostProps) {
     () => getAvailableExtensionsForSurface(props.extensions, "thread.sidePanel", props.context),
     [props.context, props.extensions],
   );
-  const [activeExtensionId, setActiveExtensionId] = useState<string | null>(
-    availableExtensions[0]?.id ?? null,
-  );
+  const [selectedExtensionId, setSelectedExtensionId] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (availableExtensions.length === 0) {
-      setActiveExtensionId(null);
-      return;
+  // Derive the active extension: use selected if still available, otherwise first available
+  const activeExtension = useMemo(() => {
+    if (availableExtensions.length === 0) return null;
+    if (selectedExtensionId) {
+      const selected = availableExtensions.find((ext) => ext.id === selectedExtensionId);
+      if (selected) return selected;
     }
-    if (!availableExtensions.some((extension) => extension.id === activeExtensionId)) {
-      setActiveExtensionId(availableExtensions[0]?.id ?? null);
-    }
-  }, [activeExtensionId, availableExtensions]);
+    return availableExtensions[0] ?? null;
+  }, [availableExtensions, selectedExtensionId]);
 
-  const activeExtension =
-    availableExtensions.find((extension) => extension.id === activeExtensionId) ?? null;
-
-  if (!props.open || availableExtensions.length === 0 || !activeExtension) {
+  if (!props.open || !activeExtension) {
     return null;
   }
 
@@ -41,7 +36,7 @@ export function ExtensionHost(props: ExtensionHostProps) {
     <ExtensionSidePanel
       extensions={availableExtensions}
       activeExtensionId={activeExtension.id}
-      onSelectExtension={setActiveExtensionId}
+      onSelectExtension={setSelectedExtensionId}
       onClose={props.onClose}
     >
       {activeExtension.render(props.context)}
