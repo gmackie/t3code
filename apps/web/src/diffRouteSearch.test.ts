@@ -39,14 +39,17 @@ describe("parseDiffRouteSearch", () => {
     });
   });
 
-  it("drops turn and file values when diff is closed", () => {
+  it("keeps turn and file values when diff is closed (used for deep-linking)", () => {
     const parsed = parseDiffRouteSearch({
       diff: "0",
       diffTurnId: "turn-1",
       diffFilePath: "src/app.ts",
     });
 
-    expect(parsed).toEqual({});
+    expect(parsed).toEqual({
+      diffTurnId: "turn-1",
+      diffFilePath: "src/app.ts",
+    });
   });
 
   it("drops file value when turn is not selected", () => {
