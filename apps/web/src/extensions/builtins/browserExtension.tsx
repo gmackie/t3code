@@ -49,7 +49,7 @@ function BrowserExtensionPanel({
 }) {
   const threadId = context.activeThreadId;
   const browserState = useBrowserStateStore((s) =>
-    threadId ? selectThreadBrowserState(s, threadId) : null,
+    threadId ? selectThreadBrowserState(s.browserStateByThreadId, threadId) : null,
   );
   const updateBrowserState = useBrowserStateStore((s) => s.updateThreadBrowserState);
   const viewportRef = useRef<HTMLDivElement | null>(null);
@@ -96,21 +96,21 @@ function BrowserExtensionPanel({
     const api = readNativeApi();
     if (!api?.browser) return;
 
-    const unsub = api.browser.onBrowserEvent((event) => {
+    const unsub = api.browser.onEvent((event) => {
       if (event.type !== "tab-state" || !event.threadId) return;
       updateBrowserState(event.threadId, (draft) => ({
         ...draft,
-        tabs: draft.tabs.map((tab) =>
+        tabs: draft.tabs.map((tab): typeof tab =>
           tab.id === event.tabId
             ? {
                 ...tab,
-                url: event.state.url ?? tab.url,
-                title: event.state.title ?? tab.title,
-                faviconUrl: event.state.faviconUrl ?? tab.faviconUrl,
-                isLoading: event.state.isLoading ?? tab.isLoading,
-                canGoBack: event.state.canGoBack ?? tab.canGoBack,
-                canGoForward: event.state.canGoForward ?? tab.canGoForward,
-                lastError: event.state.lastError ?? tab.lastError,
+                url: event.state.url,
+                title: event.state.title,
+                faviconUrl: event.state.faviconUrl,
+                isLoading: event.state.isLoading,
+                canGoBack: event.state.canGoBack,
+                canGoForward: event.state.canGoForward,
+                lastError: event.state.lastError,
               }
             : tab,
         ),
