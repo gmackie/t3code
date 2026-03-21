@@ -99,7 +99,21 @@ import { BranchToolbar } from "./BranchToolbar";
 import { resolveShortcutCommand, shortcutLabelForCommand } from "../keybindings";
 import PlanSidebar from "./PlanSidebar";
 import ThreadTerminalDrawer from "./ThreadTerminalDrawer";
-import { ChevronDownIcon } from "lucide-react";
+import {
+  BotIcon,
+  ChevronDownIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  CircleAlertIcon,
+  ListTodoIcon,
+  LockIcon,
+  LockOpenIcon,
+  PanelsTopLeftIcon,
+  XIcon,
+} from "lucide-react";
+import { Button } from "./ui/button";
+import { Separator } from "./ui/separator";
+import { Menu, MenuItem, MenuPopup, MenuTrigger } from "./ui/menu";
 import { cn, randomUUID } from "~/lib/utils";
 import { toastManager } from "./ui/toast";
 import { decodeProjectScriptKeybindingRule } from "~/lib/projectScriptKeybindings";
@@ -175,6 +189,11 @@ import {
 import { sanitizeThreadErrorMessage } from "~/rpc/transportError";
 import { retainThreadDetailSubscription } from "../environments/runtime/service";
 import { RightPanelSheet } from "./RightPanelSheet";
+import { ExtensionHost } from "../extensions/ExtensionHost";
+import { BUILTIN_EXTENSIONS } from "../extensions/builtinRegistry";
+import { selectExtensionThreadView } from "../extensions/extensionSelectors";
+import { getAvailableExtensionsForSurface } from "../extensions/registry";
+import type { ExtensionContext } from "../extensions/types";
 
 const IMAGE_ONLY_BOOTSTRAP_PROMPT =
   "[User attached one or more images without additional text. Respond using the conversation context and the attached image(s).]";
@@ -683,6 +702,8 @@ export default function ChatView(props: ChatViewProps) {
     useState<Record<string, number>>({});
   const [planSidebarOpen, setPlanSidebarOpen] = useState(false);
   const shouldUsePlanSidebarSheet = useMediaQuery(RIGHT_PANEL_INLINE_LAYOUT_MEDIA_QUERY);
+  const [extensionPanelOpen, setExtensionPanelOpen] = useState(false);
+  const [isComposerFooterCompact, setIsComposerFooterCompact] = useState(false);
   // Tracks whether the user explicitly dismissed the sidebar for the active turn.
   const planSidebarDismissedForTurnRef = useRef<string | null>(null);
   // When set, the thread-change reset effect will open the sidebar instead of closing it.
@@ -1127,6 +1148,36 @@ export default function ChatView(props: ChatViewProps) {
     [activeLatestTurn?.turnId, threadActivities],
   );
   const planSidebarLabel = sidebarProposedPlan || interactionMode === "plan" ? "Plan" : "Tasks";
+  const extensionThreadView = useMemo(
+    () =>
+      selectExtensionThreadView(
+        {
+          projects,
+          threads,
+          threadsHydrated: true,
+        },
+        activeThread?.id ?? null,
+      ),
+    [activeThread?.id, projects, threads],
+  );
+  const extensionContext = useMemo<ExtensionContext>(
+    () => ({
+      activeThreadId: activeThread?.id ?? null,
+      threadView: extensionThreadView,
+      openSidePanel: () => {
+        setPlanSidebarOpen(false);
+        setExtensionPanelOpen(true);
+      },
+      closeSidePanel: () => setExtensionPanelOpen(false),
+      actions: [],
+    }),
+    [activeThread?.id, extensionThreadView],
+  );
+  const availableSidePanelExtensions = useMemo(
+    () =>
+      getAvailableExtensionsForSurface(BUILTIN_EXTENSIONS, "thread.sidePanel", extensionContext),
+    [extensionContext],
+  );
   const showPlanFollowUpPrompt =
     pendingUserInputs.length === 0 &&
     interactionMode === "plan" &&
@@ -1907,6 +1958,9 @@ export default function ChatView(props: ChatViewProps) {
   }, [handleInteractionModeChange, interactionMode]);
   const togglePlanSidebar = useCallback(() => {
     setPlanSidebarOpen((open) => {
+      if (!open) {
+        setExtensionPanelOpen(false);
+      }
       if (open) {
         planSidebarDismissedForTurnRef.current =
           activePlan?.turnId ?? sidebarProposedPlan?.turnId ?? "__dismissed__";
@@ -1921,6 +1975,14 @@ export default function ChatView(props: ChatViewProps) {
     planSidebarDismissedForTurnRef.current =
       activePlan?.turnId ?? sidebarProposedPlan?.turnId ?? "__dismissed__";
   }, [activePlan?.turnId, sidebarProposedPlan?.turnId]);
+  const toggleExtensionPanel = useCallback(() => {
+    setExtensionPanelOpen((open) => {
+      if (!open) {
+        setPlanSidebarOpen(false);
+      }
+      return !open;
+    });
+  }, []);
 
   const persistThreadSettingsForNextTurn = useCallback(
     async (input: {
@@ -3415,7 +3477,14 @@ export default function ChatView(props: ChatViewProps) {
         {/* end chat column */}
 
         {/* Plan sidebar */}
-        {planSidebarOpen && !shouldUsePlanSidebarSheet ? (
+        {extensionPanelOpen ? (
+          <ExtensionHost
+            extensions={BUILTIN_EXTENSIONS}
+            context={extensionContext}
+            open={extensionPanelOpen}
+            onClose={() => setExtensionPanelOpen(false)}
+          />
+        ) : planSidebarOpen && !shouldUsePlanSidebarSheet ? (
           <PlanSidebar
             activePlan={activePlan}
             activeProposedPlan={sidebarProposedPlan}
