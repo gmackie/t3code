@@ -189,11 +189,11 @@ import {
 import { sanitizeThreadErrorMessage } from "~/rpc/transportError";
 import { retainThreadDetailSubscription } from "../environments/runtime/service";
 import { RightPanelSheet } from "./RightPanelSheet";
-import { ExtensionHost } from "../extensions/ExtensionHost";
-import { BUILTIN_EXTENSIONS } from "../extensions/builtinRegistry";
-import { selectExtensionThreadView } from "../extensions/extensionSelectors";
-import { getAvailableExtensionsForSurface } from "../extensions/registry";
-import type { ExtensionContext } from "../extensions/types";
+import { PanelHost } from "../extensions/PanelHost";
+import { BUILTIN_PANELS } from "../extensions/panelRegistry";
+import { selectPanelThreadView } from "../extensions/panelSelectors";
+import { getAvailablePanelsForSurface } from "../extensions/registry";
+import type { PanelContext } from "../extensions/types";
 
 const IMAGE_ONLY_BOOTSTRAP_PROMPT =
   "[User attached one or more images without additional text. Respond using the conversation context and the attached image(s).]";
@@ -702,7 +702,7 @@ export default function ChatView(props: ChatViewProps) {
     useState<Record<string, number>>({});
   const [planSidebarOpen, setPlanSidebarOpen] = useState(false);
   const shouldUsePlanSidebarSheet = useMediaQuery(RIGHT_PANEL_INLINE_LAYOUT_MEDIA_QUERY);
-  const [extensionPanelOpen, setExtensionPanelOpen] = useState(false);
+  const [panelHostOpen, setPanelHostOpen] = useState(false);
   const [isComposerFooterCompact, setIsComposerFooterCompact] = useState(false);
   // Tracks whether the user explicitly dismissed the sidebar for the active turn.
   const planSidebarDismissedForTurnRef = useRef<string | null>(null);
@@ -1148,9 +1148,9 @@ export default function ChatView(props: ChatViewProps) {
     [activeLatestTurn?.turnId, threadActivities],
   );
   const planSidebarLabel = sidebarProposedPlan || interactionMode === "plan" ? "Plan" : "Tasks";
-  const extensionThreadView = useMemo(
+  const panelThreadView = useMemo(
     () =>
-      selectExtensionThreadView(
+      selectPanelThreadView(
         {
           projects,
           threads,
@@ -1160,23 +1160,23 @@ export default function ChatView(props: ChatViewProps) {
       ),
     [activeThread?.id, projects, threads],
   );
-  const extensionContext = useMemo<ExtensionContext>(
+  const panelContext = useMemo<PanelContext>(
     () => ({
       activeThreadId: activeThread?.id ?? null,
-      threadView: extensionThreadView,
+      threadView: panelThreadView,
       openSidePanel: () => {
         setPlanSidebarOpen(false);
-        setExtensionPanelOpen(true);
+        setPanelHostOpen(true);
       },
-      closeSidePanel: () => setExtensionPanelOpen(false),
+      closeSidePanel: () => setPanelHostOpen(false),
       actions: [],
     }),
-    [activeThread?.id, extensionThreadView],
+    [activeThread?.id, panelThreadView],
   );
-  const availableSidePanelExtensions = useMemo(
+  const availableSidePanels = useMemo(
     () =>
-      getAvailableExtensionsForSurface(BUILTIN_EXTENSIONS, "thread.sidePanel", extensionContext),
-    [extensionContext],
+      getAvailablePanelsForSurface(BUILTIN_PANELS, "thread.sidePanel", panelContext),
+    [panelContext],
   );
   const showPlanFollowUpPrompt =
     pendingUserInputs.length === 0 &&
@@ -1975,8 +1975,8 @@ export default function ChatView(props: ChatViewProps) {
     planSidebarDismissedForTurnRef.current =
       activePlan?.turnId ?? sidebarProposedPlan?.turnId ?? "__dismissed__";
   }, [activePlan?.turnId, sidebarProposedPlan?.turnId]);
-  const toggleExtensionPanel = useCallback(() => {
-    setExtensionPanelOpen((open) => {
+  const togglePanelHost = useCallback(() => {
+    setPanelHostOpen((open) => {
       if (!open) {
         setPlanSidebarOpen(false);
       }
@@ -3477,12 +3477,12 @@ export default function ChatView(props: ChatViewProps) {
         {/* end chat column */}
 
         {/* Plan sidebar */}
-        {extensionPanelOpen ? (
-          <ExtensionHost
-            extensions={BUILTIN_EXTENSIONS}
-            context={extensionContext}
-            open={extensionPanelOpen}
-            onClose={() => setExtensionPanelOpen(false)}
+        {panelHostOpen ? (
+          <PanelHost
+            panels={BUILTIN_PANELS}
+            context={panelContext}
+            open={panelHostOpen}
+            onClose={() => setPanelHostOpen(false)}
           />
         ) : planSidebarOpen && !shouldUsePlanSidebarSheet ? (
           <PlanSidebar

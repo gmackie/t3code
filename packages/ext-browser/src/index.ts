@@ -1,13 +1,15 @@
 /**
- * Browser extension metadata.
+ * Browser panel — full in-app browser with tab management.
  *
- * The full UI component lives in the web app (wraps BrowserPanel from PR #963).
- * This package exports the extension ID and metadata.
+ * Provides panel metadata constants. The full UI component lives in the
+ * web app since it wraps BrowserPanel.tsx and depends on browserStateStore,
+ * BrowserManager IPC, and viewport synchronization — all app-internal modules.
  *
- * When extensions become separate repos, this package will contain the full
- * BrowserPanel implementation with browser APIs injected via the context.
+ * This package exports the portable parts: panel identity and metadata.
+ * When the browser panel moves to its own repo, this package will contain
+ * the full BrowserPanel component with browser APIs injected via context.
  */
 
-export const BROWSER_EXTENSION_ID = "browser";
-export const BROWSER_EXTENSION_TITLE = "Browser";
-export const BROWSER_EXTENSION_ORDER = 20;
+export const BROWSER_PANEL_ID = "browser";
+export const BROWSER_PANEL_TITLE = "Browser";
+export const BROWSER_PANEL_ORDER = 20;

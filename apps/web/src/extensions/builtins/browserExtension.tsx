@@ -1,5 +1,5 @@
 /**
- * Browser extension — wraps PR #963's BrowserPanel as a T3ExtensionDefinition.
+ * Browser extension — wraps PR #963's BrowserPanel as a PanelDefinition.
  *
  * This demonstrates how the in-app browser can be a pluggable extension
  * rather than hardcoded into the chat route layout. The BrowserPanel UI
@@ -11,7 +11,7 @@
  *
  * DATA FLOW:
  *
- *   ExtensionHost
+ *   PanelHost
  *   ├── context.activeThreadId ──→ browserStateStore key
  *   ├── browserStateStore ──→ BrowserPanel props (tabs, activeTab, input)
  *   └── NativeApi.browser.* ──→ BrowserManager (Electron)
@@ -31,9 +31,9 @@ import {
 } from "../../browserStateStore";
 import BrowserPanel from "../../components/BrowserPanel";
 import { readNativeApi } from "../../nativeApi";
-import type { T3ExtensionDefinition } from "../types";
+import type { PanelDefinition } from "../types";
 
-export const browserExtension: T3ExtensionDefinition = {
+export const browserExtension: PanelDefinition = {
   id: "browser",
   title: "Browser",
   surface: "thread.sidePanel",
@@ -45,7 +45,7 @@ export const browserExtension: T3ExtensionDefinition = {
 function BrowserExtensionPanel({
   context,
 }: {
-  context: Parameters<T3ExtensionDefinition["render"]>[0];
+  context: Parameters<PanelDefinition["render"]>[0];
 }) {
   const threadId = context.activeThreadId;
   const browserState = useBrowserStateStore((s) =>

@@ -9,19 +9,19 @@ import {
   isLatestTurnSettled,
 } from "../session-logic";
 import type { AppState } from "../store";
-import type { ExtensionThreadView } from "./types";
+import type { PanelThreadView } from "./types";
 
-export type ExtensionSelectorState = Pick<AppState, "projects" | "threads" | "threadsHydrated">;
+export type PanelSelectorState = Pick<AppState, "projects" | "threads" | "threadsHydrated">;
 
 let cachedThreadId: ThreadId | null = null;
 let cachedThread: unknown = null;
 let cachedProject: unknown = null;
-let cachedResult: ExtensionThreadView | null = null;
+let cachedResult: PanelThreadView | null = null;
 
-export function selectExtensionThreadView(
-  state: ExtensionSelectorState,
+export function selectPanelThreadView(
+  state: PanelSelectorState,
   threadId: ThreadId | null,
-): ExtensionThreadView | null {
+): PanelThreadView | null {
   if (!threadId) return null;
 
   const thread = state.threads.find((candidate) => candidate.id === threadId);
@@ -38,7 +38,7 @@ export function selectExtensionThreadView(
   const activities = thread.activities;
   const latestTurnSettled = isLatestTurnSettled(latestTurn, thread.session);
 
-  const result: ExtensionThreadView = {
+  const result: PanelThreadView = {
     thread,
     project,
     activePlan: deriveActivePlanState(activities, latestTurn?.turnId ?? undefined),
