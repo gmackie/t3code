@@ -57,7 +57,7 @@ export const planningWorkbenchExtension: T3ExtensionDefinition = {
   id: "planning-workbench",
   title: "Planning",
   surface: "thread.sidePanel",
-  order: 0,
+  order: 5,
   isAvailable: (context) => context.threadView !== null,
   render: (context) => <PlanningWorkbenchPanel context={context} />,
 };
@@ -69,15 +69,15 @@ function PlanningWorkbenchPanel({
 }) {
   const threadView = context.threadView;
   const { copyToClipboard, isCopied } = useCopyToClipboard();
-
-  if (!threadView) return null;
-
-  const planMarkdown = threadView.latestProposedPlan?.planMarkdown ?? "";
+  const planMarkdown = threadView?.latestProposedPlan?.planMarkdown ?? "";
   const requirementsMarkdown = useMemo(
     () => buildPlanningRequirementsMarkdown(planMarkdown),
     [planMarkdown],
   );
   const taskDrafts = useMemo(() => buildPlanningTaskDrafts(planMarkdown), [planMarkdown]);
+
+  if (!threadView) return null;
+
   const workspaceRoot = threadView.project?.cwd ?? null;
   const planTitle = planMarkdown ? proposedPlanTitle(planMarkdown) : null;
 
@@ -144,7 +144,7 @@ function PlanningWorkbenchPanel({
                       onClick={() =>
                         saveArtifact({
                           workspaceRoot,
-                          relativePath: "requirements.md",
+                          relativePath: `requirements-${Date.now()}.md`,
                           contents: requirementsMarkdown,
                           title: "Requirements saved",
                         })
@@ -184,7 +184,7 @@ function PlanningWorkbenchPanel({
                     onClick={() =>
                       saveArtifact({
                         workspaceRoot,
-                        relativePath: "task-drafts.json",
+                        relativePath: `task-drafts-${Date.now()}.json`,
                         contents: `${JSON.stringify(taskDrafts, null, 2)}\n`,
                         title: "Task drafts saved",
                       })
