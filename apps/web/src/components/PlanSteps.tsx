@@ -37,9 +37,9 @@ export function PlanSteps({ steps }: PlanStepsProps) {
       <p className="mb-2 text-[10px] font-semibold tracking-widest text-muted-foreground/40 uppercase">
         Steps
       </p>
-      {steps.map((step) => (
+      {steps.map((step, index) => (
         <div
-          key={`${step.status}:${step.step}`}
+          key={index}
           className={cn(
             "flex items-start gap-2.5 rounded-lg px-2.5 py-2 transition-colors duration-200",
             step.status === "inProgress" && "bg-blue-500/5",

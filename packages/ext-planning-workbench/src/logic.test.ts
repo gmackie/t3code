@@ -80,6 +80,38 @@ Experimental extension host
     expect(buildPlanningTaskDrafts(planMarkdown)).toEqual([]);
   });
 
+  it("handles unclosed code fences (truncated streaming plan)", () => {
+    const planMarkdown = `# Plan
+
+- Real item
+
+\`\`\`
+- Inside unclosed fence
+- Also inside`;
+
+    expect(buildPlanningTaskDrafts(planMarkdown)).toEqual([
+      { id: "task-1", title: "Real item" },
+    ]);
+  });
+
+  it("handles closing fence with more backticks than opener", () => {
+    const planMarkdown = `# Plan
+
+- Keep this
+
+\`\`\`
+- Remove this
+\`\`\`\`
+
+- Also keep this
+`;
+
+    expect(buildPlanningTaskDrafts(planMarkdown)).toEqual([
+      { id: "task-1", title: "Keep this" },
+      { id: "task-2", title: "Also keep this" },
+    ]);
+  });
+
   it("deduplicates repeated list items", () => {
     const planMarkdown = `# Plan
 

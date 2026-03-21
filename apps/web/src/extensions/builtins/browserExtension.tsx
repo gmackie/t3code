@@ -66,13 +66,18 @@ function BrowserExtensionPanel({
     if (!api?.browser) return;
 
     const el = viewportRef.current;
+    let rafId: number | null = null;
     const syncBounds = () => {
-      const rect = el.getBoundingClientRect();
-      void api.browser.syncHost({
-        threadId,
-        tabId: browserState?.activeTabId ?? null,
-        visible: true,
-        bounds: { x: rect.left, y: rect.top, width: rect.width, height: rect.height },
+      if (rafId !== null) return;
+      rafId = requestAnimationFrame(() => {
+        rafId = null;
+        const rect = el.getBoundingClientRect();
+        void api.browser.syncHost({
+          threadId,
+          tabId: browserState?.activeTabId ?? null,
+          visible: true,
+          bounds: { x: rect.left, y: rect.top, width: rect.width, height: rect.height },
+        });
       });
     };
 
@@ -82,6 +87,7 @@ function BrowserExtensionPanel({
 
     return () => {
       observer.disconnect();
+      if (rafId !== null) cancelAnimationFrame(rafId);
       void api.browser.syncHost({
         threadId,
         tabId: null,
@@ -91,14 +97,15 @@ function BrowserExtensionPanel({
     };
   }, [threadId, browserState?.activeTabId]);
 
-  // Subscribe to browser events from Electron
+  // Subscribe to browser events from Electron, scoped to current thread
   useEffect(() => {
+    if (!threadId) return;
     const api = readNativeApi();
     if (!api?.browser) return;
 
     const unsub = api.browser.onEvent((event) => {
-      if (event.type !== "tab-state" || !event.threadId) return;
-      updateBrowserState(event.threadId, (draft) => ({
+      if (event.type !== "tab-state" || event.threadId !== threadId) return;
+      updateBrowserState(threadId, (draft) => ({
         ...draft,
         tabs: draft.tabs.map((tab): typeof tab =>
           tab.id === event.tabId
@@ -118,7 +125,7 @@ function BrowserExtensionPanel({
     });
 
     return unsub;
-  }, [updateBrowserState]);
+  }, [threadId, updateBrowserState]);
 
   const handleCreateTab = useCallback(() => {
     if (!threadId) return;
