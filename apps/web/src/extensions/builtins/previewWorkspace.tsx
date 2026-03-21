@@ -31,7 +31,22 @@ import {
 import type { T3ExtensionDefinition } from "../types";
 
 const DEFAULT_PREVIEW_URL = "http://localhost:3000";
-const PREVIEW_URL_STORAGE_PREFIX = "t3code:preview-url:";
+export const PREVIEW_URL_STORAGE_PREFIX = "t3code:preview-url:";
+
+export function removeOrphanedPreviewUrls(activeThreadIds: Set<string>): void {
+  try {
+    for (let i = localStorage.length - 1; i >= 0; i--) {
+      const key = localStorage.key(i);
+      if (!key?.startsWith(PREVIEW_URL_STORAGE_PREFIX)) continue;
+      const threadId = key.slice(PREVIEW_URL_STORAGE_PREFIX.length);
+      if (!activeThreadIds.has(threadId)) {
+        localStorage.removeItem(key);
+      }
+    }
+  } catch {
+    // localStorage unavailable
+  }
+}
 
 function getPersistedPreviewUrl(threadId: string): string {
   try {
@@ -54,7 +69,7 @@ export const previewWorkspaceExtension: T3ExtensionDefinition = {
   title: "Preview",
   surface: "thread.sidePanel",
   order: 10,
-  isAvailable: (context) => context.threadView?.project !== null && context.threadView !== null,
+  isAvailable: (context) => context.threadView !== null && context.threadView.project !== null,
   render: (context) => <PreviewWorkspacePanel context={context} />,
 };
 
@@ -70,7 +85,9 @@ function PreviewWorkspacePanel({
   const [previewUrl, setPreviewUrl] = useState(() =>
     threadId ? getPersistedPreviewUrl(threadId) : DEFAULT_PREVIEW_URL,
   );
-  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+  const isPreviewOpen = useBrowserStateStore((s) =>
+    threadId ? (s.browserStateByThreadId[threadId]?.tabs.length ?? 0) > 0 : false,
+  );
 
   const scripts = useMemo(() => threadView?.project?.scripts ?? [], [threadView?.project?.scripts]);
   const devScripts = useMemo(
@@ -105,8 +122,6 @@ function PreviewWorkspacePanel({
         inputValue: result.url,
       }));
       void api.browser.ensureTab({ threadId, tabId: tab.id, url: result.url });
-      void api.browser.navigate({ threadId, tabId: tab.id, url: result.url });
-      setIsPreviewOpen(true);
     } else if (api?.shell) {
       // Browser mode: open in new tab
       void api.shell.openExternal(result.url);

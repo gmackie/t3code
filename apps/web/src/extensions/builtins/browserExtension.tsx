@@ -140,14 +140,16 @@ function BrowserExtensionPanel({
   const handleActivateTab = useCallback(
     (tabId: string) => {
       if (!threadId) return;
-      const tab = browserState?.tabs.find((t) => t.id === tabId);
-      updateBrowserState(threadId, (draft) => ({
-        ...draft,
-        activeTabId: tabId,
-        inputValue: normalizeBrowserDisplayUrl(tab?.url),
-      }));
+      updateBrowserState(threadId, (draft) => {
+        const tab = draft.tabs.find((t) => t.id === tabId);
+        return {
+          ...draft,
+          activeTabId: tabId,
+          inputValue: normalizeBrowserDisplayUrl(tab?.url),
+        };
+      });
     },
-    [threadId, browserState?.tabs, updateBrowserState],
+    [threadId, updateBrowserState],
   );
 
   const handleCloseTab = useCallback(
