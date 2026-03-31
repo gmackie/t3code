@@ -17,7 +17,9 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const isDevelopment = Boolean(process.env.VITE_DEV_SERVER_URL);
-const APP_DISPLAY_NAME = isDevelopment ? "T3 Code (Dev)" : "T3 Code (Alpha)";
+const DEFAULT_APP_DISPLAY_NAME = isDevelopment ? "T3 Code (Dev)" : "T3 Code (Alpha)";
+const APP_DISPLAY_NAME =
+  process.env.T3CODE_DESKTOP_APP_DISPLAY_NAME?.trim() || DEFAULT_APP_DISPLAY_NAME;
 const APP_BUNDLE_ID = "com.t3tools.t3code";
 const LAUNCHER_VERSION = 1;
 
@@ -109,6 +111,7 @@ function buildMacLauncher(electronBinaryPath) {
 
   const expectedMetadata = {
     launcherVersion: LAUNCHER_VERSION,
+    appDisplayName: APP_DISPLAY_NAME,
     sourceAppBundlePath,
     sourceAppMtimeMs: statSync(sourceAppBundlePath).mtimeMs,
     iconMtimeMs: statSync(iconPath).mtimeMs,
