@@ -7,13 +7,14 @@ import { join } from "node:path";
 import rootPackageJson from "../package.json" with { type: "json" };
 import desktopPackageJson from "../apps/desktop/package.json" with { type: "json" };
 import serverPackageJson from "../apps/server/package.json" with { type: "json" };
+import { getDesktopAppDisplayName } from "../apps/desktop/src/appBranding.js";
 
 import { BRAND_ASSET_PATHS } from "./lib/brand-assets.ts";
 import { resolveCatalogDependencies } from "./lib/resolve-catalog.ts";
 
 import * as NodeRuntime from "@effect/platform-node/NodeRuntime";
 import * as NodeServices from "@effect/platform-node/NodeServices";
-import { Config, Data, Effect, FileSystem, Layer, Logger, Option, Path, Schema } from "effect";
+import { Config, Data, Effect, FileSystem, Logger, Option, Path, Schema } from "effect";
 import { Command, Flag } from "effect/unstable/cli";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 
@@ -665,7 +666,10 @@ const buildDesktopArtifact = Effect.fn("buildDesktopArtifact")(function* (
     build: yield* createBuildConfig(
       options.platform,
       options.target,
-      desktopPackageJson.productName ?? "T3 Code",
+      getDesktopAppDisplayName({
+        isDevelopment: false,
+        platform: options.platform,
+      }),
       options.signed,
       options.mockUpdates,
       options.mockUpdateServerPort,
@@ -818,12 +822,15 @@ const buildDesktopArtifactCli = Command.make("build-desktop-artifact", {
 }).pipe(
   Command.withDescription("Build a desktop artifact for T3 Code."),
   Command.withHandler((input) => Effect.flatMap(resolveBuildOptions(input), buildDesktopArtifact)),
+  Command.provide(NodeServices.layer),
 );
 
-const cliRuntimeLayer = Layer.mergeAll(Logger.layer([Logger.consolePretty()]), NodeServices.layer);
-
-Command.run(buildDesktopArtifactCli, { version: "0.0.0" }).pipe(
+const buildDesktopArtifactProgram = Command.run(buildDesktopArtifactCli, { version: "0.0.0" }).pipe(
   Effect.scoped,
-  Effect.provide(cliRuntimeLayer),
-  NodeRuntime.runMain,
-);
+  Effect.provide([Logger.layer([Logger.consolePretty()]), NodeServices.layer]),
+  // The CLI runtime environment is satisfied by NodeServices at runtime, but the
+  // current Effect CLI types do not reduce the Environment requirement here.
+  // Cast only at the process entrypoint boundary.
+) as Effect.Effect<void, unknown, never>;
+
+NodeRuntime.runMain(buildDesktopArtifactProgram);

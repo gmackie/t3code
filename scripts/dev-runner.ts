@@ -5,7 +5,7 @@ import { homedir } from "node:os";
 import * as NodeRuntime from "@effect/platform-node/NodeRuntime";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { NetService } from "@t3tools/shared/Net";
-import { Config, Data, Effect, Hash, Layer, Logger, Option, Path, Schema } from "effect";
+import { Config, Data, Effect, Hash, Logger, Option, Path, Schema } from "effect";
 import { Argument, Command, Flag } from "effect/unstable/cli";
 import { ChildProcess } from "effect/unstable/process";
 
@@ -129,6 +129,49 @@ interface CreateDevRunnerEnvInput {
   readonly devUrl: URL | undefined;
 }
 
+const INHERITED_DESKTOP_ENV_KEYS = [
+  "T3CODE_MODE",
+  "T3CODE_PORT",
+  "T3CODE_HOST",
+  "T3CODE_AUTH_TOKEN",
+  "T3CODE_NO_BROWSER",
+  "T3CODE_DESKTOP_WS_URL",
+  "VITE_WS_URL",
+] as const;
+
+export function sanitizeInheritedDesktopEnv(
+  mode: DevMode,
+  baseEnv: NodeJS.ProcessEnv,
+): NodeJS.ProcessEnv {
+  if (mode === "dev:desktop" || baseEnv.T3CODE_MODE !== "desktop") {
+    return { ...baseEnv };
+  }
+
+  const sanitized = { ...baseEnv };
+  for (const key of INHERITED_DESKTOP_ENV_KEYS) {
+    delete sanitized[key];
+  }
+  return sanitized;
+}
+
+export function sanitizeProcessEnvForRequestedMode(
+  argv: ReadonlyArray<string>,
+  env: NodeJS.ProcessEnv,
+): void {
+  const requestedMode = argv[2];
+  if (!requestedMode || !DEV_RUNNER_MODES.includes(requestedMode as DevMode)) {
+    return;
+  }
+
+  if (requestedMode === "dev:desktop" || env.T3CODE_MODE !== "desktop") {
+    return;
+  }
+
+  for (const key of INHERITED_DESKTOP_ENV_KEYS) {
+    delete env[key];
+  }
+}
+
 export function createDevRunnerEnv({
   mode,
   baseEnv,
@@ -147,9 +190,10 @@ export function createDevRunnerEnv({
     const webPort = BASE_WEB_PORT + webOffset;
     const resolvedBaseDir = yield* resolveBaseDir(t3Home);
     const isDesktopMode = mode === "dev:desktop";
+    const sanitizedBaseEnv = sanitizeInheritedDesktopEnv(mode, baseEnv);
 
     const output: NodeJS.ProcessEnv = {
-      ...baseEnv,
+      ...sanitizedBaseEnv,
       PORT: String(webPort),
       VITE_DEV_SERVER_URL:
         devUrl?.toString() ??
@@ -535,19 +579,19 @@ const devRunnerCli = Command.make("dev-runner", {
 }).pipe(
   Command.withDescription("Run monorepo development modes with deterministic port/env wiring."),
   Command.withHandler((input) => runDevRunnerWithInput(input)),
-);
-
-const cliRuntimeLayer = Layer.mergeAll(
-  Logger.layer([Logger.consolePretty()]),
-  NodeServices.layer,
-  NetService.layer,
+  Command.provide(NodeServices.layer),
+  Command.provide(NetService.layer),
 );
 
 const runtimeProgram = Command.run(devRunnerCli, { version: "0.0.0" }).pipe(
   Effect.scoped,
-  Effect.provide(cliRuntimeLayer),
-);
+  Effect.provide([Logger.layer([Logger.consolePretty()]), NodeServices.layer]),
+  // The CLI runtime environment is satisfied by NodeServices at runtime, but the
+  // current Effect CLI types do not reduce the Environment requirement here.
+  // Cast only at the process entrypoint boundary.
+) as Effect.Effect<void, unknown, never>;
 
 if (import.meta.main) {
+  sanitizeProcessEnvForRequestedMode(process.argv, process.env);
   NodeRuntime.runMain(runtimeProgram);
 }

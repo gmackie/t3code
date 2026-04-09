@@ -26,6 +26,7 @@ import type {
 } from "./project";
 import type {
   ServerConfig,
+  DesktopServerExposureMode,
   ServerProviderUpdatedPayload,
   ServerUpsertKeybindingResult,
 } from "./server";
@@ -50,7 +51,9 @@ import type {
   OrchestrationReadModel,
 } from "./orchestration";
 import { EditorId } from "./editor";
+import type { LocalPluginEnvelope } from "./localPluginEvents";
 import { ServerSettings, ServerSettingsPatch } from "./settings";
+import type { ThreadId } from "./baseSchemas";
 
 export interface ContextMenuItem<T extends string = string> {
   id: T;
@@ -110,9 +113,8 @@ export interface DesktopEnvironmentBootstrap {
   httpBaseUrl: string | null;
   wsBaseUrl: string | null;
   bootstrapToken?: string;
+  wsUrl?: string | null;
 }
-
-export type DesktopServerExposureMode = "local-only" | "network-accessible";
 
 export interface DesktopServerExposureState {
   mode: DesktopServerExposureMode;
@@ -120,7 +122,61 @@ export interface DesktopServerExposureState {
   advertisedHost: string | null;
 }
 
+export interface BrowserBounds {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export interface BrowserTabRuntimeState {
+  url: string;
+  title: string | null;
+  faviconUrl: string | null;
+  isLoading: boolean;
+  canGoBack: boolean;
+  canGoForward: boolean;
+  lastError: string | null;
+}
+
+export interface BrowserEnsureTabInput {
+  threadId: ThreadId;
+  tabId: string;
+  url?: string;
+}
+
+export interface BrowserNavigateInput {
+  threadId: ThreadId;
+  tabId: string;
+  url: string;
+}
+
+export interface BrowserTabTargetInput {
+  threadId: ThreadId;
+  tabId: string;
+}
+
+export interface BrowserSyncHostInput {
+  threadId: ThreadId;
+  tabId: string | null;
+  visible: boolean;
+  bounds: BrowserBounds | null;
+}
+
+export interface BrowserClearThreadInput {
+  threadId: ThreadId;
+}
+
+export interface BrowserTabStateEvent {
+  type: "tab-state";
+  threadId: ThreadId;
+  tabId: string;
+  state: BrowserTabRuntimeState;
+}
+
+export type BrowserEvent = BrowserTabStateEvent;
 export interface DesktopBridge {
+  getWsUrl?: () => string | null;
   getLocalEnvironmentBootstrap: () => DesktopEnvironmentBootstrap | null;
   getServerExposureState: () => Promise<DesktopServerExposureState>;
   setServerExposureMode: (mode: DesktopServerExposureMode) => Promise<DesktopServerExposureState>;
@@ -132,6 +188,16 @@ export interface DesktopBridge {
     position?: { x: number; y: number },
   ) => Promise<T | null>;
   openExternal: (url: string) => Promise<boolean>;
+  browserEnsureTab?: (input: BrowserEnsureTabInput) => Promise<void>;
+  browserNavigate?: (input: BrowserNavigateInput) => Promise<void>;
+  browserGoBack?: (input: BrowserTabTargetInput) => Promise<void>;
+  browserGoForward?: (input: BrowserTabTargetInput) => Promise<void>;
+  browserReload?: (input: BrowserTabTargetInput) => Promise<void>;
+  browserCloseTab?: (input: BrowserTabTargetInput) => Promise<void>;
+  browserSyncHost?: (input: BrowserSyncHostInput) => Promise<void>;
+  browserClearThread?: (input: BrowserClearThreadInput) => Promise<void>;
+  onLocalPluginEvent?: (listener: (event: LocalPluginEnvelope) => void) => () => void;
+  onBrowserEvent?: (listener: (event: BrowserEvent) => void) => () => void;
   onMenuAction: (listener: (action: string) => void) => () => void;
   getUpdateState: () => Promise<DesktopUpdateState>;
   checkForUpdate: () => Promise<DesktopUpdateCheckResult>;
@@ -234,3 +300,5 @@ export interface EnvironmentApi {
     ) => () => void;
   };
 }
+
+export interface NativeApi extends LocalApi, EnvironmentApi {}

@@ -7,6 +7,8 @@ import { Effect } from "effect";
 import {
   createDevRunnerEnv,
   findFirstAvailableOffset,
+  sanitizeInheritedDesktopEnv,
+  sanitizeProcessEnvForRequestedMode,
   resolveModePortOffsets,
   resolveOffset,
 } from "./dev-runner.ts";
@@ -187,6 +189,78 @@ it.layer(NodeServices.layer)("dev-runner", (it) => {
         assert.equal(env.T3CODE_NO_BROWSER, undefined);
         assert.equal(env.T3CODE_HOST, undefined);
         assert.equal(env.VITE_WS_URL, "ws://127.0.0.1:4222");
+      }),
+    );
+  });
+
+  describe("sanitizeInheritedDesktopEnv", () => {
+    it.effect("drops inherited desktop runtime vars for web dev modes", () =>
+      Effect.sync(() => {
+        const sanitized = sanitizeInheritedDesktopEnv("dev", {
+          T3CODE_MODE: "desktop",
+          T3CODE_PORT: "49411",
+          T3CODE_AUTH_TOKEN: "desktop-token",
+          T3CODE_DESKTOP_WS_URL: "ws://127.0.0.1:49411/?token=desktop-token",
+          T3CODE_NO_BROWSER: "1",
+          T3CODE_HOME: "/tmp/shared-home",
+        });
+
+        assert.equal(sanitized.T3CODE_MODE, undefined);
+        assert.equal(sanitized.T3CODE_PORT, undefined);
+        assert.equal(sanitized.T3CODE_AUTH_TOKEN, undefined);
+        assert.equal(sanitized.T3CODE_DESKTOP_WS_URL, undefined);
+        assert.equal(sanitized.T3CODE_NO_BROWSER, undefined);
+        assert.equal(sanitized.T3CODE_HOME, "/tmp/shared-home");
+      }),
+    );
+
+    it.effect("preserves inherited env for desktop dev mode", () =>
+      Effect.sync(() => {
+        const sanitized = sanitizeInheritedDesktopEnv("dev:desktop", {
+          T3CODE_MODE: "desktop",
+          T3CODE_PORT: "49411",
+          T3CODE_AUTH_TOKEN: "desktop-token",
+        });
+
+        assert.equal(sanitized.T3CODE_MODE, "desktop");
+        assert.equal(sanitized.T3CODE_PORT, "49411");
+        assert.equal(sanitized.T3CODE_AUTH_TOKEN, "desktop-token");
+      }),
+    );
+  });
+
+  describe("sanitizeProcessEnvForRequestedMode", () => {
+    it.effect("removes inherited desktop runtime vars before parsing web dev args", () =>
+      Effect.sync(() => {
+        const env: NodeJS.ProcessEnv = {
+          T3CODE_MODE: "desktop",
+          T3CODE_PORT: "49411",
+          T3CODE_AUTH_TOKEN: "desktop-token",
+          T3CODE_DESKTOP_WS_URL: "ws://127.0.0.1:49411/?token=desktop-token",
+          T3CODE_HOME: "/tmp/shared-home",
+        };
+
+        sanitizeProcessEnvForRequestedMode(["node", "scripts/dev-runner.ts", "dev"], env);
+
+        assert.equal(env.T3CODE_MODE, undefined);
+        assert.equal(env.T3CODE_PORT, undefined);
+        assert.equal(env.T3CODE_AUTH_TOKEN, undefined);
+        assert.equal(env.T3CODE_DESKTOP_WS_URL, undefined);
+        assert.equal(env.T3CODE_HOME, "/tmp/shared-home");
+      }),
+    );
+
+    it.effect("preserves desktop runtime vars for desktop mode entry", () =>
+      Effect.sync(() => {
+        const env: NodeJS.ProcessEnv = {
+          T3CODE_MODE: "desktop",
+          T3CODE_PORT: "49411",
+        };
+
+        sanitizeProcessEnvForRequestedMode(["node", "scripts/dev-runner.ts", "dev:desktop"], env);
+
+        assert.equal(env.T3CODE_MODE, "desktop");
+        assert.equal(env.T3CODE_PORT, "49411");
       }),
     );
   });

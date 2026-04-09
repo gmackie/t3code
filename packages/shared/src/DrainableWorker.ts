@@ -39,29 +39,37 @@ export const makeDrainableWorker = <A, E, R>(
   process: (item: A) => Effect.Effect<void, E, R>,
 ): Effect.Effect<DrainableWorker<A>, never, Scope.Scope | R> =>
   Effect.gen(function* () {
-    const queue = yield* Effect.acquireRelease(TxQueue.unbounded<A>(), TxQueue.shutdown);
-    const outstanding = yield* TxRef.make(0);
+    const queue = yield* Effect.acquireRelease(Effect.tx(TxQueue.unbounded<A>()), (queue) =>
+      Effect.tx(TxQueue.shutdown(queue)),
+    );
+    const outstanding = yield* Effect.tx(TxRef.make(0));
 
-    yield* TxQueue.take(queue).pipe(
-      Effect.tap((a) =>
-        Effect.ensuring(
-          process(a),
-          TxRef.update(outstanding, (n) => n - 1),
-        ),
-      ),
-      Effect.forever,
-      Effect.forkScoped,
+    yield* Effect.forever(
+      Effect.gen(function* () {
+        const item = yield* Effect.tx(TxQueue.take(queue));
+        yield* process(item).pipe(
+          Effect.ensuring(Effect.tx(TxRef.update(outstanding, (n) => n - 1))),
+        );
+      }),
+    ).pipe(Effect.forkScoped);
+
+    const drain: DrainableWorker<A>["drain"] = Effect.tx(
+      Effect.gen(function* () {
+        const count = yield* TxRef.get(outstanding);
+        if (count > 0) {
+          return yield* Effect.txRetry;
+        }
+      }),
     );
 
-    const drain: DrainableWorker<A>["drain"] = TxRef.get(outstanding).pipe(
-      Effect.tap((n) => (n > 0 ? Effect.txRetry : Effect.void)),
-      Effect.tx,
-    );
-
-    const enqueue = (element: A): Effect.Effect<boolean, never, never> =>
-      TxQueue.offer(queue, element).pipe(
-        Effect.tap(() => TxRef.update(outstanding, (n) => n + 1)),
-        Effect.tx,
+    const enqueue: DrainableWorker<A>["enqueue"] = (item) =>
+      Effect.tx(
+        Effect.gen(function* () {
+          const accepted = yield* TxQueue.offer(queue, item);
+          if (accepted) {
+            yield* TxRef.update(outstanding, (n) => n + 1);
+          }
+        }),
       );
 
     return { enqueue, drain } satisfies DrainableWorker<A>;

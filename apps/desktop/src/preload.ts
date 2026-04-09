@@ -6,17 +6,36 @@ const CONFIRM_CHANNEL = "desktop:confirm";
 const SET_THEME_CHANNEL = "desktop:set-theme";
 const CONTEXT_MENU_CHANNEL = "desktop:context-menu";
 const OPEN_EXTERNAL_CHANNEL = "desktop:open-external";
+const BROWSER_ENSURE_TAB_CHANNEL = "desktop:browser-ensure-tab";
+const BROWSER_NAVIGATE_CHANNEL = "desktop:browser-navigate";
+const BROWSER_GO_BACK_CHANNEL = "desktop:browser-go-back";
+const BROWSER_GO_FORWARD_CHANNEL = "desktop:browser-go-forward";
+const BROWSER_RELOAD_CHANNEL = "desktop:browser-reload";
+const BROWSER_CLOSE_TAB_CHANNEL = "desktop:browser-close-tab";
+const BROWSER_SYNC_HOST_CHANNEL = "desktop:browser-sync-host";
+const BROWSER_CLEAR_THREAD_CHANNEL = "desktop:browser-clear-thread";
+const BROWSER_EVENT_CHANNEL = "desktop:browser-event";
+const LOCAL_PLUGIN_EVENT_CHANNEL = "desktop:local-plugin-event";
 const MENU_ACTION_CHANNEL = "desktop:menu-action";
 const UPDATE_STATE_CHANNEL = "desktop:update-state";
 const UPDATE_GET_STATE_CHANNEL = "desktop:update-get-state";
 const UPDATE_CHECK_CHANNEL = "desktop:update-check";
 const UPDATE_DOWNLOAD_CHANNEL = "desktop:update-download";
 const UPDATE_INSTALL_CHANNEL = "desktop:update-install";
+const GET_WS_URL_CHANNEL = "desktop:get-ws-url";
 const GET_LOCAL_ENVIRONMENT_BOOTSTRAP_CHANNEL = "desktop:get-local-environment-bootstrap";
-const GET_SERVER_EXPOSURE_STATE_CHANNEL = "desktop:get-server-exposure-state";
-const SET_SERVER_EXPOSURE_MODE_CHANNEL = "desktop:set-server-exposure-mode";
+
+const getDefaultServerExposureState = () => ({
+  mode: "local-only" as const,
+  endpointUrl: null,
+  advertisedHost: null,
+});
 
 contextBridge.exposeInMainWorld("desktopBridge", {
+  getWsUrl: () => {
+    const result = ipcRenderer.sendSync(GET_WS_URL_CHANNEL);
+    return typeof result === "string" ? result : null;
+  },
   getLocalEnvironmentBootstrap: () => {
     const result = ipcRenderer.sendSync(GET_LOCAL_ENVIRONMENT_BOOTSTRAP_CHANNEL);
     if (typeof result !== "object" || result === null) {
@@ -24,13 +43,43 @@ contextBridge.exposeInMainWorld("desktopBridge", {
     }
     return result as ReturnType<DesktopBridge["getLocalEnvironmentBootstrap"]>;
   },
-  getServerExposureState: () => ipcRenderer.invoke(GET_SERVER_EXPOSURE_STATE_CHANNEL),
-  setServerExposureMode: (mode) => ipcRenderer.invoke(SET_SERVER_EXPOSURE_MODE_CHANNEL, mode),
+  getServerExposureState: async () => getDefaultServerExposureState(),
+  setServerExposureMode: async () => getDefaultServerExposureState(),
   pickFolder: () => ipcRenderer.invoke(PICK_FOLDER_CHANNEL),
   confirm: (message) => ipcRenderer.invoke(CONFIRM_CHANNEL, message),
   setTheme: (theme) => ipcRenderer.invoke(SET_THEME_CHANNEL, theme),
   showContextMenu: (items, position) => ipcRenderer.invoke(CONTEXT_MENU_CHANNEL, items, position),
   openExternal: (url: string) => ipcRenderer.invoke(OPEN_EXTERNAL_CHANNEL, url),
+  browserEnsureTab: (input) => ipcRenderer.invoke(BROWSER_ENSURE_TAB_CHANNEL, input),
+  browserNavigate: (input) => ipcRenderer.invoke(BROWSER_NAVIGATE_CHANNEL, input),
+  browserGoBack: (input) => ipcRenderer.invoke(BROWSER_GO_BACK_CHANNEL, input),
+  browserGoForward: (input) => ipcRenderer.invoke(BROWSER_GO_FORWARD_CHANNEL, input),
+  browserReload: (input) => ipcRenderer.invoke(BROWSER_RELOAD_CHANNEL, input),
+  browserCloseTab: (input) => ipcRenderer.invoke(BROWSER_CLOSE_TAB_CHANNEL, input),
+  browserSyncHost: (input) => ipcRenderer.invoke(BROWSER_SYNC_HOST_CHANNEL, input),
+  browserClearThread: (input) => ipcRenderer.invoke(BROWSER_CLEAR_THREAD_CHANNEL, input),
+  onLocalPluginEvent: (listener) => {
+    const wrappedListener = (_event: Electron.IpcRendererEvent, payload: unknown) => {
+      if (typeof payload !== "object" || payload === null) return;
+      listener(payload as Parameters<typeof listener>[0]);
+    };
+
+    ipcRenderer.on(LOCAL_PLUGIN_EVENT_CHANNEL, wrappedListener);
+    return () => {
+      ipcRenderer.removeListener(LOCAL_PLUGIN_EVENT_CHANNEL, wrappedListener);
+    };
+  },
+  onBrowserEvent: (listener) => {
+    const wrappedListener = (_event: Electron.IpcRendererEvent, payload: unknown) => {
+      if (typeof payload !== "object" || payload === null) return;
+      listener(payload as Parameters<typeof listener>[0]);
+    };
+
+    ipcRenderer.on(BROWSER_EVENT_CHANNEL, wrappedListener);
+    return () => {
+      ipcRenderer.removeListener(BROWSER_EVENT_CHANNEL, wrappedListener);
+    };
+  },
   onMenuAction: (listener) => {
     const wrappedListener = (_event: Electron.IpcRendererEvent, action: unknown) => {
       if (typeof action !== "string") return;

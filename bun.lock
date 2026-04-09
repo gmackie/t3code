@@ -1,6 +1,5 @@
 {
   "lockfileVersion": 1,
-  "configVersion": 1,
   "workspaces": {
     "": {
       "name": "@t3tools/monorepo",
@@ -84,6 +83,11 @@
         "@pierre/diffs": "^1.1.0-beta.16",
         "@t3tools/client-runtime": "workspace:*",
         "@t3tools/contracts": "workspace:*",
+        "@t3tools/ext-browser": "workspace:*",
+        "@t3tools/ext-planning-workbench": "workspace:*",
+        "@t3tools/ext-preview-workspace": "workspace:*",
+        "@t3tools/ext-thread-overview": "workspace:*",
+        "@t3tools/extension-api": "workspace:*",
         "@t3tools/shared": "workspace:*",
         "@tanstack/react-pacer": "^0.19.4",
         "@tanstack/react-query": "^5.90.0",
@@ -146,6 +150,74 @@
         "tsdown": "catalog:",
         "typescript": "catalog:",
         "vitest": "catalog:",
+      },
+    },
+    "packages/ext-browser": {
+      "name": "@t3tools/ext-browser",
+      "version": "0.0.1",
+      "dependencies": {
+        "@t3tools/extension-api": "workspace:*",
+      },
+      "devDependencies": {
+        "typescript": "catalog:",
+      },
+      "peerDependencies": {
+        "react": ">=18",
+      },
+    },
+    "packages/ext-planning-workbench": {
+      "name": "@t3tools/ext-planning-workbench",
+      "version": "0.0.1",
+      "dependencies": {
+        "@t3tools/extension-api": "workspace:*",
+      },
+      "devDependencies": {
+        "typescript": "catalog:",
+        "vitest": "catalog:",
+      },
+      "peerDependencies": {
+        "react": ">=18",
+      },
+    },
+    "packages/ext-preview-workspace": {
+      "name": "@t3tools/ext-preview-workspace",
+      "version": "0.0.1",
+      "dependencies": {
+        "@t3tools/extension-api": "workspace:*",
+      },
+      "devDependencies": {
+        "typescript": "catalog:",
+      },
+      "peerDependencies": {
+        "react": ">=18",
+      },
+    },
+    "packages/ext-thread-overview": {
+      "name": "@t3tools/ext-thread-overview",
+      "version": "0.0.1",
+      "dependencies": {
+        "@t3tools/extension-api": "workspace:*",
+      },
+      "devDependencies": {
+        "typescript": "catalog:",
+      },
+      "peerDependencies": {
+        "react": ">=18",
+      },
+    },
+    "packages/extension-api": {
+      "name": "@t3tools/extension-api",
+      "version": "0.0.1",
+      "dependencies": {
+        "@t3tools/contracts": "workspace:*",
+        "effect": "catalog:",
+      },
+      "devDependencies": {
+        "typescript": "catalog:",
+        "vitest": "catalog:",
+      },
+      "peerDependencies": {
+        "react": ">=18",
       },
     },
     "packages/shared": {
@@ -677,6 +749,16 @@
     "@t3tools/contracts": ["@t3tools/contracts@workspace:packages/contracts"],
 
     "@t3tools/desktop": ["@t3tools/desktop@workspace:apps/desktop"],
+
+    "@t3tools/ext-browser": ["@t3tools/ext-browser@workspace:packages/ext-browser"],
+
+    "@t3tools/ext-planning-workbench": ["@t3tools/ext-planning-workbench@workspace:packages/ext-planning-workbench"],
+
+    "@t3tools/ext-preview-workspace": ["@t3tools/ext-preview-workspace@workspace:packages/ext-preview-workspace"],
+
+    "@t3tools/ext-thread-overview": ["@t3tools/ext-thread-overview@workspace:packages/ext-thread-overview"],
+
+    "@t3tools/extension-api": ["@t3tools/extension-api@workspace:packages/extension-api"],
 
     "@t3tools/marketing": ["@t3tools/marketing@workspace:apps/marketing"],
 

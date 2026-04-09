@@ -23,6 +23,10 @@ export const SidebarThreadSortOrder = Schema.Literals(["updated_at", "created_at
 export type SidebarThreadSortOrder = typeof SidebarThreadSortOrder.Type;
 export const DEFAULT_SIDEBAR_THREAD_SORT_ORDER: SidebarThreadSortOrder = "updated_at";
 
+export const WorkspaceFileClickBehavior = Schema.Literals(["viewer", "editor"]);
+export type WorkspaceFileClickBehavior = typeof WorkspaceFileClickBehavior.Type;
+export const DEFAULT_WORKSPACE_FILE_CLICK_BEHAVIOR: WorkspaceFileClickBehavior = "viewer";
+
 export const ClientSettingsSchema = Schema.Struct({
   confirmThreadArchive: Schema.Boolean.pipe(Schema.withDecodingDefault(() => false)),
   confirmThreadDelete: Schema.Boolean.pipe(Schema.withDecodingDefault(() => true)),
@@ -34,6 +38,9 @@ export const ClientSettingsSchema = Schema.Struct({
     Schema.withDecodingDefault(() => DEFAULT_SIDEBAR_THREAD_SORT_ORDER),
   ),
   timestampFormat: TimestampFormat.pipe(Schema.withDecodingDefault(() => DEFAULT_TIMESTAMP_FORMAT)),
+  workspaceFileClickBehavior: WorkspaceFileClickBehavior.pipe(
+    Schema.withDecodingDefault(() => DEFAULT_WORKSPACE_FILE_CLICK_BEHAVIOR),
+  ),
 });
 export type ClientSettings = typeof ClientSettingsSchema.Type;
 
@@ -76,6 +83,24 @@ export const ObservabilitySettings = Schema.Struct({
   otlpMetricsUrl: TrimmedString.pipe(Schema.withDecodingDefault(() => "")),
 });
 export type ObservabilitySettings = typeof ObservabilitySettings.Type;
+const TerminalProfileEnvKey = Schema.String.check(
+  Schema.isPattern(/^[A-Za-z_][A-Za-z0-9_]*$/),
+).check(Schema.isMaxLength(128));
+const TerminalProfileEnvValue = Schema.String.check(Schema.isMaxLength(8_192));
+
+export const TerminalProfileSettings = Schema.Struct({
+  shellPath: TrimmedString.pipe(Schema.withDecodingDefault(() => "")),
+  shellArgs: Schema.Array(TrimmedString).pipe(Schema.withDecodingDefault(() => [])),
+  env: Schema.Record(TerminalProfileEnvKey, TerminalProfileEnvValue).pipe(
+    Schema.withDecodingDefault(() => ({})),
+  ),
+});
+export type TerminalProfileSettings = typeof TerminalProfileSettings.Type;
+
+export const TerminalSettings = Schema.Struct({
+  profile: TerminalProfileSettings.pipe(Schema.withDecodingDefault(() => ({}))),
+});
+export type TerminalSettings = typeof TerminalSettings.Type;
 
 export const ServerSettings = Schema.Struct({
   enableAssistantStreaming: Schema.Boolean.pipe(Schema.withDecodingDefault(() => false)),
@@ -95,6 +120,7 @@ export const ServerSettings = Schema.Struct({
     claudeAgent: ClaudeSettings.pipe(Schema.withDecodingDefault(() => ({}))),
   }).pipe(Schema.withDecodingDefault(() => ({}))),
   observability: ObservabilitySettings.pipe(Schema.withDecodingDefault(() => ({}))),
+  terminal: TerminalSettings.pipe(Schema.withDecodingDefault(() => ({}))),
 });
 export type ServerSettings = typeof ServerSettings.Type;
 
@@ -161,6 +187,12 @@ const ClaudeSettingsPatch = Schema.Struct({
   customModels: Schema.optionalKey(Schema.Array(Schema.String)),
 });
 
+const TerminalProfileSettingsPatch = Schema.Struct({
+  shellPath: Schema.optionalKey(Schema.String),
+  shellArgs: Schema.optionalKey(Schema.Array(Schema.String)),
+  env: Schema.optionalKey(Schema.Record(TerminalProfileEnvKey, TerminalProfileEnvValue)),
+});
+
 export const ServerSettingsPatch = Schema.Struct({
   enableAssistantStreaming: Schema.optionalKey(Schema.Boolean),
   defaultThreadEnvMode: Schema.optionalKey(ThreadEnvMode),
@@ -175,6 +207,11 @@ export const ServerSettingsPatch = Schema.Struct({
     Schema.Struct({
       codex: Schema.optionalKey(CodexSettingsPatch),
       claudeAgent: Schema.optionalKey(ClaudeSettingsPatch),
+    }),
+  ),
+  terminal: Schema.optionalKey(
+    Schema.Struct({
+      profile: Schema.optionalKey(TerminalProfileSettingsPatch),
     }),
   ),
 });

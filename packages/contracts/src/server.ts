@@ -7,12 +7,18 @@ import {
   ProjectId,
   ThreadId,
   TrimmedNonEmptyString,
+  TrimmedString,
 } from "./baseSchemas";
 import { KeybindingRule, ResolvedKeybindingsConfig } from "./keybindings";
 import { EditorId } from "./editor";
 import { ModelCapabilities } from "./model";
 import { ProviderKind } from "./orchestration";
 import { ServerSettings } from "./settings";
+
+export const SERVER_EXTENSION_ASSET_ROUTE_PREFIX = "/__t3/extensions/" as const;
+
+export const DesktopServerExposureMode = Schema.Literals(["local-only", "network-accessible"]);
+export type DesktopServerExposureMode = typeof DesktopServerExposureMode.Type;
 
 const KeybindingsMalformedConfigIssue = Schema.Struct({
   kind: Schema.Literal("keybindings.malformed-config"),
@@ -84,6 +90,101 @@ export const ServerObservability = Schema.Struct({
 });
 export type ServerObservability = typeof ServerObservability.Type;
 
+export const ServerExtensionDiscoveryState = Schema.Literals(["enabled", "disabled"]);
+export type ServerExtensionDiscoveryState = typeof ServerExtensionDiscoveryState.Type;
+
+export const ServerExtensionSlots = [
+  "thread.sidePanel",
+  "threads.sidebar.section",
+  "thread.header.actions",
+] as const;
+export const ServerExtensionSlot = Schema.Literals(ServerExtensionSlots);
+export type ServerExtensionSlot = typeof ServerExtensionSlot.Type;
+
+export const ServerExtensionCapabilities = [
+  "read.thread-view",
+  "read.threads-list",
+  "action.open-external-url",
+  "action.open-thread",
+  "action.open-resource",
+  "action.open-workspace-file",
+  "action.read-workspace-file",
+  "action.search-workspace-entries",
+  "action.request-workspace-write",
+  "action.browser-tab-intent",
+] as const;
+export const ServerExtensionCapability = Schema.Literals(ServerExtensionCapabilities);
+export type ServerExtensionCapability = typeof ServerExtensionCapability.Type;
+
+export const ServerExtensionDiscoveryIssue = Schema.Struct({
+  path: TrimmedString,
+  message: TrimmedNonEmptyString,
+});
+export type ServerExtensionDiscoveryIssue = typeof ServerExtensionDiscoveryIssue.Type;
+
+export const ServerExtensionRepositoryState = Schema.Literals([
+  "idle",
+  "checking",
+  "up-to-date",
+  "update-available",
+  "error",
+]);
+export type ServerExtensionRepositoryState = typeof ServerExtensionRepositoryState.Type;
+
+export const ServerExtensionGitRepository = Schema.Struct({
+  kind: Schema.Literal("git"),
+  remoteUrl: Schema.NullOr(TrimmedNonEmptyString),
+  branch: Schema.NullOr(TrimmedNonEmptyString),
+  upstreamRef: Schema.NullOr(TrimmedNonEmptyString),
+  localCommit: Schema.NullOr(TrimmedNonEmptyString),
+  remoteCommit: Schema.NullOr(TrimmedNonEmptyString),
+  state: ServerExtensionRepositoryState,
+  checkedAt: Schema.NullOr(IsoDateTime),
+  message: Schema.NullOr(TrimmedNonEmptyString),
+});
+export type ServerExtensionGitRepository = typeof ServerExtensionGitRepository.Type;
+
+export const ServerExtensionManifestClientEntry = Schema.Struct({
+  slot: ServerExtensionSlot,
+  module: TrimmedNonEmptyString,
+  exportName: Schema.optional(TrimmedNonEmptyString),
+});
+export type ServerExtensionManifestClientEntry = typeof ServerExtensionManifestClientEntry.Type;
+
+export const ServerExtensionManifest = Schema.Struct({
+  id: TrimmedNonEmptyString,
+  name: TrimmedNonEmptyString,
+  version: TrimmedNonEmptyString,
+  description: Schema.optional(TrimmedString),
+  hostVersionRange: TrimmedNonEmptyString,
+  slots: Schema.Array(ServerExtensionSlot).check(Schema.isNonEmpty()),
+  capabilities: Schema.Array(ServerExtensionCapability).check(Schema.isNonEmpty()),
+  clientEntries: Schema.Array(ServerExtensionManifestClientEntry).check(Schema.isNonEmpty()),
+});
+export type ServerExtensionManifest = typeof ServerExtensionManifest.Type;
+
+export const ServerExtensionRegistryEntry = Schema.Struct({
+  id: Schema.NullOr(TrimmedNonEmptyString),
+  name: Schema.NullOr(TrimmedNonEmptyString),
+  rootPath: TrimmedNonEmptyString,
+  extensionPath: TrimmedNonEmptyString,
+  manifestPath: TrimmedNonEmptyString,
+  state: ServerExtensionDiscoveryState,
+  reason: Schema.NullOr(TrimmedNonEmptyString),
+  issues: Schema.Array(ServerExtensionDiscoveryIssue),
+  manifest: Schema.NullOr(ServerExtensionManifest),
+  repository: Schema.NullOr(ServerExtensionGitRepository),
+});
+export type ServerExtensionRegistryEntry = typeof ServerExtensionRegistryEntry.Type;
+
+const ServerExtensionRegistryEntries = Schema.Array(ServerExtensionRegistryEntry);
+
+export const ServerExtensionRegistrySnapshot = Schema.Struct({
+  hostVersion: TrimmedNonEmptyString,
+  extensions: ServerExtensionRegistryEntries,
+});
+export type ServerExtensionRegistrySnapshot = typeof ServerExtensionRegistrySnapshot.Type;
+
 export const ServerConfig = Schema.Struct({
   environment: ExecutionEnvironmentDescriptor,
   auth: ServerAuthDescriptor,
@@ -97,6 +198,47 @@ export const ServerConfig = Schema.Struct({
   settings: ServerSettings,
 });
 export type ServerConfig = typeof ServerConfig.Type;
+
+export const ServerExtensionSourceSyncState = Schema.Literals([
+  "idle",
+  "syncing",
+  "ready",
+  "error",
+]);
+export type ServerExtensionSourceSyncState = typeof ServerExtensionSourceSyncState.Type;
+
+export const ServerExtensionSource = Schema.Struct({
+  id: TrimmedNonEmptyString,
+  repoUrl: TrimmedNonEmptyString,
+  branch: Schema.NullOr(TrimmedNonEmptyString),
+  relativePath: TrimmedNonEmptyString,
+  syncState: ServerExtensionSourceSyncState,
+  lastSyncedAt: Schema.NullOr(IsoDateTime),
+  message: Schema.NullOr(TrimmedNonEmptyString),
+});
+export type ServerExtensionSource = typeof ServerExtensionSource.Type;
+
+export const ServerExtensionSourcesSnapshot = Schema.Struct({
+  sources: Schema.Array(ServerExtensionSource),
+});
+export type ServerExtensionSourcesSnapshot = typeof ServerExtensionSourcesSnapshot.Type;
+
+export const ServerUpsertExtensionSourceInput = Schema.Struct({
+  id: TrimmedNonEmptyString,
+  repoUrl: TrimmedNonEmptyString,
+  branch: Schema.NullOr(TrimmedString),
+});
+export type ServerUpsertExtensionSourceInput = typeof ServerUpsertExtensionSourceInput.Type;
+
+export const ServerRemoveExtensionSourceInput = Schema.Struct({
+  id: TrimmedNonEmptyString,
+});
+export type ServerRemoveExtensionSourceInput = typeof ServerRemoveExtensionSourceInput.Type;
+
+export const ServerSyncExtensionSourcesInput = Schema.Struct({
+  ids: Schema.optional(Schema.Array(TrimmedNonEmptyString)),
+});
+export type ServerSyncExtensionSourcesInput = typeof ServerSyncExtensionSourcesInput.Type;
 
 export const ServerUpsertKeybindingInput = KeybindingRule;
 export type ServerUpsertKeybindingInput = typeof ServerUpsertKeybindingInput.Type;
