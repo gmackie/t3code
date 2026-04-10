@@ -46,6 +46,21 @@ import {
   OrchestrationRpcSchemas,
 } from "./orchestration";
 import {
+  ProjectCodeDefinitionsError,
+  ProjectCodeDefinitionsInput,
+  ProjectCodeDefinitionsResult,
+  ProjectCodeDocumentSymbolsError,
+  ProjectCodeDocumentSymbolsInput,
+  ProjectCodeDocumentSymbolsResult,
+  ProjectCodeHoverError,
+  ProjectCodeHoverInput,
+  ProjectCodeHoverResult,
+  ProjectListEntriesError,
+  ProjectListEntriesInput,
+  ProjectListEntriesResult,
+  ProjectReadFileError,
+  ProjectReadFileInput,
+  ProjectReadFileResult,
   ProjectSearchEntriesError,
   ProjectSearchEntriesInput,
   ProjectSearchEntriesResult,
@@ -79,7 +94,12 @@ export const WS_METHODS = {
   projectsList: "projects.list",
   projectsAdd: "projects.add",
   projectsRemove: "projects.remove",
+  projectsListEntries: "projects.listEntries",
+  projectsReadFile: "projects.readFile",
   projectsSearchEntries: "projects.searchEntries",
+  projectsGetDocumentSymbols: "projects.getDocumentSymbols",
+  projectsGetHover: "projects.getHover",
+  projectsGetDefinitions: "projects.getDefinitions",
   projectsWriteFile: "projects.writeFile",
 
   // Shell methods
@@ -151,10 +171,40 @@ export const WsServerUpdateSettingsRpc = Rpc.make(WS_METHODS.serverUpdateSetting
   error: ServerSettingsError,
 });
 
+export const WsProjectsListEntriesRpc = Rpc.make(WS_METHODS.projectsListEntries, {
+  payload: ProjectListEntriesInput,
+  success: ProjectListEntriesResult,
+  error: ProjectListEntriesError,
+});
+
 export const WsProjectsSearchEntriesRpc = Rpc.make(WS_METHODS.projectsSearchEntries, {
   payload: ProjectSearchEntriesInput,
   success: ProjectSearchEntriesResult,
   error: ProjectSearchEntriesError,
+});
+
+export const WsProjectsReadFileRpc = Rpc.make(WS_METHODS.projectsReadFile, {
+  payload: ProjectReadFileInput,
+  success: ProjectReadFileResult,
+  error: ProjectReadFileError,
+});
+
+export const WsProjectsGetDocumentSymbolsRpc = Rpc.make(WS_METHODS.projectsGetDocumentSymbols, {
+  payload: ProjectCodeDocumentSymbolsInput,
+  success: ProjectCodeDocumentSymbolsResult,
+  error: ProjectCodeDocumentSymbolsError,
+});
+
+export const WsProjectsGetHoverRpc = Rpc.make(WS_METHODS.projectsGetHover, {
+  payload: ProjectCodeHoverInput,
+  success: ProjectCodeHoverResult,
+  error: ProjectCodeHoverError,
+});
+
+export const WsProjectsGetDefinitionsRpc = Rpc.make(WS_METHODS.projectsGetDefinitions, {
+  payload: ProjectCodeDefinitionsInput,
+  success: ProjectCodeDefinitionsResult,
+  error: ProjectCodeDefinitionsError,
 });
 
 export const WsProjectsWriteFileRpc = Rpc.make(WS_METHODS.projectsWriteFile, {
@@ -348,7 +398,12 @@ export const WsRpcGroup = RpcGroup.make(
   WsServerUpsertKeybindingRpc,
   WsServerGetSettingsRpc,
   WsServerUpdateSettingsRpc,
+  WsProjectsListEntriesRpc,
   WsProjectsSearchEntriesRpc,
+  WsProjectsReadFileRpc,
+  WsProjectsGetDocumentSymbolsRpc,
+  WsProjectsGetHoverRpc,
+  WsProjectsGetDefinitionsRpc,
   WsProjectsWriteFileRpc,
   WsShellOpenInEditorRpc,
   WsSubscribeGitStatusRpc,

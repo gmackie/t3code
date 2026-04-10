@@ -19,6 +19,16 @@ import type {
   GitCreateBranchResult,
 } from "./git";
 import type {
+  ProjectCodeDefinitionsInput,
+  ProjectCodeDefinitionsResult,
+  ProjectCodeDocumentSymbolsInput,
+  ProjectCodeDocumentSymbolsResult,
+  ProjectCodeHoverInput,
+  ProjectCodeHoverResult,
+  ProjectListEntriesInput,
+  ProjectListEntriesResult,
+  ProjectReadFileInput,
+  ProjectReadFileResult,
   ProjectSearchEntriesInput,
   ProjectSearchEntriesResult,
   ProjectWriteFileInput,
@@ -167,6 +177,56 @@ export interface BrowserClearThreadInput {
   threadId: ThreadId;
 }
 
+export interface BrowserCookieSource {
+  id: string;
+  label: string;
+}
+
+export interface BrowserCookieProfile {
+  id: string;
+  label: string;
+}
+
+export interface BrowserCookieDomain {
+  domain: string;
+  count: number;
+}
+
+export type BrowserCookieSameSite = "Strict" | "Lax" | "None";
+
+export interface BrowserSessionCookie {
+  domain: string;
+  name: string;
+  path: string;
+  secure: boolean;
+  httpOnly: boolean;
+  sameSite: BrowserCookieSameSite;
+  expirationLabel: string;
+  removalUrl: string;
+}
+
+export interface BrowserListCookieDomainsInput {
+  sourceId: string;
+  profileId: string;
+  search?: string;
+}
+
+export interface BrowserImportCookiesInput {
+  sourceId: string;
+  profileId: string;
+  domains: string[];
+}
+
+export interface BrowserImportCookiesResult {
+  importedCount: number;
+  failedCount: number;
+  importedDomains: BrowserCookieDomain[];
+}
+
+export interface BrowserRemoveCookieDomainResult {
+  removedCount: number;
+}
+
 export interface BrowserTabStateEvent {
   type: "tab-state";
   threadId: ThreadId;
@@ -196,6 +256,14 @@ export interface DesktopBridge {
   browserCloseTab?: (input: BrowserTabTargetInput) => Promise<void>;
   browserSyncHost?: (input: BrowserSyncHostInput) => Promise<void>;
   browserClearThread?: (input: BrowserClearThreadInput) => Promise<void>;
+  browserListCookieSources?: () => Promise<BrowserCookieSource[]>;
+  browserListCookieProfiles?: (sourceId: string) => Promise<BrowserCookieProfile[]>;
+  browserListCookieDomains?: (
+    input: BrowserListCookieDomainsInput,
+  ) => Promise<BrowserCookieDomain[]>;
+  browserImportCookies?: (input: BrowserImportCookiesInput) => Promise<BrowserImportCookiesResult>;
+  browserListSessionCookies?: () => Promise<BrowserSessionCookie[]>;
+  browserRemoveCookieDomain?: (domain: string) => Promise<BrowserRemoveCookieDomainResult>;
   onLocalPluginEvent?: (listener: (event: LocalPluginEnvelope) => void) => () => void;
   onBrowserEvent?: (listener: (event: BrowserEvent) => void) => () => void;
   onMenuAction: (listener: (action: string) => void) => () => void;
@@ -260,7 +328,14 @@ export interface EnvironmentApi {
     onEvent: (callback: (event: TerminalEvent) => void) => () => void;
   };
   projects: {
+    listEntries: (input: ProjectListEntriesInput) => Promise<ProjectListEntriesResult>;
+    readFile: (input: ProjectReadFileInput) => Promise<ProjectReadFileResult>;
     searchEntries: (input: ProjectSearchEntriesInput) => Promise<ProjectSearchEntriesResult>;
+    getDocumentSymbols: (
+      input: ProjectCodeDocumentSymbolsInput,
+    ) => Promise<ProjectCodeDocumentSymbolsResult>;
+    getHover: (input: ProjectCodeHoverInput) => Promise<ProjectCodeHoverResult>;
+    getDefinitions: (input: ProjectCodeDefinitionsInput) => Promise<ProjectCodeDefinitionsResult>;
     writeFile: (input: ProjectWriteFileInput) => Promise<ProjectWriteFileResult>;
   };
   git: {

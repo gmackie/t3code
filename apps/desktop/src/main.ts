@@ -13,15 +13,19 @@ import {
   nativeImage,
   nativeTheme,
   protocol,
+  session,
   shell,
 } from "electron";
 import type { MenuItemConstructorOptions } from "electron";
 import * as Effect from "effect/Effect";
 import type {
+  BrowserImportCookiesInput,
+  BrowserListCookieDomainsInput,
   BrowserClearThreadInput,
   BrowserEnsureTabInput,
   BrowserEvent,
   BrowserNavigateInput,
+  BrowserRemoveCookieDomainResult,
   BrowserSyncHostInput,
   BrowserTabTargetInput,
   DesktopTheme,
@@ -43,6 +47,7 @@ import { createLocalPluginBridge } from "./localPluginBridge";
 import { syncShellEnvironment } from "./syncShellEnvironment";
 import { getAutoUpdateDisabledReason, shouldBroadcastDownloadProgress } from "./updateState";
 import { createBrowserManager } from "./browserManager";
+import { createBrowserCookieManager } from "./browserCookies";
 import {
   createInitialDesktopUpdateState,
   reduceDesktopUpdateStateOnCheckFailure,
@@ -73,6 +78,12 @@ const BROWSER_CLOSE_TAB_CHANNEL = "desktop:browser-close-tab";
 const BROWSER_SYNC_HOST_CHANNEL = "desktop:browser-sync-host";
 const BROWSER_CLEAR_THREAD_CHANNEL = "desktop:browser-clear-thread";
 const BROWSER_EVENT_CHANNEL = "desktop:browser-event";
+const BROWSER_LIST_COOKIE_SOURCES_CHANNEL = "desktop:browser-list-cookie-sources";
+const BROWSER_LIST_COOKIE_PROFILES_CHANNEL = "desktop:browser-list-cookie-profiles";
+const BROWSER_LIST_COOKIE_DOMAINS_CHANNEL = "desktop:browser-list-cookie-domains";
+const BROWSER_IMPORT_COOKIES_CHANNEL = "desktop:browser-import-cookies";
+const BROWSER_LIST_SESSION_COOKIES_CHANNEL = "desktop:browser-list-session-cookies";
+const BROWSER_REMOVE_COOKIE_DOMAIN_CHANNEL = "desktop:browser-remove-cookie-domain";
 const MENU_ACTION_CHANNEL = "desktop:menu-action";
 const UPDATE_STATE_CHANNEL = "desktop:update-state";
 const UPDATE_GET_STATE_CHANNEL = "desktop:update-get-state";
@@ -227,6 +238,16 @@ function getSafeNonEmptyString(value: unknown): string | null {
   return trimmed.length > 0 ? trimmed : null;
 }
 
+function containsControlCharacter(value: string): boolean {
+  for (const character of value) {
+    const code = character.codePointAt(0);
+    if (code !== undefined && code <= 0x1f) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function getSafeBrowserTabTargetInput(rawInput: unknown): BrowserTabTargetInput | null {
   if (typeof rawInput !== "object" || rawInput === null) {
     return null;
@@ -336,6 +357,71 @@ function getSafeBrowserClearThreadInput(rawInput: unknown): BrowserClearThreadIn
     return null;
   }
   return { threadId: threadId as BrowserClearThreadInput["threadId"] };
+}
+
+function getSafeBrowserCookieSourceId(rawValue: unknown): string | null {
+  if (typeof rawValue !== "string") {
+    return null;
+  }
+  const value = rawValue.trim();
+  if (value.length === 0 || /[/\\]/.test(value) || containsControlCharacter(value)) {
+    return null;
+  }
+  return value;
+}
+
+function getSafeBrowserCookieDomain(rawValue: unknown): string | null {
+  if (typeof rawValue !== "string") {
+    return null;
+  }
+  const value = rawValue.trim();
+  if (value.length === 0 || /[/\\\s]/.test(value) || containsControlCharacter(value)) {
+    return null;
+  }
+  return value;
+}
+
+function getSafeBrowserListCookieDomainsInput(
+  rawInput: unknown,
+): BrowserListCookieDomainsInput | null {
+  if (typeof rawInput !== "object" || rawInput === null) {
+    return null;
+  }
+  const sourceId = getSafeBrowserCookieSourceId(Reflect.get(rawInput, "sourceId"));
+  const profileId = getSafeBrowserCookieSourceId(Reflect.get(rawInput, "profileId"));
+  if (!sourceId || !profileId) {
+    return null;
+  }
+  const rawSearch = Reflect.get(rawInput, "search");
+  const search = typeof rawSearch === "string" ? rawSearch.slice(0, 256) : undefined;
+  return {
+    sourceId,
+    profileId,
+    ...(search !== undefined ? { search } : {}),
+  };
+}
+
+function getSafeBrowserImportCookiesInput(rawInput: unknown): BrowserImportCookiesInput | null {
+  if (typeof rawInput !== "object" || rawInput === null) {
+    return null;
+  }
+  const sourceId = getSafeBrowserCookieSourceId(Reflect.get(rawInput, "sourceId"));
+  const profileId = getSafeBrowserCookieSourceId(Reflect.get(rawInput, "profileId"));
+  const rawDomains = Reflect.get(rawInput, "domains");
+  if (!sourceId || !profileId || !Array.isArray(rawDomains)) {
+    return null;
+  }
+  const domains = rawDomains
+    .map((domain) => getSafeBrowserCookieDomain(domain))
+    .filter((domain): domain is string => domain !== null);
+  if (domains.length === 0) {
+    return null;
+  }
+  return {
+    sourceId,
+    profileId,
+    domains,
+  };
 }
 
 function writeDesktopStreamChunk(
@@ -474,6 +560,9 @@ const browserManager = createBrowserManager({
     }
     void shell.openExternal(externalUrl);
   },
+});
+const browserCookieManager = createBrowserCookieManager({
+  session: session.defaultSession,
 });
 
 function resolveUpdaterErrorContext(): DesktopUpdateErrorContext {
@@ -1505,6 +1594,59 @@ function registerIpcHandlers(): void {
     }
     browserManager.clearThread(input);
   });
+
+  ipcMain.removeHandler(BROWSER_LIST_COOKIE_SOURCES_CHANNEL);
+  ipcMain.handle(BROWSER_LIST_COOKIE_SOURCES_CHANNEL, async () =>
+    browserCookieManager.listSources(),
+  );
+
+  ipcMain.removeHandler(BROWSER_LIST_COOKIE_PROFILES_CHANNEL);
+  ipcMain.handle(BROWSER_LIST_COOKIE_PROFILES_CHANNEL, async (_event, rawInput: unknown) => {
+    const sourceId = getSafeBrowserCookieSourceId(rawInput);
+    if (!sourceId) {
+      return [];
+    }
+    return browserCookieManager.listProfiles(sourceId);
+  });
+
+  ipcMain.removeHandler(BROWSER_LIST_COOKIE_DOMAINS_CHANNEL);
+  ipcMain.handle(BROWSER_LIST_COOKIE_DOMAINS_CHANNEL, async (_event, rawInput: unknown) => {
+    const input = getSafeBrowserListCookieDomainsInput(rawInput);
+    if (!input) {
+      return [];
+    }
+    return browserCookieManager.listSourceDomains(input);
+  });
+
+  ipcMain.removeHandler(BROWSER_IMPORT_COOKIES_CHANNEL);
+  ipcMain.handle(BROWSER_IMPORT_COOKIES_CHANNEL, async (_event, rawInput: unknown) => {
+    const input = getSafeBrowserImportCookiesInput(rawInput);
+    if (!input) {
+      return {
+        importedCount: 0,
+        failedCount: 0,
+        importedDomains: [],
+      };
+    }
+    return browserCookieManager.importDomains(input);
+  });
+
+  ipcMain.removeHandler(BROWSER_LIST_SESSION_COOKIES_CHANNEL);
+  ipcMain.handle(BROWSER_LIST_SESSION_COOKIES_CHANNEL, async () =>
+    browserCookieManager.listSessionCookies(),
+  );
+
+  ipcMain.removeHandler(BROWSER_REMOVE_COOKIE_DOMAIN_CHANNEL);
+  ipcMain.handle(
+    BROWSER_REMOVE_COOKIE_DOMAIN_CHANNEL,
+    async (_event, rawInput: unknown): Promise<BrowserRemoveCookieDomainResult> => {
+      const domain = getSafeBrowserCookieDomain(rawInput);
+      if (!domain) {
+        return { removedCount: 0 };
+      }
+      return browserCookieManager.removeDomain(domain);
+    },
+  );
 
   ipcMain.removeHandler(UPDATE_GET_STATE_CHANNEL);
   ipcMain.handle(UPDATE_GET_STATE_CHANNEL, async () => updateState);

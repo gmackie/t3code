@@ -15,6 +15,12 @@ const BROWSER_CLOSE_TAB_CHANNEL = "desktop:browser-close-tab";
 const BROWSER_SYNC_HOST_CHANNEL = "desktop:browser-sync-host";
 const BROWSER_CLEAR_THREAD_CHANNEL = "desktop:browser-clear-thread";
 const BROWSER_EVENT_CHANNEL = "desktop:browser-event";
+const BROWSER_LIST_COOKIE_SOURCES_CHANNEL = "desktop:browser-list-cookie-sources";
+const BROWSER_LIST_COOKIE_PROFILES_CHANNEL = "desktop:browser-list-cookie-profiles";
+const BROWSER_LIST_COOKIE_DOMAINS_CHANNEL = "desktop:browser-list-cookie-domains";
+const BROWSER_IMPORT_COOKIES_CHANNEL = "desktop:browser-import-cookies";
+const BROWSER_LIST_SESSION_COOKIES_CHANNEL = "desktop:browser-list-session-cookies";
+const BROWSER_REMOVE_COOKIE_DOMAIN_CHANNEL = "desktop:browser-remove-cookie-domain";
 const LOCAL_PLUGIN_EVENT_CHANNEL = "desktop:local-plugin-event";
 const MENU_ACTION_CHANNEL = "desktop:menu-action";
 const UPDATE_STATE_CHANNEL = "desktop:update-state";
@@ -58,6 +64,15 @@ contextBridge.exposeInMainWorld("desktopBridge", {
   browserCloseTab: (input) => ipcRenderer.invoke(BROWSER_CLOSE_TAB_CHANNEL, input),
   browserSyncHost: (input) => ipcRenderer.invoke(BROWSER_SYNC_HOST_CHANNEL, input),
   browserClearThread: (input) => ipcRenderer.invoke(BROWSER_CLEAR_THREAD_CHANNEL, input),
+  browserListCookieSources: () => ipcRenderer.invoke(BROWSER_LIST_COOKIE_SOURCES_CHANNEL),
+  browserListCookieProfiles: (sourceId) =>
+    ipcRenderer.invoke(BROWSER_LIST_COOKIE_PROFILES_CHANNEL, sourceId),
+  browserListCookieDomains: (input) =>
+    ipcRenderer.invoke(BROWSER_LIST_COOKIE_DOMAINS_CHANNEL, input),
+  browserImportCookies: (input) => ipcRenderer.invoke(BROWSER_IMPORT_COOKIES_CHANNEL, input),
+  browserListSessionCookies: () => ipcRenderer.invoke(BROWSER_LIST_SESSION_COOKIES_CHANNEL),
+  browserRemoveCookieDomain: (domain) =>
+    ipcRenderer.invoke(BROWSER_REMOVE_COOKIE_DOMAIN_CHANNEL, domain),
   onLocalPluginEvent: (listener) => {
     const wrappedListener = (_event: Electron.IpcRendererEvent, payload: unknown) => {
       if (typeof payload !== "object" || payload === null) return;

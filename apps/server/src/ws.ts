@@ -13,6 +13,11 @@ import {
   OrchestrationGetSnapshotError,
   OrchestrationGetTurnDiffError,
   ORCHESTRATION_WS_METHODS,
+  ProjectCodeDefinitionsError,
+  ProjectCodeDocumentSymbolsError,
+  ProjectCodeHoverError,
+  ProjectListEntriesError,
+  ProjectReadFileError,
   ProjectSearchEntriesError,
   ProjectWriteFileError,
   OrchestrationReplayEventsError,
@@ -45,9 +50,14 @@ import { ServerLifecycleEvents } from "./serverLifecycleEvents";
 import { ServerRuntimeStartup } from "./serverRuntimeStartup";
 import { ServerSettingsService } from "./serverSettings";
 import { TerminalManager } from "./terminal/Services/Manager";
+import {
+  getProjectDefinitions,
+  getProjectDocumentSymbols,
+  getProjectHover,
+} from "./projectCodeIntelligence";
 import { WorkspaceEntries } from "./workspace/Services/WorkspaceEntries";
 import { WorkspaceFileSystem } from "./workspace/Services/WorkspaceFileSystem";
-import { WorkspacePathOutsideRootError } from "./workspace/Services/WorkspacePaths";
+import { WorkspacePathOutsideRootError, WorkspacePaths } from "./workspace/Services/WorkspacePaths";
 import { ProjectSetupScriptRunner } from "./project/Services/ProjectSetupScriptRunner";
 import { RepositoryIdentityResolver } from "./project/Services/RepositoryIdentityResolver";
 import { ServerEnvironment } from "./environment/Services/ServerEnvironment";
@@ -121,6 +131,7 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId) =>
       const startup = yield* ServerRuntimeStartup;
       const workspaceEntries = yield* WorkspaceEntries;
       const workspaceFileSystem = yield* WorkspaceFileSystem;
+      const workspacePaths = yield* WorkspacePaths;
       const projectSetupScriptRunner = yield* ProjectSetupScriptRunner;
       const repositoryIdentityResolver = yield* RepositoryIdentityResolver;
       const serverEnvironment = yield* ServerEnvironment;
@@ -218,6 +229,26 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId) =>
             return Effect.succeed(event);
         }
       };
+
+      const getProjectFileInput = (input: { cwd: string; relativePath: string }) =>
+        Effect.gen(function* () {
+          const target = yield* workspacePaths.resolveRelativePathWithinRoot({
+            workspaceRoot: input.cwd,
+            relativePath: input.relativePath,
+          });
+          const file = yield* workspaceFileSystem.readFile(input);
+          return {
+            workspaceRoot: input.cwd,
+            absolutePath: target.absolutePath,
+            relativePath: target.relativePath,
+            contents: file.contents,
+          };
+        });
+
+      const toProjectFileErrorMessage = (cause: unknown, fallback: string) =>
+        Schema.is(WorkspacePathOutsideRootError)(cause)
+          ? "Workspace file path must stay within the project root."
+          : fallback;
 
       const enrichOrchestrationEvents = (events: ReadonlyArray<OrchestrationEvent>) =>
         Effect.forEach(events, enrichProjectEvent, { concurrency: 4 });
@@ -654,6 +685,20 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId) =>
           observeRpcEffect(WS_METHODS.serverUpdateSettings, serverSettings.updateSettings(patch), {
             "rpc.aggregate": "server",
           }),
+        [WS_METHODS.projectsListEntries]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.projectsListEntries,
+            workspaceEntries.search({ ...input, query: "", limit: 200 }).pipe(
+              Effect.mapError(
+                (cause) =>
+                  new ProjectListEntriesError({
+                    message: `Failed to list workspace entries: ${cause.detail}`,
+                    cause,
+                  }),
+              ),
+            ),
+            { "rpc.aggregate": "workspace" },
+          ),
         [WS_METHODS.projectsSearchEntries]: (input) =>
           observeRpcEffect(
             WS_METHODS.projectsSearchEntries,
@@ -662,6 +707,86 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId) =>
                 (cause) =>
                   new ProjectSearchEntriesError({
                     message: `Failed to search workspace entries: ${cause.detail}`,
+                    cause,
+                  }),
+              ),
+            ),
+            { "rpc.aggregate": "workspace" },
+          ),
+        [WS_METHODS.projectsReadFile]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.projectsReadFile,
+            workspaceFileSystem.readFile(input).pipe(
+              Effect.mapError(
+                (cause) =>
+                  new ProjectReadFileError({
+                    message: toProjectFileErrorMessage(cause, "Failed to read workspace file."),
+                    cause,
+                  }),
+              ),
+            ),
+            { "rpc.aggregate": "workspace" },
+          ),
+        [WS_METHODS.projectsGetDocumentSymbols]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.projectsGetDocumentSymbols,
+            getProjectFileInput(input).pipe(
+              Effect.map(getProjectDocumentSymbols),
+              Effect.mapError(
+                (cause) =>
+                  new ProjectCodeDocumentSymbolsError({
+                    message: toProjectFileErrorMessage(
+                      cause,
+                      "Failed to inspect workspace document symbols.",
+                    ),
+                    cause,
+                  }),
+              ),
+            ),
+            { "rpc.aggregate": "workspace" },
+          ),
+        [WS_METHODS.projectsGetHover]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.projectsGetHover,
+            getProjectFileInput(input).pipe(
+              Effect.map((fileInput) =>
+                getProjectHover({
+                  ...fileInput,
+                  line: input.line,
+                  column: input.column,
+                }),
+              ),
+              Effect.mapError(
+                (cause) =>
+                  new ProjectCodeHoverError({
+                    message: toProjectFileErrorMessage(
+                      cause,
+                      "Failed to inspect workspace hover information.",
+                    ),
+                    cause,
+                  }),
+              ),
+            ),
+            { "rpc.aggregate": "workspace" },
+          ),
+        [WS_METHODS.projectsGetDefinitions]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.projectsGetDefinitions,
+            getProjectFileInput(input).pipe(
+              Effect.map((fileInput) =>
+                getProjectDefinitions({
+                  ...fileInput,
+                  line: input.line,
+                  column: input.column,
+                }),
+              ),
+              Effect.mapError(
+                (cause) =>
+                  new ProjectCodeDefinitionsError({
+                    message: toProjectFileErrorMessage(
+                      cause,
+                      "Failed to inspect workspace definitions.",
+                    ),
                     cause,
                   }),
               ),

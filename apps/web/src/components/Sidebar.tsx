@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { ProjectFavicon } from "./ProjectFavicon";
 import { autoAnimate } from "@formkit/auto-animate";
+import { useQuery } from "@tanstack/react-query";
 import React, { useCallback, useEffect, memo, useMemo, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import {
@@ -56,6 +57,7 @@ import { usePrimaryEnvironmentId } from "../environments/primary";
 import { isElectron } from "../env";
 import { APP_STAGE_LABEL, APP_VERSION } from "../branding";
 import { isTerminalFocused } from "../lib/terminalFocus";
+import { cn } from "~/lib/utils";
 import { isLinuxPlatform, isMacPlatform, newCommandId, newProjectId } from "../lib/utils";
 import {
   selectProjectByRef,
@@ -77,6 +79,7 @@ import {
   threadTraversalDirectionFromCommand,
 } from "../keybindings";
 import { useGitStatus } from "../lib/gitStatusState";
+import { projectListEntriesQueryOptions } from "../lib/projectReactQuery";
 import { readLocalApi } from "../localApi";
 import { useComposerDraftStore } from "../composerDraftStore";
 import { useHandleNewThread } from "../hooks/useHandleNewThread";
@@ -137,6 +140,7 @@ import {
 import { SidebarUpdatePill } from "./sidebar/SidebarUpdatePill";
 import { useCopyToClipboard } from "~/hooks/useCopyToClipboard";
 import { readEnvironmentApi } from "../environmentApi";
+import { useLocalStorage } from "~/hooks/useLocalStorage";
 import { useSettings, useUpdateSettings } from "~/hooks/useSettings";
 import { useServerKeybindings } from "../rpc/serverState";
 import { deriveLogicalProjectKey } from "../logicalProject";
@@ -144,8 +148,13 @@ import {
   useSavedEnvironmentRegistryStore,
   useSavedEnvironmentRuntimeStore,
 } from "../environments/runtime";
+import { useTheme } from "../hooks/useTheme";
+import SidebarFilesPanel from "./SidebarFilesPanel";
+import { selectThreadWorkspaceViewState, useWorkspaceViewStore } from "../workspaceViewStore";
+import * as Schema from "effect/Schema";
 import type { Project, SidebarThreadSummary } from "../types";
 const THREAD_PREVIEW_LIMIT = 6;
+const SIDEBAR_FILES_HIDE_DOTFILES_KEY = "t3code:sidebar-files-hide-dotfiles:v1";
 const SIDEBAR_SORT_LABELS: Record<SidebarProjectSortOrder, string> = {
   updated_at: "Last user message",
   created_at: "Created at",
@@ -2005,6 +2014,8 @@ const SidebarChromeFooter = memo(function SidebarChromeFooter() {
 });
 
 interface SidebarProjectsContentProps {
+  sidebarMode: "projects" | "files";
+  setSidebarMode: (mode: "projects" | "files") => void;
   showArm64IntelBuildWarning: boolean;
   arm64IntelBuildWarningDescription: string | null;
   desktopUpdateButtonAction: "download" | "install" | "none";
@@ -2050,12 +2061,25 @@ interface SidebarProjectsContentProps {
   suppressProjectClickForContextMenuRef: React.RefObject<boolean>;
   attachProjectListAutoAnimateRef: (node: HTMLElement | null) => void;
   projectsLength: number;
+  routeThreadId: ThreadId | null;
+  activeWorkspaceRoot: string | null;
+  workspaceTreeEntries: readonly import("@t3tools/contracts").ProjectEntry[];
+  workspaceTreeLoading: boolean;
+  workspaceTreeFetching: boolean;
+  workspaceTreeTruncated: boolean;
+  hideDotfilesInSidebarFiles: boolean;
+  setHideDotfilesInSidebarFiles: (value: boolean) => void;
+  selectedWorkspaceRelativePath: string | null;
+  resolvedTheme: "light" | "dark";
+  onSelectWorkspaceFile: (relativePath: string) => void;
 }
 
 const SidebarProjectsContent = memo(function SidebarProjectsContent(
   props: SidebarProjectsContentProps,
 ) {
   const {
+    sidebarMode,
+    setSidebarMode,
     showArm64IntelBuildWarning,
     arm64IntelBuildWarningDescription,
     desktopUpdateButtonAction,
@@ -2101,6 +2125,17 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
     suppressProjectClickForContextMenuRef,
     attachProjectListAutoAnimateRef,
     projectsLength,
+    routeThreadId,
+    activeWorkspaceRoot,
+    workspaceTreeEntries,
+    workspaceTreeLoading,
+    workspaceTreeFetching,
+    workspaceTreeTruncated,
+    hideDotfilesInSidebarFiles,
+    setHideDotfilesInSidebarFiles,
+    selectedWorkspaceRelativePath,
+    resolvedTheme,
+    onSelectWorkspaceFile,
   } = props;
 
   const handleProjectSortOrderChange = useCallback(
@@ -2162,162 +2197,223 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
         </SidebarGroup>
       ) : null}
       <SidebarGroup className="px-2 py-2">
-        <div className="mb-1 flex items-center justify-between pl-2 pr-1.5">
-          <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60">
-            Projects
-          </span>
-          <div className="flex items-center gap-1">
-            <ProjectSortMenu
-              projectSortOrder={projectSortOrder}
-              threadSortOrder={threadSortOrder}
-              onProjectSortOrderChange={handleProjectSortOrderChange}
-              onThreadSortOrderChange={handleThreadSortOrderChange}
-            />
-            <Tooltip>
-              <TooltipTrigger
-                render={
+        <div className="mb-2 flex items-center justify-between gap-2">
+          <div
+            className="inline-flex rounded-md border border-border/70 bg-muted/30 p-0.5"
+            role="tablist"
+            aria-label="Sidebar mode"
+          >
+            <button
+              type="button"
+              role="tab"
+              aria-selected={sidebarMode === "projects"}
+              className={cn(
+                "rounded-sm px-2.5 py-1 text-[11px] font-medium transition-colors",
+                sidebarMode === "projects"
+                  ? "bg-background text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground",
+              )}
+              onClick={() => setSidebarMode("projects")}
+            >
+              Projects
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={sidebarMode === "files"}
+              className={cn(
+                "rounded-sm px-2.5 py-1 text-[11px] font-medium transition-colors",
+                sidebarMode === "files"
+                  ? "bg-background text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground",
+              )}
+              onClick={() => setSidebarMode("files")}
+            >
+              Files
+            </button>
+          </div>
+
+          {sidebarMode === "projects" ? (
+            <div className="flex items-center gap-1">
+              <ProjectSortMenu
+                projectSortOrder={projectSortOrder}
+                threadSortOrder={threadSortOrder}
+                onProjectSortOrderChange={handleProjectSortOrderChange}
+                onThreadSortOrderChange={handleThreadSortOrderChange}
+              />
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <button
+                      type="button"
+                      aria-label={shouldShowProjectPathEntry ? "Cancel add project" : "Add project"}
+                      aria-pressed={shouldShowProjectPathEntry}
+                      className="inline-flex size-5 cursor-pointer items-center justify-center rounded-md text-muted-foreground/60 transition-colors hover:bg-accent hover:text-foreground"
+                      onClick={handleStartAddProject}
+                    />
+                  }
+                >
+                  <PlusIcon
+                    className={`size-3.5 transition-transform duration-150 ${
+                      shouldShowProjectPathEntry ? "rotate-45" : "rotate-0"
+                    }`}
+                  />
+                </TooltipTrigger>
+                <TooltipPopup side="right">
+                  {shouldShowProjectPathEntry ? "Cancel add project" : "Add project"}
+                </TooltipPopup>
+              </Tooltip>
+            </div>
+          ) : null}
+        </div>
+
+        {sidebarMode === "projects" ? (
+          <>
+            {shouldShowProjectPathEntry && (
+              <div className="mb-2 px-1">
+                {isElectron && (
                   <button
                     type="button"
-                    aria-label={shouldShowProjectPathEntry ? "Cancel add project" : "Add project"}
-                    aria-pressed={shouldShowProjectPathEntry}
-                    className="inline-flex size-5 cursor-pointer items-center justify-center rounded-md text-muted-foreground/60 transition-colors hover:bg-accent hover:text-foreground"
-                    onClick={handleStartAddProject}
+                    className="mb-1.5 flex w-full items-center justify-center gap-2 rounded-md border border-border bg-secondary py-1.5 text-xs text-foreground/80 transition-colors duration-150 hover:bg-accent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-60"
+                    onClick={handleBrowseForFolderClick}
+                    disabled={isPickingFolder || isAddingProject}
+                  >
+                    <FolderIcon className="size-3.5" />
+                    {isPickingFolder ? "Picking folder..." : "Browse for folder"}
+                  </button>
+                )}
+                <div className="flex gap-1.5">
+                  <input
+                    ref={addProjectInputRef}
+                    className={`min-w-0 flex-1 rounded-md border bg-secondary px-2 py-1 font-mono text-xs text-foreground placeholder:text-muted-foreground/40 focus:outline-none ${
+                      addProjectError
+                        ? "border-red-500/70 focus:border-red-500"
+                        : "border-border focus:border-ring"
+                    }`}
+                    placeholder="/path/to/project"
+                    value={newCwd}
+                    onChange={handleAddProjectInputChange}
+                    onKeyDown={handleAddProjectInputKeyDown}
+                    autoFocus
                   />
-                }
-              >
-                <PlusIcon
-                  className={`size-3.5 transition-transform duration-150 ${
-                    shouldShowProjectPathEntry ? "rotate-45" : "rotate-0"
-                  }`}
-                />
-              </TooltipTrigger>
-              <TooltipPopup side="right">
-                {shouldShowProjectPathEntry ? "Cancel add project" : "Add project"}
-              </TooltipPopup>
-            </Tooltip>
-          </div>
-        </div>
-        {shouldShowProjectPathEntry && (
-          <div className="mb-2 px-1">
-            {isElectron && (
-              <button
-                type="button"
-                className="mb-1.5 flex w-full items-center justify-center gap-2 rounded-md border border-border bg-secondary py-1.5 text-xs text-foreground/80 transition-colors duration-150 hover:bg-accent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-60"
-                onClick={handleBrowseForFolderClick}
-                disabled={isPickingFolder || isAddingProject}
-              >
-                <FolderIcon className="size-3.5" />
-                {isPickingFolder ? "Picking folder..." : "Browse for folder"}
-              </button>
+                  <button
+                    type="button"
+                    className="shrink-0 rounded-md bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground transition-colors duration-150 hover:bg-primary/90 disabled:opacity-60"
+                    onClick={handleAddProject}
+                    disabled={!canAddProject}
+                  >
+                    {isAddingProject ? "Adding..." : "Add"}
+                  </button>
+                </div>
+                {addProjectError && (
+                  <p className="mt-1 px-0.5 text-[11px] leading-tight text-red-400">
+                    {addProjectError}
+                  </p>
+                )}
+              </div>
             )}
-            <div className="flex gap-1.5">
-              <input
-                ref={addProjectInputRef}
-                className={`min-w-0 flex-1 rounded-md border bg-secondary px-2 py-1 font-mono text-xs text-foreground placeholder:text-muted-foreground/40 focus:outline-none ${
-                  addProjectError
-                    ? "border-red-500/70 focus:border-red-500"
-                    : "border-border focus:border-ring"
-                }`}
-                placeholder="/path/to/project"
-                value={newCwd}
-                onChange={handleAddProjectInputChange}
-                onKeyDown={handleAddProjectInputKeyDown}
-                autoFocus
-              />
-              <button
-                type="button"
-                className="shrink-0 rounded-md bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground transition-colors duration-150 hover:bg-primary/90 disabled:opacity-60"
-                onClick={handleAddProject}
-                disabled={!canAddProject}
-              >
-                {isAddingProject ? "Adding..." : "Add"}
-              </button>
-            </div>
-            {addProjectError && (
-              <p className="mt-1 px-0.5 text-[11px] leading-tight text-red-400">
-                {addProjectError}
-              </p>
-            )}
-          </div>
-        )}
 
-        {isManualProjectSorting ? (
-          <DndContext
-            sensors={projectDnDSensors}
-            collisionDetection={projectCollisionDetection}
-            modifiers={[restrictToVerticalAxis, restrictToFirstScrollableAncestor]}
-            onDragStart={handleProjectDragStart}
-            onDragEnd={handleProjectDragEnd}
-            onDragCancel={handleProjectDragCancel}
-          >
-            <SidebarMenu>
-              <SortableContext
-                items={sortedProjects.map((project) => project.projectKey)}
-                strategy={verticalListSortingStrategy}
+            {isManualProjectSorting ? (
+              <DndContext
+                sensors={projectDnDSensors}
+                collisionDetection={projectCollisionDetection}
+                modifiers={[restrictToVerticalAxis, restrictToFirstScrollableAncestor]}
+                onDragStart={handleProjectDragStart}
+                onDragEnd={handleProjectDragEnd}
+                onDragCancel={handleProjectDragCancel}
               >
+                <SidebarMenu>
+                  <SortableContext
+                    items={sortedProjects.map((project) => project.projectKey)}
+                    strategy={verticalListSortingStrategy}
+                  >
+                    {sortedProjects.map((project) => (
+                      <SortableProjectItem key={project.projectKey} projectId={project.projectKey}>
+                        {(dragHandleProps) => (
+                          <SidebarProjectItem
+                            project={project}
+                            isThreadListExpanded={expandedThreadListsByProject.has(
+                              project.projectKey,
+                            )}
+                            activeRouteThreadKey={
+                              activeRouteProjectKey === project.projectKey ? routeThreadKey : null
+                            }
+                            newThreadShortcutLabel={newThreadShortcutLabel}
+                            handleNewThread={handleNewThread}
+                            archiveThread={archiveThread}
+                            deleteThread={deleteThread}
+                            threadJumpLabelByKey={threadJumpLabelByKey}
+                            attachThreadListAutoAnimateRef={attachThreadListAutoAnimateRef}
+                            expandThreadListForProject={expandThreadListForProject}
+                            collapseThreadListForProject={collapseThreadListForProject}
+                            dragInProgressRef={dragInProgressRef}
+                            suppressProjectClickAfterDragRef={suppressProjectClickAfterDragRef}
+                            suppressProjectClickForContextMenuRef={
+                              suppressProjectClickForContextMenuRef
+                            }
+                            isManualProjectSorting={isManualProjectSorting}
+                            dragHandleProps={dragHandleProps}
+                          />
+                        )}
+                      </SortableProjectItem>
+                    ))}
+                  </SortableContext>
+                </SidebarMenu>
+              </DndContext>
+            ) : (
+              <SidebarMenu ref={attachProjectListAutoAnimateRef}>
                 {sortedProjects.map((project) => (
-                  <SortableProjectItem key={project.projectKey} projectId={project.projectKey}>
-                    {(dragHandleProps) => (
-                      <SidebarProjectItem
-                        project={project}
-                        isThreadListExpanded={expandedThreadListsByProject.has(project.projectKey)}
-                        activeRouteThreadKey={
-                          activeRouteProjectKey === project.projectKey ? routeThreadKey : null
-                        }
-                        newThreadShortcutLabel={newThreadShortcutLabel}
-                        handleNewThread={handleNewThread}
-                        archiveThread={archiveThread}
-                        deleteThread={deleteThread}
-                        threadJumpLabelByKey={threadJumpLabelByKey}
-                        attachThreadListAutoAnimateRef={attachThreadListAutoAnimateRef}
-                        expandThreadListForProject={expandThreadListForProject}
-                        collapseThreadListForProject={collapseThreadListForProject}
-                        dragInProgressRef={dragInProgressRef}
-                        suppressProjectClickAfterDragRef={suppressProjectClickAfterDragRef}
-                        suppressProjectClickForContextMenuRef={
-                          suppressProjectClickForContextMenuRef
-                        }
-                        isManualProjectSorting={isManualProjectSorting}
-                        dragHandleProps={dragHandleProps}
-                      />
-                    )}
-                  </SortableProjectItem>
+                  <SidebarProjectListRow
+                    key={project.projectKey}
+                    project={project}
+                    isThreadListExpanded={expandedThreadListsByProject.has(project.projectKey)}
+                    activeRouteThreadKey={
+                      activeRouteProjectKey === project.projectKey ? routeThreadKey : null
+                    }
+                    newThreadShortcutLabel={newThreadShortcutLabel}
+                    handleNewThread={handleNewThread}
+                    archiveThread={archiveThread}
+                    deleteThread={deleteThread}
+                    threadJumpLabelByKey={threadJumpLabelByKey}
+                    attachThreadListAutoAnimateRef={attachThreadListAutoAnimateRef}
+                    expandThreadListForProject={expandThreadListForProject}
+                    collapseThreadListForProject={collapseThreadListForProject}
+                    dragInProgressRef={dragInProgressRef}
+                    suppressProjectClickAfterDragRef={suppressProjectClickAfterDragRef}
+                    suppressProjectClickForContextMenuRef={suppressProjectClickForContextMenuRef}
+                    isManualProjectSorting={isManualProjectSorting}
+                    dragHandleProps={null}
+                  />
                 ))}
-              </SortableContext>
-            </SidebarMenu>
-          </DndContext>
-        ) : (
-          <SidebarMenu ref={attachProjectListAutoAnimateRef}>
-            {sortedProjects.map((project) => (
-              <SidebarProjectListRow
-                key={project.projectKey}
-                project={project}
-                isThreadListExpanded={expandedThreadListsByProject.has(project.projectKey)}
-                activeRouteThreadKey={
-                  activeRouteProjectKey === project.projectKey ? routeThreadKey : null
-                }
-                newThreadShortcutLabel={newThreadShortcutLabel}
-                handleNewThread={handleNewThread}
-                archiveThread={archiveThread}
-                deleteThread={deleteThread}
-                threadJumpLabelByKey={threadJumpLabelByKey}
-                attachThreadListAutoAnimateRef={attachThreadListAutoAnimateRef}
-                expandThreadListForProject={expandThreadListForProject}
-                collapseThreadListForProject={collapseThreadListForProject}
-                dragInProgressRef={dragInProgressRef}
-                suppressProjectClickAfterDragRef={suppressProjectClickAfterDragRef}
-                suppressProjectClickForContextMenuRef={suppressProjectClickForContextMenuRef}
-                isManualProjectSorting={isManualProjectSorting}
-                dragHandleProps={null}
-              />
-            ))}
-          </SidebarMenu>
-        )}
+              </SidebarMenu>
+            )}
 
-        {projectsLength === 0 && !shouldShowProjectPathEntry && (
+            {projectsLength === 0 && !shouldShowProjectPathEntry && (
+              <div className="px-2 pt-4 text-center text-xs text-muted-foreground/60">
+                No projects yet
+              </div>
+            )}
+          </>
+        ) : !routeThreadId ? (
           <div className="px-2 pt-4 text-center text-xs text-muted-foreground/60">
-            No projects yet
+            Open a thread to browse its workspace files.
           </div>
+        ) : !activeWorkspaceRoot ? (
+          <div className="px-2 pt-4 text-center text-xs text-muted-foreground/60">
+            This thread does not have a workspace yet.
+          </div>
+        ) : (
+          <SidebarFilesPanel
+            entries={workspaceTreeEntries}
+            isLoading={workspaceTreeLoading}
+            isFetching={workspaceTreeFetching}
+            truncated={workspaceTreeTruncated}
+            hideDotfiles={hideDotfilesInSidebarFiles}
+            selectedRelativePath={selectedWorkspaceRelativePath}
+            theme={resolvedTheme}
+            onHideDotfilesChange={setHideDotfilesInSidebarFiles}
+            onSelectFile={onSelectWorkspaceFile}
+          />
         )}
       </SidebarGroup>
     </SidebarContent>
@@ -2344,8 +2440,23 @@ export default function Sidebar() {
     strict: false,
     select: (params) => resolveThreadRouteRef(params),
   });
+  const routeThreadId = routeThreadRef?.threadId ?? null;
   const routeThreadKey = routeThreadRef ? scopedThreadKey(routeThreadRef) : null;
   const keybindings = useServerKeybindings();
+  const { resolvedTheme } = useTheme();
+  const sidebarMode = useWorkspaceViewStore((store) => store.sidebarMode);
+  const setSidebarMode = useWorkspaceViewStore((store) => store.setSidebarMode);
+  const openWorkspaceFile = useWorkspaceViewStore((store) => store.openWorkspaceFile);
+  const workspaceViewState = useWorkspaceViewStore((store) =>
+    routeThreadId
+      ? selectThreadWorkspaceViewState(store.workspaceViewByThreadId, routeThreadId)
+      : null,
+  );
+  const [hideDotfilesInSidebarFiles, setHideDotfilesInSidebarFiles] = useLocalStorage(
+    SIDEBAR_FILES_HIDE_DOTFILES_KEY,
+    true,
+    Schema.Boolean,
+  );
   const [addingProject, setAddingProject] = useState(false);
   const [newCwd, setNewCwd] = useState("");
   const [isPickingFolder, setIsPickingFolder] = useState(false);
@@ -2474,6 +2585,27 @@ export default function Sidebar() {
       ),
     [sidebarThreads],
   );
+  const routeThread = routeThreadKey ? (sidebarThreadByKey.get(routeThreadKey) ?? null) : null;
+  const routeProject = routeThread
+    ? (projects.find(
+        (project) =>
+          project.environmentId === routeThread.environmentId &&
+          project.id === routeThread.projectId,
+      ) ?? null)
+    : null;
+  const activeWorkspaceRoot = routeThread?.worktreePath ?? routeProject?.cwd ?? null;
+  const workspaceTreeQuery = useQuery(
+    projectListEntriesQueryOptions({
+      environmentId: routeThread?.environmentId ?? null,
+      cwd: activeWorkspaceRoot,
+      enabled: sidebarMode === "files",
+    }),
+  );
+  const selectedWorkspaceRelativePath =
+    workspaceViewState && workspaceViewState.activeTabId
+      ? (workspaceViewState.tabs.find((tab) => tab.id === workspaceViewState.activeTabId)
+          ?.relativePath ?? null)
+      : null;
   // Resolve the active route's project key to a logical key so it matches the
   // sidebar's grouped project entries.
   const activeRouteProjectKey = useMemo(() => {
@@ -3097,6 +3229,8 @@ export default function Sidebar() {
       ) : (
         <>
           <SidebarProjectsContent
+            sidebarMode={sidebarMode}
+            setSidebarMode={setSidebarMode}
             showArm64IntelBuildWarning={showArm64IntelBuildWarning}
             arm64IntelBuildWarningDescription={arm64IntelBuildWarningDescription}
             desktopUpdateButtonAction={desktopUpdateButtonAction}
@@ -3142,6 +3276,27 @@ export default function Sidebar() {
             suppressProjectClickForContextMenuRef={suppressProjectClickForContextMenuRef}
             attachProjectListAutoAnimateRef={attachProjectListAutoAnimateRef}
             projectsLength={projects.length}
+            routeThreadId={routeThreadId}
+            activeWorkspaceRoot={activeWorkspaceRoot}
+            workspaceTreeEntries={workspaceTreeQuery.data?.entries ?? []}
+            workspaceTreeLoading={workspaceTreeQuery.isLoading}
+            workspaceTreeFetching={workspaceTreeQuery.isFetching}
+            workspaceTreeTruncated={workspaceTreeQuery.data?.truncated ?? false}
+            hideDotfilesInSidebarFiles={hideDotfilesInSidebarFiles}
+            setHideDotfilesInSidebarFiles={setHideDotfilesInSidebarFiles}
+            selectedWorkspaceRelativePath={selectedWorkspaceRelativePath}
+            resolvedTheme={resolvedTheme}
+            onSelectWorkspaceFile={(relativePath) => {
+              if (!routeThreadId || !activeWorkspaceRoot) {
+                return;
+              }
+              openWorkspaceFile(routeThreadId, {
+                cwd: activeWorkspaceRoot,
+                relativePath,
+                line: null,
+                column: null,
+              });
+            }}
           />
 
           <SidebarSeparator />

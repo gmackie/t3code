@@ -44,6 +44,8 @@ import { getRouter } from "../router";
 import { selectBootstrapCompleteForActiveEnvironment, useStore } from "../store";
 import { useTerminalStateStore } from "../terminalStateStore";
 import { useUiStateStore } from "../uiStateStore";
+import { useWorkspaceViewStore } from "../workspaceViewStore";
+import { useRightPanelStateStore } from "../rightPanelStateStore";
 import { createAuthenticatedSessionHandlers } from "../../test/authHttpHandlers";
 import { BrowserWsRpcHarness, type NormalizedWsRpcRequestBody } from "../../test/wsRpcHarness";
 import { estimateTimelineMessageHeight } from "./timelineHeight";
@@ -1294,6 +1296,13 @@ describe("ChatView timeline estimator parity (full app)", () => {
       terminalEventEntriesByKey: {},
       nextTerminalEventId: 1,
     });
+    useWorkspaceViewStore.setState({
+      sidebarMode: "projects",
+      workspaceViewByThreadId: {},
+    });
+    useRightPanelStateStore.setState({
+      rightPanelStateByThreadId: {},
+    });
   });
 
   afterEach(() => {
@@ -1359,6 +1368,231 @@ describe("ChatView timeline estimator parity (full app)", () => {
         { timeout: 8_000, interval: 16 },
       );
     } finally {
+      await mounted.cleanup();
+    }
+  });
+
+  it("switches between chat and the workspace viewer when a workspace tab opens", async () => {
+    const mounted = await mountChatView({
+      viewport: DEFAULT_VIEWPORT,
+      snapshot: createSnapshotForTargetUser({
+        targetMessageId: "msg-user-workspace-shell" as MessageId,
+        targetText: "workspace shell integration",
+      }),
+      resolveRpc: (body) => {
+        if (body._tag === WS_METHODS.projectsReadFile) {
+          return {
+            relativePath: "src/App.tsx",
+            contents: "export function App() {\n  return <div>Hello</div>;\n}\n",
+          };
+        }
+        if (body._tag === WS_METHODS.projectsGetDocumentSymbols) {
+          return {
+            source: "typescript",
+            symbols: [
+              {
+                name: "App",
+                kind: "function",
+                range: {
+                  start: { line: 1, column: 1 },
+                  end: { line: 3, column: 2 },
+                },
+                selectionRange: {
+                  start: { line: 1, column: 17 },
+                  end: { line: 1, column: 20 },
+                },
+              },
+            ],
+          };
+        }
+        return undefined;
+      },
+    });
+
+    try {
+      useWorkspaceViewStore.getState().openWorkspaceFile(THREAD_ID, {
+        cwd: "/repo/project",
+        relativePath: "src/App.tsx",
+        line: null,
+        column: null,
+      });
+
+      await vi.waitFor(() => {
+        expect(document.querySelector('[data-testid="workspace-view-tabs"]')).not.toBeNull();
+        expect(document.querySelector('[data-testid="workspace-file-viewer"]')).not.toBeNull();
+      });
+
+      await page.getByTestId("workspace-tab-chat").click();
+
+      await vi.waitFor(() => {
+        expect(document.querySelector('[data-testid="workspace-file-viewer"]')).toBeNull();
+      });
+      await expect.element(page.getByTestId("composer-editor")).toBeInTheDocument();
+    } finally {
+      await mounted.cleanup();
+    }
+  });
+
+  it("opens workspace files from the sidebar files panel", async () => {
+    const mounted = await mountChatView({
+      viewport: DEFAULT_VIEWPORT,
+      snapshot: createSnapshotForTargetUser({
+        targetMessageId: "msg-user-sidebar-files" as MessageId,
+        targetText: "sidebar files integration",
+      }),
+      resolveRpc: (body) => {
+        if (body._tag === WS_METHODS.projectsListEntries) {
+          return {
+            entries: [
+              { path: "README.md", kind: "file" },
+              { path: "src", kind: "directory" },
+              { path: "src/App.tsx", kind: "file", parentPath: "src" },
+            ],
+            truncated: false,
+          };
+        }
+        if (body._tag === WS_METHODS.projectsReadFile) {
+          return {
+            relativePath: "src/App.tsx",
+            contents: "export function App() {\n  return <div>Hello</div>;\n}\n",
+          };
+        }
+        if (body._tag === WS_METHODS.projectsGetDocumentSymbols) {
+          return {
+            source: "typescript",
+            symbols: [],
+          };
+        }
+        return undefined;
+      },
+    });
+
+    try {
+      await page.getByRole("tab", { name: "Files" }).click();
+      await expect.element(page.getByTestId("sidebar-files-panel")).toBeInTheDocument();
+      await page.getByLabelText("Expand src directory").click();
+      await page.getByLabelText("Open App.tsx").click();
+
+      await vi.waitFor(() => {
+        expect(document.querySelector('[data-testid="workspace-file-viewer"]')).not.toBeNull();
+      });
+    } finally {
+      await mounted.cleanup();
+    }
+  });
+
+  it("toggles the browser side panel from the chat header", async () => {
+    const mounted = await mountChatView({
+      viewport: DEFAULT_VIEWPORT,
+      snapshot: createSnapshotForTargetUser({
+        targetMessageId: "msg-user-browser-panel" as MessageId,
+        targetText: "browser panel integration",
+      }),
+    });
+
+    try {
+      await page.getByLabelText("Toggle browser panel").click();
+      await expect
+        .element(page.getByText("Enter a URL to preview a local app or external site."))
+        .toBeInTheDocument();
+    } finally {
+      await mounted.cleanup();
+    }
+  });
+
+  it("opens the browser cookie manager and routes import and removal through the desktop bridge", async () => {
+    const browserListCookieSources = vi.fn(async () => [{ id: "chrome", label: "Chrome" }]);
+    const browserListCookieProfiles = vi.fn(async () => [{ id: "Default", label: "Personal" }]);
+    const browserListCookieDomains = vi.fn(async () => [{ domain: ".github.com", count: 2 }]);
+    const browserListSessionCookies = vi.fn(async () => [
+      {
+        domain: ".github.com",
+        name: "session_id",
+        path: "/",
+        secure: true,
+        httpOnly: true,
+        sameSite: "Lax" as const,
+        expirationLabel: "Session",
+        removalUrl: "https://github.com/",
+      },
+    ]);
+    const browserImportCookies = vi.fn(async () => ({
+      importedCount: 2,
+      failedCount: 0,
+      importedDomains: [{ domain: ".github.com", count: 2 }],
+    }));
+    const browserRemoveCookieDomain = vi.fn(async () => ({ removedCount: 1 }));
+
+    window.desktopBridge = {
+      getLocalEnvironmentBootstrap: () => null,
+      getServerExposureState: async () => ({
+        mode: "local-only" as const,
+        endpointUrl: null,
+        advertisedHost: null,
+      }),
+      setServerExposureMode: async () => ({
+        mode: "local-only" as const,
+        endpointUrl: null,
+        advertisedHost: null,
+      }),
+      pickFolder: async () => null,
+      confirm: async () => true,
+      setTheme: async () => undefined,
+      showContextMenu: async () => null,
+      openExternal: async () => true,
+      browserEnsureTab: async () => undefined,
+      browserNavigate: async () => undefined,
+      browserGoBack: async () => undefined,
+      browserGoForward: async () => undefined,
+      browserReload: async () => undefined,
+      browserCloseTab: async () => undefined,
+      browserSyncHost: async () => undefined,
+      browserListCookieSources,
+      browserListCookieProfiles,
+      browserListCookieDomains,
+      browserListSessionCookies,
+      browserImportCookies,
+      browserRemoveCookieDomain,
+      onMenuAction: () => () => undefined,
+      getUpdateState: async () => {
+        throw new Error("not used in test");
+      },
+      checkForUpdate: async () => {
+        throw new Error("not used in test");
+      },
+      downloadUpdate: async () => {
+        throw new Error("not used in test");
+      },
+      installUpdate: async () => {
+        throw new Error("not used in test");
+      },
+      onUpdateState: () => () => undefined,
+    };
+
+    const mounted = await mountChatView({
+      viewport: DEFAULT_VIEWPORT,
+      snapshot: createSnapshotForTargetUser({
+        targetMessageId: "msg-user-browser-cookies" as MessageId,
+        targetText: "browser cookie manager integration",
+      }),
+    });
+
+    try {
+      await page.getByLabelText("Toggle browser panel").click();
+      await page.getByLabelText("Manage cookies").click();
+      await expect.element(page.getByText("Manage cookies")).toBeInTheDocument();
+
+      await page.getByLabelText("Import cookies for .github.com").click();
+      expect(browserImportCookies).toHaveBeenCalledWith({
+        sourceId: "chrome",
+        profileId: "Default",
+        domains: [".github.com"],
+      });
+
+      await page.getByLabelText("Remove imported cookies for .github.com").click();
+      expect(browserRemoveCookieDomain).toHaveBeenCalledWith(".github.com");
+    } finally {
+      Reflect.deleteProperty(window, "desktopBridge");
       await mounted.cleanup();
     }
   });

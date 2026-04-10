@@ -31,13 +31,17 @@ import {
 import { applyClaudePromptEffortPrefix, normalizeModelSlug } from "@t3tools/shared/model";
 import { projectScriptCwd, projectScriptRuntimeEnv } from "@t3tools/shared/projectScripts";
 import { truncate } from "@t3tools/shared/String";
+import * as Schema from "effect/Schema";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useDebouncedValue } from "@tanstack/react-pacer";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { useShallow } from "zustand/react/shallow";
 import { useGitStatus } from "~/lib/gitStatusState";
-import { projectSearchEntriesQueryOptions } from "~/lib/projectReactQuery";
+import {
+  projectCodeDocumentSymbolsQueryOptions,
+  projectSearchEntriesQueryOptions,
+} from "~/lib/projectReactQuery";
 import { usePrimaryEnvironmentId } from "../environments/primary";
 import { readEnvironmentApi } from "../environmentApi";
 import { isElectron } from "../env";
@@ -102,10 +106,16 @@ import {
 import { basenameOfPath } from "../vscode-icons";
 import { useTheme } from "../hooks/useTheme";
 import { useTurnDiffSummaries } from "../hooks/useTurnDiffSummaries";
+import { createBrowserTab, normalizeBrowserDisplayUrl, parseSubmittedBrowserUrl } from "../browser";
+import { selectThreadBrowserState, useBrowserStateStore } from "../browserStateStore";
 import { BranchToolbar } from "./BranchToolbar";
 import { resolveShortcutCommand, shortcutLabelForCommand } from "../keybindings";
 import PlanSidebar from "./PlanSidebar";
 import ThreadTerminalDrawer from "./ThreadTerminalDrawer";
+import BrowserPanel from "./BrowserPanel";
+import BrowserCookieManager from "./BrowserCookieManager";
+import WorkspaceFileViewer from "./WorkspaceFileViewer";
+import WorkspaceViewTabs from "./WorkspaceViewTabs";
 import {
   BotIcon,
   ChevronDownIcon,
@@ -220,6 +230,9 @@ import {
   useServerKeybindings,
 } from "~/rpc/serverState";
 import { sanitizeThreadErrorMessage } from "~/rpc/transportError";
+import { useBrowserCookieManager } from "../hooks/useBrowserCookieManager";
+import { selectThreadRightPanelState, useRightPanelStateStore } from "../rightPanelStateStore";
+import { selectThreadWorkspaceViewState, useWorkspaceViewStore } from "../workspaceViewStore";
 
 const IMAGE_SIZE_LIMIT_LABEL = `${Math.round(PROVIDER_SEND_TURN_MAX_IMAGE_BYTES / (1024 * 1024))}MB`;
 const IMAGE_ONLY_BOOTSTRAP_PROMPT =
@@ -229,6 +242,13 @@ const EMPTY_PROPOSED_PLANS: Thread["proposedPlans"] = [];
 const EMPTY_PROJECT_ENTRIES: ProjectEntry[] = [];
 const EMPTY_PROVIDERS: ServerProvider[] = [];
 const EMPTY_PENDING_USER_INPUT_ANSWERS: Record<string, PendingUserInputDraftAnswer> = {};
+
+interface ActiveWorkspaceFile {
+  cwd: string;
+  relativePath: string;
+  line: number | null;
+  column: number | null;
+}
 
 type ThreadPlanCatalogEntry = Pick<Thread, "id" | "proposedPlans">;
 
@@ -769,6 +789,7 @@ export default function ChatView(props: ChatViewProps) {
   const [planSidebarOpen, setPlanSidebarOpen] = useState(false);
   const [isComposerFooterCompact, setIsComposerFooterCompact] = useState(false);
   const [isComposerPrimaryActionsCompact, setIsComposerPrimaryActionsCompact] = useState(false);
+  const browserViewportRef = useRef<HTMLDivElement | null>(null);
   // Tracks whether the user explicitly dismissed the sidebar for the active turn.
   const planSidebarDismissedForTurnRef = useRef<string | null>(null);
   // When set, the thread-change reset effect will open the sidebar instead of closing it.
@@ -795,6 +816,11 @@ export default function ChatView(props: ChatViewProps) {
     LAST_INVOKED_SCRIPT_BY_PROJECT_KEY,
     {},
     LastInvokedScriptByProjectSchema,
+  );
+  const [workspaceFileWordWrap, setWorkspaceFileWordWrap] = useLocalStorage(
+    "workspace-file-viewer-word-wrap",
+    false,
+    Schema.Boolean,
   );
   const messagesScrollRef = useRef<HTMLDivElement>(null);
   const [messagesScrollElement, setMessagesScrollElement] = useState<HTMLDivElement | null>(null);
@@ -845,6 +871,21 @@ export default function ChatView(props: ChatViewProps) {
   const storeNewTerminal = useTerminalStateStore((s) => s.newTerminal);
   const storeSetActiveTerminal = useTerminalStateStore((s) => s.setActiveTerminal);
   const storeCloseTerminal = useTerminalStateStore((s) => s.closeTerminal);
+  const openWorkspaceFile = useWorkspaceViewStore((state) => state.openWorkspaceFile);
+  const setWorkspaceActiveTab = useWorkspaceViewStore((state) => state.setActiveTab);
+  const closeWorkspaceTab = useWorkspaceViewStore((state) => state.closeTab);
+  const syncWorkspaceRoot = useWorkspaceViewStore((state) => state.syncWorkspaceRoot);
+  const workspaceViewState = useWorkspaceViewStore((state) =>
+    selectThreadWorkspaceViewState(state.workspaceViewByThreadId, threadId),
+  );
+  const browserState = useBrowserStateStore((state) =>
+    selectThreadBrowserState(state.browserStateByThreadId, threadId),
+  );
+  const updateBrowserState = useBrowserStateStore((state) => state.updateThreadBrowserState);
+  const setSelectedRightPanel = useRightPanelStateStore((state) => state.setSelectedPanel);
+  const rightPanelState = useRightPanelStateStore((state) =>
+    selectThreadRightPanelState(state.rightPanelStateByThreadId, threadId),
+  );
   const serverThreadKeys = useStore(
     useShallow((state) =>
       selectThreadsAcrossEnvironments(state).map((thread) =>
@@ -1808,6 +1849,40 @@ export default function ChatView(props: ChatViewProps) {
   const activeProjectCwd = activeProject?.cwd ?? null;
   const activeThreadWorktreePath = activeThread?.worktreePath ?? null;
   const activeWorkspaceRoot = activeThreadWorktreePath ?? activeProjectCwd ?? undefined;
+  const activeWorkspaceFile = useMemo<ActiveWorkspaceFile | null>(() => {
+    if (workspaceViewState.activeTabId === null) {
+      return null;
+    }
+    const activeTab = workspaceViewState.tabs.find(
+      (tab) => tab.id === workspaceViewState.activeTabId,
+    );
+    if (!activeTab) {
+      return null;
+    }
+    return {
+      cwd: activeTab.cwd,
+      relativePath: activeTab.relativePath,
+      line: activeTab.line,
+      column: activeTab.column,
+    };
+  }, [workspaceViewState.activeTabId, workspaceViewState.tabs]);
+  const activeWorkspaceFileDocumentSymbolsQuery = useQuery(
+    projectCodeDocumentSymbolsQueryOptions({
+      environmentId,
+      cwd: activeWorkspaceFile?.cwd ?? null,
+      relativePath: activeWorkspaceFile?.relativePath ?? null,
+      enabled: activeWorkspaceFile !== null,
+    }),
+  );
+  const activeBrowserTab = browserState.activeTabId
+    ? (browserState.tabs.find((tab) => tab.id === browserState.activeTabId) ?? null)
+    : null;
+  const browserPanelAvailable = activeThread !== undefined;
+  const browserPanelOpen = rightPanelState.selectedPanel === "browser";
+  const browserCookieManager = useBrowserCookieManager({
+    enabled: browserPanelOpen,
+    activeUrl: activeBrowserTab?.url ?? null,
+  });
   const activeTerminalLaunchContext =
     terminalLaunchContext?.threadId === activeThreadId
       ? terminalLaunchContext
@@ -2349,6 +2424,9 @@ export default function ChatView(props: ChatViewProps) {
   }, [handleRuntimeModeChange, runtimeMode]);
   const togglePlanSidebar = useCallback(() => {
     setPlanSidebarOpen((open) => {
+      if (!open) {
+        setSelectedRightPanel(threadId, null);
+      }
       if (open) {
         const turnKey = activePlan?.turnId ?? sidebarProposedPlan?.turnId ?? null;
         if (turnKey) {
@@ -2359,7 +2437,113 @@ export default function ChatView(props: ChatViewProps) {
       }
       return !open;
     });
-  }, [activePlan?.turnId, sidebarProposedPlan?.turnId]);
+  }, [activePlan?.turnId, setSelectedRightPanel, sidebarProposedPlan?.turnId, threadId]);
+  const toggleBrowserPanel = useCallback(() => {
+    setSelectedRightPanel(threadId, browserPanelOpen ? null : "browser");
+    if (!browserPanelOpen) {
+      setPlanSidebarOpen(false);
+    }
+  }, [browserPanelOpen, setSelectedRightPanel, threadId]);
+
+  const handleBrowserInputChange = useCallback(
+    (value: string) => {
+      updateBrowserState(threadId, (draft) => ({
+        ...draft,
+        inputValue: value,
+      }));
+    },
+    [threadId, updateBrowserState],
+  );
+
+  const handleCreateBrowserTab = useCallback(() => {
+    const tab = createBrowserTab();
+    updateBrowserState(threadId, (draft) => ({
+      ...draft,
+      tabs: [...draft.tabs, tab],
+      activeTabId: tab.id,
+      inputValue: "",
+      focusRequestId: draft.focusRequestId + 1,
+    }));
+    void window.desktopBridge?.browserEnsureTab?.({
+      threadId,
+      tabId: tab.id,
+      url: tab.url,
+    });
+  }, [threadId, updateBrowserState]);
+
+  const handleActivateBrowserTab = useCallback(
+    (tabId: string) => {
+      updateBrowserState(threadId, (draft) => {
+        const tab = draft.tabs.find((candidate) => candidate.id === tabId);
+        return {
+          ...draft,
+          activeTabId: tabId,
+          inputValue: normalizeBrowserDisplayUrl(tab?.url),
+        };
+      });
+    },
+    [threadId, updateBrowserState],
+  );
+
+  const handleCloseBrowserTab = useCallback(
+    (tabId: string) => {
+      void window.desktopBridge?.browserCloseTab?.({ threadId, tabId });
+      updateBrowserState(threadId, (draft) => {
+        const nextTabs = draft.tabs.filter((candidate) => candidate.id !== tabId);
+        const nextActiveTab =
+          draft.activeTabId === tabId ? (nextTabs[nextTabs.length - 1] ?? null) : activeBrowserTab;
+        return {
+          ...draft,
+          tabs: nextTabs,
+          activeTabId: nextActiveTab?.id ?? null,
+          inputValue: normalizeBrowserDisplayUrl(nextActiveTab?.url),
+        };
+      });
+    },
+    [activeBrowserTab, threadId, updateBrowserState],
+  );
+
+  const handleSubmitBrowser = useCallback(() => {
+    const result = parseSubmittedBrowserUrl(browserState.inputValue);
+    if (!result.ok) {
+      return;
+    }
+
+    let activeTabId = browserState.activeTabId;
+    if (!activeTabId) {
+      const tab = createBrowserTab(result.url);
+      activeTabId = tab.id;
+      updateBrowserState(threadId, (draft) => ({
+        ...draft,
+        tabs: [...draft.tabs, tab],
+        activeTabId: tab.id,
+        inputValue: normalizeBrowserDisplayUrl(result.url),
+      }));
+      void window.desktopBridge?.browserEnsureTab?.({
+        threadId,
+        tabId: tab.id,
+        url: result.url,
+      });
+      return;
+    }
+
+    updateBrowserState(threadId, (draft) => ({
+      ...draft,
+      tabs: draft.tabs.map((tab) =>
+        tab.id === activeTabId ? { ...tab, url: result.url, lastError: null } : tab,
+      ),
+      inputValue: normalizeBrowserDisplayUrl(result.url),
+    }));
+    void window.desktopBridge?.browserNavigate?.({
+      threadId,
+      tabId: activeTabId,
+      url: result.url,
+    });
+  }, [browserState.activeTabId, browserState.inputValue, threadId, updateBrowserState]);
+
+  const handleBrowserViewportRef = useCallback((element: HTMLDivElement | null) => {
+    browserViewportRef.current = element;
+  }, []);
 
   const persistThreadSettingsForNextTurn = useCallback(
     async (input: {
@@ -2676,6 +2860,95 @@ export default function ChatView(props: ChatViewProps) {
   useEffect(() => {
     setIsRevertingCheckpoint(false);
   }, [activeThread?.id]);
+
+  useEffect(() => {
+    syncWorkspaceRoot(threadId, activeWorkspaceRoot ?? null);
+  }, [activeWorkspaceRoot, syncWorkspaceRoot, threadId]);
+
+  useEffect(() => {
+    const unsubscribe = window.desktopBridge?.onBrowserEvent?.((event) => {
+      if (event.type !== "tab-state" || event.threadId !== threadId) {
+        return;
+      }
+      updateBrowserState(threadId, (draft) => ({
+        ...draft,
+        tabs: draft.tabs.map((tab) =>
+          tab.id === event.tabId
+            ? {
+                ...tab,
+                url: event.state.url,
+                title: event.state.title,
+                faviconUrl: event.state.faviconUrl,
+                isLoading: event.state.isLoading,
+                canGoBack: event.state.canGoBack,
+                canGoForward: event.state.canGoForward,
+                lastError: event.state.lastError,
+              }
+            : tab,
+        ),
+        inputValue:
+          draft.activeTabId === event.tabId
+            ? normalizeBrowserDisplayUrl(event.state.url)
+            : draft.inputValue,
+      }));
+    });
+
+    return () => {
+      unsubscribe?.();
+    };
+  }, [threadId, updateBrowserState]);
+
+  useEffect(() => {
+    const bridge = window.desktopBridge;
+    if (!bridge?.browserSyncHost) {
+      return;
+    }
+
+    if (!browserPanelOpen || !browserViewportRef.current) {
+      void bridge.browserSyncHost({
+        threadId,
+        tabId: null,
+        visible: false,
+        bounds: null,
+      });
+      return;
+    }
+
+    const element = browserViewportRef.current;
+    let frameId: number | null = null;
+    const syncBounds = () => {
+      if (frameId !== null) {
+        return;
+      }
+      frameId = requestAnimationFrame(() => {
+        frameId = null;
+        const rect = element.getBoundingClientRect();
+        void bridge.browserSyncHost?.({
+          threadId,
+          tabId: browserState.activeTabId,
+          visible: true,
+          bounds: { x: rect.left, y: rect.top, width: rect.width, height: rect.height },
+        });
+      });
+    };
+
+    const observer = new ResizeObserver(syncBounds);
+    observer.observe(element);
+    syncBounds();
+
+    return () => {
+      observer.disconnect();
+      if (frameId !== null) {
+        cancelAnimationFrame(frameId);
+      }
+      void bridge.browserSyncHost?.({
+        threadId,
+        tabId: null,
+        visible: false,
+        bounds: null,
+      });
+    };
+  }, [browserPanelOpen, browserState.activeTabId, threadId]);
 
   useEffect(() => {
     if (!activeThread?.id || terminalState.terminalOpen) return;
@@ -4326,6 +4599,8 @@ export default function ChatView(props: ChatViewProps) {
           availableEditors={availableEditors}
           terminalAvailable={activeProject !== undefined}
           terminalOpen={terminalState.terminalOpen}
+          browserAvailable={browserPanelAvailable}
+          browserOpen={browserPanelOpen}
           terminalToggleShortcutLabel={terminalToggleShortcutLabel}
           diffToggleShortcutLabel={diffPanelShortcutLabel}
           gitCwd={gitCwd}
@@ -4337,6 +4612,7 @@ export default function ChatView(props: ChatViewProps) {
           onUpdateProjectScript={updateProjectScript}
           onDeleteProjectScript={deleteProjectScript}
           onToggleTerminal={toggleTerminalVisibility}
+          onToggleBrowser={toggleBrowserPanel}
           onToggleDiff={onToggleDiff}
         />
       </header>
@@ -4351,444 +4627,497 @@ export default function ChatView(props: ChatViewProps) {
       <div className="flex min-h-0 min-w-0 flex-1">
         {/* Chat column */}
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-          {/* Messages Wrapper */}
-          <div className="relative flex min-h-0 flex-1 flex-col">
-            {/* Messages */}
-            <div
-              ref={setMessagesScrollContainerRef}
-              className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-y-contain px-3 py-3 sm:px-5 sm:py-4"
-              onScroll={onMessagesScroll}
-              onClickCapture={onMessagesClickCapture}
-              onWheel={onMessagesWheel}
-              onPointerDown={onMessagesPointerDown}
-              onPointerUp={onMessagesPointerUp}
-              onPointerCancel={onMessagesPointerCancel}
-              onTouchStart={onMessagesTouchStart}
-              onTouchMove={onMessagesTouchMove}
-              onTouchEnd={onMessagesTouchEnd}
-              onTouchCancel={onMessagesTouchEnd}
-            >
-              <MessagesTimeline
-                key={activeThread.id}
-                hasMessages={timelineEntries.length > 0}
-                isWorking={isWorking}
-                activeTurnInProgress={isWorking || !latestTurnSettled}
-                activeTurnStartedAt={activeWorkStartedAt}
-                scrollContainer={messagesScrollElement}
-                timelineEntries={timelineEntries}
-                completionDividerBeforeEntryId={completionDividerBeforeEntryId}
-                completionSummary={completionSummary}
-                turnDiffSummaryByAssistantMessageId={turnDiffSummaryByAssistantMessageId}
-                nowIso={nowIso}
-                activeThreadEnvironmentId={activeThread.environmentId}
-                expandedWorkGroups={expandedWorkGroups}
-                onToggleWorkGroup={onToggleWorkGroup}
-                onOpenTurnDiff={onOpenTurnDiff}
-                revertTurnCountByUserMessageId={revertTurnCountByUserMessageId}
-                onRevertUserMessage={onRevertUserMessage}
-                isRevertingCheckpoint={isRevertingCheckpoint}
-                onImageExpand={onExpandTimelineImage}
-                markdownCwd={gitCwd ?? undefined}
-                resolvedTheme={resolvedTheme}
-                timestampFormat={timestampFormat}
-                workspaceRoot={activeWorkspaceRoot}
-              />
-            </div>
-
-            {/* scroll to bottom pill — shown when user has scrolled away from the bottom */}
-            {showScrollToBottom && (
-              <div className="pointer-events-none absolute bottom-1 left-1/2 z-30 flex -translate-x-1/2 justify-center py-1.5">
-                <button
-                  type="button"
-                  onClick={() => scrollMessagesToBottom("smooth")}
-                  className="pointer-events-auto flex items-center gap-1.5 rounded-full border border-border/60 bg-card px-3 py-1 text-muted-foreground text-xs shadow-sm transition-colors hover:border-border hover:text-foreground hover:cursor-pointer"
-                >
-                  <ChevronDownIcon className="size-3.5" />
-                  Scroll to bottom
-                </button>
-              </div>
-            )}
-          </div>
-
-          {/* Input bar */}
-          <div className={cn("px-3 pt-1.5 sm:px-5 sm:pt-2", isGitRepo ? "pb-1" : "pb-3 sm:pb-4")}>
-            <form
-              ref={composerFormRef}
-              onSubmit={onSend}
-              className="mx-auto w-full min-w-0 max-w-208"
-              data-chat-composer-form="true"
-            >
-              <div
-                className={cn(
-                  "group rounded-[22px] p-px transition-colors duration-200",
-                  composerProviderState.composerFrameClassName,
-                )}
-                onDragEnter={onComposerDragEnter}
-                onDragOver={onComposerDragOver}
-                onDragLeave={onComposerDragLeave}
-                onDrop={onComposerDrop}
-              >
+          {workspaceViewState.tabs.length > 0 ? (
+            <WorkspaceViewTabs
+              tabs={workspaceViewState.tabs}
+              activeTabId={workspaceViewState.activeTabId}
+              codeIntelligenceSource={
+                activeWorkspaceFileDocumentSymbolsQuery.data?.source ?? "none"
+              }
+              documentSymbols={activeWorkspaceFileDocumentSymbolsQuery.data?.symbols ?? []}
+              theme={resolvedTheme}
+              wordWrap={workspaceFileWordWrap}
+              activeFileOpen={activeWorkspaceFile !== null}
+              onSelectTab={(tabId) => setWorkspaceActiveTab(activeThread.id, tabId)}
+              onCloseTab={(tabId) => closeWorkspaceTab(activeThread.id, tabId)}
+              onSelectSymbol={(symbol) => {
+                if (!activeWorkspaceFile) {
+                  return;
+                }
+                openWorkspaceFile(activeThread.id, {
+                  cwd: activeWorkspaceFile.cwd,
+                  relativePath: activeWorkspaceFile.relativePath,
+                  line: symbol.selectionRange.start.line,
+                  column: symbol.selectionRange.start.column,
+                });
+              }}
+              onWordWrapChange={setWorkspaceFileWordWrap}
+            />
+          ) : null}
+          {activeWorkspaceFile ? (
+            <WorkspaceFileViewer
+              environmentId={environmentId}
+              cwd={activeWorkspaceFile.cwd}
+              relativePath={activeWorkspaceFile.relativePath}
+              line={activeWorkspaceFile.line}
+              column={activeWorkspaceFile.column}
+              theme={resolvedTheme}
+              wordWrap={workspaceFileWordWrap}
+              onOpenLocation={(location) =>
+                openWorkspaceFile(activeThread.id, {
+                  cwd: activeWorkspaceFile.cwd,
+                  relativePath: location.relativePath,
+                  line: location.line,
+                  column: location.column,
+                })
+              }
+            />
+          ) : (
+            <>
+              {/* Messages Wrapper */}
+              <div className="relative flex min-h-0 flex-1 flex-col">
+                {/* Messages */}
                 <div
-                  className={cn(
-                    "rounded-[20px] border bg-card transition-colors duration-200 has-focus-visible:border-ring/45",
-                    isDragOverComposer ? "border-primary/70 bg-accent/30" : "border-border",
-                    composerProviderState.composerSurfaceClassName,
-                  )}
+                  ref={setMessagesScrollContainerRef}
+                  className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-y-contain px-3 py-3 sm:px-5 sm:py-4"
+                  onScroll={onMessagesScroll}
+                  onClickCapture={onMessagesClickCapture}
+                  onWheel={onMessagesWheel}
+                  onPointerDown={onMessagesPointerDown}
+                  onPointerUp={onMessagesPointerUp}
+                  onPointerCancel={onMessagesPointerCancel}
+                  onTouchStart={onMessagesTouchStart}
+                  onTouchMove={onMessagesTouchMove}
+                  onTouchEnd={onMessagesTouchEnd}
+                  onTouchCancel={onMessagesTouchEnd}
                 >
-                  {activePendingApproval ? (
-                    <div className="rounded-t-[19px] border-b border-border/65 bg-muted/20">
-                      <ComposerPendingApprovalPanel
-                        approval={activePendingApproval}
-                        pendingCount={pendingApprovals.length}
-                      />
-                    </div>
-                  ) : pendingUserInputs.length > 0 ? (
-                    <div className="rounded-t-[19px] border-b border-border/65 bg-muted/20">
-                      <ComposerPendingUserInputPanel
-                        pendingUserInputs={pendingUserInputs}
-                        respondingRequestIds={respondingRequestIds}
-                        answers={activePendingDraftAnswers}
-                        questionIndex={activePendingQuestionIndex}
-                        onToggleOption={onSelectActivePendingUserInputOption}
-                        onAdvance={onAdvanceActivePendingUserInput}
-                      />
-                    </div>
-                  ) : showPlanFollowUpPrompt && activeProposedPlan ? (
-                    <div className="rounded-t-[19px] border-b border-border/65 bg-muted/20">
-                      <ComposerPlanFollowUpBanner
-                        key={activeProposedPlan.id}
-                        planTitle={proposedPlanTitle(activeProposedPlan.planMarkdown) ?? null}
-                      />
-                    </div>
-                  ) : null}
+                  <MessagesTimeline
+                    key={activeThread.id}
+                    hasMessages={timelineEntries.length > 0}
+                    isWorking={isWorking}
+                    activeTurnInProgress={isWorking || !latestTurnSettled}
+                    activeTurnStartedAt={activeWorkStartedAt}
+                    scrollContainer={messagesScrollElement}
+                    timelineEntries={timelineEntries}
+                    completionDividerBeforeEntryId={completionDividerBeforeEntryId}
+                    completionSummary={completionSummary}
+                    turnDiffSummaryByAssistantMessageId={turnDiffSummaryByAssistantMessageId}
+                    nowIso={nowIso}
+                    activeThreadEnvironmentId={activeThread.environmentId}
+                    expandedWorkGroups={expandedWorkGroups}
+                    onToggleWorkGroup={onToggleWorkGroup}
+                    onOpenTurnDiff={onOpenTurnDiff}
+                    revertTurnCountByUserMessageId={revertTurnCountByUserMessageId}
+                    onRevertUserMessage={onRevertUserMessage}
+                    isRevertingCheckpoint={isRevertingCheckpoint}
+                    onImageExpand={onExpandTimelineImage}
+                    markdownCwd={gitCwd ?? undefined}
+                    resolvedTheme={resolvedTheme}
+                    timestampFormat={timestampFormat}
+                    workspaceRoot={activeWorkspaceRoot}
+                  />
+                </div>
+
+                {/* scroll to bottom pill — shown when user has scrolled away from the bottom */}
+                {showScrollToBottom && (
+                  <div className="pointer-events-none absolute bottom-1 left-1/2 z-30 flex -translate-x-1/2 justify-center py-1.5">
+                    <button
+                      type="button"
+                      onClick={() => scrollMessagesToBottom("smooth")}
+                      className="pointer-events-auto flex items-center gap-1.5 rounded-full border border-border/60 bg-card px-3 py-1 text-muted-foreground text-xs shadow-sm transition-colors hover:border-border hover:text-foreground hover:cursor-pointer"
+                    >
+                      <ChevronDownIcon className="size-3.5" />
+                      Scroll to bottom
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* Input bar */}
+              <div
+                className={cn("px-3 pt-1.5 sm:px-5 sm:pt-2", isGitRepo ? "pb-1" : "pb-3 sm:pb-4")}
+              >
+                <form
+                  ref={composerFormRef}
+                  onSubmit={onSend}
+                  className="mx-auto w-full min-w-0 max-w-208"
+                  data-chat-composer-form="true"
+                >
                   <div
                     className={cn(
-                      "relative px-3 pb-2 sm:px-4",
-                      hasComposerHeader ? "pt-2.5 sm:pt-3" : "pt-3.5 sm:pt-4",
+                      "group rounded-[22px] p-px transition-colors duration-200",
+                      composerProviderState.composerFrameClassName,
                     )}
+                    onDragEnter={onComposerDragEnter}
+                    onDragOver={onComposerDragOver}
+                    onDragLeave={onComposerDragLeave}
+                    onDrop={onComposerDrop}
                   >
-                    {composerMenuOpen && !isComposerApprovalState && (
-                      <div className="absolute inset-x-0 bottom-full z-20 mb-2 px-1">
-                        <ComposerCommandMenu
-                          items={composerMenuItems}
-                          resolvedTheme={resolvedTheme}
-                          isLoading={isComposerMenuLoading}
-                          triggerKind={composerTriggerKind}
-                          activeItemId={activeComposerMenuItem?.id ?? null}
-                          onHighlightedItemChange={onComposerMenuItemHighlighted}
-                          onSelect={onSelectComposerItem}
-                        />
-                      </div>
-                    )}
-
-                    {!isComposerApprovalState &&
-                      pendingUserInputs.length === 0 &&
-                      composerImages.length > 0 && (
-                        <div className="mb-3 flex flex-wrap gap-2">
-                          {composerImages.map((image) => (
-                            <div
-                              key={image.id}
-                              className="relative h-16 w-16 overflow-hidden rounded-lg border border-border/80 bg-background"
-                            >
-                              {image.previewUrl ? (
-                                <button
-                                  type="button"
-                                  className="h-full w-full cursor-zoom-in"
-                                  aria-label={`Preview ${image.name}`}
-                                  onClick={() => {
-                                    const preview = buildExpandedImagePreview(
-                                      composerImages,
-                                      image.id,
-                                    );
-                                    if (!preview) return;
-                                    setExpandedImage(preview);
-                                  }}
-                                >
-                                  <img
-                                    src={image.previewUrl}
-                                    alt={image.name}
-                                    className="h-full w-full object-cover"
-                                  />
-                                </button>
-                              ) : (
-                                <div className="flex h-full w-full items-center justify-center px-1 text-center text-[10px] text-muted-foreground/70">
-                                  {image.name}
-                                </div>
-                              )}
-                              {nonPersistedComposerImageIdSet.has(image.id) && (
-                                <Tooltip>
-                                  <TooltipTrigger
-                                    render={
-                                      <span
-                                        role="img"
-                                        aria-label="Draft attachment may not persist"
-                                        className="absolute left-1 top-1 inline-flex items-center justify-center rounded bg-background/85 p-0.5 text-amber-600"
-                                      >
-                                        <CircleAlertIcon className="size-3" />
-                                      </span>
-                                    }
-                                  />
-                                  <TooltipPopup
-                                    side="top"
-                                    className="max-w-64 whitespace-normal leading-tight"
-                                  >
-                                    Draft attachment could not be saved locally and may be lost on
-                                    navigation.
-                                  </TooltipPopup>
-                                </Tooltip>
-                              )}
-                              <Button
-                                variant="ghost"
-                                size="icon-xs"
-                                className="absolute right-1 top-1 bg-background/80 hover:bg-background/90"
-                                onClick={() => removeComposerImage(image.id)}
-                                aria-label={`Remove ${image.name}`}
-                              >
-                                <XIcon />
-                              </Button>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    <ComposerPromptEditor
-                      ref={composerEditorRef}
-                      value={
-                        isComposerApprovalState
-                          ? ""
-                          : activePendingProgress
-                            ? activePendingProgress.customAnswer
-                            : prompt
-                      }
-                      cursor={composerCursor}
-                      terminalContexts={
-                        !isComposerApprovalState && pendingUserInputs.length === 0
-                          ? composerTerminalContexts
-                          : []
-                      }
-                      onRemoveTerminalContext={removeComposerTerminalContextFromDraft}
-                      onChange={onPromptChange}
-                      onCommandKeyDown={onComposerCommandKey}
-                      onPaste={onComposerPaste}
-                      placeholder={
-                        isComposerApprovalState
-                          ? (activePendingApproval?.detail ??
-                            "Resolve this approval request to continue")
-                          : activePendingProgress
-                            ? "Type your own answer, or leave this blank to use the selected option"
-                            : showPlanFollowUpPrompt && activeProposedPlan
-                              ? "Add feedback to refine the plan, or leave this blank to implement it"
-                              : phase === "disconnected"
-                                ? "Ask for follow-up changes or attach images"
-                                : "Ask anything, @tag files/folders, or use / to show available commands"
-                      }
-                      disabled={isConnecting || isComposerApprovalState}
-                    />
-                  </div>
-
-                  {/* Bottom toolbar */}
-                  {activePendingApproval ? (
-                    <div className="flex items-center justify-end gap-2 px-2.5 pb-2.5 sm:px-3 sm:pb-3">
-                      <ComposerPendingApprovalActions
-                        requestId={activePendingApproval.requestId}
-                        isResponding={respondingRequestIds.includes(
-                          activePendingApproval.requestId,
-                        )}
-                        onRespondToApproval={onRespondToApproval}
-                      />
-                    </div>
-                  ) : (
                     <div
-                      ref={composerFooterRef}
-                      data-chat-composer-footer="true"
-                      data-chat-composer-footer-compact={isComposerFooterCompact ? "true" : "false"}
                       className={cn(
-                        "flex min-w-0 flex-nowrap items-center justify-between gap-2 overflow-hidden px-2.5 pb-2.5 sm:px-3 sm:pb-3",
-                        isComposerFooterCompact ? "gap-1.5" : "gap-2 sm:gap-0",
+                        "rounded-[20px] border bg-card transition-colors duration-200 has-focus-visible:border-ring/45",
+                        isDragOverComposer ? "border-primary/70 bg-accent/30" : "border-border",
+                        composerProviderState.composerSurfaceClassName,
                       )}
                     >
+                      {activePendingApproval ? (
+                        <div className="rounded-t-[19px] border-b border-border/65 bg-muted/20">
+                          <ComposerPendingApprovalPanel
+                            approval={activePendingApproval}
+                            pendingCount={pendingApprovals.length}
+                          />
+                        </div>
+                      ) : pendingUserInputs.length > 0 ? (
+                        <div className="rounded-t-[19px] border-b border-border/65 bg-muted/20">
+                          <ComposerPendingUserInputPanel
+                            pendingUserInputs={pendingUserInputs}
+                            respondingRequestIds={respondingRequestIds}
+                            answers={activePendingDraftAnswers}
+                            questionIndex={activePendingQuestionIndex}
+                            onToggleOption={onSelectActivePendingUserInputOption}
+                            onAdvance={onAdvanceActivePendingUserInput}
+                          />
+                        </div>
+                      ) : showPlanFollowUpPrompt && activeProposedPlan ? (
+                        <div className="rounded-t-[19px] border-b border-border/65 bg-muted/20">
+                          <ComposerPlanFollowUpBanner
+                            key={activeProposedPlan.id}
+                            planTitle={proposedPlanTitle(activeProposedPlan.planMarkdown) ?? null}
+                          />
+                        </div>
+                      ) : null}
                       <div
-                        ref={composerFooterLeadingRef}
                         className={cn(
-                          "flex min-w-0 flex-1 items-center",
-                          isComposerFooterCompact
-                            ? "gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-                            : "gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:min-w-max sm:overflow-visible",
+                          "relative px-3 pb-2 sm:px-4",
+                          hasComposerHeader ? "pt-2.5 sm:pt-3" : "pt-3.5 sm:pt-4",
                         )}
                       >
-                        {/* Provider/model picker */}
-                        <ProviderModelPicker
-                          compact={isComposerFooterCompact}
-                          provider={selectedProvider}
-                          model={selectedModelForPickerWithCustomFallback}
-                          lockedProvider={lockedProvider}
-                          providers={providerStatuses}
-                          modelOptionsByProvider={modelOptionsByProvider}
-                          {...(composerProviderState.modelPickerIconClassName
-                            ? {
-                                activeProviderIconClassName:
-                                  composerProviderState.modelPickerIconClassName,
-                              }
-                            : {})}
-                          onProviderModelChange={onProviderModelSelect}
+                        {composerMenuOpen && !isComposerApprovalState && (
+                          <div className="absolute inset-x-0 bottom-full z-20 mb-2 px-1">
+                            <ComposerCommandMenu
+                              items={composerMenuItems}
+                              resolvedTheme={resolvedTheme}
+                              isLoading={isComposerMenuLoading}
+                              triggerKind={composerTriggerKind}
+                              activeItemId={activeComposerMenuItem?.id ?? null}
+                              onHighlightedItemChange={onComposerMenuItemHighlighted}
+                              onSelect={onSelectComposerItem}
+                            />
+                          </div>
+                        )}
+
+                        {!isComposerApprovalState &&
+                          pendingUserInputs.length === 0 &&
+                          composerImages.length > 0 && (
+                            <div className="mb-3 flex flex-wrap gap-2">
+                              {composerImages.map((image) => (
+                                <div
+                                  key={image.id}
+                                  className="relative h-16 w-16 overflow-hidden rounded-lg border border-border/80 bg-background"
+                                >
+                                  {image.previewUrl ? (
+                                    <button
+                                      type="button"
+                                      className="h-full w-full cursor-zoom-in"
+                                      aria-label={`Preview ${image.name}`}
+                                      onClick={() => {
+                                        const preview = buildExpandedImagePreview(
+                                          composerImages,
+                                          image.id,
+                                        );
+                                        if (!preview) return;
+                                        setExpandedImage(preview);
+                                      }}
+                                    >
+                                      <img
+                                        src={image.previewUrl}
+                                        alt={image.name}
+                                        className="h-full w-full object-cover"
+                                      />
+                                    </button>
+                                  ) : (
+                                    <div className="flex h-full w-full items-center justify-center px-1 text-center text-[10px] text-muted-foreground/70">
+                                      {image.name}
+                                    </div>
+                                  )}
+                                  {nonPersistedComposerImageIdSet.has(image.id) && (
+                                    <Tooltip>
+                                      <TooltipTrigger
+                                        render={
+                                          <span
+                                            role="img"
+                                            aria-label="Draft attachment may not persist"
+                                            className="absolute left-1 top-1 inline-flex items-center justify-center rounded bg-background/85 p-0.5 text-amber-600"
+                                          >
+                                            <CircleAlertIcon className="size-3" />
+                                          </span>
+                                        }
+                                      />
+                                      <TooltipPopup
+                                        side="top"
+                                        className="max-w-64 whitespace-normal leading-tight"
+                                      >
+                                        Draft attachment could not be saved locally and may be lost
+                                        on navigation.
+                                      </TooltipPopup>
+                                    </Tooltip>
+                                  )}
+                                  <Button
+                                    variant="ghost"
+                                    size="icon-xs"
+                                    className="absolute right-1 top-1 bg-background/80 hover:bg-background/90"
+                                    onClick={() => removeComposerImage(image.id)}
+                                    aria-label={`Remove ${image.name}`}
+                                  >
+                                    <XIcon />
+                                  </Button>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        <ComposerPromptEditor
+                          ref={composerEditorRef}
+                          value={
+                            isComposerApprovalState
+                              ? ""
+                              : activePendingProgress
+                                ? activePendingProgress.customAnswer
+                                : prompt
+                          }
+                          cursor={composerCursor}
+                          terminalContexts={
+                            !isComposerApprovalState && pendingUserInputs.length === 0
+                              ? composerTerminalContexts
+                              : []
+                          }
+                          onRemoveTerminalContext={removeComposerTerminalContextFromDraft}
+                          onChange={onPromptChange}
+                          onCommandKeyDown={onComposerCommandKey}
+                          onPaste={onComposerPaste}
+                          placeholder={
+                            isComposerApprovalState
+                              ? (activePendingApproval?.detail ??
+                                "Resolve this approval request to continue")
+                              : activePendingProgress
+                                ? "Type your own answer, or leave this blank to use the selected option"
+                                : showPlanFollowUpPrompt && activeProposedPlan
+                                  ? "Add feedback to refine the plan, or leave this blank to implement it"
+                                  : phase === "disconnected"
+                                    ? "Ask for follow-up changes or attach images"
+                                    : "Ask anything, @tag files/folders, or use / to show available commands"
+                          }
+                          disabled={isConnecting || isComposerApprovalState}
                         />
+                      </div>
 
-                        {isComposerFooterCompact ? (
-                          <CompactComposerControlsMenu
-                            activePlan={Boolean(
-                              activePlan || sidebarProposedPlan || planSidebarOpen,
+                      {/* Bottom toolbar */}
+                      {activePendingApproval ? (
+                        <div className="flex items-center justify-end gap-2 px-2.5 pb-2.5 sm:px-3 sm:pb-3">
+                          <ComposerPendingApprovalActions
+                            requestId={activePendingApproval.requestId}
+                            isResponding={respondingRequestIds.includes(
+                              activePendingApproval.requestId,
                             )}
-                            interactionMode={interactionMode}
-                            planSidebarOpen={planSidebarOpen}
-                            runtimeMode={runtimeMode}
-                            traitsMenuContent={providerTraitsMenuContent}
-                            onToggleInteractionMode={toggleInteractionMode}
-                            onTogglePlanSidebar={togglePlanSidebar}
-                            onToggleRuntimeMode={toggleRuntimeMode}
+                            onRespondToApproval={onRespondToApproval}
                           />
-                        ) : (
-                          <>
-                            {providerTraitsPicker ? (
+                        </div>
+                      ) : (
+                        <div
+                          ref={composerFooterRef}
+                          data-chat-composer-footer="true"
+                          data-chat-composer-footer-compact={
+                            isComposerFooterCompact ? "true" : "false"
+                          }
+                          className={cn(
+                            "flex min-w-0 flex-nowrap items-center justify-between gap-2 overflow-hidden px-2.5 pb-2.5 sm:px-3 sm:pb-3",
+                            isComposerFooterCompact ? "gap-1.5" : "gap-2 sm:gap-0",
+                          )}
+                        >
+                          <div
+                            ref={composerFooterLeadingRef}
+                            className={cn(
+                              "flex min-w-0 flex-1 items-center",
+                              isComposerFooterCompact
+                                ? "gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+                                : "gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:min-w-max sm:overflow-visible",
+                            )}
+                          >
+                            {/* Provider/model picker */}
+                            <ProviderModelPicker
+                              compact={isComposerFooterCompact}
+                              provider={selectedProvider}
+                              model={selectedModelForPickerWithCustomFallback}
+                              lockedProvider={lockedProvider}
+                              providers={providerStatuses}
+                              modelOptionsByProvider={modelOptionsByProvider}
+                              {...(composerProviderState.modelPickerIconClassName
+                                ? {
+                                    activeProviderIconClassName:
+                                      composerProviderState.modelPickerIconClassName,
+                                  }
+                                : {})}
+                              onProviderModelChange={onProviderModelSelect}
+                            />
+
+                            {isComposerFooterCompact ? (
+                              <CompactComposerControlsMenu
+                                activePlan={Boolean(
+                                  activePlan || sidebarProposedPlan || planSidebarOpen,
+                                )}
+                                interactionMode={interactionMode}
+                                planSidebarOpen={planSidebarOpen}
+                                runtimeMode={runtimeMode}
+                                traitsMenuContent={providerTraitsMenuContent}
+                                onToggleInteractionMode={toggleInteractionMode}
+                                onTogglePlanSidebar={togglePlanSidebar}
+                                onToggleRuntimeMode={toggleRuntimeMode}
+                              />
+                            ) : (
                               <>
+                                {providerTraitsPicker ? (
+                                  <>
+                                    <Separator
+                                      orientation="vertical"
+                                      className="mx-0.5 hidden h-4 sm:block"
+                                    />
+                                    {providerTraitsPicker}
+                                  </>
+                                ) : null}
+
                                 <Separator
                                   orientation="vertical"
                                   className="mx-0.5 hidden h-4 sm:block"
                                 />
-                                {providerTraitsPicker}
-                              </>
-                            ) : null}
 
-                            <Separator
-                              orientation="vertical"
-                              className="mx-0.5 hidden h-4 sm:block"
-                            />
-
-                            <Button
-                              variant="ghost"
-                              className="shrink-0 whitespace-nowrap px-2 text-muted-foreground/70 hover:text-foreground/80 sm:px-3"
-                              size="sm"
-                              type="button"
-                              onClick={toggleInteractionMode}
-                              title={
-                                interactionMode === "plan"
-                                  ? "Plan mode — click to return to normal build mode"
-                                  : "Default mode — click to enter plan mode"
-                              }
-                            >
-                              <BotIcon />
-                              <span className="sr-only sm:not-sr-only">
-                                {interactionMode === "plan" ? "Plan" : "Build"}
-                              </span>
-                            </Button>
-
-                            <Separator
-                              orientation="vertical"
-                              className="mx-0.5 hidden h-4 sm:block"
-                            />
-
-                            <Button
-                              variant="ghost"
-                              className="shrink-0 whitespace-nowrap px-2 text-muted-foreground/70 hover:text-foreground/80 sm:px-3"
-                              size="sm"
-                              type="button"
-                              onClick={() =>
-                                void handleRuntimeModeChange(
-                                  runtimeMode === "full-access"
-                                    ? "approval-required"
-                                    : "full-access",
-                                )
-                              }
-                              title={
-                                runtimeMode === "full-access"
-                                  ? "Full access — click to require approvals"
-                                  : "Approval required — click for full access"
-                              }
-                            >
-                              {runtimeMode === "full-access" ? <LockOpenIcon /> : <LockIcon />}
-                              <span className="sr-only sm:not-sr-only">
-                                {runtimeMode === "full-access" ? "Full access" : "Supervised"}
-                              </span>
-                            </Button>
-
-                            {activePlan || sidebarProposedPlan || planSidebarOpen ? (
-                              <>
-                                <Separator
-                                  orientation="vertical"
-                                  className="mx-0.5 hidden h-4 sm:block"
-                                />
                                 <Button
                                   variant="ghost"
-                                  className={cn(
-                                    "shrink-0 whitespace-nowrap px-2 sm:px-3",
-                                    planSidebarOpen
-                                      ? "text-blue-400 hover:text-blue-300"
-                                      : "text-muted-foreground/70 hover:text-foreground/80",
-                                  )}
+                                  className="shrink-0 whitespace-nowrap px-2 text-muted-foreground/70 hover:text-foreground/80 sm:px-3"
                                   size="sm"
                                   type="button"
-                                  onClick={togglePlanSidebar}
+                                  onClick={toggleInteractionMode}
                                   title={
-                                    planSidebarOpen ? "Hide plan sidebar" : "Show plan sidebar"
+                                    interactionMode === "plan"
+                                      ? "Plan mode — click to return to normal build mode"
+                                      : "Default mode — click to enter plan mode"
                                   }
                                 >
-                                  <ListTodoIcon />
-                                  <span className="sr-only sm:not-sr-only">Plan</span>
+                                  <BotIcon />
+                                  <span className="sr-only sm:not-sr-only">
+                                    {interactionMode === "plan" ? "Plan" : "Build"}
+                                  </span>
                                 </Button>
-                              </>
-                            ) : null}
-                          </>
-                        )}
-                      </div>
 
-                      {/* Right side: send / stop button */}
-                      <div
-                        ref={composerFooterActionsRef}
-                        data-chat-composer-actions="right"
-                        data-chat-composer-primary-actions-compact={
-                          isComposerPrimaryActionsCompact ? "true" : "false"
-                        }
-                        className="flex shrink-0 flex-nowrap items-center justify-end gap-2"
-                      >
-                        {activeContextWindow ? (
-                          <ContextWindowMeter usage={activeContextWindow} />
-                        ) : null}
-                        {isPreparingWorktree ? (
-                          <span className="text-muted-foreground/70 text-xs">
-                            Preparing worktree...
-                          </span>
-                        ) : null}
-                        <ComposerPrimaryActions
-                          compact={isComposerPrimaryActionsCompact}
-                          pendingAction={
-                            activePendingProgress
-                              ? {
-                                  questionIndex: activePendingProgress.questionIndex,
-                                  isLastQuestion: activePendingProgress.isLastQuestion,
-                                  canAdvance: activePendingProgress.canAdvance,
-                                  isResponding: activePendingIsResponding,
-                                  isComplete: Boolean(activePendingResolvedAnswers),
-                                }
-                              : null
-                          }
-                          isRunning={phase === "running"}
-                          showPlanFollowUpPrompt={
-                            pendingUserInputs.length === 0 && showPlanFollowUpPrompt
-                          }
-                          promptHasText={prompt.trim().length > 0}
-                          isSendBusy={isSendBusy}
-                          isConnecting={isConnecting}
-                          isPreparingWorktree={isPreparingWorktree}
-                          hasSendableContent={composerSendState.hasSendableContent}
-                          onPreviousPendingQuestion={onPreviousActivePendingUserInputQuestion}
-                          onInterrupt={() => void onInterrupt()}
-                          onImplementPlanInNewThread={() => void onImplementPlanInNewThread()}
-                        />
-                      </div>
+                                <Separator
+                                  orientation="vertical"
+                                  className="mx-0.5 hidden h-4 sm:block"
+                                />
+
+                                <Button
+                                  variant="ghost"
+                                  className="shrink-0 whitespace-nowrap px-2 text-muted-foreground/70 hover:text-foreground/80 sm:px-3"
+                                  size="sm"
+                                  type="button"
+                                  onClick={() =>
+                                    void handleRuntimeModeChange(
+                                      runtimeMode === "full-access"
+                                        ? "approval-required"
+                                        : "full-access",
+                                    )
+                                  }
+                                  title={
+                                    runtimeMode === "full-access"
+                                      ? "Full access — click to require approvals"
+                                      : "Approval required — click for full access"
+                                  }
+                                >
+                                  {runtimeMode === "full-access" ? <LockOpenIcon /> : <LockIcon />}
+                                  <span className="sr-only sm:not-sr-only">
+                                    {runtimeMode === "full-access" ? "Full access" : "Supervised"}
+                                  </span>
+                                </Button>
+
+                                {activePlan || sidebarProposedPlan || planSidebarOpen ? (
+                                  <>
+                                    <Separator
+                                      orientation="vertical"
+                                      className="mx-0.5 hidden h-4 sm:block"
+                                    />
+                                    <Button
+                                      variant="ghost"
+                                      className={cn(
+                                        "shrink-0 whitespace-nowrap px-2 sm:px-3",
+                                        planSidebarOpen
+                                          ? "text-blue-400 hover:text-blue-300"
+                                          : "text-muted-foreground/70 hover:text-foreground/80",
+                                      )}
+                                      size="sm"
+                                      type="button"
+                                      onClick={togglePlanSidebar}
+                                      title={
+                                        planSidebarOpen ? "Hide plan sidebar" : "Show plan sidebar"
+                                      }
+                                    >
+                                      <ListTodoIcon />
+                                      <span className="sr-only sm:not-sr-only">Plan</span>
+                                    </Button>
+                                  </>
+                                ) : null}
+                              </>
+                            )}
+                          </div>
+
+                          {/* Right side: send / stop button */}
+                          <div
+                            ref={composerFooterActionsRef}
+                            data-chat-composer-actions="right"
+                            data-chat-composer-primary-actions-compact={
+                              isComposerPrimaryActionsCompact ? "true" : "false"
+                            }
+                            className="flex shrink-0 flex-nowrap items-center justify-end gap-2"
+                          >
+                            {activeContextWindow ? (
+                              <ContextWindowMeter usage={activeContextWindow} />
+                            ) : null}
+                            {isPreparingWorktree ? (
+                              <span className="text-muted-foreground/70 text-xs">
+                                Preparing worktree...
+                              </span>
+                            ) : null}
+                            <ComposerPrimaryActions
+                              compact={isComposerPrimaryActionsCompact}
+                              pendingAction={
+                                activePendingProgress
+                                  ? {
+                                      questionIndex: activePendingProgress.questionIndex,
+                                      isLastQuestion: activePendingProgress.isLastQuestion,
+                                      canAdvance: activePendingProgress.canAdvance,
+                                      isResponding: activePendingIsResponding,
+                                      isComplete: Boolean(activePendingResolvedAnswers),
+                                    }
+                                  : null
+                              }
+                              isRunning={phase === "running"}
+                              showPlanFollowUpPrompt={
+                                pendingUserInputs.length === 0 && showPlanFollowUpPrompt
+                              }
+                              promptHasText={prompt.trim().length > 0}
+                              isSendBusy={isSendBusy}
+                              isConnecting={isConnecting}
+                              isPreparingWorktree={isPreparingWorktree}
+                              hasSendableContent={composerSendState.hasSendableContent}
+                              onPreviousPendingQuestion={onPreviousActivePendingUserInputQuestion}
+                              onInterrupt={() => void onInterrupt()}
+                              onImplementPlanInNewThread={() => void onImplementPlanInNewThread()}
+                            />
+                          </div>
+                        </div>
+                      )}
                     </div>
-                  )}
-                </div>
+                  </div>
+                </form>
               </div>
-            </form>
-          </div>
+            </>
+          )}
 
           {isGitRepo && (
             <BranchToolbar
@@ -4829,7 +5158,77 @@ export default function ChatView(props: ChatViewProps) {
         {/* end chat column */}
 
         {/* Plan sidebar */}
-        {planSidebarOpen ? (
+        {browserPanelOpen ? (
+          <div className="min-h-0 w-[min(42vw,560px)] min-w-[320px] border-l border-border">
+            <BrowserPanel
+              state={browserState}
+              activeTab={activeBrowserTab}
+              inputValue={browserState.inputValue}
+              focusRequestId={browserState.focusRequestId}
+              onInputChange={handleBrowserInputChange}
+              onCreateTab={handleCreateBrowserTab}
+              onActivateTab={handleActivateBrowserTab}
+              onCloseTab={handleCloseBrowserTab}
+              onSubmit={handleSubmitBrowser}
+              onBack={() => {
+                if (!browserState.activeTabId) {
+                  return;
+                }
+                void window.desktopBridge?.browserGoBack?.({
+                  threadId,
+                  tabId: browserState.activeTabId,
+                });
+              }}
+              onForward={() => {
+                if (!browserState.activeTabId) {
+                  return;
+                }
+                void window.desktopBridge?.browserGoForward?.({
+                  threadId,
+                  tabId: browserState.activeTabId,
+                });
+              }}
+              onReload={() => {
+                if (!browserState.activeTabId) {
+                  return;
+                }
+                void window.desktopBridge?.browserReload?.({
+                  threadId,
+                  tabId: browserState.activeTabId,
+                });
+              }}
+              onOpenExternal={() => {
+                if (!activeBrowserTab?.url || activeBrowserTab.url === "about:blank") {
+                  return;
+                }
+                void window.desktopBridge?.openExternal(activeBrowserTab.url);
+              }}
+              cookieManager={
+                browserCookieManager.isAvailable ? (
+                  <BrowserCookieManager
+                    availableSources={browserCookieManager.availableSources}
+                    selectedSourceId={browserCookieManager.selectedSourceId}
+                    availableProfiles={browserCookieManager.availableProfiles}
+                    selectedProfileId={browserCookieManager.selectedProfileId}
+                    sourceSearch={browserCookieManager.sourceSearch}
+                    sourceDomains={browserCookieManager.sourceDomains}
+                    sessionCookies={browserCookieManager.sessionCookies}
+                    isLoadingSources={browserCookieManager.isLoadingSources}
+                    isLoadingDomains={browserCookieManager.isLoadingDomains}
+                    isImporting={browserCookieManager.isImporting}
+                    isRemoving={browserCookieManager.isRemoving}
+                    onSourceChange={browserCookieManager.onSourceChange}
+                    onProfileChange={browserCookieManager.onProfileChange}
+                    onSearchChange={browserCookieManager.onSearchChange}
+                    onImportDomain={browserCookieManager.onImportDomain}
+                    onRemoveDomain={browserCookieManager.onRemoveDomain}
+                  />
+                ) : null
+              }
+              viewportRef={handleBrowserViewportRef}
+            />
+          </div>
+        ) : planSidebarOpen ? (
           <PlanSidebar
             activePlan={activePlan}
             activeProposedPlan={sidebarProposedPlan}

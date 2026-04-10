@@ -56,7 +56,12 @@ export interface WsRpcClient {
     readonly onEvent: RpcStreamMethod<typeof WS_METHODS.subscribeTerminalEvents>;
   };
   readonly projects: {
+    readonly listEntries: RpcUnaryMethod<typeof WS_METHODS.projectsListEntries>;
+    readonly readFile: RpcUnaryMethod<typeof WS_METHODS.projectsReadFile>;
     readonly searchEntries: RpcUnaryMethod<typeof WS_METHODS.projectsSearchEntries>;
+    readonly getDocumentSymbols: RpcUnaryMethod<typeof WS_METHODS.projectsGetDocumentSymbols>;
+    readonly getHover: RpcUnaryMethod<typeof WS_METHODS.projectsGetHover>;
+    readonly getDefinitions: RpcUnaryMethod<typeof WS_METHODS.projectsGetDefinitions>;
     readonly writeFile: RpcUnaryMethod<typeof WS_METHODS.projectsWriteFile>;
   };
   readonly shell: {
@@ -132,8 +137,18 @@ export function createWsRpcClient(transport: WsTransport): WsRpcClient {
         ),
     },
     projects: {
+      listEntries: (input) =>
+        transport.request((client) => client[WS_METHODS.projectsListEntries](input)),
+      readFile: (input) =>
+        transport.request((client) => client[WS_METHODS.projectsReadFile](input)),
       searchEntries: (input) =>
         transport.request((client) => client[WS_METHODS.projectsSearchEntries](input)),
+      getDocumentSymbols: (input) =>
+        transport.request((client) => client[WS_METHODS.projectsGetDocumentSymbols](input)),
+      getHover: (input) =>
+        transport.request((client) => client[WS_METHODS.projectsGetHover](input)),
+      getDefinitions: (input) =>
+        transport.request((client) => client[WS_METHODS.projectsGetDefinitions](input)),
       writeFile: (input) =>
         transport.request((client) => client[WS_METHODS.projectsWriteFile](input)),
     },
