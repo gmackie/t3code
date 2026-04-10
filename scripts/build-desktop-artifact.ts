@@ -10,6 +10,7 @@ import serverPackageJson from "../apps/server/package.json" with { type: "json" 
 import { getDesktopAppDisplayName } from "../apps/desktop/src/appBranding.js";
 
 import { BRAND_ASSET_PATHS } from "./lib/brand-assets.ts";
+import { resolveDesktopAppDisplayName } from "./lib/desktopAppIdentity.ts";
 import { resolveCatalogDependencies } from "./lib/resolve-catalog.ts";
 
 import * as NodeRuntime from "@effect/platform-node/NodeRuntime";
@@ -599,6 +600,13 @@ const buildDesktopArtifact = Effect.fn("buildDesktopArtifact")(function* (
 
   const appVersion = options.version ?? serverPackageJson.version;
   const commitHash = resolveGitCommitHash(repoRoot);
+  const desktopProductName = resolveDesktopAppDisplayName({
+    cwd: repoRoot,
+    baseDisplayName: getDesktopAppDisplayName({
+      isDevelopment: false,
+      platform: options.platform,
+    }),
+  });
   const mkdir = options.keepStage ? fs.makeTempDirectory : fs.makeTempDirectoryScoped;
   const stageRoot = yield* mkdir({
     prefix: `t3code-desktop-${options.platform}-stage-`,
@@ -666,10 +674,7 @@ const buildDesktopArtifact = Effect.fn("buildDesktopArtifact")(function* (
     build: yield* createBuildConfig(
       options.platform,
       options.target,
-      getDesktopAppDisplayName({
-        isDevelopment: false,
-        platform: options.platform,
-      }),
+      desktopProductName,
       options.signed,
       options.mockUpdates,
       options.mockUpdateServerPort,
