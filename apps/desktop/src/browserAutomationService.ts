@@ -121,6 +121,7 @@ export function createBrowserAutomationService(
           case "wait":
             await browserManager.wait({
               ...target,
+              ...(request.target ? { target: request.target } : {}),
               ...(request.selector ? { selector: request.selector } : {}),
               ...(request.text ? { text: request.text } : {}),
               ...(request.urlIncludes ? { urlIncludes: request.urlIncludes } : {}),

@@ -30,6 +30,7 @@ export interface BrowserAutomationTypeRequest {
 export interface BrowserAutomationWaitRequest {
   type: "wait";
   threadId: string;
+  target?: BrowserAutomationTarget;
   selector?: string;
   text?: string;
   urlIncludes?: string;

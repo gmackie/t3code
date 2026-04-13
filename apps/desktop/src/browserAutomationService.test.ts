@@ -119,6 +119,37 @@ describe("createBrowserAutomationService", () => {
     });
   });
 
+  it("passes semantic wait target hints through to the browser manager", async () => {
+    const browserManager = createBrowserManagerStub();
+    const service = createBrowserAutomationService(browserManager);
+
+    await expect(
+      service.handleRequest({
+        type: "wait",
+        threadId: "thread-1",
+        target: {
+          role: "button",
+          name: "Continue",
+          index: 1,
+        },
+        timeoutMs: 2500,
+      } as any),
+    ).resolves.toMatchObject({
+      message: "Wait condition satisfied.",
+    });
+
+    expect(browserManager.wait).toHaveBeenCalledWith({
+      threadId: expect.anything(),
+      tabId: "codex-browser",
+      target: {
+        role: "button",
+        name: "Continue",
+        index: 1,
+      },
+      timeoutMs: 2500,
+    });
+  });
+
   it("returns screenshot and diagnostics context when an action fails", async () => {
     const browserManager = createBrowserManagerStub();
     vi.mocked(browserManager.click).mockRejectedValueOnce(new Error("Element not found"));

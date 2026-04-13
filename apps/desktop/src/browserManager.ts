@@ -42,6 +42,7 @@ export interface BrowserManager {
   ) => Promise<void>;
   wait: (
     input: BrowserTabTargetInput & {
+      target?: BrowserAutomationTarget;
       selector?: string;
       text?: string;
       urlIncludes?: string;
@@ -714,10 +715,21 @@ export function createBrowserManager(options: BrowserManagerOptions): BrowserMan
       const record = ensureLiveRecord(input);
       const matched = await executeRecordScript<boolean>(
         record,
-        `({ selector, text, urlIncludes, titleIncludes, timeoutMs }) => {
+        `({ target, selector, text, urlIncludes, titleIncludes, timeoutMs }) => {
+          ${BROWSER_TARGET_HELPERS_SOURCE}
           const deadline = Date.now() + timeoutMs;
           return new Promise((resolve) => {
             const tick = () => {
+              const targetMatched = target
+                ? (() => {
+                    try {
+                      resolveTarget(target, { editableOnly: false });
+                      return true;
+                    } catch {
+                      return false;
+                    }
+                  })()
+                : false;
               const selectorMatched = selector ? document.querySelector(selector) !== null : false;
               const textMatched =
                 text && document.body ? document.body.innerText.includes(text) : false;
@@ -727,8 +739,15 @@ export function createBrowserManager(options: BrowserManagerOptions): BrowserMan
               const titleMatched = titleIncludes
                 ? document.title.includes(titleIncludes)
                 : false;
-              const noPredicate = !selector && !text && !urlIncludes && !titleIncludes;
-              if (selectorMatched || textMatched || urlMatched || titleMatched || noPredicate) {
+              const noPredicate = !target && !selector && !text && !urlIncludes && !titleIncludes;
+              if (
+                targetMatched ||
+                selectorMatched ||
+                textMatched ||
+                urlMatched ||
+                titleMatched ||
+                noPredicate
+              ) {
                 resolve(true);
                 return;
               }
@@ -742,6 +761,7 @@ export function createBrowserManager(options: BrowserManagerOptions): BrowserMan
           });
         }`,
         {
+          target: input.target,
           selector: input.selector,
           text: input.text,
           urlIncludes: input.urlIncludes,

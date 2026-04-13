@@ -120,6 +120,15 @@ export const CODEX_IN_APP_BROWSER_DYNAMIC_TOOLS: CodexDynamicToolSpec[] = [
         threadId: SHARED_THREAD_ID_PROPERTY,
         selector: { type: "string", description: "CSS selector to wait for." },
         text: { type: "string", description: "Visible text to wait for." },
+        role: {
+          type: "string",
+          description: "Accessible role to wait for, such as button or link.",
+        },
+        name: { type: "string", description: "Accessible name to wait for on the target element." },
+        index: {
+          type: "number",
+          description: "Zero-based match index when multiple role/name matches exist.",
+        },
         urlIncludes: {
           type: "string",
           description: "Substring that should appear in the current URL.",
@@ -261,6 +270,7 @@ function toBrowserAutomationRequest(params: CodexDynamicToolCallParams): Browser
       };
     }
     case "browser.wait": {
+      const target = readBrowserTarget(args, { allowText: false });
       const selector = readString(args, "selector");
       const text = readString(args, "text");
       const urlIncludes = readString(args, "urlIncludes");
@@ -269,6 +279,7 @@ function toBrowserAutomationRequest(params: CodexDynamicToolCallParams): Browser
       return {
         type: "wait",
         threadId: params.threadId,
+        ...(target ? { target } : {}),
         ...(selector ? { selector } : {}),
         ...(text ? { text } : {}),
         ...(urlIncludes ? { urlIncludes } : {}),
