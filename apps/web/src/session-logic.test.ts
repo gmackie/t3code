@@ -920,6 +920,33 @@ describe("deriveWorkLogEntries", () => {
     });
   });
 
+  it("derives readable browser tool titles from dynamic tool metadata", () => {
+    const activities: OrchestrationThreadActivity[] = [
+      makeActivity({
+        id: "browser-tool-complete",
+        createdAt: "2026-02-23T00:00:03.000Z",
+        kind: "tool.completed",
+        summary: "Tool call completed",
+        payload: {
+          itemType: "dynamic_tool_call",
+          title: "Tool call",
+          detail: 'browser.navigate: {"url":"https://example.com/dashboard"}',
+          data: {
+            toolName: "browser.navigate",
+          },
+        },
+      }),
+    ];
+
+    const [entry] = deriveWorkLogEntries(activities, undefined);
+
+    expect(entry).toMatchObject({
+      label: "Tool call completed",
+      itemType: "dynamic_tool_call",
+      toolTitle: "Browser Navigate",
+    });
+  });
+
   it("keeps separate tool entries when an identical call starts after the prior one completed", () => {
     const activities: OrchestrationThreadActivity[] = [
       makeActivity({

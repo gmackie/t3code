@@ -822,8 +822,39 @@ function extractToolCommand(payload: Record<string, unknown> | null): {
   };
 }
 
+function humanizeDynamicToolName(value: string): string {
+  const normalized = value.trim();
+  if (normalized.length === 0) {
+    return normalized;
+  }
+  return normalized
+    .split(/[.:/_-]+/)
+    .filter((part) => part.length > 0)
+    .map((part) => `${part.charAt(0).toUpperCase()}${part.slice(1)}`)
+    .join(" ");
+}
+
 function extractToolTitle(payload: Record<string, unknown> | null): string | null {
-  return asTrimmedString(payload?.title);
+  const title = asTrimmedString(payload?.title);
+  if (title && title !== "Tool call") {
+    return title;
+  }
+
+  if (payload?.itemType !== "dynamic_tool_call") {
+    return title;
+  }
+
+  const data = asRecord(payload.data);
+  const item = asRecord(data?.item);
+  const toolName =
+    asTrimmedString(data?.toolName) ??
+    asTrimmedString(item?.toolName) ??
+    asTrimmedString(item?.name) ??
+    asTrimmedString(payload.toolName);
+  if (!toolName) {
+    return title;
+  }
+  return humanizeDynamicToolName(toolName);
 }
 
 function stripTrailingExitCode(value: string): {
