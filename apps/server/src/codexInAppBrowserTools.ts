@@ -1,4 +1,8 @@
-import type { BrowserAutomationRequest, BrowserAutomationResult } from "@t3tools/contracts";
+import type {
+  BrowserAutomationRequest,
+  BrowserAutomationResult,
+  BrowserAutomationTarget,
+} from "@t3tools/contracts";
 import type { DesktopBrowserAutomationClient } from "./desktopBrowserAutomationClient";
 
 export interface CodexDynamicToolSpec {
@@ -60,27 +64,51 @@ export const CODEX_IN_APP_BROWSER_DYNAMIC_TOOLS: CodexDynamicToolSpec[] = [
   },
   {
     name: "browser.click",
-    description: "Click a visible element in the in-app browser using a CSS selector.",
+    description:
+      "Click a visible element in the in-app browser using a selector or semantic target.",
     inputSchema: objectSchema(
       {
         threadId: SHARED_THREAD_ID_PROPERTY,
         selector: { type: "string", description: "CSS selector for the target element." },
+        text: { type: "string", description: "Visible text to match on the target element." },
+        role: { type: "string", description: "Accessible role to match, such as button or link." },
+        name: { type: "string", description: "Accessible name to match for the target element." },
+        index: {
+          type: "number",
+          description: "Zero-based match index when multiple results exist.",
+        },
       },
-      ["selector"],
+      [],
       "Click an element in the current page.",
     ),
   },
   {
     name: "browser.type",
-    description: "Type into an element in the in-app browser using a CSS selector.",
+    description: "Type into an element in the in-app browser using a selector or semantic target.",
     inputSchema: objectSchema(
       {
         threadId: SHARED_THREAD_ID_PROPERTY,
         selector: { type: "string", description: "CSS selector for the editable element." },
+        role: {
+          type: "string",
+          description: "Accessible role to match for the editable element, such as textbox.",
+        },
+        name: {
+          type: "string",
+          description: "Accessible name to match for the editable element.",
+        },
+        index: {
+          type: "number",
+          description: "Zero-based match index when multiple results exist.",
+        },
         text: { type: "string", description: "Text to enter into the target element." },
         submit: { type: "boolean", description: "Whether to submit the closest form afterward." },
+        clear: {
+          type: "boolean",
+          description: "Whether to clear the current value before typing.",
+        },
       },
-      ["selector", "text"],
+      ["text"],
       "Type text into an element in the current page.",
     ),
   },
@@ -156,6 +184,27 @@ function readNumber(record: Record<string, unknown>, key: string): number | unde
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
 
+function readBrowserTarget(
+  record: Record<string, unknown>,
+  options: { allowText: boolean },
+): BrowserAutomationTarget | null {
+  const selector = readString(record, "selector");
+  const text = options.allowText ? readString(record, "text") : null;
+  const role = readString(record, "role");
+  const name = readString(record, "name");
+  const index = readNumber(record, "index");
+
+  const target: BrowserAutomationTarget = {
+    ...(selector ? { selector } : {}),
+    ...(text ? { text } : {}),
+    ...(role ? { role } : {}),
+    ...(name ? { name } : {}),
+    ...(index !== undefined ? { index } : {}),
+  };
+
+  return Object.keys(target).length > 0 ? target : null;
+}
+
 function toBrowserAutomationRequest(params: CodexDynamicToolCallParams): BrowserAutomationRequest {
   const args = readObject(params.arguments) ?? {};
 
@@ -172,29 +221,35 @@ function toBrowserAutomationRequest(params: CodexDynamicToolCallParams): Browser
       };
     }
     case "browser.click": {
-      const selector = readString(args, "selector");
-      if (!selector) {
-        throw new Error("browser.click requires a selector string.");
+      const target = readBrowserTarget(args, { allowText: true });
+      if (!target) {
+        throw new Error(
+          "browser.click requires at least one target hint such as selector, text, role, or name.",
+        );
       }
       return {
         type: "click",
         threadId: params.threadId,
-        selector,
+        target,
       };
     }
     case "browser.type": {
-      const selector = readString(args, "selector");
       const text = readString(args, "text");
       const submit = readBoolean(args, "submit");
-      if (!selector || text === null) {
-        throw new Error("browser.type requires selector and text strings.");
+      const clear = readBoolean(args, "clear");
+      const target = readBrowserTarget(args, { allowText: false });
+      if (!target || text === null) {
+        throw new Error(
+          "browser.type requires a text string and at least one target hint such as selector, role, or name.",
+        );
       }
       return {
         type: "type",
         threadId: params.threadId,
-        selector,
+        target,
         text,
         ...(submit !== undefined ? { submit } : {}),
+        ...(clear !== undefined ? { clear } : {}),
       };
     }
     case "browser.wait": {
@@ -252,7 +307,7 @@ export function createCodexInAppBrowserDynamicToolHandler(
       }
       return {
         contentItems,
-        success: true,
+        success: result.error === undefined,
       };
     } catch (error) {
       return {

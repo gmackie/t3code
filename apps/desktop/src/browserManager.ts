@@ -1,5 +1,6 @@
 import { WebContentsView, type BrowserWindow, type Rectangle } from "electron";
 import type {
+  BrowserAutomationTarget,
   BrowserClearThreadInput,
   BrowserEnsureTabInput,
   BrowserEvent,
@@ -30,9 +31,14 @@ export interface BrowserManager {
   ensureTab: (input: BrowserEnsureTabInput) => Promise<void>;
   claimAutomationControl: (input: BrowserTabTargetInput & { message: string }) => void;
   navigate: (input: BrowserNavigateInput) => Promise<void>;
-  click: (input: BrowserTabTargetInput & { selector: string }) => Promise<void>;
+  click: (input: BrowserTabTargetInput & { target: BrowserAutomationTarget }) => Promise<void>;
   typeText: (
-    input: BrowserTabTargetInput & { selector: string; text: string; submit?: boolean },
+    input: BrowserTabTargetInput & {
+      target: BrowserAutomationTarget;
+      text: string;
+      submit?: boolean;
+      clear?: boolean;
+    },
   ) => Promise<void>;
   wait: (
     input: BrowserTabTargetInput & {
@@ -97,6 +103,125 @@ function appendBounded(target: string[], value: string): void {
     target.shift();
   }
 }
+
+const BROWSER_TARGET_HELPERS_SOURCE = String.raw`
+  const normalizeTargetText = (value) =>
+    typeof value === "string" ? value.replace(/\s+/g, " ").trim().toLowerCase() : "";
+  const readVisibleText = (element) =>
+    normalizeTargetText(
+      "innerText" in element && typeof element.innerText === "string"
+        ? element.innerText
+        : (element.textContent ?? ""),
+    );
+  const readElementRole = (element) => {
+    const explicitRole = normalizeTargetText(element.getAttribute("role"));
+    if (explicitRole) return explicitRole;
+    const tagName = element.tagName.toLowerCase();
+    if (tagName === "button") return "button";
+    if (tagName === "a" && element.hasAttribute("href")) return "link";
+    if (tagName === "textarea") return "textbox";
+    if (tagName === "select") return "combobox";
+    if (tagName !== "input") return "";
+    const type = normalizeTargetText(element.getAttribute("type")) || "text";
+    if (type === "button" || type === "submit" || type === "reset") return "button";
+    if (type === "checkbox") return "checkbox";
+    if (type === "radio") return "radio";
+    return "textbox";
+  };
+  const readLabeledText = (element) => {
+    if ("labels" in element && Array.isArray(element.labels)) {
+      return normalizeTargetText(element.labels.map((label) => label.textContent ?? "").join(" "));
+    }
+    if ("labels" in element && element.labels) {
+      return normalizeTargetText(Array.from(element.labels).map((label) => label.textContent ?? "").join(" "));
+    }
+    return "";
+  };
+  const readAccessibleName = (element) => {
+    const ariaLabel = normalizeTargetText(element.getAttribute("aria-label"));
+    if (ariaLabel) return ariaLabel;
+    const labelledBy = element.getAttribute("aria-labelledby");
+    if (labelledBy) {
+      const text = labelledBy
+        .split(/\s+/)
+        .map((id) => document.getElementById(id)?.textContent ?? "")
+        .join(" ");
+      const normalized = normalizeTargetText(text);
+      if (normalized) return normalized;
+    }
+    const labeledText = readLabeledText(element);
+    if (labeledText) return labeledText;
+    const placeholder = normalizeTargetText(element.getAttribute("placeholder"));
+    if (placeholder) return placeholder;
+    const title = normalizeTargetText(element.getAttribute("title"));
+    if (title) return title;
+    return readVisibleText(element);
+  };
+  const isElementVisible = (element) => {
+    const style = window.getComputedStyle(element);
+    if (style.display === "none" || style.visibility === "hidden" || style.visibility === "collapse") {
+      return false;
+    }
+    return element.getClientRects().length > 0;
+  };
+  const isEditableElement = (element) =>
+    element instanceof HTMLInputElement ||
+    element instanceof HTMLTextAreaElement ||
+    (element instanceof HTMLElement && element.isContentEditable);
+  const describeTarget = (target) => {
+    if (normalizeTargetText(target?.selector)) {
+      return "selector " + String(target.selector);
+    }
+    const role = normalizeTargetText(target?.role);
+    const name = normalizeTargetText(target?.name);
+    const text = normalizeTargetText(target?.text);
+    const parts = [];
+    if (role) parts.push(role);
+    if (name) parts.push('"' + String(target.name).trim() + '"');
+    if (!name && text) parts.push('text "' + String(target.text).trim() + '"');
+    if (typeof target?.index === "number" && Number.isFinite(target.index) && target.index > 0) {
+      parts.push("#" + String(target.index));
+    }
+    return parts.length > 0 ? parts.join(" ") : "target";
+  };
+  const resolveTarget = (target, options) => {
+    const matchIndex =
+      typeof target?.index === "number" && Number.isFinite(target.index) && target.index >= 0
+        ? Math.floor(target.index)
+        : 0;
+    const selector = normalizeTargetText(target?.selector);
+    let candidates = [];
+    if (selector) {
+      candidates = Array.from(document.querySelectorAll(String(target.selector))).filter(
+        (element) => element instanceof HTMLElement,
+      );
+    } else {
+      candidates = Array.from(document.querySelectorAll("body *")).filter(
+        (element) => element instanceof HTMLElement && isElementVisible(element),
+      );
+      const role = normalizeTargetText(target?.role);
+      const name = normalizeTargetText(target?.name);
+      const text = normalizeTargetText(target?.text);
+      if (role) {
+        candidates = candidates.filter((element) => readElementRole(element) === role);
+      }
+      if (name) {
+        candidates = candidates.filter((element) => readAccessibleName(element).includes(name));
+      }
+      if (text) {
+        candidates = candidates.filter((element) => readVisibleText(element).includes(text));
+      }
+    }
+    if (options?.editableOnly) {
+      candidates = candidates.filter((element) => isEditableElement(element));
+    }
+    const element = candidates[matchIndex];
+    if (!(element instanceof HTMLElement)) {
+      throw new Error("Element not found for " + describeTarget(target));
+    }
+    return element;
+  };
+`;
 
 function statesEqual(left: BrowserTabRuntimeState, right: BrowserTabRuntimeState): boolean {
   return (
@@ -536,42 +661,35 @@ export function createBrowserManager(options: BrowserManagerOptions): BrowserMan
       const record = ensureLiveRecord(input);
       await executeRecordScript<void>(
         record,
-        `({ selector }) => {
-          const element = document.querySelector(selector);
-          if (!(element instanceof HTMLElement)) {
-            throw new Error(\`Element not found for selector: \${selector}\`);
-          }
+        `({ target }) => {
+          ${BROWSER_TARGET_HELPERS_SOURCE}
+          const element = resolveTarget(target, { editableOnly: false });
           element.scrollIntoView({ block: "center", inline: "center" });
           element.click();
         }`,
-        { selector: input.selector },
+        { target: input.target },
       );
     },
     typeText: async (input) => {
       const record = ensureLiveRecord(input);
       await executeRecordScript<void>(
         record,
-        `({ selector, text, submit }) => {
-          const element = document.querySelector(selector);
-          if (
-            !(element instanceof HTMLInputElement) &&
-            !(element instanceof HTMLTextAreaElement) &&
-            !(element instanceof HTMLElement && element.isContentEditable)
-          ) {
-            throw new Error(\`Element is not editable for selector: \${selector}\`);
-          }
-
+        `({ target, text, submit, clear }) => {
+          ${BROWSER_TARGET_HELPERS_SOURCE}
+          const element = resolveTarget(target, { editableOnly: true });
           element.scrollIntoView({ block: "center", inline: "center" });
           if (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement) {
             const descriptor = Object.getOwnPropertyDescriptor(
               Object.getPrototypeOf(element),
               "value",
             );
-            descriptor?.set?.call(element, text);
+            const nextValue = clear ? text : \`\${element.value ?? ""}\${text}\`;
+            descriptor?.set?.call(element, nextValue);
             element.dispatchEvent(new Event("input", { bubbles: true }));
             element.dispatchEvent(new Event("change", { bubbles: true }));
           } else {
-            element.textContent = text;
+            const nextValue = clear ? text : \`\${element.textContent ?? ""}\${text}\`;
+            element.textContent = nextValue;
             element.dispatchEvent(new InputEvent("input", { bubbles: true, data: text }));
           }
 
@@ -582,7 +700,12 @@ export function createBrowserManager(options: BrowserManagerOptions): BrowserMan
             }
           }
         }`,
-        { selector: input.selector, text: input.text, submit: input.submit ?? false },
+        {
+          target: input.target,
+          text: input.text,
+          submit: input.submit ?? false,
+          clear: input.clear ?? true,
+        },
       );
     },
     wait: async (input) => {

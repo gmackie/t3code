@@ -1,0 +1,120 @@
+import { describe, expect, it, vi } from "vitest";
+
+import { createBrowserAutomationService } from "./browserAutomationService";
+import type { BrowserManager } from "./browserManager";
+
+function createBrowserManagerStub(): BrowserManager {
+  return {
+    ensureTab: vi.fn(async () => {}),
+    claimAutomationControl: vi.fn(() => {}),
+    navigate: vi.fn(async () => {}),
+    click: vi.fn(async () => {}),
+    typeText: vi.fn(async () => {}),
+    wait: vi.fn(async () => {}),
+    inspect: vi.fn(async () => ({
+      url: "https://example.com",
+      title: "Example",
+      text: "Example page",
+    })),
+    screenshot: vi.fn(async () => "data:image/png;base64,AAAA"),
+    diagnostics: vi.fn(async () => ({
+      url: "https://example.com",
+      title: "Example",
+      consoleMessages: ["console exploded"],
+      networkErrors: ["GET https://example.com/api failed with 500"],
+    })),
+    goBack: vi.fn(async () => {}),
+    goForward: vi.fn(async () => {}),
+    reload: vi.fn(async () => {}),
+    closeTab: vi.fn(async () => {}),
+    syncHost: vi.fn(() => {}),
+    clearThread: vi.fn(() => {}),
+    destroyAll: vi.fn(() => {}),
+  };
+}
+
+describe("createBrowserAutomationService", () => {
+  it("passes semantic click targets through to the browser manager", async () => {
+    const browserManager = createBrowserManagerStub();
+    const service = createBrowserAutomationService(browserManager);
+
+    await expect(
+      service.handleRequest({
+        type: "click",
+        threadId: "thread-1",
+        target: {
+          role: "button",
+          name: "Continue",
+          index: 1,
+        },
+      } as any),
+    ).resolves.toMatchObject({
+      message: 'Clicked button "Continue"',
+    });
+
+    expect(browserManager.click).toHaveBeenCalledWith({
+      threadId: expect.anything(),
+      tabId: "codex-browser",
+      target: {
+        role: "button",
+        name: "Continue",
+        index: 1,
+      },
+    });
+  });
+
+  it("passes clear typing requests through to the browser manager", async () => {
+    const browserManager = createBrowserManagerStub();
+    const service = createBrowserAutomationService(browserManager);
+
+    await expect(
+      service.handleRequest({
+        type: "type",
+        threadId: "thread-1",
+        target: {
+          role: "textbox",
+          name: "Search",
+        },
+        text: "t3 code",
+        clear: true,
+      } as any),
+    ).resolves.toMatchObject({
+      message: 'Typed into textbox "Search"',
+    });
+
+    expect(browserManager.typeText).toHaveBeenCalledWith({
+      threadId: expect.anything(),
+      tabId: "codex-browser",
+      target: {
+        role: "textbox",
+        name: "Search",
+      },
+      text: "t3 code",
+      clear: true,
+    });
+  });
+
+  it("returns screenshot and diagnostics context when an action fails", async () => {
+    const browserManager = createBrowserManagerStub();
+    vi.mocked(browserManager.click).mockRejectedValueOnce(new Error("Element not found"));
+    const service = createBrowserAutomationService(browserManager);
+
+    await expect(
+      service.handleRequest({
+        type: "click",
+        threadId: "thread-1",
+        target: {
+          selector: "#missing",
+        },
+      }),
+    ).resolves.toMatchObject({
+      message: "Click failed: Element not found",
+      error: "Element not found",
+      url: "https://example.com",
+      title: "Example",
+      consoleMessages: ["console exploded"],
+      networkErrors: ["GET https://example.com/api failed with 500"],
+      screenshotDataUrl: "data:image/png;base64,AAAA",
+    });
+  });
+});

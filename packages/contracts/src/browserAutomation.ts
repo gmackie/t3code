@@ -1,3 +1,11 @@
+export interface BrowserAutomationTarget {
+  selector?: string;
+  text?: string;
+  role?: string;
+  name?: string;
+  index?: number;
+}
+
 export interface BrowserAutomationNavigateRequest {
   type: "navigate";
   threadId: string;
@@ -7,15 +15,16 @@ export interface BrowserAutomationNavigateRequest {
 export interface BrowserAutomationClickRequest {
   type: "click";
   threadId: string;
-  selector: string;
+  target: BrowserAutomationTarget;
 }
 
 export interface BrowserAutomationTypeRequest {
   type: "type";
   threadId: string;
-  selector: string;
+  target: BrowserAutomationTarget;
   text: string;
   submit?: boolean;
+  clear?: boolean;
 }
 
 export interface BrowserAutomationWaitRequest {
@@ -52,6 +61,7 @@ export type BrowserAutomationRequest =
 
 export interface BrowserAutomationResult {
   message: string;
+  error?: string;
   url?: string;
   title?: string | null;
   text?: string;
