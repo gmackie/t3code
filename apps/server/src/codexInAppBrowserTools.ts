@@ -145,10 +145,21 @@ export const CODEX_IN_APP_BROWSER_DYNAMIC_TOOLS: CodexDynamicToolSpec[] = [
   },
   {
     name: "browser.inspect",
-    description: "Read the current page URL, title, and a text snapshot from the in-app browser.",
+    description:
+      "Read the current page URL, title, text snapshot, and matching elements from the in-app browser.",
     inputSchema: objectSchema(
       {
         threadId: SHARED_THREAD_ID_PROPERTY,
+        selector: { type: "string", description: "CSS selector to inspect." },
+        role: {
+          type: "string",
+          description: "Accessible role to inspect, such as button or link.",
+        },
+        name: { type: "string", description: "Accessible name to inspect on the target element." },
+        index: {
+          type: "number",
+          description: "Zero-based match index when multiple role/name matches exist.",
+        },
       },
       [],
       "Inspect the current page state.",
@@ -287,8 +298,14 @@ function toBrowserAutomationRequest(params: CodexDynamicToolCallParams): Browser
         ...(timeoutMs !== undefined ? { timeoutMs } : {}),
       };
     }
-    case "browser.inspect":
-      return { type: "inspect", threadId: params.threadId };
+    case "browser.inspect": {
+      const target = readBrowserTarget(args, { allowText: false });
+      return {
+        type: "inspect",
+        threadId: params.threadId,
+        ...(target ? { target } : {}),
+      };
+    }
     case "browser.screenshot":
       return { type: "screenshot", threadId: params.threadId };
     case "browser.diagnostics":

@@ -134,7 +134,10 @@ export function createBrowserAutomationService(
           case "inspect":
             return {
               message: "Inspected current page.",
-              ...(await browserManager.inspect(target)),
+              ...(await browserManager.inspect({
+                ...target,
+                ...(request.target ? { target: request.target } : {}),
+              })),
             };
           case "screenshot":
             return {

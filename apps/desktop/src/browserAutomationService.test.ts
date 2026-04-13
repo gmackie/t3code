@@ -15,6 +15,15 @@ function createBrowserManagerStub(): BrowserManager {
       url: "https://example.com",
       title: "Example",
       text: "Example page",
+      loadingState: "complete" as const,
+      elements: [
+        {
+          role: "button",
+          name: "Continue",
+          text: "Continue",
+          disabled: false,
+        },
+      ],
     })),
     screenshot: vi.fn(async () => "data:image/png;base64,AAAA"),
     diagnostics: vi.fn(async () => ({
@@ -147,6 +156,44 @@ describe("createBrowserAutomationService", () => {
         index: 1,
       },
       timeoutMs: 2500,
+    });
+  });
+
+  it("passes semantic inspect targets through to the browser manager and returns structured elements", async () => {
+    const browserManager = createBrowserManagerStub();
+    const service = createBrowserAutomationService(browserManager);
+
+    await expect(
+      service.handleRequest({
+        type: "inspect",
+        threadId: "thread-1",
+        target: {
+          role: "button",
+          name: "Continue",
+          index: 1,
+        },
+      } as any),
+    ).resolves.toMatchObject({
+      message: "Inspected current page.",
+      loadingState: "complete",
+      elements: [
+        {
+          role: "button",
+          name: "Continue",
+          text: "Continue",
+          disabled: false,
+        },
+      ],
+    });
+
+    expect(browserManager.inspect).toHaveBeenCalledWith({
+      threadId: expect.anything(),
+      tabId: "codex-browser",
+      target: {
+        role: "button",
+        name: "Continue",
+        index: 1,
+      },
     });
   });
 

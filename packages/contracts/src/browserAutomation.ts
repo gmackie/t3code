@@ -38,9 +38,17 @@ export interface BrowserAutomationWaitRequest {
   timeoutMs?: number;
 }
 
+export interface BrowserAutomationElementSummary {
+  role: string;
+  name: string;
+  text?: string;
+  disabled?: boolean;
+}
+
 export interface BrowserAutomationInspectRequest {
   type: "inspect";
   threadId: string;
+  target?: BrowserAutomationTarget;
 }
 
 export interface BrowserAutomationScreenshotRequest {
@@ -68,6 +76,8 @@ export interface BrowserAutomationResult {
   url?: string;
   title?: string | null;
   text?: string;
+  loadingState?: "loading" | "interactive" | "complete";
+  elements?: BrowserAutomationElementSummary[];
   screenshotDataUrl?: string;
   consoleMessages?: string[];
   networkErrors?: string[];

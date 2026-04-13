@@ -1,5 +1,6 @@
 import { WebContentsView, type BrowserWindow, type Rectangle } from "electron";
 import type {
+  BrowserAutomationElementSummary,
   BrowserAutomationTarget,
   BrowserClearThreadInput,
   BrowserEnsureTabInput,
@@ -50,10 +51,12 @@ export interface BrowserManager {
       timeoutMs?: number;
     },
   ) => Promise<void>;
-  inspect: (input: BrowserTabTargetInput) => Promise<{
+  inspect: (input: BrowserTabTargetInput & { target?: BrowserAutomationTarget }) => Promise<{
     url: string;
     title: string | null;
     text: string;
+    loadingState: "loading" | "interactive" | "complete";
+    elements: BrowserAutomationElementSummary[];
   }>;
   screenshot: (input: BrowserTabTargetInput) => Promise<string>;
   diagnostics: (input: BrowserTabTargetInput) => Promise<{
@@ -171,6 +174,31 @@ const BROWSER_TARGET_HELPERS_SOURCE = String.raw`
     element instanceof HTMLInputElement ||
     element instanceof HTMLTextAreaElement ||
     (element instanceof HTMLElement && element.isContentEditable);
+  const isInspectableElement = (element) => {
+    const role = readElementRole(element);
+    if (role) return true;
+    const tagName = element.tagName.toLowerCase();
+    return (
+      tagName === "button" ||
+      tagName === "a" ||
+      tagName === "input" ||
+      tagName === "select" ||
+      tagName === "textarea"
+    );
+  };
+  const summarizeElement = (element) => {
+    const role = readElementRole(element) || element.tagName.toLowerCase();
+    const name = readAccessibleName(element);
+    const text = readVisibleText(element);
+    const disabled =
+      "disabled" in element && typeof element.disabled === "boolean" ? element.disabled : false;
+    return {
+      role,
+      name,
+      ...(text ? { text: String(element.innerText ?? element.textContent ?? "").replace(/\s+/g, " ").trim().slice(0, 200) } : {}),
+      ...(disabled ? { disabled } : {}),
+    };
+  };
   const describeTarget = (target) => {
     if (normalizeTargetText(target?.selector)) {
       return "selector " + String(target.selector);
@@ -775,17 +803,44 @@ export function createBrowserManager(options: BrowserManagerOptions): BrowserMan
     },
     inspect: async (input) => {
       const record = ensureLiveRecord(input);
-      return await executeRecordScript<{ url: string; title: string | null; text: string }>(
+      return await executeRecordScript<{
+        url: string;
+        title: string | null;
+        text: string;
+        loadingState: "loading" | "interactive" | "complete";
+        elements: BrowserAutomationElementSummary[];
+      }>(
         record,
-        `() => {
+        `({ target }) => {
+          ${BROWSER_TARGET_HELPERS_SOURCE}
           const text = document.body?.innerText?.replace(/\\s+/g, " ").trim() ?? "";
+          const elements = target
+            ? (() => {
+                try {
+                  return [summarizeElement(resolveTarget(target, { editableOnly: false }))];
+                } catch {
+                  return [];
+                }
+              })()
+            : Array.from(document.querySelectorAll("body *"))
+                .filter((element) => element instanceof HTMLElement)
+                .filter((element) => isElementVisible(element) && isInspectableElement(element))
+                .slice(0, 20)
+                .map((element) => summarizeElement(element));
           return {
             url: window.location.href,
             title: document.title || null,
             text: text.slice(0, 4000),
+            loadingState:
+              document.readyState === "loading" ||
+              document.readyState === "interactive" ||
+              document.readyState === "complete"
+                ? document.readyState
+                : "complete",
+            elements,
           };
         }`,
-        {},
+        { target: input.target },
       );
     },
     screenshot: async (input) => {
