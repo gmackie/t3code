@@ -234,7 +234,21 @@ export interface BrowserTabStateEvent {
   state: BrowserTabRuntimeState;
 }
 
-export type BrowserEvent = BrowserTabStateEvent;
+export type BrowserAutomationStatus = "idle" | "agent" | "user";
+
+export interface BrowserAutomationState {
+  status: BrowserAutomationStatus;
+  tabId: string | null;
+  message: string | null;
+}
+
+export interface BrowserAutomationStateEvent {
+  type: "automation-state";
+  threadId: ThreadId;
+  state: BrowserAutomationState;
+}
+
+export type BrowserEvent = BrowserTabStateEvent | BrowserAutomationStateEvent;
 export interface DesktopBridge {
   getWsUrl?: () => string | null;
   getLocalEnvironmentBootstrap: () => DesktopEnvironmentBootstrap | null;

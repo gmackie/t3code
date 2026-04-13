@@ -2,6 +2,7 @@
 import "../index.css";
 
 import {
+  type BrowserEvent,
   EventId,
   ORCHESTRATION_WS_METHODS,
   EnvironmentId,
@@ -1496,6 +1497,212 @@ describe("ChatView timeline estimator parity (full app)", () => {
         .element(page.getByText("Enter a URL to preview a local app or external site."))
         .toBeInTheDocument();
     } finally {
+      await mounted.cleanup();
+    }
+  });
+
+  it("auto-opens the browser panel and follows the active Codex browser tab", async () => {
+    let browserEventListener: ((event: BrowserEvent) => void) | null = null;
+    const emitBrowserEvent = (event: BrowserEvent) => {
+      const listener = browserEventListener;
+      if (listener) {
+        listener(event);
+      }
+    };
+
+    window.desktopBridge = {
+      getLocalEnvironmentBootstrap: () => null,
+      getServerExposureState: async () => ({
+        mode: "local-only" as const,
+        endpointUrl: null,
+        advertisedHost: null,
+      }),
+      setServerExposureMode: async () => ({
+        mode: "local-only" as const,
+        endpointUrl: null,
+        advertisedHost: null,
+      }),
+      pickFolder: async () => null,
+      confirm: async () => true,
+      setTheme: async () => undefined,
+      showContextMenu: async () => null,
+      openExternal: async () => true,
+      browserEnsureTab: async () => undefined,
+      browserNavigate: async () => undefined,
+      browserGoBack: async () => undefined,
+      browserGoForward: async () => undefined,
+      browserReload: async () => undefined,
+      browserCloseTab: async () => undefined,
+      browserSyncHost: async () => undefined,
+      onBrowserEvent: (listener) => {
+        browserEventListener = listener;
+        return () => {
+          if (browserEventListener === listener) {
+            browserEventListener = null;
+          }
+        };
+      },
+      onMenuAction: () => () => undefined,
+      getUpdateState: async () => {
+        throw new Error("not used in test");
+      },
+      checkForUpdate: async () => {
+        throw new Error("not used in test");
+      },
+      downloadUpdate: async () => {
+        throw new Error("not used in test");
+      },
+      installUpdate: async () => {
+        throw new Error("not used in test");
+      },
+      onUpdateState: () => () => undefined,
+    };
+
+    const mounted = await mountChatView({
+      viewport: DEFAULT_VIEWPORT,
+      snapshot: createSnapshotForTargetUser({
+        targetMessageId: "msg-user-browser-auto-open" as MessageId,
+        targetText: "browser auto open integration",
+      }),
+    });
+
+    try {
+      emitBrowserEvent({
+        type: "tab-state",
+        threadId: THREAD_ID,
+        tabId: "codex-browser",
+        state: {
+          url: "https://example.com/",
+          title: "Example Domain",
+          faviconUrl: null,
+          isLoading: false,
+          canGoBack: false,
+          canGoForward: false,
+          lastError: null,
+        },
+      });
+      emitBrowserEvent({
+        type: "automation-state",
+        threadId: THREAD_ID,
+        state: {
+          status: "agent",
+          tabId: "codex-browser",
+          message: "Codex controlling browser",
+        },
+      });
+
+      await expect.element(page.getByText("Codex controlling browser")).toBeInTheDocument();
+      await expect.element(page.getByText("Example Domain")).toBeInTheDocument();
+      const browserUrlInput = page.getByPlaceholder("http://localhost:3000");
+      await expect.element(browserUrlInput).toHaveAttribute("value", "https://example.com/");
+    } finally {
+      Reflect.deleteProperty(window, "desktopBridge");
+      await mounted.cleanup();
+    }
+  });
+
+  it("shows user takeover status when desktop reports browser control loss", async () => {
+    let browserEventListener: ((event: BrowserEvent) => void) | null = null;
+    const emitBrowserEvent = (event: BrowserEvent) => {
+      const listener = browserEventListener;
+      if (listener) {
+        listener(event);
+      }
+    };
+
+    window.desktopBridge = {
+      getLocalEnvironmentBootstrap: () => null,
+      getServerExposureState: async () => ({
+        mode: "local-only" as const,
+        endpointUrl: null,
+        advertisedHost: null,
+      }),
+      setServerExposureMode: async () => ({
+        mode: "local-only" as const,
+        endpointUrl: null,
+        advertisedHost: null,
+      }),
+      pickFolder: async () => null,
+      confirm: async () => true,
+      setTheme: async () => undefined,
+      showContextMenu: async () => null,
+      openExternal: async () => true,
+      browserEnsureTab: async () => undefined,
+      browserNavigate: async () => undefined,
+      browserGoBack: async () => undefined,
+      browserGoForward: async () => undefined,
+      browserReload: async () => undefined,
+      browserCloseTab: async () => undefined,
+      browserSyncHost: async () => undefined,
+      onBrowserEvent: (listener) => {
+        browserEventListener = listener;
+        return () => {
+          if (browserEventListener === listener) {
+            browserEventListener = null;
+          }
+        };
+      },
+      onMenuAction: () => () => undefined,
+      getUpdateState: async () => {
+        throw new Error("not used in test");
+      },
+      checkForUpdate: async () => {
+        throw new Error("not used in test");
+      },
+      downloadUpdate: async () => {
+        throw new Error("not used in test");
+      },
+      installUpdate: async () => {
+        throw new Error("not used in test");
+      },
+      onUpdateState: () => () => undefined,
+    };
+
+    const mounted = await mountChatView({
+      viewport: DEFAULT_VIEWPORT,
+      snapshot: createSnapshotForTargetUser({
+        targetMessageId: "msg-user-browser-takeover" as MessageId,
+        targetText: "browser takeover integration",
+      }),
+    });
+
+    try {
+      emitBrowserEvent({
+        type: "tab-state",
+        threadId: THREAD_ID,
+        tabId: "codex-browser",
+        state: {
+          url: "https://example.com/",
+          title: "Example Domain",
+          faviconUrl: null,
+          isLoading: false,
+          canGoBack: false,
+          canGoForward: false,
+          lastError: null,
+        },
+      });
+      emitBrowserEvent({
+        type: "automation-state",
+        threadId: THREAD_ID,
+        state: {
+          status: "agent",
+          tabId: "codex-browser",
+          message: "Codex controlling browser",
+        },
+      });
+      emitBrowserEvent({
+        type: "automation-state",
+        threadId: THREAD_ID,
+        state: {
+          status: "user",
+          tabId: "codex-browser",
+          message: "User took over browser control",
+        },
+      });
+
+      await expect.element(page.getByText("User took over browser control")).toBeInTheDocument();
+    } finally {
+      Reflect.deleteProperty(window, "desktopBridge");
       await mounted.cleanup();
     }
   });

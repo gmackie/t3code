@@ -1,5 +1,6 @@
 import {
   type ApprovalRequestId,
+  type BrowserAutomationState,
   DEFAULT_MODEL_BY_PROVIDER,
   type ClaudeCodeEffort,
   type EnvironmentId,
@@ -106,7 +107,12 @@ import {
 import { basenameOfPath } from "../vscode-icons";
 import { useTheme } from "../hooks/useTheme";
 import { useTurnDiffSummaries } from "../hooks/useTurnDiffSummaries";
-import { createBrowserTab, normalizeBrowserDisplayUrl, parseSubmittedBrowserUrl } from "../browser";
+import {
+  type BrowserTab,
+  createBrowserTab,
+  normalizeBrowserDisplayUrl,
+  parseSubmittedBrowserUrl,
+} from "../browser";
 import { selectThreadBrowserState, useBrowserStateStore } from "../browserStateStore";
 import { BranchToolbar } from "./BranchToolbar";
 import { resolveShortcutCommand, shortcutLabelForCommand } from "../keybindings";
@@ -392,6 +398,43 @@ const extendReplacementRangeForTrailingSpace = (
   }
   return text[rangeEnd] === " " ? rangeEnd + 1 : rangeEnd;
 };
+
+const DEFAULT_BROWSER_AUTOMATION_STATE: BrowserAutomationState = Object.freeze({
+  status: "idle",
+  tabId: null,
+  message: null,
+});
+
+function applyBrowserRuntimeStateToTab(
+  tab: BrowserTab,
+  state: {
+    url: string;
+    title: string | null;
+    faviconUrl: string | null;
+    isLoading: boolean;
+    canGoBack: boolean;
+    canGoForward: boolean;
+    lastError: string | null;
+  },
+): BrowserTab {
+  return {
+    ...tab,
+    url: state.url,
+    title: state.title,
+    faviconUrl: state.faviconUrl,
+    isLoading: state.isLoading,
+    canGoBack: state.canGoBack,
+    canGoForward: state.canGoForward,
+    lastError: state.lastError,
+  };
+}
+
+function ensureBrowserTabWithId(tabs: readonly BrowserTab[], tabId: string): BrowserTab[] {
+  if (tabs.some((tab) => tab.id === tabId)) {
+    return [...tabs];
+  }
+  return [...tabs, { ...createBrowserTab(), id: tabId }];
+}
 
 const syncTerminalContextsByIds = (
   contexts: ReadonlyArray<TerminalContextDraft>,
@@ -1877,6 +1920,7 @@ export default function ChatView(props: ChatViewProps) {
   const activeBrowserTab = browserState.activeTabId
     ? (browserState.tabs.find((tab) => tab.id === browserState.activeTabId) ?? null)
     : null;
+  const browserAutomationState = browserState.automationState ?? DEFAULT_BROWSER_AUTOMATION_STATE;
   const browserPanelAvailable = activeThread !== undefined;
   const browserPanelOpen = rightPanelState.selectedPanel === "browser";
   const browserCookieManager = useBrowserCookieManager({
@@ -2867,36 +2911,61 @@ export default function ChatView(props: ChatViewProps) {
 
   useEffect(() => {
     const unsubscribe = window.desktopBridge?.onBrowserEvent?.((event) => {
-      if (event.type !== "tab-state" || event.threadId !== threadId) {
+      if (event.threadId !== threadId) {
         return;
       }
-      updateBrowserState(threadId, (draft) => ({
-        ...draft,
-        tabs: draft.tabs.map((tab) =>
-          tab.id === event.tabId
-            ? {
-                ...tab,
-                url: event.state.url,
-                title: event.state.title,
-                faviconUrl: event.state.faviconUrl,
-                isLoading: event.state.isLoading,
-                canGoBack: event.state.canGoBack,
-                canGoForward: event.state.canGoForward,
-                lastError: event.state.lastError,
-              }
-            : tab,
-        ),
-        inputValue:
-          draft.activeTabId === event.tabId
-            ? normalizeBrowserDisplayUrl(event.state.url)
-            : draft.inputValue,
-      }));
+      if (event.type === "tab-state") {
+        updateBrowserState(threadId, (draft) => {
+          const tabs = draft.tabs.some((tab) => tab.id === event.tabId)
+            ? draft.tabs.map((tab) =>
+                tab.id === event.tabId ? applyBrowserRuntimeStateToTab(tab, event.state) : tab,
+              )
+            : [
+                ...draft.tabs,
+                applyBrowserRuntimeStateToTab(
+                  { ...createBrowserTab(), id: event.tabId },
+                  event.state,
+                ),
+              ];
+          const activeTabId = draft.activeTabId ?? event.tabId;
+          const activeTab = tabs.find((tab) => tab.id === activeTabId) ?? null;
+          return {
+            ...draft,
+            tabs,
+            activeTabId,
+            inputValue:
+              activeTabId === event.tabId && activeTab
+                ? normalizeBrowserDisplayUrl(activeTab.url)
+                : draft.inputValue,
+          };
+        });
+        return;
+      }
+
+      updateBrowserState(threadId, (draft) => {
+        const tabs = event.state.tabId
+          ? ensureBrowserTabWithId(draft.tabs, event.state.tabId)
+          : draft.tabs;
+        const activeTabId = event.state.tabId ?? draft.activeTabId;
+        const activeTab = activeTabId ? (tabs.find((tab) => tab.id === activeTabId) ?? null) : null;
+        return {
+          ...draft,
+          tabs,
+          activeTabId,
+          automationState: event.state,
+          inputValue: activeTab ? normalizeBrowserDisplayUrl(activeTab.url) : draft.inputValue,
+        };
+      });
+      if (event.state.status !== "idle" && event.state.tabId) {
+        setSelectedRightPanel(threadId, "browser");
+        setPlanSidebarOpen(false);
+      }
     });
 
     return () => {
       unsubscribe?.();
     };
-  }, [threadId, updateBrowserState]);
+  }, [setSelectedRightPanel, threadId, updateBrowserState]);
 
   useEffect(() => {
     const bridge = window.desktopBridge;
@@ -5163,6 +5232,7 @@ export default function ChatView(props: ChatViewProps) {
             <BrowserPanel
               state={browserState}
               activeTab={activeBrowserTab}
+              automationState={browserAutomationState}
               inputValue={browserState.inputValue}
               focusRequestId={browserState.focusRequestId}
               onInputChange={handleBrowserInputChange}

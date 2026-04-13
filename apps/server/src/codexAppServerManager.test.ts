@@ -7,6 +7,7 @@ import { ApprovalRequestId, ThreadId } from "@t3tools/contracts";
 
 import {
   buildCodexInitializeParams,
+  buildCodexThreadStartParams,
   CODEX_DEFAULT_MODE_DEVELOPER_INSTRUCTIONS,
   CODEX_PLAN_MODE_DEVELOPER_INSTRUCTIONS,
   CodexAppServerManager,
@@ -470,6 +471,44 @@ describe("startSession", () => {
       manager.stopAll();
     }
   });
+
+  it("builds thread/start params with in-app browser dynamic tools", () => {
+    expect(
+      buildCodexThreadStartParams({
+        model: "gpt-5.3-codex",
+        cwd: "/tmp/project",
+        approvalPolicy: "never",
+        sandbox: "danger-full-access",
+      }),
+    ).toMatchObject({
+      model: "gpt-5.3-codex",
+      cwd: "/tmp/project",
+      approvalPolicy: "never",
+      sandbox: "danger-full-access",
+      experimentalRawEvents: false,
+      dynamicTools: expect.arrayContaining([
+        expect.objectContaining({
+          name: "browser.navigate",
+          description: expect.any(String),
+          inputSchema: expect.objectContaining({
+            type: "object",
+          }),
+        }),
+        expect.objectContaining({
+          name: "browser.click",
+          inputSchema: expect.objectContaining({
+            type: "object",
+          }),
+        }),
+        expect.objectContaining({
+          name: "browser.screenshot",
+          inputSchema: expect.objectContaining({
+            type: "object",
+          }),
+        }),
+      ]),
+    });
+  });
 });
 
 describe("sendTurn", () => {
@@ -847,6 +886,71 @@ describe("respondToUserInput", () => {
     const request = Array.from(context.pendingApprovals.values())[0];
     expect(request?.requestKind).toBe("file-read");
     expect(request?.method).toBe("item/fileRead/requestApproval");
+  });
+
+  it("responds to item/tool/call with dynamic tool output", async () => {
+    const dynamicToolCallHandler = vi.fn().mockResolvedValue({
+      contentItems: [{ type: "inputText", text: "navigated to https://example.com" }],
+      success: true,
+    });
+    const manager = new CodexAppServerManager(undefined, {
+      dynamicToolCallHandler,
+    });
+    const context = {
+      session: {
+        sessionId: "sess_1",
+        provider: "codex",
+        status: "running",
+        threadId: asThreadId("thread_1"),
+        resumeCursor: { threadId: "thread_1" },
+        createdAt: "2026-02-10T00:00:00.000Z",
+        updatedAt: "2026-02-10T00:00:00.000Z",
+      },
+      pendingApprovals: new Map(),
+      pendingUserInputs: new Map(),
+      collabReceiverTurns: new Map(),
+    };
+    const writeMessage = vi
+      .spyOn(manager as unknown as { writeMessage: (...args: unknown[]) => void }, "writeMessage")
+      .mockImplementation(() => {});
+
+    (
+      manager as unknown as {
+        handleServerRequest: (context: unknown, request: Record<string, unknown>) => void;
+      }
+    ).handleServerRequest(context, {
+      jsonrpc: "2.0",
+      id: 42,
+      method: "item/tool/call",
+      params: {
+        threadId: "thread_1",
+        turnId: "turn_1",
+        callId: "call_browser_1",
+        tool: "browser.navigate",
+        arguments: {
+          url: "https://example.com",
+        },
+      },
+    });
+
+    await vi.waitFor(() => {
+      expect(dynamicToolCallHandler).toHaveBeenCalledWith({
+        threadId: "thread_1",
+        turnId: "turn_1",
+        callId: "call_browser_1",
+        tool: "browser.navigate",
+        arguments: {
+          url: "https://example.com",
+        },
+      });
+      expect(writeMessage).toHaveBeenCalledWith(context, {
+        id: 42,
+        result: {
+          contentItems: [{ type: "inputText", text: "navigated to https://example.com" }],
+          success: true,
+        },
+      });
+    });
   });
 });
 

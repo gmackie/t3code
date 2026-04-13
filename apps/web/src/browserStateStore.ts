@@ -1,4 +1,4 @@
-import type { ThreadId } from "@t3tools/contracts";
+import type { BrowserAutomationState, ThreadId } from "@t3tools/contracts";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
@@ -9,16 +9,36 @@ export interface ThreadBrowserState {
   tabs: BrowserTab[];
   inputValue: string;
   focusRequestId: number;
+  automationState: BrowserAutomationState;
 }
 
 const BROWSER_STATE_STORAGE_KEY = "t3code:browser-state:v1";
+const DEFAULT_BROWSER_AUTOMATION_STATE: BrowserAutomationState = {
+  status: "idle",
+  tabId: null,
+  message: null,
+};
 
 const DEFAULT_THREAD_BROWSER_STATE: ThreadBrowserState = Object.freeze({
   activeTabId: null,
   tabs: [],
   inputValue: "",
   focusRequestId: 0,
+  automationState: DEFAULT_BROWSER_AUTOMATION_STATE,
 });
+
+function normalizeAutomationState(
+  state: BrowserAutomationState | null | undefined,
+): BrowserAutomationState {
+  if (state?.status === "agent" || state?.status === "user" || state?.status === "idle") {
+    return {
+      status: state.status,
+      tabId: state.tabId ?? null,
+      message: state.message ?? null,
+    };
+  }
+  return DEFAULT_BROWSER_AUTOMATION_STATE;
+}
 
 function createDefaultThreadBrowserState(): ThreadBrowserState {
   return {
@@ -28,10 +48,15 @@ function createDefaultThreadBrowserState(): ThreadBrowserState {
 }
 
 function threadBrowserStateEqual(left: ThreadBrowserState, right: ThreadBrowserState): boolean {
+  const leftAutomationState = normalizeAutomationState(left.automationState);
+  const rightAutomationState = normalizeAutomationState(right.automationState);
   return (
     left.activeTabId === right.activeTabId &&
     left.inputValue === right.inputValue &&
     left.focusRequestId === right.focusRequestId &&
+    leftAutomationState.status === rightAutomationState.status &&
+    leftAutomationState.tabId === rightAutomationState.tabId &&
+    leftAutomationState.message === rightAutomationState.message &&
     left.tabs === right.tabs
   );
 }
@@ -68,6 +93,7 @@ function normalizeThreadBrowserState(state: ThreadBrowserState): ThreadBrowserSt
       Number.isFinite(state.focusRequestId) && state.focusRequestId > 0
         ? Math.trunc(state.focusRequestId)
         : 0,
+    automationState: normalizeAutomationState(state.automationState),
   };
   return threadBrowserStateEqual(state, normalized) ? state : normalized;
 }
@@ -78,6 +104,9 @@ function isDefaultThreadBrowserState(state: ThreadBrowserState): boolean {
     normalized.activeTabId === DEFAULT_THREAD_BROWSER_STATE.activeTabId &&
     normalized.inputValue === DEFAULT_THREAD_BROWSER_STATE.inputValue &&
     normalized.focusRequestId === DEFAULT_THREAD_BROWSER_STATE.focusRequestId &&
+    normalized.automationState.status === DEFAULT_THREAD_BROWSER_STATE.automationState.status &&
+    normalized.automationState.tabId === DEFAULT_THREAD_BROWSER_STATE.automationState.tabId &&
+    normalized.automationState.message === DEFAULT_THREAD_BROWSER_STATE.automationState.message &&
     normalized.tabs.length === 0
   );
 }

@@ -27,11 +27,19 @@ import {
   parseCodexCliVersion,
 } from "./provider/codexCliVersion";
 import {
+  CODEX_IN_APP_BROWSER_DYNAMIC_TOOLS,
+  createCodexInAppBrowserDynamicToolHandler,
+  type CodexDynamicToolCallHandler,
+  type CodexDynamicToolCallParams,
+  type CodexDynamicToolResponse,
+} from "./codexInAppBrowserTools";
+import {
   readCodexAccountSnapshot,
   resolveCodexModelForAccount,
   type CodexAccountSnapshot,
 } from "./provider/codexAccount";
 import { buildCodexInitializeParams, killCodexChildProcess } from "./provider/codexAppServer";
+import { createProcessDesktopBrowserAutomationClient } from "./desktopBrowserAutomationClient";
 
 export { buildCodexInitializeParams } from "./provider/codexAppServer";
 export { readCodexAccountSnapshot, resolveCodexModelForAccount } from "./provider/codexAccount";
@@ -429,13 +437,36 @@ export interface CodexAppServerManagerEvents {
   event: [event: ProviderEvent];
 }
 
+export interface CodexAppServerManagerOptions {
+  readonly dynamicToolCallHandler?: CodexDynamicToolCallHandler;
+}
+
+type CodexThreadStartOverrides = {
+  readonly model?: string | null;
+  readonly serviceTier?: string;
+  readonly cwd?: string | null;
+  readonly approvalPolicy?: "never" | "on-request" | "untrusted";
+  readonly sandbox?: "danger-full-access" | "workspace-write" | "read-only";
+};
+
+export function buildCodexThreadStartParams(input: CodexThreadStartOverrides) {
+  return {
+    ...input,
+    experimentalRawEvents: false,
+    dynamicTools: CODEX_IN_APP_BROWSER_DYNAMIC_TOOLS,
+  };
+}
+
 export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEvents> {
   private readonly sessions = new Map<ThreadId, CodexSessionContext>();
-
+  private readonly dynamicToolCallHandler: CodexDynamicToolCallHandler;
   private runPromise: (effect: Effect.Effect<unknown, never>) => Promise<unknown>;
-  constructor(services?: ServiceMap.ServiceMap<never>) {
+  constructor(services?: ServiceMap.ServiceMap<never>, options?: CodexAppServerManagerOptions) {
     super();
     this.runPromise = services ? Effect.runPromiseWith(services) : Effect.runPromise;
+    this.dynamicToolCallHandler =
+      options?.dynamicToolCallHandler ??
+      createCodexInAppBrowserDynamicToolHandler(createProcessDesktopBrowserAutomationClient());
   }
 
   async startSession(input: CodexAppServerStartSessionInput): Promise<ProviderSession> {
@@ -530,10 +561,7 @@ export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEve
         ...mapCodexRuntimeMode(input.runtimeMode ?? "full-access"),
       };
 
-      const threadStartParams = {
-        ...sessionOverrides,
-        experimentalRawEvents: false,
-      };
+      const threadStartParams = buildCodexThreadStartParams(sessionOverrides);
       const resumeThreadId = readResumeThreadId(input);
       this.emitLifecycleEvent(
         context,
@@ -1179,12 +1207,44 @@ export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEve
       return;
     }
 
+    if (request.method === "item/tool/call") {
+      void this.handleDynamicToolCallRequest(context, request);
+      return;
+    }
+
     this.writeMessage(context, {
       id: request.id,
       error: {
         code: -32601,
         message: `Unsupported server request: ${request.method}`,
       },
+    });
+  }
+
+  private async handleDynamicToolCallRequest(
+    context: CodexSessionContext,
+    request: JsonRpcRequest,
+  ): Promise<void> {
+    const params = this.readDynamicToolCallParams(request.params);
+    let result: CodexDynamicToolResponse;
+
+    if (!params) {
+      result = {
+        contentItems: [
+          {
+            type: "inputText",
+            text: "Dynamic tool call payload was invalid.",
+          },
+        ],
+        success: false,
+      };
+    } else {
+      result = await this.dynamicToolCallHandler(params);
+    }
+
+    this.writeMessage(context, {
+      id: request.id,
+      result,
     });
   }
 
@@ -1422,6 +1482,30 @@ export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEve
       return undefined;
     }
     return context.collabReceiverTurns.get(providerConversationId);
+  }
+
+  private readDynamicToolCallParams(payload: unknown): CodexDynamicToolCallParams | null {
+    const record = this.readObject(payload);
+    if (!record) {
+      return null;
+    }
+
+    const threadId = this.readString(record, "threadId");
+    const turnId = this.readString(record, "turnId");
+    const callId = this.readString(record, "callId");
+    const tool = this.readString(record, "tool");
+    const args = Reflect.get(record, "arguments");
+    if (!threadId || !turnId || !callId || !tool) {
+      return null;
+    }
+
+    return {
+      threadId,
+      turnId,
+      callId,
+      tool,
+      arguments: args,
+    };
   }
 
   private rememberCollabReceiverTurns(

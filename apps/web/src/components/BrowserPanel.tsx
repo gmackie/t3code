@@ -1,5 +1,6 @@
 "use client";
 
+import type { BrowserAutomationState } from "@t3tools/contracts";
 import {
   ArrowLeftIcon,
   ArrowRightIcon,
@@ -31,6 +32,7 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 interface BrowserPanelProps {
   state: { activeTabId: string | null; tabs: BrowserTab[] };
   activeTab: BrowserTab | null;
+  automationState: BrowserAutomationState;
   inputValue: string;
   focusRequestId: number;
   newTabShortcutLabel?: string | null;
@@ -136,6 +138,7 @@ function ToolbarIconButton({
 export default function BrowserPanel({
   state,
   activeTab,
+  automationState,
   inputValue,
   focusRequestId,
   newTabShortcutLabel,
@@ -425,6 +428,18 @@ export default function BrowserPanel({
       </form>
 
       <div className="relative min-h-0 flex-1 overflow-hidden bg-linear-to-b from-background via-background to-muted/10">
+        {automationState.status !== "idle" && automationState.message ? (
+          <div
+            className={cn(
+              "absolute top-4 right-4 left-4 z-10 rounded-xl border px-3 py-2 text-[12px] shadow-lg/10 backdrop-blur",
+              automationState.status === "user"
+                ? "border-amber-500/30 bg-amber-500/12 text-amber-900 dark:text-amber-200"
+                : "border-sky-500/22 bg-sky-500/10 text-sky-900 dark:text-sky-200",
+            )}
+          >
+            {automationState.message}
+          </div>
+        ) : null}
         <div ref={viewportRef} className="absolute inset-0" />
         {showEmptyState ? (
           <div className="absolute inset-0 flex items-center justify-center px-6 text-center text-sm text-muted-foreground/78">

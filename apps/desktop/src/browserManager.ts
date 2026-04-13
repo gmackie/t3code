@@ -10,6 +10,8 @@ import type {
   ThreadId,
 } from "@t3tools/contracts";
 
+import { createBrowserAutomationControl } from "./browserAutomationControl";
+
 const ERR_ABORTED = -3;
 const MAX_LIVE_BROWSER_TABS = 3;
 
@@ -20,11 +22,37 @@ type BrowserTabRecord = {
   view: WebContentsView | null;
   state: BrowserTabRuntimeState;
   lastAccessedAt: number;
+  consoleMessages: string[];
+  networkErrors: string[];
 };
 
 export interface BrowserManager {
   ensureTab: (input: BrowserEnsureTabInput) => Promise<void>;
+  claimAutomationControl: (input: BrowserTabTargetInput & { message: string }) => void;
   navigate: (input: BrowserNavigateInput) => Promise<void>;
+  click: (input: BrowserTabTargetInput & { selector: string }) => Promise<void>;
+  typeText: (
+    input: BrowserTabTargetInput & { selector: string; text: string; submit?: boolean },
+  ) => Promise<void>;
+  wait: (
+    input: BrowserTabTargetInput & {
+      selector?: string;
+      text?: string;
+      timeoutMs?: number;
+    },
+  ) => Promise<void>;
+  inspect: (input: BrowserTabTargetInput) => Promise<{
+    url: string;
+    title: string | null;
+    text: string;
+  }>;
+  screenshot: (input: BrowserTabTargetInput) => Promise<string>;
+  diagnostics: (input: BrowserTabTargetInput) => Promise<{
+    url: string;
+    title: string | null;
+    consoleMessages: string[];
+    networkErrors: string[];
+  }>;
   goBack: (input: BrowserTabTargetInput) => Promise<void>;
   goForward: (input: BrowserTabTargetInput) => Promise<void>;
   reload: (input: BrowserTabTargetInput) => Promise<void>;
@@ -63,6 +91,13 @@ function now(): number {
   return Date.now();
 }
 
+function appendBounded(target: string[], value: string): void {
+  target.push(value);
+  if (target.length > 100) {
+    target.shift();
+  }
+}
+
 function statesEqual(left: BrowserTabRuntimeState, right: BrowserTabRuntimeState): boolean {
   return (
     left.url === right.url &&
@@ -98,6 +133,7 @@ function sanitizeBounds(bounds: BrowserSyncHostInput["bounds"]): Rectangle | nul
 
 export function createBrowserManager(options: BrowserManagerOptions): BrowserManager {
   const records = new Map<string, BrowserTabRecord>();
+  const automationControl = createBrowserAutomationControl(options.emitEvent);
   let activeHost: BrowserSyncHostInput | null = null;
   let attachedRecordKey: string | null = null;
 
@@ -214,6 +250,23 @@ export function createBrowserManager(options: BrowserManagerOptions): BrowserMan
   const wireRecordEvents = (record: BrowserTabRecord, view: WebContentsView): void => {
     const { webContents } = view;
     const isCurrentView = () => record.view === view;
+    const markUserControlIfNeeded = () => {
+      if (
+        attachedRecordKey !== record.key ||
+        !activeHost?.visible ||
+        !automationControl.isAgentControlled({
+          threadId: record.threadId,
+          tabId: record.tabId,
+        })
+      ) {
+        return;
+      }
+      automationControl.markUserControl({
+        threadId: record.threadId,
+        tabId: record.tabId,
+        message: "User took over browser control",
+      });
+    };
     const emitIfCurrent = (
       patch: Partial<BrowserTabRuntimeState> = {},
       emitOptions: { preferBlankTitle?: boolean } = {},
@@ -248,12 +301,37 @@ export function createBrowserManager(options: BrowserManagerOptions): BrowserMan
     webContents.on("page-favicon-updated", (_event, favicons) => {
       emitIfCurrent({ faviconUrl: favicons[0] ?? null });
     });
+    webContents.on("console-message", (_event, _level, message) => {
+      if (!isCurrentView()) {
+        return;
+      }
+      appendBounded(record.consoleMessages, message);
+    });
+    webContents.on("before-input-event", () => {
+      if (!isCurrentView()) {
+        return;
+      }
+      markUserControlIfNeeded();
+    });
+    webContents.on("before-mouse-event", (_event, input) => {
+      if (!isCurrentView()) {
+        return;
+      }
+      if (input.type !== "mouseDown" && input.type !== "mouseUp" && input.type !== "mouseWheel") {
+        return;
+      }
+      markUserControlIfNeeded();
+    });
     webContents.on(
       "did-fail-load",
       (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
         if (!isMainFrame || errorCode === ERR_ABORTED) {
           return;
         }
+        appendBounded(
+          record.networkErrors,
+          `${validatedURL || record.state.url}: ${errorDescription || "Failed to load page."}`,
+        );
         emitIfCurrent({
           url: normalizeRuntimeUrl(validatedURL),
           isLoading: false,
@@ -365,10 +443,39 @@ export function createBrowserManager(options: BrowserManagerOptions): BrowserMan
         lastError: null,
       },
       lastAccessedAt: now(),
+      consoleMessages: [],
+      networkErrors: [],
     };
     records.set(key, record);
     emitState(record, { url: normalizeRuntimeUrl(input.url) }, { preferBlankTitle: true });
     return record;
+  };
+
+  const ensureRecord = (input: BrowserTabTargetInput): BrowserTabRecord => {
+    return records.get(recordKey(input.threadId, input.tabId)) ?? createRecord(input);
+  };
+
+  const ensureLiveRecord = (input: BrowserTabTargetInput): BrowserTabRecord => {
+    const record = ensureRecord(input);
+    createLiveViewForRecord(record, { restoreFromState: true });
+    touchRecord(record);
+    return record;
+  };
+
+  const executeRecordScript = async <T>(
+    record: BrowserTabRecord,
+    script: string,
+    args: unknown,
+  ): Promise<T> => {
+    if (!record.view) {
+      createLiveViewForRecord(record, { restoreFromState: true });
+    }
+    if (!record.view) {
+      throw new Error("Browser tab is unavailable.");
+    }
+    return (await record.view.webContents.executeJavaScript(
+      `(${script})(${JSON.stringify(args)})`,
+    )) as T;
   };
 
   const loadRecordUrl = async (record: BrowserTabRecord, url: string): Promise<void> => {
@@ -413,6 +520,9 @@ export function createBrowserManager(options: BrowserManagerOptions): BrowserMan
 
   return {
     ensureTab,
+    claimAutomationControl: (input) => {
+      automationControl.claimAgentControl(input);
+    },
     navigate: async (input) => {
       await ensureTab(input);
       const record = records.get(recordKey(input.threadId, input.tabId));
@@ -421,6 +531,126 @@ export function createBrowserManager(options: BrowserManagerOptions): BrowserMan
       }
       await loadRecordUrl(record, input.url);
       syncAttachedView();
+    },
+    click: async (input) => {
+      const record = ensureLiveRecord(input);
+      await executeRecordScript<void>(
+        record,
+        `({ selector }) => {
+          const element = document.querySelector(selector);
+          if (!(element instanceof HTMLElement)) {
+            throw new Error(\`Element not found for selector: \${selector}\`);
+          }
+          element.scrollIntoView({ block: "center", inline: "center" });
+          element.click();
+        }`,
+        { selector: input.selector },
+      );
+    },
+    typeText: async (input) => {
+      const record = ensureLiveRecord(input);
+      await executeRecordScript<void>(
+        record,
+        `({ selector, text, submit }) => {
+          const element = document.querySelector(selector);
+          if (
+            !(element instanceof HTMLInputElement) &&
+            !(element instanceof HTMLTextAreaElement) &&
+            !(element instanceof HTMLElement && element.isContentEditable)
+          ) {
+            throw new Error(\`Element is not editable for selector: \${selector}\`);
+          }
+
+          element.scrollIntoView({ block: "center", inline: "center" });
+          if (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement) {
+            const descriptor = Object.getOwnPropertyDescriptor(
+              Object.getPrototypeOf(element),
+              "value",
+            );
+            descriptor?.set?.call(element, text);
+            element.dispatchEvent(new Event("input", { bubbles: true }));
+            element.dispatchEvent(new Event("change", { bubbles: true }));
+          } else {
+            element.textContent = text;
+            element.dispatchEvent(new InputEvent("input", { bubbles: true, data: text }));
+          }
+
+          if (submit) {
+            const form = element instanceof HTMLElement ? element.closest("form") : null;
+            if (form instanceof HTMLFormElement) {
+              form.requestSubmit();
+            }
+          }
+        }`,
+        { selector: input.selector, text: input.text, submit: input.submit ?? false },
+      );
+    },
+    wait: async (input) => {
+      const record = ensureLiveRecord(input);
+      const matched = await executeRecordScript<boolean>(
+        record,
+        `({ selector, text, timeoutMs }) => {
+          const deadline = Date.now() + timeoutMs;
+          return new Promise((resolve) => {
+            const tick = () => {
+              const selectorMatched = selector ? document.querySelector(selector) !== null : false;
+              const textMatched =
+                text && document.body ? document.body.innerText.includes(text) : false;
+              const noPredicate = !selector && !text;
+              if (selectorMatched || textMatched || noPredicate) {
+                resolve(true);
+                return;
+              }
+              if (Date.now() >= deadline) {
+                resolve(false);
+                return;
+              }
+              window.setTimeout(tick, 100);
+            };
+            tick();
+          });
+        }`,
+        {
+          selector: input.selector,
+          text: input.text,
+          timeoutMs: Math.max(100, input.timeoutMs ?? 10_000),
+        },
+      );
+      if (!matched) {
+        throw new Error("Timed out waiting for page state.");
+      }
+    },
+    inspect: async (input) => {
+      const record = ensureLiveRecord(input);
+      return await executeRecordScript<{ url: string; title: string | null; text: string }>(
+        record,
+        `() => {
+          const text = document.body?.innerText?.replace(/\\s+/g, " ").trim() ?? "";
+          return {
+            url: window.location.href,
+            title: document.title || null,
+            text: text.slice(0, 4000),
+          };
+        }`,
+        {},
+      );
+    },
+    screenshot: async (input) => {
+      const record = ensureLiveRecord(input);
+      if (!record.view) {
+        throw new Error("Browser tab is unavailable.");
+      }
+      const image = await record.view.webContents.capturePage();
+      return image.toDataURL();
+    },
+    diagnostics: async (input) => {
+      const record = ensureLiveRecord(input);
+      return {
+        url: record.view?.webContents.getURL() || record.state.url,
+        title: record.view ? readBrowserTitle(record.view, record.state.title) : record.state.title,
+        consoleMessages: [...record.consoleMessages],
+        networkErrors: [...record.networkErrors],
+      };
     },
     goBack: async (input) => {
       const record = records.get(recordKey(input.threadId, input.tabId));
@@ -459,6 +689,12 @@ export function createBrowserManager(options: BrowserManagerOptions): BrowserMan
       destroyRecord(record);
     },
     syncHost: (input) => {
+      if (!input.visible) {
+        automationControl.releaseUserControl({
+          threadId: input.threadId,
+          tabId: input.tabId ?? activeHost?.tabId ?? "",
+        });
+      }
       activeHost = input;
       syncAttachedView();
     },
@@ -477,12 +713,14 @@ export function createBrowserManager(options: BrowserManagerOptions): BrowserMan
           bounds: null,
         };
       }
+      automationControl.clearThread(input.threadId);
       syncAttachedView();
     },
     destroyAll: () => {
       activeHost = null;
       const allRecords = [...records.values()];
       for (const record of allRecords) {
+        automationControl.clearThread(record.threadId);
         destroyRecord(record);
       }
     },

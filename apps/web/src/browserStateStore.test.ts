@@ -5,6 +5,11 @@ import { createBrowserTab } from "./browser";
 import { selectThreadBrowserState, useBrowserStateStore } from "./browserStateStore";
 
 const THREAD_ID = ThreadId.makeUnsafe("thread-1");
+const DEFAULT_AUTOMATION_STATE = {
+  status: "idle" as const,
+  tabId: null,
+  message: null,
+};
 
 describe("browserStateStore actions", () => {
   beforeEach(() => {
@@ -24,6 +29,7 @@ describe("browserStateStore actions", () => {
       tabs: [],
       inputValue: "",
       focusRequestId: 0,
+      automationState: DEFAULT_AUTOMATION_STATE,
     });
   });
 
@@ -36,6 +42,7 @@ describe("browserStateStore actions", () => {
           tabs: [tab],
           inputValue: tab.url,
           focusRequestId: 0,
+          automationState: DEFAULT_AUTOMATION_STATE,
         },
       },
     });
@@ -62,6 +69,7 @@ describe("browserStateStore actions", () => {
         ],
         inputValue: "",
         focusRequestId: 0,
+        automationState: DEFAULT_AUTOMATION_STATE,
       }));
     }).not.toThrow();
 
@@ -75,6 +83,7 @@ describe("browserStateStore actions", () => {
       tabs: [],
       inputValue: "",
       focusRequestId: 0,
+      automationState: DEFAULT_AUTOMATION_STATE,
     });
   });
 });

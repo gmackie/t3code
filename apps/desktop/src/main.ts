@@ -40,6 +40,11 @@ import { RotatingFileSink } from "@t3tools/shared/logging";
 import { parsePersistedServerObservabilitySettings } from "@t3tools/shared/serverSettings";
 import { showDesktopConfirmDialog } from "./confirmDialog";
 import {
+  attachBackendBrowserAutomationBridge,
+  detachBackendBrowserAutomationBridge,
+} from "./browserAutomationBackendIpc";
+import { createBrowserAutomationService } from "./browserAutomationService";
+import {
   attachBackendLocalPluginBridge,
   detachBackendLocalPluginBridge,
 } from "./localPluginBackendIpc";
@@ -565,6 +570,7 @@ const browserManager = createBrowserManager({
     void shell.openExternal(externalUrl);
   },
 });
+const browserAutomationService = createBrowserAutomationService(browserManager);
 const browserCookieManager = createBrowserCookieManager({
   session: session.defaultSession,
 });
@@ -1295,6 +1301,7 @@ function startBackend(): void {
     `pid=${child.pid ?? "unknown"} port=${backendPort} cwd=${resolveBackendCwd()}`,
   );
   captureBackendOutput(child);
+  attachBackendBrowserAutomationBridge(child, browserAutomationService);
   attachBackendLocalPluginBridge(child, localPluginBridge);
 
   child.once("spawn", () => {
@@ -1303,6 +1310,7 @@ function startBackend(): void {
 
   child.on("error", (error) => {
     const wasExpected = expectedBackendExitChildren.has(child);
+    detachBackendBrowserAutomationBridge(child, browserAutomationService);
     detachBackendLocalPluginBridge(child, localPluginBridge);
     if (backendProcess === child) {
       backendProcess = null;
@@ -1316,6 +1324,7 @@ function startBackend(): void {
 
   child.on("exit", (code, signal) => {
     const wasExpected = expectedBackendExitChildren.has(child);
+    detachBackendBrowserAutomationBridge(child, browserAutomationService);
     detachBackendLocalPluginBridge(child, localPluginBridge);
     if (backendProcess === child) {
       backendProcess = null;
@@ -1339,6 +1348,7 @@ function stopBackend(): void {
   backendProcess = null;
   if (!child) return;
 
+  detachBackendBrowserAutomationBridge(child, browserAutomationService);
   detachBackendLocalPluginBridge(child, localPluginBridge);
   if (child.exitCode === null && child.signalCode === null) {
     expectedBackendExitChildren.add(child);
@@ -1361,6 +1371,7 @@ async function stopBackendAndWaitForExit(timeoutMs = 5_000): Promise<void> {
   backendProcess = null;
   if (!child) return;
   const backendChild = child;
+  detachBackendBrowserAutomationBridge(backendChild, browserAutomationService);
   detachBackendLocalPluginBridge(backendChild, localPluginBridge);
   if (backendChild.exitCode !== null || backendChild.signalCode !== null) return;
   expectedBackendExitChildren.add(backendChild);

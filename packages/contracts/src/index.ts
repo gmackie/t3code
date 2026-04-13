@@ -15,3 +15,4 @@ export * from "./editor";
 export * from "./project";
 export * from "./rpc";
 export * from "./localPluginEvents";
+export * from "./browserAutomation";
