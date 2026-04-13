@@ -56,6 +56,7 @@ import {
 import { cn } from "~/lib/utils";
 import { type TimestampFormat } from "@t3tools/contracts/settings";
 import { formatTimestamp } from "../../timestampFormat";
+import { BrowserEvidenceCard } from "../BrowserEvidenceCard";
 import {
   buildInlineTerminalContextText,
   formatInlineTerminalContextLabel,
@@ -846,6 +847,12 @@ function toolWorkEntryHeading(workEntry: TimelineWorkEntry): string {
   return capitalizePhrase(normalizeCompactToolLabel(workEntry.toolTitle));
 }
 
+function browserEvidenceHeading(workEntry: TimelineWorkEntry): string {
+  return workEntry.browserEvidence?.toolName === "browser.inspect"
+    ? "Latest inspect snapshot"
+    : "Latest browser evidence";
+}
+
 const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
   workEntry: TimelineWorkEntry;
 }) {
@@ -928,6 +935,13 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
           )}
         </div>
       )}
+      {workEntry.browserEvidence ? (
+        <BrowserEvidenceCard
+          evidence={workEntry.browserEvidence}
+          heading={browserEvidenceHeading(workEntry)}
+          className="mt-2 ml-7"
+        />
+      ) : null}
     </div>
   );
 });

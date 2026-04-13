@@ -62,6 +62,8 @@ export interface BrowserManager {
   diagnostics: (input: BrowserTabTargetInput) => Promise<{
     url: string;
     title: string | null;
+    loadingState: "loading" | "interactive" | "complete";
+    lastError: string | null;
     consoleMessages: string[];
     networkErrors: string[];
   }>;
@@ -856,6 +858,8 @@ export function createBrowserManager(options: BrowserManagerOptions): BrowserMan
       return {
         url: record.view?.webContents.getURL() || record.state.url,
         title: record.view ? readBrowserTitle(record.view, record.state.title) : record.state.title,
+        loadingState: record.state.isLoading ? "loading" : "interactive",
+        lastError: record.state.lastError,
         consoleMessages: [...record.consoleMessages],
         networkErrors: [...record.networkErrors],
       };

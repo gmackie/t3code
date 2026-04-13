@@ -1993,6 +1993,63 @@ describe("ProviderRuntimeIngestion", () => {
     expect(checkpoint?.checkpointRef).toBe("provider-diff:evt-turn-diff-updated");
   });
 
+  it("preserves completed dynamic tool payload data on projected tool activities", async () => {
+    const harness = await createHarness();
+    const now = new Date().toISOString();
+
+    harness.emit({
+      type: "item.completed",
+      eventId: asEventId("evt-browser-tool-completed"),
+      provider: "codex",
+      createdAt: now,
+      threadId: asThreadId("thread-1"),
+      turnId: asTurnId("turn-browser"),
+      itemId: asItemId("item-browser-tool"),
+      payload: {
+        itemType: "dynamic_tool_call",
+        title: "Tool call",
+        data: {
+          item: {
+            toolName: "browser.diagnostics",
+            result: {
+              url: "https://example.com/dashboard",
+              title: "Dashboard",
+              loadingState: "interactive",
+              lastError: "Page crashed while loading app shell",
+            },
+          },
+        },
+      },
+    });
+
+    const thread = await waitForThread(harness.engine, (entry) =>
+      entry.activities.some(
+        (activity: ProviderRuntimeTestActivity) => activity.id === "evt-browser-tool-completed",
+      ),
+    );
+
+    const activity = thread.activities.find(
+      (entry: ProviderRuntimeTestActivity) => entry.id === "evt-browser-tool-completed",
+    );
+    const payload =
+      activity?.payload && typeof activity.payload === "object"
+        ? (activity.payload as Record<string, unknown>)
+        : undefined;
+
+    expect(activity?.kind).toBe("tool.completed");
+    expect(payload?.data).toEqual({
+      item: {
+        toolName: "browser.diagnostics",
+        result: {
+          url: "https://example.com/dashboard",
+          title: "Dashboard",
+          loadingState: "interactive",
+          lastError: "Page crashed while loading app shell",
+        },
+      },
+    });
+  });
+
   it("projects context window updates into normalized thread activities", async () => {
     const harness = await createHarness();
     const now = new Date().toISOString();

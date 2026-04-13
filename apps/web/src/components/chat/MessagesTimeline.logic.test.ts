@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { computeMessageDurationStart, normalizeCompactToolLabel } from "./MessagesTimeline.logic";
+import {
+  computeMessageDurationStart,
+  estimateMessagesTimelineRowHeight,
+  normalizeCompactToolLabel,
+} from "./MessagesTimeline.logic";
 
 describe("computeMessageDurationStart", () => {
   it("returns message createdAt when there is no preceding user message", () => {
@@ -141,5 +145,59 @@ describe("normalizeCompactToolLabel", () => {
 
   it("removes trailing completion wording from other labels", () => {
     expect(normalizeCompactToolLabel("Read file completed")).toBe("Read file");
+  });
+});
+
+describe("estimateMessagesTimelineRowHeight", () => {
+  it("adds extra height for work rows that include browser evidence cards", () => {
+    const compactHeight = estimateMessagesTimelineRowHeight(
+      {
+        kind: "work",
+        id: "work-compact",
+        createdAt: "2026-01-01T00:00:00Z",
+        groupedEntries: [
+          {
+            id: "entry-1",
+            createdAt: "2026-01-01T00:00:00Z",
+            label: "Tool call completed",
+            tone: "tool",
+          },
+        ],
+      },
+      {
+        timelineWidthPx: 800,
+      },
+    );
+
+    const evidenceHeight = estimateMessagesTimelineRowHeight(
+      {
+        kind: "work",
+        id: "work-evidence",
+        createdAt: "2026-01-01T00:00:00Z",
+        groupedEntries: [
+          {
+            id: "entry-2",
+            createdAt: "2026-01-01T00:00:00Z",
+            label: "Tool call completed",
+            tone: "tool",
+            browserEvidence: {
+              toolName: "browser.diagnostics",
+              capturedAt: "2026-01-01T00:00:00Z",
+              title: "Dashboard",
+              loadingState: "interactive",
+              lastError: "Page crashed while loading app shell",
+              consoleMessages: ["console exploded"],
+              networkErrors: ["GET /api failed with 500"],
+              screenshotDataUrl: "data:image/png;base64,AAAA",
+            },
+          },
+        ],
+      },
+      {
+        timelineWidthPx: 800,
+      },
+    );
+
+    expect(evidenceHeight).toBeGreaterThan(compactHeight);
   });
 });

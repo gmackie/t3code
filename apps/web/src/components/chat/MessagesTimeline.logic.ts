@@ -167,11 +167,14 @@ function estimateWorkRowHeight(
   const hasOverflow = row.groupedEntries.length > MAX_VISIBLE_WORK_LOG_ENTRIES;
   const visibleEntries =
     hasOverflow && !isExpanded ? MAX_VISIBLE_WORK_LOG_ENTRIES : row.groupedEntries.length;
+  const browserEvidenceEntryCount = row.groupedEntries
+    .slice(0, visibleEntries)
+    .filter((entry) => entry.browserEvidence !== undefined).length;
   const onlyToolEntries = row.groupedEntries.every((entry) => entry.tone === "tool");
   const showHeader = hasOverflow || !onlyToolEntries;
 
   // Card chrome, optional header, and one compact work-entry row per visible entry.
-  return 28 + (showHeader ? 26 : 0) + visibleEntries * 32;
+  return 28 + (showHeader ? 26 : 0) + visibleEntries * 32 + browserEvidenceEntryCount * 184;
 }
 
 function estimateTimelineProposedPlanHeight(proposedPlan: ProposedPlan): number {

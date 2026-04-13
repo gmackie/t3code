@@ -44,6 +44,7 @@ export interface WorkLogEntry {
   toolTitle?: string;
   itemType?: ToolLifecycleItemType;
   requestKind?: PendingApproval["requestKind"];
+  browserEvidence?: BrowserToolEvidence;
 }
 
 interface DerivedWorkLogEntry extends WorkLogEntry {
@@ -103,6 +104,27 @@ export type TimelineEntry =
       createdAt: string;
       entry: WorkLogEntry;
     };
+
+export interface BrowserToolEvidence {
+  toolName: string;
+  capturedAt: string;
+  message?: string;
+  error?: string;
+  url?: string;
+  title?: string | null;
+  text?: string;
+  loadingState?: "loading" | "interactive" | "complete";
+  lastError?: string | null;
+  elements?: Array<{
+    role: string;
+    name: string;
+    text?: string;
+    disabled?: boolean;
+  }>;
+  screenshotDataUrl?: string;
+  consoleMessages?: string[];
+  networkErrors?: string[];
+}
 
 export function formatDuration(durationMs: number): string {
   if (!Number.isFinite(durationMs) || durationMs < 0) return "0ms";
@@ -509,6 +531,16 @@ function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWo
       entry.detail = detail;
     }
   }
+  const browserEvidence = readBrowserToolEvidence(payload);
+  const browserEvidenceSummary = browserEvidence
+    ? summarizeBrowserToolEvidence(browserEvidence)
+    : null;
+  if (browserEvidenceSummary) {
+    entry.detail = browserEvidenceSummary;
+  }
+  if (browserEvidence) {
+    entry.browserEvidence = browserEvidence;
+  }
   if (commandPreview.command) {
     entry.command = commandPreview.command;
   }
@@ -532,6 +564,33 @@ function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWo
     entry.collapseKey = collapseKey;
   }
   return entry;
+}
+
+export function deriveLatestBrowserToolEvidence(
+  activities: ReadonlyArray<OrchestrationThreadActivity>,
+  latestTurnId: TurnId | undefined,
+): BrowserToolEvidence | null {
+  const ordered = [...activities]
+    .filter((activity) => (latestTurnId ? activity.turnId === latestTurnId : true))
+    .toSorted(compareActivitiesByOrder)
+    .toReversed();
+
+  for (const activity of ordered) {
+    const payload =
+      activity.payload && typeof activity.payload === "object"
+        ? (activity.payload as Record<string, unknown>)
+        : null;
+    const evidence = readBrowserToolEvidence(payload);
+    if (!evidence) {
+      continue;
+    }
+    return {
+      ...evidence,
+      capturedAt: activity.createdAt,
+    };
+  }
+
+  return null;
 }
 
 function collapseDerivedWorkLogEntries(
@@ -641,6 +700,124 @@ function asTrimmedString(value: unknown): string | null {
   }
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : null;
+}
+
+function asStringList(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+  const items = value
+    .map((entry) => asTrimmedString(entry))
+    .filter((entry): entry is string => entry !== null);
+  return items.length > 0 ? items : undefined;
+}
+
+function asLoadingState(value: unknown): BrowserToolEvidence["loadingState"] | undefined {
+  return value === "loading" || value === "interactive" || value === "complete" ? value : undefined;
+}
+
+function readBrowserToolName(payload: Record<string, unknown> | null): string | null {
+  const data = asRecord(payload?.data);
+  const item = asRecord(data?.item);
+  return (
+    asTrimmedString(data?.toolName) ??
+    asTrimmedString(item?.toolName) ??
+    asTrimmedString(item?.name) ??
+    asTrimmedString(payload?.toolName)
+  );
+}
+
+function readBrowserToolEvidence(
+  payload: Record<string, unknown> | null,
+): BrowserToolEvidence | null {
+  if (payload?.itemType !== "dynamic_tool_call") {
+    return null;
+  }
+  const toolName = readBrowserToolName(payload);
+  if (!toolName || !toolName.startsWith("browser.")) {
+    return null;
+  }
+  const data = asRecord(payload.data);
+  const item = asRecord(data?.item);
+  const result = asRecord(item?.result);
+  if (!result) {
+    return null;
+  }
+
+  const elements = Array.isArray(result.elements)
+    ? result.elements
+        .map((entry) => {
+          const record = asRecord(entry);
+          const role = asTrimmedString(record?.role);
+          const name = asTrimmedString(record?.name);
+          if (!role || !name) {
+            return null;
+          }
+          return {
+            role,
+            name,
+            ...(asTrimmedString(record?.text) ? { text: asTrimmedString(record?.text)! } : {}),
+            ...(typeof record?.disabled === "boolean" ? { disabled: record.disabled } : {}),
+          };
+        })
+        .filter(
+          (entry): entry is NonNullable<BrowserToolEvidence["elements"]>[number] => entry !== null,
+        )
+    : undefined;
+  const message = asTrimmedString(result.message);
+  const error = asTrimmedString(result.error);
+  const url = asTrimmedString(result.url);
+  const text = asTrimmedString(result.text);
+  const loadingState = asLoadingState(result.loadingState);
+  const screenshotDataUrl = asTrimmedString(result.screenshotDataUrl);
+  const consoleMessages = asStringList(result.consoleMessages);
+  const networkErrors = asStringList(result.networkErrors);
+
+  return {
+    toolName,
+    capturedAt: "",
+    ...(message ? { message } : {}),
+    ...(error ? { error } : {}),
+    ...(url ? { url } : {}),
+    ...(result.title === null || typeof result.title === "string"
+      ? { title: result.title as string | null }
+      : {}),
+    ...(text ? { text } : {}),
+    ...(loadingState ? { loadingState } : {}),
+    ...(result.lastError === null || typeof result.lastError === "string"
+      ? { lastError: result.lastError as string | null }
+      : {}),
+    ...(elements && elements.length > 0 ? { elements } : {}),
+    ...(screenshotDataUrl ? { screenshotDataUrl } : {}),
+    ...(consoleMessages ? { consoleMessages } : {}),
+    ...(networkErrors ? { networkErrors } : {}),
+  };
+}
+
+function summarizeBrowserToolEvidence(evidence: BrowserToolEvidence): string | null {
+  const parts: string[] = [];
+  const title = evidence.title?.trim();
+  if (title) {
+    parts.push(title);
+  } else if (evidence.url) {
+    parts.push(evidence.url);
+  }
+  if (evidence.loadingState) {
+    parts.push(evidence.loadingState);
+  }
+  if (evidence.lastError) {
+    parts.push(`error: ${evidence.lastError}`);
+  }
+  if ((evidence.elements?.length ?? 0) > 0) {
+    parts.push(`elements ${evidence.elements?.length ?? 0}`);
+  }
+  if ((evidence.consoleMessages?.length ?? 0) > 0) {
+    parts.push(`console ${evidence.consoleMessages?.length ?? 0}`);
+  }
+  if ((evidence.networkErrors?.length ?? 0) > 0) {
+    parts.push(`network ${evidence.networkErrors?.length ?? 0}`);
+  }
+  return parts.length > 0 ? parts.join(" - ") : null;
 }
 
 function trimMatchingOuterQuotes(value: string): string {

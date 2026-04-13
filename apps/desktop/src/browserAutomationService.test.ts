@@ -29,6 +29,8 @@ function createBrowserManagerStub(): BrowserManager {
     diagnostics: vi.fn(async () => ({
       url: "https://example.com",
       title: "Example",
+      loadingState: "interactive" as const,
+      lastError: "Page crashed while loading app shell",
       consoleMessages: ["console exploded"],
       networkErrors: ["GET https://example.com/api failed with 500"],
     })),
@@ -194,6 +196,26 @@ describe("createBrowserAutomationService", () => {
         name: "Continue",
         index: 1,
       },
+    });
+  });
+
+  it("returns richer page-state details for diagnostics requests", async () => {
+    const browserManager = createBrowserManagerStub();
+    const service = createBrowserAutomationService(browserManager);
+
+    await expect(
+      service.handleRequest({
+        type: "diagnostics",
+        threadId: "thread-1",
+      } as any),
+    ).resolves.toMatchObject({
+      message: "Collected browser diagnostics.",
+      url: "https://example.com",
+      title: "Example",
+      loadingState: "interactive",
+      lastError: "Page crashed while loading app shell",
+      consoleMessages: ["console exploded"],
+      networkErrors: ["GET https://example.com/api failed with 500"],
     });
   });
 

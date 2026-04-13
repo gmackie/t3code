@@ -12,6 +12,7 @@ import {
   deriveActiveWorkStartedAt,
   deriveActivePlanState,
   PROVIDER_OPTIONS,
+  deriveLatestBrowserToolEvidence,
   derivePendingApprovals,
   derivePendingUserInputs,
   deriveTimelineEntries,
@@ -944,6 +945,120 @@ describe("deriveWorkLogEntries", () => {
       label: "Tool call completed",
       itemType: "dynamic_tool_call",
       toolTitle: "Browser Navigate",
+    });
+  });
+
+  it("derives browser diagnostics previews from completed dynamic tool data", () => {
+    const activities: OrchestrationThreadActivity[] = [
+      makeActivity({
+        id: "browser-tool-complete",
+        createdAt: "2026-04-13T00:00:03.000Z",
+        kind: "tool.completed",
+        summary: "Tool call completed",
+        payload: {
+          itemType: "dynamic_tool_call",
+          title: "Tool call",
+          data: {
+            item: {
+              toolName: "browser.diagnostics",
+              result: {
+                url: "https://example.com/dashboard",
+                title: "Dashboard",
+                loadingState: "interactive",
+                lastError: "Page crashed while loading app shell",
+                consoleMessages: ["console exploded"],
+                networkErrors: ["GET https://example.com/api failed with 500"],
+              },
+            },
+          },
+        },
+      }),
+    ];
+
+    const [entry] = deriveWorkLogEntries(activities, undefined);
+
+    expect(entry).toMatchObject({
+      toolTitle: "Browser Diagnostics",
+      detail:
+        "Dashboard - interactive - error: Page crashed while loading app shell - console 1 - network 1",
+      browserEvidence: {
+        toolName: "browser.diagnostics",
+        url: "https://example.com/dashboard",
+        title: "Dashboard",
+        loadingState: "interactive",
+        lastError: "Page crashed while loading app shell",
+        consoleMessages: ["console exploded"],
+        networkErrors: ["GET https://example.com/api failed with 500"],
+      },
+    });
+  });
+
+  it("derives the latest browser tool evidence from inspect and diagnostics tool activities", () => {
+    const activities: OrchestrationThreadActivity[] = [
+      makeActivity({
+        id: "browser-inspect-complete",
+        createdAt: "2026-04-13T00:00:02.000Z",
+        kind: "tool.completed",
+        summary: "Tool call completed",
+        turnId: "turn-1",
+        payload: {
+          itemType: "dynamic_tool_call",
+          title: "Tool call",
+          data: {
+            item: {
+              toolName: "browser.inspect",
+              result: {
+                url: "https://example.com/dashboard",
+                title: "Dashboard",
+                loadingState: "complete",
+                elements: [
+                  {
+                    role: "button",
+                    name: "Continue",
+                    text: "Continue",
+                  },
+                ],
+              },
+            },
+          },
+        },
+      }),
+      makeActivity({
+        id: "browser-diagnostics-complete",
+        createdAt: "2026-04-13T00:00:03.000Z",
+        kind: "tool.completed",
+        summary: "Tool call completed",
+        turnId: "turn-1",
+        payload: {
+          itemType: "dynamic_tool_call",
+          title: "Tool call",
+          data: {
+            item: {
+              toolName: "browser.diagnostics",
+              result: {
+                url: "https://example.com/dashboard",
+                title: "Dashboard",
+                loadingState: "interactive",
+                lastError: "Page crashed while loading app shell",
+                consoleMessages: ["console exploded"],
+                networkErrors: ["GET https://example.com/api failed with 500"],
+                screenshotDataUrl: "data:image/png;base64,AAAA",
+              },
+            },
+          },
+        },
+      }),
+    ];
+
+    expect(deriveLatestBrowserToolEvidence(activities, TurnId.makeUnsafe("turn-1"))).toMatchObject({
+      toolName: "browser.diagnostics",
+      url: "https://example.com/dashboard",
+      title: "Dashboard",
+      loadingState: "interactive",
+      lastError: "Page crashed while loading app shell",
+      consoleMessages: ["console exploded"],
+      networkErrors: ["GET https://example.com/api failed with 500"],
+      screenshotDataUrl: "data:image/png;base64,AAAA",
     });
   });
 

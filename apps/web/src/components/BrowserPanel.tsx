@@ -23,7 +23,9 @@ import {
 
 import { getBrowserTabLabel, type BrowserTab } from "../browser";
 import { isElectron } from "../env";
+import type { BrowserToolEvidence } from "../session-logic";
 import { cn } from "../lib/utils";
+import { BrowserEvidenceCard } from "./BrowserEvidenceCard";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Sheet, SheetPanel, SheetPopup, SheetTrigger } from "./ui/sheet";
@@ -33,6 +35,7 @@ interface BrowserPanelProps {
   state: { activeTabId: string | null; tabs: BrowserTab[] };
   activeTab: BrowserTab | null;
   automationState: BrowserAutomationState;
+  latestEvidence?: BrowserToolEvidence | null;
   inputValue: string;
   focusRequestId: number;
   newTabShortcutLabel?: string | null;
@@ -139,6 +142,7 @@ export default function BrowserPanel({
   state,
   activeTab,
   automationState,
+  latestEvidence = null,
   inputValue,
   focusRequestId,
   newTabShortcutLabel,
@@ -216,6 +220,12 @@ export default function BrowserPanel({
   const newTabTooltip = newTabShortcutLabel ? `New tab (${newTabShortcutLabel})` : "New tab";
   const lastError = activeTab?.lastError?.trim() || null;
   const showEmptyState = !activeTab || activeTab.url === "about:blank";
+  const evidenceHeading =
+    latestEvidence?.toolName === "browser.inspect"
+      ? "Latest inspect snapshot"
+      : latestEvidence
+        ? "Latest browser evidence"
+        : null;
   const topBarClassName = cn(
     "relative flex h-[52px] min-h-[52px] items-end bg-background/70 px-3",
     isElectron && "drag-region",
@@ -439,6 +449,13 @@ export default function BrowserPanel({
           >
             {automationState.message}
           </div>
+        ) : null}
+        {latestEvidence && evidenceHeading ? (
+          <BrowserEvidenceCard
+            evidence={latestEvidence}
+            heading={evidenceHeading}
+            className="absolute top-[4.75rem] right-4 z-10 w-[min(26rem,calc(100%-2rem))]"
+          />
         ) : null}
         <div ref={viewportRef} className="absolute inset-0" />
         {showEmptyState ? (

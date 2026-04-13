@@ -63,6 +63,7 @@ import {
   derivePendingUserInputs,
   derivePhase,
   deriveTimelineEntries,
+  deriveLatestBrowserToolEvidence,
   deriveActiveWorkStartedAt,
   deriveActivePlanState,
   findSidebarProposedPlan,
@@ -1319,6 +1320,10 @@ export default function ChatView(props: ChatViewProps) {
   const threadActivities = activeThread?.activities ?? EMPTY_ACTIVITIES;
   const workLogEntries = useMemo(
     () => deriveWorkLogEntries(threadActivities, activeLatestTurn?.turnId ?? undefined),
+    [activeLatestTurn?.turnId, threadActivities],
+  );
+  const latestBrowserToolEvidence = useMemo(
+    () => deriveLatestBrowserToolEvidence(threadActivities, activeLatestTurn?.turnId ?? undefined),
     [activeLatestTurn?.turnId, threadActivities],
   );
   const latestTurnHasToolActivity = useMemo(
@@ -5233,6 +5238,7 @@ export default function ChatView(props: ChatViewProps) {
               state={browserState}
               activeTab={activeBrowserTab}
               automationState={browserAutomationState}
+              latestEvidence={latestBrowserToolEvidence}
               inputValue={browserState.inputValue}
               focusRequestId={browserState.focusRequestId}
               onInputChange={handleBrowserInputChange}

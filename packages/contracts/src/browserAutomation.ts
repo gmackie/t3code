@@ -77,6 +77,7 @@ export interface BrowserAutomationResult {
   title?: string | null;
   text?: string;
   loadingState?: "loading" | "interactive" | "complete";
+  lastError?: string | null;
   elements?: BrowserAutomationElementSummary[];
   screenshotDataUrl?: string;
   consoleMessages?: string[];
