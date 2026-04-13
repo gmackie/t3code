@@ -1,18 +1,19 @@
 import { spawn } from "node:child_process";
-import { dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { resolve } from "node:path";
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const desktopDir = resolve(__dirname, "..");
-const electronBin = resolve(desktopDir, "node_modules/.bin/electron");
+import { desktopDir, resolveElectronPath } from "./electron-launcher.mjs";
+
 const mainJs = resolve(desktopDir, "dist-electron/main.js");
+const childEnv = { ...process.env };
+delete childEnv.ELECTRON_RUN_AS_NODE;
 
 console.log("\nLaunching Electron smoke test...");
 
-const child = spawn(electronBin, [mainJs], {
+const child = spawn(resolveElectronPath(), [mainJs], {
   stdio: ["pipe", "pipe", "pipe"],
+  cwd: desktopDir,
   env: {
-    ...process.env,
+    ...childEnv,
     VITE_DEV_SERVER_URL: "",
     ELECTRON_ENABLE_LOGGING: "1",
   },
@@ -29,6 +30,13 @@ child.stderr.on("data", (chunk) => {
 const timeout = setTimeout(() => {
   child.kill();
 }, 8_000);
+
+child.on("error", (error) => {
+  clearTimeout(timeout);
+  console.error("\nDesktop smoke test failed to launch:");
+  console.error(error instanceof Error ? error.message : String(error));
+  process.exit(1);
+});
 
 child.on("exit", () => {
   clearTimeout(timeout);
