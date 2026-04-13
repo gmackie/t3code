@@ -181,6 +181,38 @@ describe("createCodexInAppBrowserDynamicToolHandler", () => {
     });
   });
 
+  it("maps inspect text target hints into a browser inspect request", async () => {
+    const client = {
+      sendRequest: vi.fn(async () => ({
+        message: "Inspected current page.",
+        url: "https://example.com/dashboard",
+      })),
+    };
+    const handler = createCodexInAppBrowserDynamicToolHandler(client);
+
+    await expect(
+      handler({
+        threadId: "thread-1",
+        turnId: "turn-1",
+        callId: "call-1",
+        tool: "browser.inspect",
+        arguments: {
+          text: "Continue to dashboard",
+        },
+      }),
+    ).resolves.toMatchObject({
+      success: true,
+    });
+
+    expect(client.sendRequest).toHaveBeenCalledWith({
+      type: "inspect",
+      threadId: "thread-1",
+      target: {
+        text: "Continue to dashboard",
+      },
+    });
+  });
+
   it("keeps enriched browser failures as failed tool results and preserves screenshots", async () => {
     const client = {
       sendRequest: vi.fn(async () => ({

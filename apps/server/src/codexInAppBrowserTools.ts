@@ -151,6 +151,7 @@ export const CODEX_IN_APP_BROWSER_DYNAMIC_TOOLS: CodexDynamicToolSpec[] = [
       {
         threadId: SHARED_THREAD_ID_PROPERTY,
         selector: { type: "string", description: "CSS selector to inspect." },
+        text: { type: "string", description: "Visible text to inspect on the target element." },
         role: {
           type: "string",
           description: "Accessible role to inspect, such as button or link.",
@@ -299,7 +300,7 @@ function toBrowserAutomationRequest(params: CodexDynamicToolCallParams): Browser
       };
     }
     case "browser.inspect": {
-      const target = readBrowserTarget(args, { allowText: false });
+      const target = readBrowserTarget(args, { allowText: true });
       return {
         type: "inspect",
         threadId: params.threadId,
