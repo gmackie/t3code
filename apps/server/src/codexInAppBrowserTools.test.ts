@@ -75,6 +75,39 @@ describe("createCodexInAppBrowserDynamicToolHandler", () => {
     });
   });
 
+  it("maps wait url and title predicates into a browser wait request", async () => {
+    const client = {
+      sendRequest: vi.fn(async () => ({
+        message: "Wait condition satisfied.",
+      })),
+    };
+    const handler = createCodexInAppBrowserDynamicToolHandler(client);
+
+    await expect(
+      handler({
+        threadId: "thread-1",
+        turnId: "turn-1",
+        callId: "call-1",
+        tool: "browser.wait",
+        arguments: {
+          urlIncludes: "/dashboard",
+          titleIncludes: "Dashboard",
+          timeoutMs: 2500,
+        },
+      }),
+    ).resolves.toMatchObject({
+      success: true,
+    });
+
+    expect(client.sendRequest).toHaveBeenCalledWith({
+      type: "wait",
+      threadId: "thread-1",
+      urlIncludes: "/dashboard",
+      titleIncludes: "Dashboard",
+      timeoutMs: 2500,
+    });
+  });
+
   it("keeps enriched browser failures as failed tool results and preserves screenshots", async () => {
     const client = {
       sendRequest: vi.fn(async () => ({

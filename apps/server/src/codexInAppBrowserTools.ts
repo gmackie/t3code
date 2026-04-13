@@ -120,6 +120,14 @@ export const CODEX_IN_APP_BROWSER_DYNAMIC_TOOLS: CodexDynamicToolSpec[] = [
         threadId: SHARED_THREAD_ID_PROPERTY,
         selector: { type: "string", description: "CSS selector to wait for." },
         text: { type: "string", description: "Visible text to wait for." },
+        urlIncludes: {
+          type: "string",
+          description: "Substring that should appear in the current URL.",
+        },
+        titleIncludes: {
+          type: "string",
+          description: "Substring that should appear in the document title.",
+        },
         timeoutMs: { type: "number", description: "Maximum wait time in milliseconds." },
       },
       [],
@@ -255,12 +263,16 @@ function toBrowserAutomationRequest(params: CodexDynamicToolCallParams): Browser
     case "browser.wait": {
       const selector = readString(args, "selector");
       const text = readString(args, "text");
+      const urlIncludes = readString(args, "urlIncludes");
+      const titleIncludes = readString(args, "titleIncludes");
       const timeoutMs = readNumber(args, "timeoutMs");
       return {
         type: "wait",
         threadId: params.threadId,
         ...(selector ? { selector } : {}),
         ...(text ? { text } : {}),
+        ...(urlIncludes ? { urlIncludes } : {}),
+        ...(titleIncludes ? { titleIncludes } : {}),
         ...(timeoutMs !== undefined ? { timeoutMs } : {}),
       };
     }

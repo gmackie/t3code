@@ -44,6 +44,8 @@ export interface BrowserManager {
     input: BrowserTabTargetInput & {
       selector?: string;
       text?: string;
+      urlIncludes?: string;
+      titleIncludes?: string;
       timeoutMs?: number;
     },
   ) => Promise<void>;
@@ -712,15 +714,21 @@ export function createBrowserManager(options: BrowserManagerOptions): BrowserMan
       const record = ensureLiveRecord(input);
       const matched = await executeRecordScript<boolean>(
         record,
-        `({ selector, text, timeoutMs }) => {
+        `({ selector, text, urlIncludes, titleIncludes, timeoutMs }) => {
           const deadline = Date.now() + timeoutMs;
           return new Promise((resolve) => {
             const tick = () => {
               const selectorMatched = selector ? document.querySelector(selector) !== null : false;
               const textMatched =
                 text && document.body ? document.body.innerText.includes(text) : false;
-              const noPredicate = !selector && !text;
-              if (selectorMatched || textMatched || noPredicate) {
+              const urlMatched = urlIncludes
+                ? window.location.href.includes(urlIncludes)
+                : false;
+              const titleMatched = titleIncludes
+                ? document.title.includes(titleIncludes)
+                : false;
+              const noPredicate = !selector && !text && !urlIncludes && !titleIncludes;
+              if (selectorMatched || textMatched || urlMatched || titleMatched || noPredicate) {
                 resolve(true);
                 return;
               }
@@ -736,6 +744,8 @@ export function createBrowserManager(options: BrowserManagerOptions): BrowserMan
         {
           selector: input.selector,
           text: input.text,
+          urlIncludes: input.urlIncludes,
+          titleIncludes: input.titleIncludes,
           timeoutMs: Math.max(100, input.timeoutMs ?? 10_000),
         },
       );

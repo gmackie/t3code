@@ -123,6 +123,8 @@ export function createBrowserAutomationService(
               ...target,
               ...(request.selector ? { selector: request.selector } : {}),
               ...(request.text ? { text: request.text } : {}),
+              ...(request.urlIncludes ? { urlIncludes: request.urlIncludes } : {}),
+              ...(request.titleIncludes ? { titleIncludes: request.titleIncludes } : {}),
               ...(request.timeoutMs !== undefined ? { timeoutMs: request.timeoutMs } : {}),
             });
             return {

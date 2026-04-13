@@ -32,6 +32,8 @@ export interface BrowserAutomationWaitRequest {
   threadId: string;
   selector?: string;
   text?: string;
+  urlIncludes?: string;
+  titleIncludes?: string;
   timeoutMs?: number;
 }
 
