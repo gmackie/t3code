@@ -190,8 +190,89 @@ export const CODEX_IN_APP_BROWSER_DYNAMIC_TOOLS: CodexDynamicToolSpec[] = [
   },
 ];
 
-function stringifyResult(result: BrowserAutomationResult): string {
-  return JSON.stringify(result, null, 2);
+function formatBrowserInspectSummary(result: BrowserAutomationResult): string {
+  const lines = [
+    `Page: ${result.title?.trim() || result.url || "Untitled page"}`,
+    ...(result.url ? [`URL: ${result.url}`] : []),
+    ...(result.loadingState ? [`Loading: ${result.loadingState}`] : []),
+    ...(result.text ? [`Text preview: ${result.text.slice(0, 240)}`] : []),
+  ];
+
+  if ((result.elements?.length ?? 0) > 0) {
+    lines.push(
+      `Elements: ${result.elements
+        ?.slice(0, 3)
+        .map((element) => `${element.role} "${element.name}"`)
+        .join(" · ")}`,
+    );
+  }
+
+  return lines.join("\n");
+}
+
+function formatBrowserDiagnosticsSummary(result: BrowserAutomationResult): string {
+  const lines = [
+    `Page: ${result.title?.trim() || result.url || "Untitled page"}`,
+    ...(result.url ? [`URL: ${result.url}`] : []),
+    ...(result.loadingState ? [`Loading: ${result.loadingState}`] : []),
+    ...(result.lastError ? [`Last error: ${result.lastError}`] : []),
+    `Console messages: ${result.consoleMessages?.length ?? 0}`,
+    `Network errors: ${result.networkErrors?.length ?? 0}`,
+  ];
+
+  if ((result.consoleMessages?.length ?? 0) > 0) {
+    lines.push(`Console sample: ${result.consoleMessages?.slice(0, 2).join(" · ")}`);
+  }
+  if ((result.networkErrors?.length ?? 0) > 0) {
+    lines.push(`Network sample: ${result.networkErrors?.slice(0, 2).join(" · ")}`);
+  }
+
+  return lines.join("\n");
+}
+
+function formatGenericBrowserSuccess(result: BrowserAutomationResult): string {
+  const lines = [
+    result.message,
+    ...(result.title?.trim() ? [`Page: ${result.title.trim()}`] : []),
+    ...(result.url ? [`URL: ${result.url}`] : []),
+  ];
+  return lines.join("\n");
+}
+
+function formatBrowserFailureSummary(result: BrowserAutomationResult): string {
+  const lines = [
+    `Failure: ${result.error ?? result.message}`,
+    ...(result.title?.trim() ? [`Page: ${result.title.trim()}`] : []),
+    ...(result.url ? [`URL: ${result.url}`] : []),
+    ...(result.loadingState ? [`Loading: ${result.loadingState}`] : []),
+    ...(result.lastError ? [`Last error: ${result.lastError}`] : []),
+    `Console messages: ${result.consoleMessages?.length ?? 0}`,
+    `Network errors: ${result.networkErrors?.length ?? 0}`,
+  ];
+
+  if ((result.consoleMessages?.length ?? 0) > 0) {
+    lines.push(`Console sample: ${result.consoleMessages?.slice(0, 2).join(" · ")}`);
+  }
+  if ((result.networkErrors?.length ?? 0) > 0) {
+    lines.push(`Network sample: ${result.networkErrors?.slice(0, 2).join(" · ")}`);
+  }
+
+  return lines.join("\n");
+}
+
+function formatBrowserResultText(tool: string, result: BrowserAutomationResult): string {
+  if (result.error !== undefined) {
+    return formatBrowserFailureSummary(result);
+  }
+
+  switch (tool) {
+    case "browser.inspect":
+      return formatBrowserInspectSummary(result);
+    case "browser.diagnostics":
+      return formatBrowserDiagnosticsSummary(result);
+    default:
+      return formatGenericBrowserSuccess(result);
+  }
 }
 
 function readObject(value: unknown): Record<string, unknown> | null {
@@ -337,7 +418,7 @@ export function createCodexInAppBrowserDynamicToolHandler(
       const contentItems: CodexDynamicToolResponse["contentItems"] = [
         {
           type: "inputText",
-          text: stringifyResult(result),
+          text: formatBrowserResultText(params.tool, result),
         },
       ];
       if (result.screenshotDataUrl) {
