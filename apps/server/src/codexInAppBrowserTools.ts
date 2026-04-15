@@ -235,6 +235,8 @@ function formatGenericBrowserSuccess(result: BrowserAutomationResult): string {
     result.message,
     ...(result.title?.trim() ? [`Page: ${result.title.trim()}`] : []),
     ...(result.url ? [`URL: ${result.url}`] : []),
+    ...(result.loadingState ? [`Loading: ${result.loadingState}`] : []),
+    ...(result.lastError ? [`Last error: ${result.lastError}`] : []),
   ];
   return lines.join("\n");
 }

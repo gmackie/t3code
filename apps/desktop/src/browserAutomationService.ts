@@ -74,6 +74,27 @@ async function collectFailureEvidence(
   return evidence;
 }
 
+async function collectSuccessPageContext(
+  browserManager: BrowserManager,
+  request: BrowserAutomationRequest,
+  target: { threadId: ThreadId; tabId: string },
+): Promise<Partial<BrowserAutomationResult>> {
+  if (
+    request.type !== "navigate" &&
+    request.type !== "click" &&
+    request.type !== "type" &&
+    request.type !== "wait"
+  ) {
+    return {};
+  }
+
+  try {
+    return await browserManager.diagnostics(target);
+  } catch {
+    return {};
+  }
+}
+
 export function createBrowserAutomationService(
   browserManager: BrowserManager,
 ): BrowserAutomationService {
@@ -97,7 +118,7 @@ export function createBrowserAutomationService(
             });
             return {
               message: `Navigated to ${request.url}`,
-              url: request.url,
+              ...(await collectSuccessPageContext(browserManager, request, target)),
             };
           case "click":
             await browserManager.click({
@@ -106,6 +127,7 @@ export function createBrowserAutomationService(
             });
             return {
               message: `Clicked ${describeTarget(request.target)}`,
+              ...(await collectSuccessPageContext(browserManager, request, target)),
             };
           case "type":
             await browserManager.typeText({
@@ -117,6 +139,7 @@ export function createBrowserAutomationService(
             });
             return {
               message: `Typed into ${describeTarget(request.target)}`,
+              ...(await collectSuccessPageContext(browserManager, request, target)),
             };
           case "wait":
             await browserManager.wait({
@@ -130,6 +153,7 @@ export function createBrowserAutomationService(
             });
             return {
               message: "Wait condition satisfied.",
+              ...(await collectSuccessPageContext(browserManager, request, target)),
             };
           case "inspect":
             return {

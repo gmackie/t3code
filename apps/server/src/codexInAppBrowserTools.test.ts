@@ -79,7 +79,9 @@ describe("createCodexInAppBrowserDynamicToolHandler", () => {
     const client = {
       sendRequest: vi.fn(async () => ({
         message: 'Typed into textbox "Search"',
+        title: "Dashboard",
         url: "https://example.com/dashboard",
+        loadingState: "interactive" as const,
       })),
     };
     const handler = createCodexInAppBrowserDynamicToolHandler(client);
@@ -100,7 +102,7 @@ describe("createCodexInAppBrowserDynamicToolHandler", () => {
       contentItems: [
         {
           type: "inputText",
-          text: 'Typed into textbox "Search"\nURL: https://example.com/dashboard',
+          text: 'Typed into textbox "Search"\nPage: Dashboard\nURL: https://example.com/dashboard\nLoading: interactive',
         },
       ],
       success: true,

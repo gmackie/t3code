@@ -48,6 +48,14 @@ describe("createBrowserAutomationService", () => {
   it("passes semantic click targets through to the browser manager", async () => {
     const browserManager = createBrowserManagerStub();
     const service = createBrowserAutomationService(browserManager);
+    vi.mocked(browserManager.diagnostics).mockResolvedValueOnce({
+      url: "https://example.com/dashboard",
+      title: "Dashboard",
+      loadingState: "complete",
+      lastError: null,
+      consoleMessages: [],
+      networkErrors: [],
+    });
 
     await expect(
       service.handleRequest({
@@ -61,6 +69,9 @@ describe("createBrowserAutomationService", () => {
       } as any),
     ).resolves.toMatchObject({
       message: 'Clicked button "Continue"',
+      url: "https://example.com/dashboard",
+      title: "Dashboard",
+      loadingState: "complete",
     });
 
     expect(browserManager.click).toHaveBeenCalledWith({
@@ -108,6 +119,14 @@ describe("createBrowserAutomationService", () => {
   it("passes url and title wait predicates through to the browser manager", async () => {
     const browserManager = createBrowserManagerStub();
     const service = createBrowserAutomationService(browserManager);
+    vi.mocked(browserManager.diagnostics).mockResolvedValueOnce({
+      url: "https://example.com/dashboard",
+      title: "Dashboard",
+      loadingState: "interactive",
+      lastError: null,
+      consoleMessages: [],
+      networkErrors: [],
+    });
 
     await expect(
       service.handleRequest({
@@ -119,6 +138,9 @@ describe("createBrowserAutomationService", () => {
       } as any),
     ).resolves.toMatchObject({
       message: "Wait condition satisfied.",
+      url: "https://example.com/dashboard",
+      title: "Dashboard",
+      loadingState: "interactive",
     });
 
     expect(browserManager.wait).toHaveBeenCalledWith({
@@ -216,6 +238,32 @@ describe("createBrowserAutomationService", () => {
       lastError: "Page crashed while loading app shell",
       consoleMessages: ["console exploded"],
       networkErrors: ["GET https://example.com/api failed with 500"],
+    });
+  });
+
+  it("returns current page context after successful navigation", async () => {
+    const browserManager = createBrowserManagerStub();
+    const service = createBrowserAutomationService(browserManager);
+    vi.mocked(browserManager.diagnostics).mockResolvedValueOnce({
+      url: "https://example.com/dashboard",
+      title: "Dashboard",
+      loadingState: "interactive",
+      lastError: null,
+      consoleMessages: [],
+      networkErrors: [],
+    });
+
+    await expect(
+      service.handleRequest({
+        type: "navigate",
+        threadId: "thread-1",
+        url: "https://example.com/dashboard",
+      } as any),
+    ).resolves.toMatchObject({
+      message: "Navigated to https://example.com/dashboard",
+      url: "https://example.com/dashboard",
+      title: "Dashboard",
+      loadingState: "interactive",
     });
   });
 
