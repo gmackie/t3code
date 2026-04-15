@@ -10,6 +10,19 @@ function getDesktopLocalEnvironmentBootstrap(): DesktopEnvironmentBootstrap | nu
   return window.desktopBridge?.getLocalEnvironmentBootstrap() ?? null;
 }
 
+function deriveHttpBaseUrlFromWsBaseUrl(wsBaseUrl: string): string {
+  const url = new URL(wsBaseUrl, window.location.origin);
+  if (url.protocol === "ws:") {
+    url.protocol = "http:";
+    return url.toString();
+  }
+  if (url.protocol === "wss:") {
+    url.protocol = "https:";
+    return url.toString();
+  }
+  throw new Error(`Unsupported websocket base URL protocol: ${url.protocol}`);
+}
+
 function normalizeBaseUrl(rawValue: string): string {
   return new URL(rawValue, window.location.origin).toString();
 }
@@ -59,10 +72,15 @@ function resolveDesktopPrimaryTarget(): PrimaryEnvironmentTarget | null {
   if (!desktopBootstrap) {
     return null;
   }
-  if (!desktopBootstrap.httpBaseUrl && !desktopBootstrap.wsBaseUrl) {
+  const wsBaseUrl = desktopBootstrap.wsBaseUrl?.trim() || desktopBootstrap.wsUrl?.trim() || null;
+  const httpBaseUrl =
+    desktopBootstrap.httpBaseUrl?.trim() ||
+    (wsBaseUrl ? deriveHttpBaseUrlFromWsBaseUrl(wsBaseUrl) : null);
+
+  if (!httpBaseUrl && !wsBaseUrl) {
     return null;
   }
-  if (!desktopBootstrap.httpBaseUrl || !desktopBootstrap.wsBaseUrl) {
+  if (!httpBaseUrl || !wsBaseUrl) {
     throw new Error(
       "Desktop bootstrap must provide both httpBaseUrl and wsBaseUrl for the local environment.",
     );
@@ -71,8 +89,8 @@ function resolveDesktopPrimaryTarget(): PrimaryEnvironmentTarget | null {
   return {
     source: "desktop-managed",
     target: {
-      httpBaseUrl: normalizeBaseUrl(desktopBootstrap.httpBaseUrl),
-      wsBaseUrl: normalizeBaseUrl(desktopBootstrap.wsBaseUrl),
+      httpBaseUrl: normalizeBaseUrl(httpBaseUrl),
+      wsBaseUrl: normalizeBaseUrl(wsBaseUrl),
     },
   };
 }

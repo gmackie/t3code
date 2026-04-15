@@ -3,7 +3,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createBrowserCookieManager } from "./browserCookies";
 
@@ -139,8 +139,9 @@ describe("createBrowserCookieManager", () => {
     fs.mkdirSync(profileDir, { recursive: true });
     createFixtureDb(path.join(profileDir, "Cookies"));
 
+    const cookieSession = createCookieSessionStub();
     const manager = createBrowserCookieManager({
-      session: createCookieSessionStub() as never,
+      getSession: () => cookieSession as never,
       homeDir,
       platform: "darwin",
       readPasswordCommand: async () => TEST_PASSWORD,
@@ -201,5 +202,19 @@ describe("createBrowserCookieManager", () => {
 
     await expect(manager.removeDomain(".github.com")).resolves.toEqual({ removedCount: 2 });
     await expect(manager.listSessionCookies()).resolves.toEqual([]);
+  });
+
+  it("does not resolve the Electron session during manager construction", () => {
+    const getSession = vi.fn(() => {
+      throw new Error("session should not be touched during construction");
+    });
+
+    expect(() =>
+      createBrowserCookieManager({
+        getSession,
+        platform: "darwin",
+      }),
+    ).not.toThrow();
+    expect(getSession).not.toHaveBeenCalled();
   });
 });

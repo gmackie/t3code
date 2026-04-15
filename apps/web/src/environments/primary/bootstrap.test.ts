@@ -87,6 +87,48 @@ describe("environmentBootstrap", () => {
     });
   });
 
+  it("derives desktop-managed environment urls from the legacy websocket bootstrap field", () => {
+    vi.stubGlobal("window", {
+      location: {
+        origin: "t3://app",
+      },
+      desktopBridge: {
+        getLocalEnvironmentBootstrap: () => ({
+          label: "Local environment",
+          httpBaseUrl: null,
+          wsBaseUrl: null,
+          wsUrl: "ws://127.0.0.1:3773",
+        }),
+      },
+      history: {
+        replaceState: vi.fn(),
+      },
+    });
+    writePrimaryEnvironmentDescriptor({
+      environmentId: EnvironmentId.makeUnsafe("environment-local"),
+      label: "Bootstrapped environment",
+      platform: {
+        os: "darwin",
+        arch: "arm64",
+      },
+      serverVersion: "0.0.0-test",
+      capabilities: {
+        repositoryIdentity: true,
+      },
+    });
+
+    expect(getPrimaryKnownEnvironment()).toEqual({
+      id: "environment-local",
+      label: "Bootstrapped environment",
+      source: "desktop-managed",
+      environmentId: "environment-local",
+      target: {
+        httpBaseUrl: "http://127.0.0.1:3773/",
+        wsBaseUrl: "ws://127.0.0.1:3773/",
+      },
+    });
+  });
+
   it("reuses an in-flight descriptor bootstrap request", async () => {
     const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse(BASE_ENVIRONMENT));
     vi.stubGlobal("fetch", fetchMock);

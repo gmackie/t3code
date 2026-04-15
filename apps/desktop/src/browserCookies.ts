@@ -59,7 +59,7 @@ export interface BrowserCookieManager {
 }
 
 interface BrowserCookieManagerOptions {
-  session: Pick<Session, "cookies">;
+  getSession: () => Pick<Session, "cookies">;
   homeDir?: string;
   platform?: NodeJS.Platform;
   readPasswordCommand?: (
@@ -380,6 +380,7 @@ export function createBrowserCookieManager(
   const homeDir = options.homeDir ?? OS.homedir();
   const platform = getPlatform(options.platform ?? process.platform);
   const readPasswordCommand = options.readPasswordCommand ?? defaultReadPasswordCommand;
+  const getSession = (): Pick<Session, "cookies"> => options.getSession();
 
   return {
     async listSources() {
@@ -504,7 +505,7 @@ export function createBrowserCookieManager(
         for (const row of rows) {
           try {
             const value = decryptCookieValue(row, derivedKeys);
-            await options.session.cookies.set(toElectronCookie(row, value));
+            await getSession().cookies.set(toElectronCookie(row, value));
             importedCount += 1;
             countsByDomain.set(row.host_key, (countsByDomain.get(row.host_key) ?? 0) + 1);
           } catch {
@@ -525,7 +526,7 @@ export function createBrowserCookieManager(
     },
 
     async listSessionCookies() {
-      const cookies = await options.session.cookies.get({});
+      const cookies = await getSession().cookies.get({});
       return cookies
         .flatMap((cookie) => {
           if (!cookie.domain) {
@@ -549,7 +550,7 @@ export function createBrowserCookieManager(
     },
 
     async removeDomain(domain) {
-      const cookies = await options.session.cookies.get({});
+      const cookies = await getSession().cookies.get({});
       const cookiesForDomain = cookies.flatMap((cookie) => {
         if (cookie.domain !== domain) {
           return [];
@@ -564,7 +565,7 @@ export function createBrowserCookieManager(
         ];
       });
       for (const cookie of cookiesForDomain) {
-        await options.session.cookies.remove(
+        await getSession().cookies.remove(
           toRemovalUrl(cookie.domain, cookie.path, cookie.secure),
           cookie.name,
         );

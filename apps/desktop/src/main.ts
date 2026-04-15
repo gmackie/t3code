@@ -70,6 +70,7 @@ import {
   reduceDesktopUpdateStateOnUpdateAvailable,
 } from "./updateMachine";
 import { isArm64HostRunningIntelBuild, resolveDesktopRuntimeInfo } from "./runtimeArch";
+import { createLocalEnvironmentBootstrap } from "./localEnvironmentBootstrap";
 
 syncShellEnvironment();
 
@@ -564,7 +565,7 @@ const browserManager = createBrowserManager({
 });
 const browserAutomationService = createBrowserAutomationService(browserManager);
 const browserCookieManager = createBrowserCookieManager({
-  session: session.defaultSession,
+  getSession: () => session.defaultSession,
 });
 
 function resolveUpdaterErrorContext(): DesktopUpdateErrorContext {
@@ -1417,10 +1418,10 @@ function registerIpcHandlers(): void {
 
   ipcMain.removeAllListeners(GET_LOCAL_ENVIRONMENT_BOOTSTRAP_CHANNEL);
   ipcMain.on(GET_LOCAL_ENVIRONMENT_BOOTSTRAP_CHANNEL, (event) => {
-    event.returnValue = {
+    event.returnValue = createLocalEnvironmentBootstrap({
       label: "Local environment",
-      wsUrl: backendWsUrl || null,
-    } as const;
+      wsBaseUrl: backendWsUrl || null,
+    });
   });
   ipcMain.removeHandler(PICK_FOLDER_CHANNEL);
   ipcMain.handle(PICK_FOLDER_CHANNEL, async () => {
