@@ -1,5 +1,21 @@
 import type { DesktopUpdateState } from "@t3tools/contracts";
 
+interface DesktopGitHubUpdateConfig {
+  provider?: string | undefined;
+  owner?: string | undefined;
+  repo?: string | undefined;
+}
+
+function isGmackieDesktopUpdateFeed(
+  appUpdateConfig: DesktopGitHubUpdateConfig | null,
+): boolean {
+  return (
+    appUpdateConfig?.provider === "github" &&
+    appUpdateConfig.owner?.toLowerCase() === "gmackie" &&
+    appUpdateConfig.repo?.toLowerCase() === "t3code"
+  );
+}
+
 export function shouldBroadcastDownloadProgress(
   currentState: DesktopUpdateState,
   nextPercent: number,
@@ -30,21 +46,24 @@ export function getCanRetryAfterDownloadFailure(currentState: DesktopUpdateState
 
 export function shouldAllowPrereleaseUpdates(args: {
   isDevelopment: boolean;
-  appUpdateConfig: {
-    provider?: string | undefined;
-    owner?: string | undefined;
-    repo?: string | undefined;
-  } | null;
+  appUpdateConfig: DesktopGitHubUpdateConfig | null;
 }): boolean {
   if (args.isDevelopment) {
     return false;
   }
 
-  return (
-    args.appUpdateConfig?.provider === "github" &&
-    args.appUpdateConfig.owner?.toLowerCase() === "gmackie" &&
-    args.appUpdateConfig.repo?.toLowerCase() === "t3code"
-  );
+  return isGmackieDesktopUpdateFeed(args.appUpdateConfig);
+}
+
+export function resolveDesktopUpdateChannel(args: {
+  isDevelopment: boolean;
+  appUpdateConfig: DesktopGitHubUpdateConfig | null;
+}): string {
+  if (args.isDevelopment) {
+    return "latest";
+  }
+
+  return isGmackieDesktopUpdateFeed(args.appUpdateConfig) ? "gmacko" : "latest";
 }
 
 export function getAutoUpdateDisabledReason(args: {

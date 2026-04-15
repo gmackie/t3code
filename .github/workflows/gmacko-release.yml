@@ -205,7 +205,7 @@ jobs:
           target_commitish: ${{ needs.preflight.outputs.rebased_sha }}
           name: T3 Code (gmacko) v${{ needs.preflight.outputs.version }}
           generate_release_notes: true
-          prerelease: true
+          prerelease: false
           make_latest: false
           files: |
             release-assets/*.dmg

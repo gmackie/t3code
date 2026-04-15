@@ -5,6 +5,7 @@ import {
   getCanRetryAfterDownloadFailure,
   getAutoUpdateDisabledReason,
   nextStatusAfterDownloadFailure,
+  resolveDesktopUpdateChannel,
   shouldAllowPrereleaseUpdates,
   shouldBroadcastDownloadProgress,
 } from "./updateState";
@@ -136,6 +137,44 @@ describe("shouldAllowPrereleaseUpdates", () => {
         },
       }),
     ).toBe(false);
+  });
+});
+
+describe("resolveDesktopUpdateChannel", () => {
+  it("uses the gmacko prerelease channel for the gmackie/t3code feed", () => {
+    expect(
+      resolveDesktopUpdateChannel({
+        isDevelopment: false,
+        appUpdateConfig: {
+          provider: "github",
+          owner: "gmackie",
+          repo: "t3code",
+        },
+      }),
+    ).toBe("gmacko");
+  });
+
+  it("keeps other builds on the default latest channel", () => {
+    expect(
+      resolveDesktopUpdateChannel({
+        isDevelopment: true,
+        appUpdateConfig: {
+          provider: "github",
+          owner: "gmackie",
+          repo: "t3code",
+        },
+      }),
+    ).toBe("latest");
+    expect(
+      resolveDesktopUpdateChannel({
+        isDevelopment: false,
+        appUpdateConfig: {
+          provider: "github",
+          owner: "pingdotgg",
+          repo: "t3code",
+        },
+      }),
+    ).toBe("latest");
   });
 });
 

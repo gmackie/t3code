@@ -52,6 +52,7 @@ import { createLocalPluginBridge } from "./localPluginBridge";
 import { syncShellEnvironment } from "./syncShellEnvironment";
 import {
   getAutoUpdateDisabledReason,
+  resolveDesktopUpdateChannel,
   shouldAllowPrereleaseUpdates,
   shouldBroadcastDownloadProgress,
 } from "./updateState";
@@ -125,8 +126,6 @@ const APP_RUN_ID = Crypto.randomBytes(6).toString("hex");
 const SERVER_SETTINGS_PATH = Path.join(STATE_DIR, "settings.json");
 const AUTO_UPDATE_STARTUP_DELAY_MS = 15_000;
 const AUTO_UPDATE_POLL_INTERVAL_MS = 4 * 60 * 60 * 1000;
-const DESKTOP_UPDATE_CHANNEL = "latest";
-
 type DesktopUpdateErrorContext = DesktopUpdateState["errorContext"];
 type LinuxDesktopNamedApp = Electron.App & {
   setDesktopName?: (desktopName: string) => void;
@@ -1132,13 +1131,17 @@ function configureAutoUpdater(): void {
     }
   }
 
-  autoUpdater.autoDownload = false;
-  autoUpdater.autoInstallOnAppQuit = false;
-  autoUpdater.channel = DESKTOP_UPDATE_CHANNEL;
-  autoUpdater.allowPrerelease = shouldAllowPrereleaseUpdates({
+  const allowPrerelease = shouldAllowPrereleaseUpdates({
     isDevelopment,
     appUpdateConfig: appUpdateYml,
   });
+  autoUpdater.autoDownload = false;
+  autoUpdater.autoInstallOnAppQuit = false;
+  autoUpdater.channel = resolveDesktopUpdateChannel({
+    isDevelopment,
+    appUpdateConfig: appUpdateYml,
+  });
+  autoUpdater.allowPrerelease = allowPrerelease;
   autoUpdater.allowDowngrade = false;
   autoUpdater.disableDifferentialDownload = isArm64HostRunningIntelBuild(desktopRuntimeInfo);
   let lastLoggedDownloadMilestone = -1;
