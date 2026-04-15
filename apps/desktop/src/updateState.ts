@@ -6,9 +6,7 @@ interface DesktopGitHubUpdateConfig {
   repo?: string | undefined;
 }
 
-function isGmackieDesktopUpdateFeed(
-  appUpdateConfig: DesktopGitHubUpdateConfig | null,
-): boolean {
+function isGmackieDesktopUpdateFeed(appUpdateConfig: DesktopGitHubUpdateConfig | null): boolean {
   return (
     appUpdateConfig?.provider === "github" &&
     appUpdateConfig.owner?.toLowerCase() === "gmackie" &&
