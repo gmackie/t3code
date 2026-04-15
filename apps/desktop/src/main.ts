@@ -50,7 +50,11 @@ import {
 } from "./localPluginBackendIpc";
 import { createLocalPluginBridge } from "./localPluginBridge";
 import { syncShellEnvironment } from "./syncShellEnvironment";
-import { getAutoUpdateDisabledReason, shouldBroadcastDownloadProgress } from "./updateState";
+import {
+  getAutoUpdateDisabledReason,
+  shouldAllowPrereleaseUpdates,
+  shouldBroadcastDownloadProgress,
+} from "./updateState";
 import { createBrowserManager } from "./browserManager";
 import { createBrowserCookieManager } from "./browserCookies";
 import {
@@ -121,7 +125,6 @@ const SERVER_SETTINGS_PATH = Path.join(STATE_DIR, "settings.json");
 const AUTO_UPDATE_STARTUP_DELAY_MS = 15_000;
 const AUTO_UPDATE_POLL_INTERVAL_MS = 4 * 60 * 60 * 1000;
 const DESKTOP_UPDATE_CHANNEL = "latest";
-const DESKTOP_UPDATE_ALLOW_PRERELEASE = false;
 
 type DesktopUpdateErrorContext = DesktopUpdateState["errorContext"];
 type LinuxDesktopNamedApp = Electron.App & {
@@ -1101,6 +1104,7 @@ async function installDownloadedUpdate(): Promise<{ accepted: boolean; completed
 
 function configureAutoUpdater(): void {
   const enabled = shouldEnableAutoUpdates();
+  const appUpdateYml = readAppUpdateYml();
   setUpdateState({
     ...createInitialDesktopUpdateState(app.getVersion(), desktopRuntimeInfo),
     enabled,
@@ -1117,7 +1121,6 @@ function configureAutoUpdater(): void {
     // When a token is provided, re-configure the feed with `private: true` so
     // electron-updater uses the GitHub API (api.github.com) instead of the
     // public Atom feed (github.com/…/releases.atom) which rejects Bearer auth.
-    const appUpdateYml = readAppUpdateYml();
     if (appUpdateYml?.provider === "github") {
       autoUpdater.setFeedURL({
         ...appUpdateYml,
@@ -1130,9 +1133,11 @@ function configureAutoUpdater(): void {
 
   autoUpdater.autoDownload = false;
   autoUpdater.autoInstallOnAppQuit = false;
-  // Keep alpha branding, but force all installs onto the stable update track.
   autoUpdater.channel = DESKTOP_UPDATE_CHANNEL;
-  autoUpdater.allowPrerelease = DESKTOP_UPDATE_ALLOW_PRERELEASE;
+  autoUpdater.allowPrerelease = shouldAllowPrereleaseUpdates({
+    isDevelopment,
+    appUpdateConfig: appUpdateYml,
+  });
   autoUpdater.allowDowngrade = false;
   autoUpdater.disableDifferentialDownload = isArm64HostRunningIntelBuild(desktopRuntimeInfo);
   let lastLoggedDownloadMilestone = -1;

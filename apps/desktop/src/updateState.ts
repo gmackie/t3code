@@ -28,6 +28,25 @@ export function getCanRetryAfterDownloadFailure(currentState: DesktopUpdateState
   return currentState.availableVersion !== null;
 }
 
+export function shouldAllowPrereleaseUpdates(args: {
+  isDevelopment: boolean;
+  appUpdateConfig: {
+    provider?: string | undefined;
+    owner?: string | undefined;
+    repo?: string | undefined;
+  } | null;
+}): boolean {
+  if (args.isDevelopment) {
+    return false;
+  }
+
+  return (
+    args.appUpdateConfig?.provider === "github" &&
+    args.appUpdateConfig.owner?.toLowerCase() === "gmackie" &&
+    args.appUpdateConfig.repo?.toLowerCase() === "t3code"
+  );
+}
+
 export function getAutoUpdateDisabledReason(args: {
   isDevelopment: boolean;
   isPackaged: boolean;

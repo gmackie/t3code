@@ -1,0 +1,215 @@
+name: Release Gmacko Desktop
+
+on:
+  schedule:
+    - cron: "17 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: gmacko-release
+  cancel-in-progress: false
+
+env:
+  RELEASE_BRANCH: main-local
+  UPSTREAM_REPOSITORY: pingdotgg/t3code
+  UPDATE_REPOSITORY: gmackie/t3code
+
+jobs:
+  preflight:
+    name: Rebase And Verify
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    outputs:
+      publish: ${{ steps.publish.outputs.publish }}
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+      rebased_sha: ${{ steps.rebase.outputs.rebased_sha }}
+      branch_changed: ${{ steps.rebase.outputs.branch_changed }}
+    steps:
+      - name: Checkout release branch
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ env.RELEASE_BRANCH }}
+          fetch-depth: 0
+          persist-credentials: true
+
+      - id: rebase
+        name: Rebase main-local onto upstream main
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          git remote add upstream "https://github.com/${UPSTREAM_REPOSITORY}.git"
+          git fetch upstream main
+          git fetch origin "${RELEASE_BRANCH}"
+          git checkout -B "${RELEASE_BRANCH}" "origin/${RELEASE_BRANCH}"
+
+          remote_sha="$(git rev-parse "origin/${RELEASE_BRANCH}")"
+          git rebase upstream/main
+          rebased_sha="$(git rev-parse HEAD)"
+
+          echo "remote_sha=$remote_sha" >> "$GITHUB_OUTPUT"
+          echo "rebased_sha=$rebased_sha" >> "$GITHUB_OUTPUT"
+          if [[ "$rebased_sha" == "$remote_sha" ]]; then
+            echo "branch_changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "branch_changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - id: publish
+        name: Check whether a new release is needed
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          latest_commitish="$(
+            gh api "repos/${GITHUB_REPOSITORY}/releases" \
+              --jq 'map(select(.draft == false)) | sort_by(.created_at) | if length == 0 then "" else last.target_commitish end' \
+              2>/dev/null || true
+          )"
+
+          node scripts/gmackoRelease.ts publish "${{ steps.rebase.outputs.rebased_sha }}" \
+            --latest-commitish "$latest_commitish" \
+            --github-output
+
+      - name: Setup Bun
+        if: steps.rebase.outputs.branch_changed == 'true' || steps.publish.outputs.publish == 'true'
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
+
+      - name: Setup Node
+        if: steps.rebase.outputs.branch_changed == 'true' || steps.publish.outputs.publish == 'true'
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: package.json
+
+      - name: Install dependencies
+        if: steps.rebase.outputs.branch_changed == 'true' || steps.publish.outputs.publish == 'true'
+        run: bun install --frozen-lockfile
+
+      - name: Lint
+        if: steps.rebase.outputs.branch_changed == 'true' || steps.publish.outputs.publish == 'true'
+        run: bun run lint
+
+      - name: Typecheck
+        if: steps.rebase.outputs.branch_changed == 'true' || steps.publish.outputs.publish == 'true'
+        run: bun run typecheck
+
+      - name: Test
+        if: steps.rebase.outputs.branch_changed == 'true' || steps.publish.outputs.publish == 'true'
+        run: bun run test
+
+      - name: Push rebased main-local
+        if: steps.rebase.outputs.branch_changed == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git push origin HEAD:${RELEASE_BRANCH} --force-with-lease=${RELEASE_BRANCH}:${{ steps.rebase.outputs.remote_sha }}
+
+      - id: version
+        if: steps.publish.outputs.publish == 'true'
+        name: Resolve gmacko release version
+        run: node scripts/gmackoRelease.ts version --github-output
+
+  build:
+    name: Build macOS arm64
+    needs: preflight
+    if: needs.preflight.outputs.publish == 'true'
+    runs-on: macos-14
+    timeout-minutes: 30
+    steps:
+      - name: Checkout rebased release branch
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ env.RELEASE_BRANCH }}
+          fetch-depth: 0
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: package.json
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Align package versions to release version
+        run: node scripts/update-release-package-versions.ts "${{ needs.preflight.outputs.version }}"
+
+      - name: Build desktop artifact
+        env:
+          T3CODE_DESKTOP_UPDATE_REPOSITORY: ${{ env.UPDATE_REPOSITORY }}
+        run: |
+          bun run dist:desktop:artifact -- \
+            --platform mac \
+            --target dmg \
+            --arch arm64 \
+            --build-version "${{ needs.preflight.outputs.version }}" \
+            --verbose
+
+      - name: Collect release assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p release-publish
+
+          shopt -s nullglob
+          for pattern in \
+            "release/*.dmg" \
+            "release/*.zip" \
+            "release/*.blockmap" \
+            "release/latest*.yml"; do
+            for file in $pattern; do
+              cp "$file" release-publish/
+            done
+          done
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: desktop-mac-arm64
+          path: release-publish/*
+          if-no-files-found: error
+
+  release:
+    name: Publish GitHub Release
+    needs: [preflight, build]
+    if: needs.preflight.outputs.publish == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Download desktop artifacts
+        uses: actions/download-artifact@v8
+        with:
+          pattern: desktop-*
+          merge-multiple: true
+          path: release-assets
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.preflight.outputs.tag }}
+          target_commitish: ${{ needs.preflight.outputs.rebased_sha }}
+          name: T3 Code (gmacko) v${{ needs.preflight.outputs.version }}
+          generate_release_notes: true
+          prerelease: true
+          make_latest: false
+          files: |
+            release-assets/*.dmg
+            release-assets/*.zip
+            release-assets/*.blockmap
+            release-assets/latest*.yml
+          fail_on_unmatched_files: true

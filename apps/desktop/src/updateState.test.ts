@@ -5,6 +5,7 @@ import {
   getCanRetryAfterDownloadFailure,
   getAutoUpdateDisabledReason,
   nextStatusAfterDownloadFailure,
+  shouldAllowPrereleaseUpdates,
   shouldBroadcastDownloadProgress,
 } from "./updateState";
 
@@ -97,6 +98,44 @@ describe("getAutoUpdateDisabledReason", () => {
         disabledByEnv: false,
       }),
     ).toContain("AppImage");
+  });
+});
+
+describe("shouldAllowPrereleaseUpdates", () => {
+  it("enables prerelease updates for the gmackie/t3code feed", () => {
+    expect(
+      shouldAllowPrereleaseUpdates({
+        isDevelopment: false,
+        appUpdateConfig: {
+          provider: "github",
+          owner: "gmackie",
+          repo: "t3code",
+        },
+      }),
+    ).toBe(true);
+  });
+
+  it("keeps prerelease updates disabled for development builds and other feeds", () => {
+    expect(
+      shouldAllowPrereleaseUpdates({
+        isDevelopment: true,
+        appUpdateConfig: {
+          provider: "github",
+          owner: "gmackie",
+          repo: "t3code",
+        },
+      }),
+    ).toBe(false);
+    expect(
+      shouldAllowPrereleaseUpdates({
+        isDevelopment: false,
+        appUpdateConfig: {
+          provider: "github",
+          owner: "pingdotgg",
+          repo: "t3code",
+        },
+      }),
+    ).toBe(false);
   });
 });
 
