@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import {
   doesVersionMatchDesktopUpdateChannel,
+  getAutoUpdaterChannelConfig,
+  isGmackoDesktopVersion,
   isNightlyDesktopVersion,
   resolveDefaultDesktopUpdateChannel,
 } from "./updateChannels.ts";
@@ -16,6 +18,16 @@ describe("isNightlyDesktopVersion", () => {
   });
 });
 
+describe("isGmackoDesktopVersion", () => {
+  it("detects packaged gmacko versions", () => {
+    expect(isGmackoDesktopVersion("0.0.20-gmacko.202604170930")).toBe(true);
+  });
+
+  it("does not flag stable versions as gmacko", () => {
+    expect(isGmackoDesktopVersion("0.0.20")).toBe(false);
+  });
+});
+
 describe("resolveDefaultDesktopUpdateChannel", () => {
   it("defaults stable builds to latest", () => {
     expect(resolveDefaultDesktopUpdateChannel("0.0.17")).toBe("latest");
@@ -23,6 +35,10 @@ describe("resolveDefaultDesktopUpdateChannel", () => {
 
   it("defaults nightly builds to nightly", () => {
     expect(resolveDefaultDesktopUpdateChannel("0.0.17-nightly.20260415.1")).toBe("nightly");
+  });
+
+  it("defaults gmacko builds to gmacko", () => {
+    expect(resolveDefaultDesktopUpdateChannel("0.0.20-gmacko.202604170930")).toBe("gmacko");
   });
 });
 
@@ -37,5 +53,38 @@ describe("doesVersionMatchDesktopUpdateChannel", () => {
 
   it("rejects nightly releases on the stable channel", () => {
     expect(doesVersionMatchDesktopUpdateChannel("0.0.17-nightly.20260416.1", "latest")).toBe(false);
+  });
+
+  it("accepts gmacko releases on the gmacko channel", () => {
+    expect(doesVersionMatchDesktopUpdateChannel("0.0.20-gmacko.202604170930", "gmacko")).toBe(true);
+  });
+
+  it("rejects gmacko releases on the stable channel", () => {
+    expect(doesVersionMatchDesktopUpdateChannel("0.0.20-gmacko.202604170930", "latest")).toBe(
+      false,
+    );
+  });
+});
+
+describe("getAutoUpdaterChannelConfig", () => {
+  it("keeps stable on normal release-only updates", () => {
+    expect(getAutoUpdaterChannelConfig("latest")).toEqual({
+      allowPrerelease: false,
+      allowDowngrade: false,
+    });
+  });
+
+  it("allows prereleases on gmacko without allowing downgrade on routine checks", () => {
+    expect(getAutoUpdaterChannelConfig("gmacko")).toEqual({
+      allowPrerelease: true,
+      allowDowngrade: false,
+    });
+  });
+
+  it("allows prereleases on nightly without allowing downgrade on routine checks", () => {
+    expect(getAutoUpdaterChannelConfig("nightly")).toEqual({
+      allowPrerelease: true,
+      allowDowngrade: false,
+    });
   });
 });

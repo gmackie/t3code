@@ -40,6 +40,14 @@ describe("desktopSettings", () => {
     });
   });
 
+  it("defaults packaged gmacko builds to the gmacko update channel", () => {
+    expect(resolveDefaultDesktopSettings("0.0.20-gmacko.202604170930")).toEqual({
+      serverExposureMode: "local-only",
+      updateChannel: "gmacko",
+      updateChannelConfiguredByUser: false,
+    });
+  });
+
   it("persists and reloads the configured server exposure mode", () => {
     const settingsPath = makeSettingsPath();
 
@@ -86,6 +94,23 @@ describe("desktopSettings", () => {
     ).toEqual({
       serverExposureMode: "local-only",
       updateChannel: "nightly",
+      updateChannelConfiguredByUser: true,
+    });
+  });
+
+  it("persists the requested gmacko update channel", () => {
+    expect(
+      setDesktopUpdateChannelPreference(
+        {
+          serverExposureMode: "local-only",
+          updateChannel: "latest",
+          updateChannelConfiguredByUser: false,
+        },
+        "gmacko",
+      ),
+    ).toEqual({
+      serverExposureMode: "local-only",
+      updateChannel: "gmacko",
       updateChannelConfiguredByUser: true,
     });
   });
@@ -142,6 +167,24 @@ describe("desktopSettings", () => {
       serverExposureMode: "local-only",
       updateChannel: "latest",
       updateChannelConfiguredByUser: true,
+    });
+  });
+
+  it("migrates legacy implicit stable settings to gmacko when running a gmacko build", () => {
+    const settingsPath = makeSettingsPath();
+    fs.writeFileSync(
+      settingsPath,
+      JSON.stringify({
+        serverExposureMode: "local-only",
+        updateChannel: "latest",
+      }),
+      "utf8",
+    );
+
+    expect(readDesktopSettings(settingsPath, "0.0.20-gmacko.202604170930")).toEqual({
+      serverExposureMode: "local-only",
+      updateChannel: "gmacko",
+      updateChannelConfiguredByUser: false,
     });
   });
 });

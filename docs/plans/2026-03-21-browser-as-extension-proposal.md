@@ -42,14 +42,14 @@ _chat.$threadId.tsx
 
 ### What Changes
 
-| Component | Before (PR #963) | After (extension) |
-|-----------|-----------------|-------------------|
-| Panel switching | `rightPanelStateStore` | `ExtensionHost` tab bar |
-| Browser toggle button | Custom in ChatHeader | Extension host "Extensions" button |
-| Panel visibility | `selectedPanel: "diff" \| "browser"` | `extensionPanelOpen` + `activeExtensionId` |
-| Browser state | `browserStateStore` (unchanged) | Same — extension reads it directly |
-| BrowserPanel UI | Rendered in route layout | Rendered by extension's `render()` |
-| BrowserManager | Electron IPC (unchanged) | Same — extension calls `readNativeApi().browser.*` |
+| Component             | Before (PR #963)                     | After (extension)                                  |
+| --------------------- | ------------------------------------ | -------------------------------------------------- |
+| Panel switching       | `rightPanelStateStore`               | `ExtensionHost` tab bar                            |
+| Browser toggle button | Custom in ChatHeader                 | Extension host "Extensions" button                 |
+| Panel visibility      | `selectedPanel: "diff" \| "browser"` | `extensionPanelOpen` + `activeExtensionId`         |
+| Browser state         | `browserStateStore` (unchanged)      | Same — extension reads it directly                 |
+| BrowserPanel UI       | Rendered in route layout             | Rendered by extension's `render()`                 |
+| BrowserManager        | Electron IPC (unchanged)             | Same — extension calls `readNativeApi().browser.*` |
 
 ### Browser Extension Definition
 
@@ -97,6 +97,7 @@ function BrowserExtensionPanel({ context }: { context: ... }) {
 ### What Gets Simpler
 
 Adding a new panel type (e.g., a terminal panel, a documentation panel) requires:
+
 1. One file: the extension definition + component
 2. One line: add to `builtinRegistry.ts`
 
@@ -115,6 +116,7 @@ the other), but managed differently.
 ## Implementation Phases
 
 ### Phase 1: Ship Extension Host Improvements (Current — Workstream A)
+
 - ✅ Code fence stripping in requirements extraction
 - ✅ Shared PlanSteps component
 - ✅ activePlan step rendering in planning workbench
@@ -123,12 +125,14 @@ the other), but managed differently.
 - ✅ Expanded test coverage
 
 ### Phase 2: Browser Extension Wrapper
+
 - Create `browserExtension.tsx` that wraps `BrowserPanel` as a `T3ExtensionDefinition`
 - Wire `browserStateStore` through the extension's render function
 - Register in `builtinRegistry.ts`
 - Requires: PR #963's BrowserPanel, browserStateStore, and IPC contracts
 
 ### Phase 3: Preview Workspace Extension
+
 - Create `previewWorkspace.tsx` — a simpler browser experience focused on dev preview
 - Pre-fills project's dev server URL
 - Shows project scripts as context
@@ -136,6 +140,7 @@ the other), but managed differently.
 - Distinct from the general browser: project-aware, focused on the active dev server
 
 ### Phase 4: Remove Hardcoded Browser Panel
+
 - Remove browser-specific code from `_chat.$threadId.tsx`
 - Remove `rightPanelStateStore.ts`
 - Browser panel is now just another extension

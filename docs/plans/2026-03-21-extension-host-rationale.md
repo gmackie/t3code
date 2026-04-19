@@ -42,6 +42,7 @@ The extension host does this plumbing once. Every subsequent panel inherits it f
 Today, yes. The packages are proof-of-concept. The point is demonstrating that the extension API contract (`@t3tools/extension-api`) is clean enough that a planning workbench or browser panel could live in its own repo without depending on the web app's internals.
 
 This matters for two reasons:
+
 1. **Contributors can prototype extensions without forking the whole app.** They depend on `@t3tools/extension-api`, build their component, and register it. No need to understand the orchestration layer, the WebSocket transport, or the Zustand store.
 2. **Maintainers can accept or reject extensions independently.** A planning workbench can ship without blocking a browser panel. Extensions don't couple to each other.
 

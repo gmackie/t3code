@@ -88,24 +88,24 @@ This is NOT a competing approach. It's a complementary layer that makes PR #963'
 
 ### Four working extensions
 
-| Extension | Lines | Tests | What it does |
-|-----------|-------|-------|-------------|
-| Thread Overview | 59 | — | Thread signals, approvals, plan preview |
-| Planning Workbench | 188 | 12 | Requirements extraction (code-fence-safe), task drafts, workspace export |
-| Preview Workspace | 195 | — | Project-aware dev server preview with per-thread URL persistence |
-| Browser Extension | 272 | — | Wraps PR #963's BrowserPanel as a pluggable extension |
+| Extension          | Lines | Tests | What it does                                                             |
+| ------------------ | ----- | ----- | ------------------------------------------------------------------------ |
+| Thread Overview    | 59    | —     | Thread signals, approvals, plan preview                                  |
+| Planning Workbench | 188   | 12    | Requirements extraction (code-fence-safe), task drafts, workspace export |
+| Preview Workspace  | 195   | —     | Project-aware dev server preview with per-thread URL persistence         |
+| Browser Extension  | 272   | —     | Wraps PR #963's BrowserPanel as a pluggable extension                    |
 
 ### Extension host infrastructure
 
-| Component | Lines | What it does |
-|-----------|-------|-------------|
-| types.ts | 48 | Extension definition, context, thread view types |
-| registry.ts | 16 | Filter + sort extensions by surface and availability |
-| ExtensionHost.tsx | 45 | Active extension management, tab derivation |
-| ExtensionSidePanel.tsx | 49 | 360px panel with tab bar and close button |
-| extensionSelectors.ts | 57 | Maps app state → extension-safe read model (with caching) |
-| builtinRegistry.ts | 10 | Static array of registered extensions |
-| **Total** | **225** | |
+| Component              | Lines   | What it does                                              |
+| ---------------------- | ------- | --------------------------------------------------------- |
+| types.ts               | 48      | Extension definition, context, thread view types          |
+| registry.ts            | 16      | Filter + sort extensions by surface and availability      |
+| ExtensionHost.tsx      | 45      | Active extension management, tab derivation               |
+| ExtensionSidePanel.tsx | 49      | 360px panel with tab bar and close button                 |
+| extensionSelectors.ts  | 57      | Maps app state → extension-safe read model (with caching) |
+| builtinRegistry.ts     | 10      | Static array of registered extensions                     |
+| **Total**              | **225** |                                                           |
 
 ### Quality metrics
 

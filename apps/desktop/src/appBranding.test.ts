@@ -21,6 +21,15 @@ describe("resolveDesktopAppStageLabel", () => {
     ).toBe("Nightly");
   });
 
+  it("uses Gmacko for packaged gmacko builds", () => {
+    expect(
+      resolveDesktopAppStageLabel({
+        isDevelopment: false,
+        appVersion: "0.0.20-gmacko.202604170930",
+      }),
+    ).toBe("Gmacko");
+  });
+
   it("uses Alpha for packaged stable builds", () => {
     expect(
       resolveDesktopAppStageLabel({
@@ -42,6 +51,19 @@ describe("resolveDesktopAppBranding", () => {
       baseName: "T3 Code",
       stageLabel: "Nightly",
       displayName: "T3 Code (Nightly)",
+    });
+  });
+
+  it("returns a gmacko desktop branding payload", () => {
+    expect(
+      resolveDesktopAppBranding({
+        isDevelopment: false,
+        appVersion: "0.0.20-gmacko.202604170930",
+      }),
+    ).toEqual({
+      baseName: "T3 Code",
+      stageLabel: "Gmacko",
+      displayName: "T3 Code (Gmacko)",
     });
   });
 });

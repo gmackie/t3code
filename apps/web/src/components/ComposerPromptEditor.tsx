@@ -237,11 +237,13 @@ type ComposerSkillMetadata = {
   description: string | null;
 };
 
+const EMPTY_PROVIDER_SKILLS: ReadonlyArray<ServerProviderSkill> = [];
+
 function skillMetadataByName(
-  skills: ReadonlyArray<ServerProviderSkill>,
+  skills: ReadonlyArray<ServerProviderSkill> | null | undefined,
 ): ReadonlyMap<string, ComposerSkillMetadata> {
   return new Map(
-    skills.map((skill) => [
+    (skills ?? EMPTY_PROVIDER_SKILLS).map((skill) => [
       skill.name,
       {
         label: formatProviderSkillDisplayName(skill),
@@ -466,8 +468,8 @@ function terminalContextSignature(contexts: ReadonlyArray<TerminalContextDraft>)
     .join("\u001e");
 }
 
-function skillSignature(skills: ReadonlyArray<ServerProviderSkill>): string {
-  return skills
+function skillSignature(skills: ReadonlyArray<ServerProviderSkill> | null | undefined): string {
+  return (skills ?? EMPTY_PROVIDER_SKILLS)
     .map((skill) =>
       [
         skill.name,
@@ -1662,7 +1664,7 @@ export const ComposerPromptEditor = forwardRef<
     value,
     cursor,
     terminalContexts,
-    skills,
+    skills = EMPTY_PROVIDER_SKILLS,
     disabled,
     placeholder,
     className,

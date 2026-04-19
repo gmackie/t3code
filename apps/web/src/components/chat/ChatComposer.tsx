@@ -16,7 +16,7 @@ import {
   PROVIDER_SEND_TURN_MAX_ATTACHMENTS,
   PROVIDER_SEND_TURN_MAX_IMAGE_BYTES,
 } from "@t3tools/contracts";
-import { createModelSelection, normalizeModelSlug } from "@t3tools/shared/model";
+import { createModelSelection } from "@t3tools/shared/model";
 import {
   forwardRef,
   memo,
@@ -54,6 +54,10 @@ import {
   insertInlineTerminalContextPlaceholder,
   removeInlineTerminalContextPlaceholder,
 } from "../../lib/terminalContext";
+import {
+  getServerModelOptionsByProvider,
+  resolveSelectedModelForPickerWithCustomFallback,
+} from "../../modelSelection";
 import {
   shouldUseCompactComposerPrimaryActions,
   shouldUseCompactComposerFooter,
@@ -605,22 +609,13 @@ export const ChatComposer = memo(
     const selectedModelForPicker = selectedModel;
     const modelOptionsByProvider = useMemo<
       Record<ProviderKind, ReadonlyArray<ServerProvider["models"][number]>>
-    >(
-      () => ({
-        codex: providerStatuses.find((provider) => provider.provider === "codex")?.models ?? [],
-        claudeAgent:
-          providerStatuses.find((provider) => provider.provider === "claudeAgent")?.models ?? [],
-        opencode:
-          providerStatuses.find((provider) => provider.provider === "opencode")?.models ?? [],
-        cursor: providerStatuses.find((provider) => provider.provider === "cursor")?.models ?? [],
-      }),
-      [providerStatuses],
-    );
+    >(() => getServerModelOptionsByProvider(providerStatuses), [providerStatuses]);
     const selectedModelForPickerWithCustomFallback = useMemo(() => {
-      const currentOptions = modelOptionsByProvider[selectedProvider];
-      return currentOptions.some((option) => option.slug === selectedModelForPicker)
-        ? selectedModelForPicker
-        : (normalizeModelSlug(selectedModelForPicker, selectedProvider) ?? selectedModelForPicker);
+      return resolveSelectedModelForPickerWithCustomFallback({
+        modelOptionsByProvider,
+        selectedProvider,
+        selectedModel: selectedModelForPicker,
+      });
     }, [modelOptionsByProvider, selectedModelForPicker, selectedProvider]);
     const searchableModelOptions = useMemo(
       () =>

@@ -65,9 +65,19 @@ import { resolveDesktopServerExposure } from "./serverExposure.ts";
 import { syncShellEnvironment } from "./syncShellEnvironment.ts";
 import { waitForBackendStartupReady } from "./backendStartupReadiness.ts";
 import { getAutoUpdateDisabledReason, shouldBroadcastDownloadProgress } from "./updateState.ts";
-import { doesVersionMatchDesktopUpdateChannel } from "./updateChannels.ts";
+import {
+  doesVersionMatchDesktopUpdateChannel,
+  getAutoUpdaterChannelConfig,
+} from "./updateChannels.ts";
 import { ServerListeningDetector } from "./serverListeningDetector.ts";
 import { createBrowserManager } from "./browserManager";
+import {
+  createDesktopBackendBootstrapPayload,
+  createDesktopBackendEnv,
+  DESKTOP_BACKEND_CHILD_STDIO,
+  getDesktopBackendBootstrapStream,
+} from "./backendBootstrap";
+import { getDesktopRuntimeIdentity } from "./appIdentity.js";
 import {
   createInitialDesktopUpdateState,
   reduceDesktopUpdateStateOnCheckFailure,
@@ -118,10 +128,6 @@ const REMOVE_SAVED_ENVIRONMENT_SECRET_CHANNEL = "desktop:remove-saved-environmen
 const GET_SERVER_EXPOSURE_STATE_CHANNEL = "desktop:get-server-exposure-state";
 const SET_SERVER_EXPOSURE_MODE_CHANNEL = "desktop:set-server-exposure-mode";
 const BASE_DIR = process.env.T3CODE_HOME?.trim() || Path.join(OS.homedir(), ".t3");
-const STATE_DIR = Path.join(BASE_DIR, "userdata");
-const DESKTOP_SETTINGS_PATH = Path.join(STATE_DIR, "desktop-settings.json");
-const CLIENT_SETTINGS_PATH = Path.join(STATE_DIR, "client-settings.json");
-const SAVED_ENVIRONMENT_REGISTRY_PATH = Path.join(STATE_DIR, "saved-environments.json");
 const DESKTOP_SCHEME = "t3";
 const ROOT_DIR = Path.resolve(__dirname, "../../..");
 const isDevelopment = Boolean(process.env.VITE_DEV_SERVER_URL);
@@ -129,12 +135,29 @@ const desktopAppBranding: DesktopAppBranding = resolveDesktopAppBranding({
   isDevelopment,
   appVersion: app.getVersion(),
 });
-const APP_DISPLAY_NAME = desktopAppBranding.displayName;
-const APP_USER_MODEL_ID = isDevelopment ? "com.t3tools.t3code.dev" : "com.t3tools.t3code";
+const PACKAGED_APP_NAME = !isDevelopment ? app.name.trim() : "";
+const APP_IDENTITY = getDesktopRuntimeIdentity({
+  isDevelopment,
+  appDisplayName:
+    process.env.T3CODE_DESKTOP_APP_DISPLAY_NAME?.trim() ||
+    PACKAGED_APP_NAME ||
+    desktopAppBranding.displayName,
+  packageName: PACKAGED_APP_NAME,
+  appId: app.isPackaged ? app.getName() : undefined,
+});
+const APP_DISPLAY_NAME =
+  process.env.T3CODE_DESKTOP_APP_DISPLAY_NAME?.trim() ||
+  APP_IDENTITY.displayName ||
+  desktopAppBranding.displayName;
+const APP_USER_MODEL_ID = APP_IDENTITY.appUserModelId;
 const LINUX_DESKTOP_ENTRY_NAME = isDevelopment ? "t3code-dev.desktop" : "t3code.desktop";
 const LINUX_WM_CLASS = isDevelopment ? "t3code-dev" : "t3code";
-const USER_DATA_DIR_NAME = isDevelopment ? "t3code-dev" : "t3code";
-const LEGACY_USER_DATA_DIR_NAME = isDevelopment ? "T3 Code (Dev)" : "T3 Code (Alpha)";
+const STATE_DIR = Path.join(BASE_DIR, APP_IDENTITY.stateDirName);
+const USER_DATA_DIR_NAME = APP_IDENTITY.userDataDirName;
+const DESKTOP_SETTINGS_PATH = Path.join(STATE_DIR, "desktop-settings.json");
+const CLIENT_SETTINGS_PATH = Path.join(STATE_DIR, "client-settings.json");
+const SAVED_ENVIRONMENT_REGISTRY_PATH = Path.join(STATE_DIR, "saved-environments.json");
+const LEGACY_USER_DATA_DIR_NAME = APP_DISPLAY_NAME;
 const COMMIT_HASH_PATTERN = /^[0-9a-f]{7,40}$/i;
 const COMMIT_HASH_DISPLAY_LENGTH = 12;
 const LOG_DIR = Path.join(STATE_DIR, "logs");
@@ -220,6 +243,7 @@ let mainWindow: BrowserWindow | null = null;
 let backendProcess: ChildProcess.ChildProcess | null = null;
 let backendPort = 0;
 let backendBindHost = DESKTOP_LOOPBACK_HOST;
+let backendAuthToken = "";
 let backendBootstrapToken = "";
 let backendHttpUrl = "";
 let backendWsUrl = "";
@@ -1280,11 +1304,12 @@ function createBaseUpdateState(
 }
 
 function applyAutoUpdaterChannel(channel: DesktopUpdateChannel): void {
+  const { allowPrerelease, allowDowngrade } = getAutoUpdaterChannelConfig(channel);
   autoUpdater.channel = channel;
-  autoUpdater.allowPrerelease = channel === "nightly";
-  autoUpdater.allowDowngrade = channel === "nightly";
+  autoUpdater.allowPrerelease = allowPrerelease;
+  autoUpdater.allowDowngrade = allowDowngrade;
   console.info(
-    `[desktop-updater] Using update channel '${channel}' (allowPrerelease=${channel === "nightly"}, allowDowngrade=${channel === "nightly"}).`,
+    `[desktop-updater] Using update channel '${channel}' (allowPrerelease=${allowPrerelease}, allowDowngrade=${allowDowngrade}).`,
   );
 }
 
@@ -1529,36 +1554,36 @@ function startBackend(): void {
     return;
   }
 
-  const captureBackendLogs = !isDevelopment;
-  const child = ChildProcess.spawn(process.execPath, [backendEntry, "--bootstrap-fd", "3"], {
+  const captureBackendLogs = app.isPackaged && backendLogSink !== null;
+  const child: ChildProcess.ChildProcess = ChildProcess.spawn(process.execPath, [backendEntry], {
     cwd: resolveBackendCwd(),
     // In Electron main, process.execPath points to the Electron binary.
     // Run the child in Node mode so this backend process does not become a GUI app instance.
-    env: {
+    env: createDesktopBackendEnv({
       ...backendChildEnv(),
       ELECTRON_RUN_AS_NODE: "1",
-    },
+    }),
     stdio: captureBackendLogs
-      ? ["ignore", "pipe", "pipe", "pipe"]
+      ? DESKTOP_BACKEND_CHILD_STDIO
       : ["ignore", "inherit", "inherit", "pipe"],
   });
-  const bootstrapStream = child.stdio[3];
-  if (bootstrapStream && "write" in bootstrapStream) {
+  const bootstrapStream = getDesktopBackendBootstrapStream(child);
+  if (bootstrapStream) {
     bootstrapStream.write(
-      `${JSON.stringify({
-        mode: "desktop",
-        noBrowser: true,
-        port: backendPort,
-        t3Home: BASE_DIR,
-        host: backendBindHost,
-        desktopBootstrapToken: backendBootstrapToken,
-        ...(backendObservabilitySettings.otlpTracesUrl
-          ? { otlpTracesUrl: backendObservabilitySettings.otlpTracesUrl }
-          : {}),
-        ...(backendObservabilitySettings.otlpMetricsUrl
-          ? { otlpMetricsUrl: backendObservabilitySettings.otlpMetricsUrl }
-          : {}),
-      })}\n`,
+      `${JSON.stringify(
+        createDesktopBackendBootstrapPayload({
+          port: backendPort,
+          t3Home: BASE_DIR,
+          authToken: backendAuthToken,
+          ...(backendBootstrapToken ? { desktopBootstrapToken: backendBootstrapToken } : {}),
+          ...(backendObservabilitySettings.otlpTracesUrl
+            ? { otlpTracesUrl: backendObservabilitySettings.otlpTracesUrl }
+            : {}),
+          ...(backendObservabilitySettings.otlpMetricsUrl
+            ? { otlpMetricsUrl: backendObservabilitySettings.otlpMetricsUrl }
+            : {}),
+        }),
+      )}\n`,
     );
     bootstrapStream.end();
   } else {
@@ -1713,8 +1738,8 @@ function registerIpcHandlers(): void {
       label: "Local environment",
       httpBaseUrl: backendHttpUrl || null,
       wsBaseUrl: backendWsUrl || null,
-      bootstrapToken: backendBootstrapToken || undefined,
-    } as const;
+      ...(backendBootstrapToken ? { bootstrapToken: backendBootstrapToken } : {}),
+    };
   });
 
   ipcMain.removeHandler(GET_CLIENT_SETTINGS_CHANNEL);
@@ -2011,7 +2036,7 @@ function registerIpcHandlers(): void {
 
   ipcMain.removeHandler(UPDATE_SET_CHANNEL_CHANNEL);
   ipcMain.handle(UPDATE_SET_CHANNEL_CHANNEL, async (_event, rawChannel: unknown) => {
-    if (rawChannel !== "latest" && rawChannel !== "nightly") {
+    if (rawChannel !== "latest" && rawChannel !== "nightly" && rawChannel !== "gmacko") {
       throw new Error("Invalid desktop update channel input.");
     }
     if (updateCheckInFlight || updateDownloadInFlight || updateInstallInFlight) {
@@ -2036,7 +2061,7 @@ function registerIpcHandlers(): void {
 
     applyAutoUpdaterChannel(nextChannel);
     const allowDowngrade = autoUpdater.allowDowngrade;
-    // An explicit channel switch should allow the immediate nightly->stable rollback path.
+    // An explicit channel switch should allow the immediate preview->stable rollback path.
     autoUpdater.allowDowngrade = true;
     try {
       await checkForUpdates("channel-change");
@@ -2212,11 +2237,69 @@ function createWindow(): BrowserWindow {
     return { action: "deny" };
   });
 
+  window.webContents.on("console-message", (_event, level, message, lineNumber, sourceId) => {
+    writeDesktopLogHeader(
+      `renderer console level=${level} source=${sanitizeLogValue(sourceId)} line=${lineNumber} message=${sanitizeLogValue(message)}`,
+    );
+  });
+  window.webContents.on(
+    "did-fail-load",
+    (_event, errorCode, errorDescription, validatedUrl, isMainFrame) => {
+      writeDesktopLogHeader(
+        `renderer did-fail-load code=${errorCode} mainFrame=${String(isMainFrame)} url=${sanitizeLogValue(validatedUrl)} description=${sanitizeLogValue(errorDescription)}`,
+      );
+    },
+  );
+  window.webContents.on("render-process-gone", (_event, details) => {
+    writeDesktopLogHeader(
+      `renderer process gone reason=${details.reason} exitCode=${details.exitCode}`,
+    );
+  });
+
   window.on("page-title-updated", (event) => {
     event.preventDefault();
     window.setTitle(APP_DISPLAY_NAME);
   });
   window.webContents.on("did-finish-load", () => {
+    writeDesktopLogHeader(
+      `renderer did-finish-load url=${sanitizeLogValue(window.webContents.getURL())}`,
+    );
+    void window.webContents
+      .executeJavaScript(
+        `(() => {
+          const root = document.getElementById("root");
+          const desktopBridge =
+            typeof window.desktopBridge === "object" && window.desktopBridge !== null
+              ? {
+                  hasGetWsUrl: typeof window.desktopBridge.getWsUrl === "function",
+                  hasGetLocalEnvironmentBootstrap:
+                    typeof window.desktopBridge.getLocalEnvironmentBootstrap === "function",
+                }
+              : null;
+          const bootstrap =
+            typeof window.desktopBridge?.getLocalEnvironmentBootstrap === "function"
+              ? window.desktopBridge.getLocalEnvironmentBootstrap()
+              : null;
+          return {
+            documentTitle: document.title,
+            locationHref: window.location.href,
+            readyState: document.readyState,
+            bodyClassName: document.body.className,
+            bodyTextSample: document.body.innerText.slice(0, 200),
+            rootChildElementCount: root?.childElementCount ?? null,
+            rootHtmlLength: root?.innerHTML.length ?? null,
+            desktopBridge,
+            bootstrap,
+          };
+        })();`,
+        true,
+      )
+      .then((snapshot) => {
+        writeDesktopLogHeader(`renderer dom snapshot=${JSON.stringify(snapshot)}`);
+      })
+      .catch((error) => {
+        writeDesktopLogHeader(`renderer dom snapshot failed error=${formatErrorMessage(error)}`);
+      });
     window.setTitle(APP_DISPLAY_NAME);
     emitUpdateState();
   });
@@ -2274,6 +2357,7 @@ async function bootstrap(): Promise<void> {
       ? `selected backend port via sequential scan startPort=${DEFAULT_DESKTOP_BACKEND_PORT} port=${backendPort}`
       : `using configured backend port port=${backendPort}`,
   );
+  backendAuthToken = Crypto.randomBytes(24).toString("hex");
   backendBootstrapToken = Crypto.randomBytes(24).toString("hex");
   if (desktopSettings.serverExposureMode !== DEFAULT_DESKTOP_SETTINGS.serverExposureMode) {
     writeDesktopLogHeader(
@@ -2296,6 +2380,8 @@ async function bootstrap(): Promise<void> {
       "bootstrap fell back to local-only because no advertised network host was available",
     );
   }
+  process.env.T3CODE_DESKTOP_AUTH_TOKEN = backendAuthToken;
+  process.env.T3CODE_DESKTOP_WS_URL = backendWsUrl;
 
   registerIpcHandlers();
   writeDesktopLogHeader("bootstrap ipc handlers registered");

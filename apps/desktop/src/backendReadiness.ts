@@ -59,7 +59,7 @@ export async function waitForHttpReady(
   const timeoutMs = options?.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const intervalMs = options?.intervalMs ?? DEFAULT_INTERVAL_MS;
   const requestTimeoutMs = options?.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
-  const readinessPath = options?.path ?? "/";
+  const readinessPath = options?.path ?? "/api/auth/session";
   const isReady = options?.isReady ?? ((response: Response) => response.ok);
   const deadline = Date.now() + timeoutMs;
 
@@ -78,7 +78,9 @@ export async function waitForHttpReady(
     signal?.addEventListener("abort", abortRequest, { once: true });
 
     try {
-      const response = await fetchImpl(new URL(readinessPath, baseUrl).toString(), {
+      const readinessUrl = new URL(baseUrl);
+      readinessUrl.pathname = readinessPath;
+      const response = await fetchImpl(readinessUrl.toString(), {
         redirect: "manual",
         signal: requestController.signal,
       });

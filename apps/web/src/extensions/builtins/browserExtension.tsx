@@ -25,10 +25,7 @@ import {
   normalizeBrowserDisplayUrl,
   parseSubmittedBrowserUrl,
 } from "../../browser";
-import {
-  selectThreadBrowserState,
-  useBrowserStateStore,
-} from "../../browserStateStore";
+import { selectThreadBrowserState, useBrowserStateStore } from "../../browserStateStore";
 import BrowserPanel from "../../components/BrowserPanel";
 import { readNativeApi } from "../../nativeApi";
 import type { PanelDefinition } from "../types";
@@ -42,11 +39,7 @@ export const browserExtension: PanelDefinition = {
   render: (context) => <BrowserExtensionPanel context={context} />,
 };
 
-function BrowserExtensionPanel({
-  context,
-}: {
-  context: Parameters<PanelDefinition["render"]>[0];
-}) {
+function BrowserExtensionPanel({ context }: { context: Parameters<PanelDefinition["render"]>[0] }) {
   const threadId = context.activeThreadId;
   const browserState = useBrowserStateStore((s) =>
     threadId ? selectThreadBrowserState(s.browserStateByThreadId, threadId) : null,

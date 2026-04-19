@@ -15,15 +15,18 @@ import {
 export const CompactComposerControlsMenu = memo(function CompactComposerControlsMenu(props: {
   activePlan: boolean;
   interactionMode: ProviderInteractionMode;
-  planSidebarLabel: string;
+  planSidebarLabel?: string;
   planSidebarOpen: boolean;
   runtimeMode: RuntimeMode;
   showInteractionModeToggle: boolean;
   traitsMenuContent?: ReactNode;
   onToggleInteractionMode: () => void;
   onTogglePlanSidebar: () => void;
-  onRuntimeModeChange: (mode: RuntimeMode) => void;
+  onRuntimeModeChange?: (mode: RuntimeMode) => void;
+  onToggleRuntimeMode?: () => void;
 }) {
+  const planSidebarLabel = props.planSidebarLabel ?? "Plan";
+
   return (
     <Menu>
       <MenuTrigger
@@ -66,7 +69,11 @@ export const CompactComposerControlsMenu = memo(function CompactComposerControls
           value={props.runtimeMode}
           onValueChange={(value) => {
             if (!value || value === props.runtimeMode) return;
-            props.onRuntimeModeChange(value as RuntimeMode);
+            if (props.onRuntimeModeChange) {
+              props.onRuntimeModeChange(value as RuntimeMode);
+              return;
+            }
+            props.onToggleRuntimeMode?.();
           }}
         >
           <MenuRadioItem value="approval-required">Supervised</MenuRadioItem>
@@ -79,8 +86,8 @@ export const CompactComposerControlsMenu = memo(function CompactComposerControls
             <MenuItem onClick={props.onTogglePlanSidebar}>
               <ListTodoIcon className="size-4 shrink-0" />
               {props.planSidebarOpen
-                ? `Hide ${props.planSidebarLabel.toLowerCase()} sidebar`
-                : `Show ${props.planSidebarLabel.toLowerCase()} sidebar`}
+                ? `Hide ${planSidebarLabel.toLowerCase()} sidebar`
+                : `Show ${planSidebarLabel.toLowerCase()} sidebar`}
             </MenuItem>
           </>
         ) : null}

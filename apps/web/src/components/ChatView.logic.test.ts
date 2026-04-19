@@ -6,6 +6,7 @@ import { type Thread } from "../types";
 
 import {
   MAX_HIDDEN_MOUNTED_TERMINAL_THREADS,
+  buildSearchableModelOptions,
   buildExpiredTerminalContextToastCopy,
   createLocalDispatchSnapshot,
   deriveComposerSendState,
@@ -80,6 +81,31 @@ describe("buildExpiredTerminalContextToastCopy", () => {
       title: "Expired terminal contexts omitted from message",
       description: "Re-add it if you want that terminal output included.",
     });
+  });
+});
+
+describe("buildSearchableModelOptions", () => {
+  it("falls back to the model slug when the provider model name is missing", () => {
+    expect(
+      buildSearchableModelOptions({
+        availableProviderOptions: [{ value: "codex", label: "Codex" }],
+        modelOptionsByProvider: {
+          codex: [{ slug: "gpt-5" } as never],
+          claudeAgent: [],
+        },
+        lockedProvider: null,
+      }),
+    ).toEqual([
+      {
+        provider: "codex",
+        providerLabel: "Codex",
+        slug: "gpt-5",
+        name: "gpt-5",
+        searchSlug: "gpt-5",
+        searchName: "gpt-5",
+        searchProvider: "codex",
+      },
+    ]);
   });
 });
 
