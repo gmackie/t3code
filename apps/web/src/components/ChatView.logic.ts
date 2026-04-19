@@ -5,10 +5,12 @@ import {
   type ModelSelection,
   type ProviderDriverKind,
   type ScopedThreadRef,
+  type ServerProviderModel,
   type ThreadId,
   type TurnId,
 } from "@t3tools/contracts";
 import { type ChatMessage, type SessionPhase, type Thread, type ThreadSession } from "../types";
+import { randomUUID } from "~/lib/utils";
 import { type ComposerImageAttachment, type DraftThreadState } from "../composerDraftStore";
 import { Schema } from "effect";
 import { selectThreadByRef, useStore } from "../store";
@@ -17,10 +19,10 @@ import {
   stripInlineTerminalContextPlaceholders,
   type TerminalContextDraft,
 } from "../lib/terminalContext";
-import type { DraftThreadEnvMode } from "../composerDraftStore";
 
 export const LAST_INVOKED_SCRIPT_BY_PROJECT_KEY = "t3code:last-invoked-script-by-project";
 export const MAX_HIDDEN_MOUNTED_TERMINAL_THREADS = 10;
+const WORKTREE_BRANCH_PREFIX = "t3code";
 
 export const LastInvokedScriptByProjectSchema = Schema.Record(ProjectId, Schema.String);
 
@@ -157,11 +159,10 @@ export function readFileAsDataUrl(file: File): Promise<string> {
   });
 }
 
-export function resolveSendEnvMode(input: {
-  requestedEnvMode: DraftThreadEnvMode;
-  isGitRepo: boolean;
-}): DraftThreadEnvMode {
-  return input.isGitRepo ? input.requestedEnvMode : "local";
+export function buildTemporaryWorktreeBranchName(): string {
+  // Keep the 8-hex suffix shape for backend temporary-branch detection.
+  const token = randomUUID().slice(0, 8).toLowerCase();
+  return `${WORKTREE_BRANCH_PREFIX}/${token}`;
 }
 
 export function cloneComposerImageForRetry(
@@ -219,6 +220,41 @@ export function buildExpiredTerminalContextToastCopy(
     title: `${noun} omitted from message`,
     description: "Re-add it if you want that terminal output included.",
   };
+}
+
+export function buildSearchableModelOptions(input: {
+  availableProviderOptions: ReadonlyArray<{
+    value: ProviderDriverKind;
+    label: string;
+  }>;
+  modelOptionsByProvider: Record<ProviderDriverKind, ReadonlyArray<ServerProviderModel>>;
+  lockedProvider: ProviderDriverKind | null;
+}): Array<{
+  provider: ProviderDriverKind;
+  providerLabel: string;
+  slug: string;
+  name: string;
+  searchSlug: string;
+  searchName: string;
+  searchProvider: string;
+}> {
+  return input.availableProviderOptions
+    .filter((option) => input.lockedProvider === null || option.value === input.lockedProvider)
+    .flatMap((option) =>
+      input.modelOptionsByProvider[option.value].map((model) => {
+        const safeName =
+          typeof model.name === "string" && model.name.trim().length > 0 ? model.name : model.slug;
+        return {
+          provider: option.value,
+          providerLabel: option.label,
+          slug: model.slug,
+          name: safeName,
+          searchSlug: model.slug.toLowerCase(),
+          searchName: safeName.toLowerCase(),
+          searchProvider: option.label.toLowerCase(),
+        };
+      }),
+    );
 }
 
 export function threadHasStarted(thread: Thread | null | undefined): boolean {
@@ -347,37 +383,23 @@ export function hasServerAcknowledgedLocalDispatch(input: {
   if (!input.localDispatch) {
     return false;
   }
-  if (input.hasPendingApproval || input.hasPendingUserInput || Boolean(input.threadError)) {
+  if (
+    input.phase === "running" ||
+    input.hasPendingApproval ||
+    input.hasPendingUserInput ||
+    Boolean(input.threadError)
+  ) {
     return true;
   }
 
   const latestTurn = input.latestTurn ?? null;
   const session = input.session ?? null;
-  const latestTurnChanged =
+
+  return (
     input.localDispatch.latestTurnTurnId !== (latestTurn?.turnId ?? null) ||
     input.localDispatch.latestTurnRequestedAt !== (latestTurn?.requestedAt ?? null) ||
     input.localDispatch.latestTurnStartedAt !== (latestTurn?.startedAt ?? null) ||
-    input.localDispatch.latestTurnCompletedAt !== (latestTurn?.completedAt ?? null);
-
-  if (input.phase === "running") {
-    if (!latestTurnChanged) {
-      return false;
-    }
-    if (latestTurn?.startedAt === null || latestTurn === null) {
-      return false;
-    }
-    if (
-      session?.activeTurnId !== undefined &&
-      session.activeTurnId !== null &&
-      latestTurn?.turnId !== session.activeTurnId
-    ) {
-      return false;
-    }
-    return true;
-  }
-
-  return (
-    latestTurnChanged ||
+    input.localDispatch.latestTurnCompletedAt !== (latestTurn?.completedAt ?? null) ||
     input.localDispatch.sessionOrchestrationStatus !== (session?.orchestrationStatus ?? null) ||
     input.localDispatch.sessionUpdatedAt !== (session?.updatedAt ?? null)
   );

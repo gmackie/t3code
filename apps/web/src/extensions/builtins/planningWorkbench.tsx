@@ -156,7 +156,8 @@ function PlanningWorkbenchPanel({
                 </>
               ) : (
                 <p className="text-xs text-muted-foreground/50">
-                  No structured requirements detected. Use checkboxes or numbered lists in your plan.
+                  No structured requirements detected. Use checkboxes or numbered lists in your
+                  plan.
                 </p>
               )}
             </section>

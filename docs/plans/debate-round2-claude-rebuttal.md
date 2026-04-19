@@ -15,11 +15,12 @@ Codex is right: the planning workbench imports `ChatMarkdown`, `Badge`, `Button`
 
 For a real separate-repo story, the UI components would need to be either injected via context (verbose, over-engineered for now) or published as a shared UI kit. Neither is justified today.
 
-**Revised claim:** The extension host provides a clean *data* boundary. The UI boundary is aspirational and would need a shared component library to become real. For built-in extensions, importing host-app UI components directly is acceptable and follows the existing codebase pattern.
+**Revised claim:** The extension host provides a clean _data_ boundary. The UI boundary is aspirational and would need a shared component library to become real. For built-in extensions, importing host-app UI components directly is acceptable and follows the existing codebase pattern.
 
 ### 2. The panel model is actually three models, not two
 
 Codex correctly identifies:
+
 - `rightPanelStateStore` (diff/browser — per-thread, persisted)
 - `diffRouteSearch` (diff — URL state)
 - `ChatView` local state (`extensionPanelOpen`, `planSidebarOpen` — ephemeral)

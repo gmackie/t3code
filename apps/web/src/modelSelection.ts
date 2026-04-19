@@ -6,6 +6,7 @@ import {
   ProviderDriverKind,
   ProviderInstanceId,
   type ServerProvider,
+  type ServerProviderModel,
 } from "@t3tools/contracts";
 import {
   createModelSelection,
@@ -216,6 +217,31 @@ export function getAppModelOptionsForInstance(
     options,
     readInstanceModelPreferences(settings, entry.instanceId),
   );
+}
+
+export function getServerModelOptionsByProvider(
+  providers: ReadonlyArray<ServerProvider>,
+): Record<ProviderDriverKind, ReadonlyArray<ServerProviderModel>> {
+  return {
+    codex: getProviderModels(providers, "codex"),
+    claudeAgent: getProviderModels(providers, "claudeAgent"),
+    cursor: getProviderModels(providers, "cursor"),
+    opencode: getProviderModels(providers, "opencode"),
+  };
+}
+
+export function resolveSelectedModelForPickerWithCustomFallback(input: {
+  modelOptionsByProvider: Record<
+    ProviderDriverKind,
+    ReadonlyArray<Pick<ServerProviderModel, "slug">>
+  >;
+  selectedProvider: ProviderDriverKind;
+  selectedModel: string;
+}): string {
+  const currentOptions = input.modelOptionsByProvider[input.selectedProvider] ?? [];
+  return currentOptions.some((option) => option.slug === input.selectedModel)
+    ? input.selectedModel
+    : (normalizeModelSlug(input.selectedModel, input.selectedProvider) ?? input.selectedModel);
 }
 
 export function resolveAppModelSelection(

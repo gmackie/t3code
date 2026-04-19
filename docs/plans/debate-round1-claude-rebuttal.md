@@ -6,7 +6,7 @@ Points 4, 6, and 10 are partially right. Let me acknowledge what's valid before 
 
 **Point 4 is correct:** The `ext-browser` and `ext-preview-workspace` packages are metadata stubs. They don't prove the separate-repo story — they prove a directory structure. We should either make them real (move the component code into the package) or drop the pretense and keep them as local files. The ceremony of 5 `package.json` files for what are effectively constants is not earning its keep yet.
 
-**Point 6 is partially correct:** "Independently shippable" is aspirational, not demonstrated, when the registry is a compile-time static array. Dynamic loading would make it real. But the proposal never claims dynamic loading — it claims the *API boundary* is clean enough that extensions *could* be separate. The test of that claim is: can you write a new extension without reading `ChatView.tsx`? The answer is yes. That's the useful part.
+**Point 6 is partially correct:** "Independently shippable" is aspirational, not demonstrated, when the registry is a compile-time static array. Dynamic loading would make it real. But the proposal never claims dynamic loading — it claims the _API boundary_ is clean enough that extensions _could_ be separate. The test of that claim is: can you write a new extension without reading `ChatView.tsx`? The answer is yes. That's the useful part.
 
 **Point 10 is fair:** The test evidence is weighted toward logic tests, not host/lifecycle behavior. We should add component tests for ExtensionHost tab switching, extension availability changes, and mobile responsive behavior.
 
@@ -20,25 +20,25 @@ YAGNI applies to features nobody has asked for. Multiple contributors have alrea
 
 ### Point 2: "The headline claim is false — panels still touch core"
 
-This conflates two different things. PR #963's browser panel touches core because it was built *without* the extension host. The extension host proposal shows that the browser panel *could* be an extension (browserExtension.tsx) that doesn't touch core layout. The fact that both approaches coexist on this branch doesn't mean the extension approach requires core changes — it means we haven't finished the migration.
+This conflates two different things. PR #963's browser panel touches core because it was built _without_ the extension host. The extension host proposal shows that the browser panel _could_ be an extension (browserExtension.tsx) that doesn't touch core layout. The fact that both approaches coexist on this branch doesn't mean the extension approach requires core changes — it means we haven't finished the migration.
 
-The "1 file + 1 registry line" claim is accurate *for extensions using the host*. Thread Overview, Planning Workbench, and Preview Workspace required zero changes to `_chat.$threadId.tsx`.
+The "1 file + 1 registry line" claim is accurate _for extensions using the host_. Thread Overview, Planning Workbench, and Preview Workspace required zero changes to `_chat.$threadId.tsx`.
 
 ### Point 3: "The stable contract is fiction because extensions import app internals"
 
 This is the strongest critique and deserves a nuanced response.
 
-The browser extension imports `browserStateStore`, `BrowserPanel`, and `browser.ts` directly — all app-internal modules. That's because the browser extension is *demonstrating* how PR #963's hardcoded panel could be wrapped, not how a future external extension would work.
+The browser extension imports `browserStateStore`, `BrowserPanel`, and `browser.ts` directly — all app-internal modules. That's because the browser extension is _demonstrating_ how PR #963's hardcoded panel could be wrapped, not how a future external extension would work.
 
-The planning workbench and thread overview extensions use only `ExtensionContext`. They don't import any app internals. These are the model for how extensions should work. The browser extension is the model for *migrating existing hardcoded panels* — a different, messier operation that's expected to touch internals.
+The planning workbench and thread overview extensions use only `ExtensionContext`. They don't import any app internals. These are the model for how extensions should work. The browser extension is the model for _migrating existing hardcoded panels_ — a different, messier operation that's expected to touch internals.
 
-The honest framing: `ExtensionContext` is the API for *new* extensions. Migrating existing panels requires app-internal access during the transition. Once migrated, the internals can be hidden behind context actions.
+The honest framing: `ExtensionContext` is the API for _new_ extensions. Migrating existing panels requires app-internal access during the transition. Once migrated, the internals can be hidden behind context actions.
 
 ### Point 5: "Multiple panel models cause confusion"
 
-This critique misses that the multiple models already exist. Diff is URL-routed. PlanSidebar is state-toggled. Browser has its own rightPanelStateStore. These are three different panel models *without* the extension host.
+This critique misses that the multiple models already exist. Diff is URL-routed. PlanSidebar is state-toggled. Browser has its own rightPanelStateStore. These are three different panel models _without_ the extension host.
 
-The extension host *reduces* this to two: URL-routed panels (diff) and extension-hosted panels (everything else). That's a simplification, not a complication. The unused `headerActions` and `toolView` surfaces are type definitions — they add zero runtime complexity and can be deleted if unused.
+The extension host _reduces_ this to two: URL-routed panels (diff) and extension-hosted panels (everything else). That's a simplification, not a complication. The unused `headerActions` and `toolView` surfaces are type definitions — they add zero runtime complexity and can be deleted if unused.
 
 ### Point 7: "Host is underpowered — no per-thread persistence, no error boundary"
 
@@ -76,7 +76,7 @@ Where it falls short:
 - **No availability filtering.** Each panel still decides for itself when to appear. The controller doesn't know which panels are available for the current thread state.
 - **No tab management.** The controller doesn't handle which panel is active, tab switching, or fallback behavior.
 
-The extension host *is* a `RightPanelController` — plus a contract, availability filtering, and tab management. The question is whether the "plus" is worth the ~200 extra lines. For 2 panels, probably not. For 4+, yes.
+The extension host _is_ a `RightPanelController` — plus a contract, availability filtering, and tab management. The question is whether the "plus" is worth the ~200 extra lines. For 2 panels, probably not. For 4+, yes.
 
 ## Revised Position
 

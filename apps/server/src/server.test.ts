@@ -864,6 +864,27 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 
+  it.effect("reflects the desktop app origin for auth session CORS requests", () =>
+    Effect.gen(function* () {
+      yield* buildAppUnderTest();
+
+      const url = yield* getHttpServerUrl("/api/auth/session");
+      const response = yield* Effect.promise(() =>
+        fetch(url, {
+          method: "OPTIONS",
+          headers: {
+            origin: "t3://app",
+            "access-control-request-method": "GET",
+          },
+        }),
+      );
+
+      assert.equal(response.status, 204);
+      assert.equal(response.headers.get("access-control-allow-origin"), "t3://app");
+      assert.equal(response.headers.get("access-control-allow-credentials"), "true");
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
   it.effect("bootstraps a browser session and authenticates the session endpoint via cookie", () =>
     Effect.gen(function* () {
       yield* buildAppUnderTest();
@@ -978,7 +999,11 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
         );
 
         assert.equal(response.status, 204);
-        assert.equal(response.headers.get("access-control-allow-origin"), "*");
+        assert.equal(
+          response.headers.get("access-control-allow-origin"),
+          "http://192.168.86.35:3773",
+        );
+        assert.equal(response.headers.get("access-control-allow-credentials"), "true");
         assert.deepEqual(splitHeaderTokens(response.headers.get("access-control-allow-methods")), [
           "GET",
           "OPTIONS",
@@ -1011,7 +1036,11 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
       };
 
       assert.equal(response.status, 401);
-      assert.equal(response.headers.get("access-control-allow-origin"), "*");
+      assert.equal(
+        response.headers.get("access-control-allow-origin"),
+        "http://192.168.86.35:3773",
+      );
+      assert.equal(response.headers.get("access-control-allow-credentials"), "true");
       assert.equal(body.error, "Authentication required.");
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
@@ -1604,7 +1633,8 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
       });
 
       assert.equal(response.status, 204);
-      assert.equal(response.headers["access-control-allow-origin"], "*");
+      assert.equal(response.headers["access-control-allow-origin"], "http://localhost:5733");
+      assert.equal(response.headers["access-control-allow-credentials"], "true");
       assert.deepEqual(localTraceRecords, [
         {
           type: "otlp-span",
@@ -1669,7 +1699,8 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
       );
 
       assert.equal(response.status, 204);
-      assert.equal(response.headers.get("access-control-allow-origin"), "*");
+      assert.equal(response.headers.get("access-control-allow-origin"), "http://localhost:5733");
+      assert.equal(response.headers.get("access-control-allow-credentials"), "true");
       assert.deepEqual(splitHeaderTokens(response.headers.get("access-control-allow-methods")), [
         "GET",
         "OPTIONS",
@@ -2047,6 +2078,39 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 
+  it.effect("routes websocket rpc projects.listEntries", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const workspaceDir = yield* fs.makeTempDirectoryScoped({ prefix: "t3-ws-project-list-" });
+      yield* fs.makeDirectory(path.join(workspaceDir, "src"), { recursive: true });
+      yield* fs.writeFileString(path.join(workspaceDir, "src", "index.ts"), "export const x = 1;");
+      yield* fs.writeFileString(path.join(workspaceDir, "README.md"), "# Hello\n");
+
+      yield* buildAppUnderTest();
+
+      const wsUrl = yield* getWsServerUrl("/ws");
+      const response = yield* Effect.scoped(
+        withWsRpcClient(wsUrl, (client) =>
+          client[WS_METHODS.projectsListEntries]({
+            cwd: workspaceDir,
+          }),
+        ),
+      );
+
+      assert.isTrue(
+        response.entries.some((entry) => entry.path === "src" && entry.kind === "directory"),
+      );
+      assert.isTrue(
+        response.entries.some((entry) => entry.path === "src/index.ts" && entry.kind === "file"),
+      );
+      assert.isTrue(
+        response.entries.some((entry) => entry.path === "README.md" && entry.kind === "file"),
+      );
+      assert.equal(response.truncated, false);
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
   it.effect("routes websocket rpc projects.searchEntries excludes gitignored files", () =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;
@@ -2145,6 +2209,31 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
       assert.equal(response.relativePath, "nested/created.txt");
       const persisted = yield* fs.readFileString(path.join(workspaceDir, "nested", "created.txt"));
       assert.equal(persisted, "written-by-rpc");
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
+  it.effect("routes websocket rpc projects.readFile", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const workspaceDir = yield* fs.makeTempDirectoryScoped({ prefix: "t3-ws-project-read-" });
+      yield* fs.makeDirectory(path.join(workspaceDir, "src"), { recursive: true });
+      yield* fs.writeFileString(path.join(workspaceDir, "src", "index.ts"), "export const x = 1;");
+
+      yield* buildAppUnderTest();
+
+      const wsUrl = yield* getWsServerUrl("/ws");
+      const response = yield* Effect.scoped(
+        withWsRpcClient(wsUrl, (client) =>
+          client[WS_METHODS.projectsReadFile]({
+            cwd: workspaceDir,
+            relativePath: "src/index.ts",
+          }),
+        ),
+      );
+
+      assert.equal(response.relativePath, "src/index.ts");
+      assert.equal(response.contents, "export const x = 1;");
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 

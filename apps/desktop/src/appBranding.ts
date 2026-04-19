@@ -1,6 +1,6 @@
 import type { DesktopAppBranding, DesktopAppStageLabel } from "@t3tools/contracts";
 
-import { isNightlyDesktopVersion } from "./updateChannels.ts";
+import { isGmackoDesktopVersion, isNightlyDesktopVersion } from "./updateChannels.ts";
 
 const APP_BASE_NAME = "T3 Code";
 
@@ -12,7 +12,13 @@ export function resolveDesktopAppStageLabel(input: {
     return "Dev";
   }
 
-  return isNightlyDesktopVersion(input.appVersion) ? "Nightly" : "Alpha";
+  if (isNightlyDesktopVersion(input.appVersion)) {
+    return "Nightly";
+  }
+  if (isGmackoDesktopVersion(input.appVersion)) {
+    return "Gmacko";
+  }
+  return "Alpha";
 }
 
 export function resolveDesktopAppBranding(input: {

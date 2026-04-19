@@ -47,9 +47,7 @@ describe("PanelHost behavior", () => {
     });
 
     it("returns empty array when no panels are available", () => {
-      const panels = [
-        makePanel({ id: "overview", title: "Overview", isAvailable: () => false }),
-      ];
+      const panels = [makePanel({ id: "overview", title: "Overview", isAvailable: () => false })];
       const available = getAvailablePanelsForSurface(panels, "thread.sidePanel", makeContext());
       expect(available).toHaveLength(0);
     });
@@ -66,11 +64,7 @@ describe("PanelHost behavior", () => {
       ];
 
       // No thread view — panel should not be available
-      const withoutThread = getAvailablePanelsForSurface(
-        panels,
-        "thread.sidePanel",
-        makeContext(),
-      );
+      const withoutThread = getAvailablePanelsForSurface(panels, "thread.sidePanel", makeContext());
       expect(withoutThread).toHaveLength(0);
     });
   });

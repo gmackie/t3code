@@ -3,10 +3,18 @@
 import rootPackageJson from "../package.json" with { type: "json" };
 import desktopPackageJson from "../apps/desktop/package.json" with { type: "json" };
 import serverPackageJson from "../apps/server/package.json" with { type: "json" };
+import { getDesktopRuntimeIdentity } from "../apps/desktop/src/appIdentity.js";
+import platformNodeSharedPackageJson from "../node_modules/@effect/platform-node-shared/package.json" with { type: "json" };
 
 import { BRAND_ASSET_PATHS } from "./lib/brand-assets.ts";
 import { getDefaultBuildArch } from "./lib/build-target-arch.ts";
+import {
+  createDesktopElectronBuilderConfig,
+  type GitHubPublishConfig,
+} from "./lib/desktopElectronBuilderConfig.ts";
+import { resolveDesktopAppDisplayName } from "./lib/desktopAppIdentity.ts";
 import { resolveCatalogDependencies } from "./lib/resolve-catalog.ts";
+import { createStageDependencyOverrides } from "./lib/stageDependencyOverrides.ts";
 
 import * as NodeRuntime from "@effect/platform-node/NodeRuntime";
 import * as NodeServices from "@effect/platform-node/NodeServices";
@@ -501,15 +509,9 @@ function resolveDesktopRuntimeDependencies(
   return resolveCatalogDependencies(runtimeDependencies, catalog, "apps/desktop");
 }
 
-function resolveGitHubPublishConfig(updateChannel: "latest" | "nightly"):
-  | {
-      readonly provider: "github";
-      readonly owner: string;
-      readonly repo: string;
-      readonly releaseType: "release" | "prerelease";
-      readonly channel?: "nightly";
-    }
-  | undefined {
+function resolveGitHubPublishConfig(
+  updateChannel: "latest" | "nightly" | "gmacko",
+): GitHubPublishConfig | undefined {
   const rawRepo =
     process.env.T3CODE_DESKTOP_UPDATE_REPOSITORY?.trim() ||
     process.env.GITHUB_REPOSITORY?.trim() ||
@@ -523,13 +525,19 @@ function resolveGitHubPublishConfig(updateChannel: "latest" | "nightly"):
     provider: "github",
     owner,
     repo,
-    releaseType: updateChannel === "nightly" ? "prerelease" : "release",
-    ...(updateChannel === "nightly" ? { channel: "nightly" as const } : {}),
+    releaseType: updateChannel === "latest" ? "release" : "prerelease",
+    ...(updateChannel === "latest" ? {} : { channel: updateChannel }),
   };
 }
 
-export function resolveDesktopUpdateChannel(version: string): "latest" | "nightly" {
-  return /-nightly\.\d{8}\.\d+$/.test(version) ? "nightly" : "latest";
+export function resolveDesktopUpdateChannel(version: string): "latest" | "nightly" | "gmacko" {
+  if (/-nightly\.\d{8}\.\d+$/.test(version)) {
+    return "nightly";
+  }
+  if (/-gmacko\.\d+$/.test(version)) {
+    return "gmacko";
+  }
+  return "latest";
 }
 
 export function resolveDesktopBuildIconAssets(version: string): DesktopBuildIconAssets {
@@ -553,9 +561,14 @@ export function resolveMockUpdateServerUrl(mockUpdateServerPort: number | undefi
 }
 
 export function resolveDesktopProductName(version: string): string {
-  return resolveDesktopUpdateChannel(version) === "nightly"
-    ? "T3 Code (Nightly)"
-    : (desktopPackageJson.productName ?? "T3 Code");
+  const updateChannel = resolveDesktopUpdateChannel(version);
+  if (updateChannel === "nightly") {
+    return "T3 Code (Nightly)";
+  }
+  if (updateChannel === "gmacko") {
+    return "T3 Code (gmacko)";
+  }
+  return desktopPackageJson.productName ?? "T3 Code";
 }
 
 const createBuildConfig = Effect.fn("createBuildConfig")(function* (
@@ -566,55 +579,22 @@ const createBuildConfig = Effect.fn("createBuildConfig")(function* (
   mockUpdates: boolean,
   mockUpdateServerPort: number | undefined,
 ) {
-  const buildConfig: Record<string, unknown> = {
-    appId: "com.t3tools.t3code",
-    productName: resolveDesktopProductName(version),
-    artifactName: "T3-Code-${version}-${arch}.${ext}",
-    directories: {
-      buildResources: "apps/desktop/resources",
-    },
-  };
   const updateChannel = resolveDesktopUpdateChannel(version);
+  const productName =
+    process.env.T3CODE_DESKTOP_APP_DISPLAY_NAME?.trim() || resolveDesktopProductName(version);
   const publishConfig = resolveGitHubPublishConfig(updateChannel);
-  if (publishConfig) {
-    buildConfig.publish = [publishConfig];
-  } else if (mockUpdates) {
-    buildConfig.publish = [
-      {
-        provider: "generic",
-        url: resolveMockUpdateServerUrl(mockUpdateServerPort),
-      },
-    ];
-  }
-
-  if (platform === "mac") {
-    buildConfig.mac = {
-      target: target === "dmg" ? [target, "zip"] : [target],
-      icon: "icon.icns",
-      category: "public.app-category.developer-tools",
-    };
-  }
-
-  if (platform === "linux") {
-    buildConfig.linux = {
-      target: [target],
-      executableName: "t3code",
-      icon: "icon.png",
-      category: "Development",
-      desktop: {
-        entry: {
-          StartupWMClass: "t3code",
-        },
-      },
-    };
-  }
+  const buildConfig = createDesktopElectronBuilderConfig({
+    platform,
+    target,
+    productName,
+    mockUpdates,
+    ...(mockUpdateServerPort ? { mockUpdateServerPort } : {}),
+    ...(publishConfig ? { publishConfig } : {}),
+  });
 
   if (platform === "win") {
     buildConfig.npmRebuild = false;
-    const winConfig: Record<string, unknown> = {
-      target: [target],
-      icon: "icon.ico",
-    };
+    const winConfig = (buildConfig.win ?? {}) as Record<string, unknown>;
     if (signed) {
       winConfig.azureSignOptions = yield* AzureTrustedSigningOptionsConfig;
     } else {
@@ -713,6 +693,15 @@ const buildDesktopArtifact = Effect.fn("buildDesktopArtifact")(function* (
   const appVersion = options.version ?? serverPackageJson.version;
   const iconAssets = resolveDesktopBuildIconAssets(appVersion);
   const commitHash = yield* resolveGitCommitHash(repoRoot);
+  const desktopProductName = resolveDesktopAppDisplayName({
+    cwd: repoRoot,
+    baseDisplayName:
+      process.env.T3CODE_DESKTOP_APP_DISPLAY_NAME?.trim() || resolveDesktopProductName(appVersion),
+  });
+  const desktopRuntimeIdentity = getDesktopRuntimeIdentity({
+    isDevelopment: false,
+    appDisplayName: desktopProductName,
+  });
   const mkdir = options.keepStage ? fs.makeTempDirectory : fs.makeTempDirectoryScoped;
   const stageRoot = yield* mkdir({
     prefix: `t3code-desktop-${options.platform}-stage-`,
@@ -778,7 +767,7 @@ const buildDesktopArtifact = Effect.fn("buildDesktopArtifact")(function* (
   yield* fs.copy(stageResourcesDir, path.join(stageAppDir, "apps/desktop/prod-resources"));
 
   const stagePackageJson: StagePackageJson = {
-    name: "t3code",
+    name: desktopRuntimeIdentity.packageName,
     version: appVersion,
     buildVersion: appVersion,
     t3codeCommitHash: commitHash,
@@ -798,10 +787,16 @@ const buildDesktopArtifact = Effect.fn("buildDesktopArtifact")(function* (
       ...resolvedServerDependencies,
       ...resolvedDesktopRuntimeDependencies,
     },
+    overrides: {
+      ...createStageDependencyOverrides({
+        catalog: rootPackageJson.workspaces.catalog,
+        platformNodeSharedVersion: platformNodeSharedPackageJson.version,
+      }),
+      ...resolvedOverrides,
+    },
     devDependencies: {
       electron: electronVersion,
     },
-    overrides: resolvedOverrides,
   };
 
   const stagePackageJsonString = yield* encodeJsonString(stagePackageJson);

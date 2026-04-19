@@ -61,13 +61,15 @@ export function readDesktopSettings(settingsPath: string, appVersion: string): D
       readonly updateChannelConfiguredByUser?: unknown;
     };
     const parsedUpdateChannel =
-      parsed.updateChannel === "nightly" || parsed.updateChannel === "latest"
+      parsed.updateChannel === "nightly" ||
+      parsed.updateChannel === "latest" ||
+      parsed.updateChannel === "gmacko"
         ? parsed.updateChannel
         : null;
     const isLegacySettings = parsed.updateChannelConfiguredByUser === undefined;
     const updateChannelConfiguredByUser =
       parsed.updateChannelConfiguredByUser === true ||
-      (isLegacySettings && parsedUpdateChannel === "nightly");
+      (isLegacySettings && parsedUpdateChannel !== null && parsedUpdateChannel !== "latest");
 
     return {
       serverExposureMode:

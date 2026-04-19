@@ -51,6 +51,7 @@ import { AppAtomRegistryProvider } from "../rpc/atomRegistry";
 import { getServerConfig } from "../rpc/serverState";
 import { getRouter } from "../router";
 import { deriveLogicalProjectKeyFromSettings } from "../logicalProject";
+import { useSplitPaneStore } from "../splitPaneStore";
 import { selectBootstrapCompleteForActiveEnvironment, useStore } from "../store";
 import { useTerminalStateStore } from "../terminalStateStore";
 import { useUiStateStore } from "../uiStateStore";
@@ -1355,9 +1356,9 @@ async function waitForInteractionModeButton(
 ): Promise<HTMLButtonElement> {
   return waitForElement(
     () =>
-      Array.from(document.querySelectorAll("button")).find(
-        (button) => button.textContent?.trim() === expectedLabel,
-      ) as HTMLButtonElement | null,
+      document.querySelector<HTMLButtonElement>(
+        `button[aria-label="${expectedLabel} interaction mode"]`,
+      ),
     `Unable to find ${expectedLabel} interaction mode button.`,
   );
 }
@@ -2979,6 +2980,32 @@ describe("ChatView timeline estimator parity (full app)", () => {
     }
   });
 
+  it("switches a compact plan composer back to chat without crashing", async () => {
+    const mounted = await mountChatView({
+      viewport: COMPACT_FOOTER_VIEWPORT,
+      snapshot: createSnapshotWithPlanFollowUpPrompt(),
+    });
+
+    try {
+      const compactControlsButton = page.getByLabelText("More composer controls");
+      await expect.element(compactControlsButton).toBeInTheDocument();
+      await compactControlsButton.click();
+
+      const chatMenuItem = page.getByText("Chat").first();
+      await expect.element(chatMenuItem).toBeInTheDocument();
+      await chatMenuItem.click();
+
+      await vi.waitFor(
+        () => {
+          expect(document.body.textContent ?? "").not.toContain("Something went wrong.");
+        },
+        { timeout: 8_000, interval: 16 },
+      );
+    } finally {
+      await mounted.cleanup();
+    }
+  });
+
   it("uses the active draft route session when changing the base branch", async () => {
     const staleDraftId = draftIdFromPath("/draft/draft-stale-branch-session");
     const activeDraftId = draftIdFromPath("/draft/draft-active-branch-session");
@@ -3699,6 +3726,51 @@ describe("ChatView timeline estimator parity (full app)", () => {
       await expect.element(confirmButton).toBeVisible();
     } finally {
       localStorage.removeItem("t3code:client-settings:v1");
+      await mounted.cleanup();
+    }
+  });
+
+  it("renders persisted thread history on the existing server thread route", async () => {
+    const targetText = "persisted thread history should render";
+    const mounted = await mountChatView({
+      viewport: DEFAULT_VIEWPORT,
+      snapshot: createSnapshotForTargetUser({
+        targetMessageId: "msg-user-persisted-history" as MessageId,
+        targetText,
+      }),
+    });
+
+    try {
+      await expect.element(page.getByText(targetText)).toBeVisible();
+      await expect.element(page.getByTestId("composer-editor")).toBeInTheDocument();
+    } finally {
+      await mounted.cleanup();
+    }
+  });
+
+  it("does not crash when a provider model is missing a display name", async () => {
+    const mounted = await mountChatView({
+      viewport: DEFAULT_VIEWPORT,
+      snapshot: createSnapshotForTargetUser({
+        targetMessageId: "msg-user-provider-model-fallback" as MessageId,
+        targetText: "provider model fallback test",
+      }),
+      configureFixture: (nextFixture) => {
+        Object.assign(nextFixture.serverConfig, {
+          providers: [
+            {
+              ...nextFixture.serverConfig.providers[0]!,
+              models: [{ slug: "gpt-5", isCustom: false, capabilities: null } as never],
+            },
+          ],
+        });
+      },
+    });
+
+    try {
+      await expect.element(page.getByText("provider model fallback test")).toBeVisible();
+      await expect.element(page.getByTestId("composer-editor")).toBeInTheDocument();
+    } finally {
       await mounted.cleanup();
     }
   });
@@ -5429,6 +5501,375 @@ describe("ChatView timeline estimator parity (full app)", () => {
         },
         { timeout: 8_000, interval: 16 },
       );
+    } finally {
+      await mounted.cleanup();
+    }
+  });
+
+  it("switches the sidebar between projects and files via keybindings", async () => {
+    const mounted = await mountChatView({
+      viewport: DEFAULT_VIEWPORT,
+      snapshot: createSnapshotForTargetUser({
+        targetMessageId: "msg-user-sidebar-hotkeys" as MessageId,
+        targetText: "sidebar hotkeys",
+      }),
+      configureFixture: (nextFixture) => {
+        nextFixture.serverConfig = {
+          ...nextFixture.serverConfig,
+          keybindings: [
+            {
+              command: "sidebar.files",
+              shortcut: {
+                key: "f",
+                metaKey: false,
+                ctrlKey: false,
+                shiftKey: true,
+                altKey: false,
+                modKey: true,
+              },
+            },
+            {
+              command: "sidebar.projects",
+              shortcut: {
+                key: "p",
+                metaKey: false,
+                ctrlKey: false,
+                shiftKey: true,
+                altKey: false,
+                modKey: true,
+              },
+            },
+          ],
+        };
+      },
+    });
+
+    try {
+      await waitForServerConfigToApply();
+      const projectsTab = page.getByRole("tab", { name: "Projects" });
+      const filesTab = page.getByRole("tab", { name: "Files" });
+      await expect.element(projectsTab).toHaveAttribute("aria-selected", "true");
+      await expect.element(filesTab).toHaveAttribute("aria-selected", "false");
+
+      const useMetaForMod = isMacPlatform(navigator.platform);
+      window.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          key: "f",
+          shiftKey: true,
+          metaKey: useMetaForMod,
+          ctrlKey: !useMetaForMod,
+          bubbles: true,
+          cancelable: true,
+        }),
+      );
+      await waitForLayout();
+      await expect.element(filesTab).toHaveAttribute("aria-selected", "true");
+
+      window.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          key: "p",
+          shiftKey: true,
+          metaKey: useMetaForMod,
+          ctrlKey: !useMetaForMod,
+          bubbles: true,
+          cancelable: true,
+        }),
+      );
+      await waitForLayout();
+      await expect.element(projectsTab).toHaveAttribute("aria-selected", "true");
+    } finally {
+      await mounted.cleanup();
+    }
+  });
+
+  it("opens a secondary chat pane when mod-clicking another thread", async () => {
+    const mounted = await mountChatView({
+      viewport: DEFAULT_VIEWPORT,
+      snapshot: createSnapshotWithSecondaryProject(),
+    });
+
+    try {
+      await waitForServerConfigToApply();
+      await waitForElement(
+        () => document.querySelector('[data-testid="workspace-view-tabs"]'),
+        "Primary workspace tabs should render before opening a secondary pane.",
+      );
+      expect(document.querySelectorAll('[data-testid="workspace-view-tabs"]')).toHaveLength(1);
+
+      const useMetaForMod = isMacPlatform(navigator.platform);
+      const secondaryThreadRow = page.getByTestId("thread-row-thread-secondary-project");
+      await expect.element(secondaryThreadRow).toBeInTheDocument();
+      await secondaryThreadRow.click({
+        modifiers: [useMetaForMod ? "Meta" : "Control"],
+      });
+      await waitForLayout();
+
+      await vi.waitFor(
+        () => {
+          expect(document.querySelectorAll('[data-testid="workspace-view-tabs"]')).toHaveLength(2);
+        },
+        { timeout: 8_000, interval: 16 },
+      );
+      expect(mounted.router.state.location.pathname).toBe(serverThreadPath(THREAD_ID));
+    } finally {
+      await mounted.cleanup();
+    }
+  });
+
+  it("routes normal thread clicks back through the primary pane after refocusing it", async () => {
+    const tertiaryThreadId = "thread-primary-replacement" as ThreadId;
+    const snapshot = createSnapshotWithSecondaryProject();
+    const mounted = await mountChatView({
+      viewport: DEFAULT_VIEWPORT,
+      snapshot: {
+        ...snapshot,
+        threads: [
+          ...snapshot.threads,
+          {
+            id: tertiaryThreadId,
+            projectId: PROJECT_ID,
+            title: "Primary replacement",
+            modelSelection: { provider: "codex", model: "gpt-5" },
+            interactionMode: "default",
+            runtimeMode: "full-access",
+            branch: "main",
+            worktreePath: null,
+            latestTurn: null,
+            createdAt: isoAt(34),
+            updatedAt: isoAt(35),
+            deletedAt: null,
+            messages: [],
+            activities: [],
+            proposedPlans: [],
+            checkpoints: [],
+            session: {
+              threadId: tertiaryThreadId,
+              status: "ready",
+              providerName: "codex",
+              runtimeMode: "full-access",
+              activeTurnId: null,
+              lastError: null,
+              updatedAt: isoAt(35),
+            },
+            archivedAt: null,
+          },
+        ],
+      },
+    });
+
+    try {
+      await waitForServerConfigToApply();
+      const useMetaForMod = isMacPlatform(navigator.platform);
+      const releaseChecklistRow = page.getByTestId("thread-row-thread-secondary-project");
+      await expect.element(releaseChecklistRow).toBeInTheDocument();
+      await releaseChecklistRow.click({
+        modifiers: [useMetaForMod ? "Meta" : "Control"],
+      });
+      await vi.waitFor(
+        () => {
+          expect(document.querySelectorAll('[data-testid="workspace-view-tabs"]')).toHaveLength(2);
+        },
+        { timeout: 8_000, interval: 16 },
+      );
+
+      const primaryPane = page.getByTestId("chat-pane-primary");
+      await expect.element(primaryPane).toBeInTheDocument();
+      await primaryPane.click();
+      await waitForLayout();
+
+      const primaryReplacementRow = page.getByTestId("thread-row-thread-primary-replacement");
+      await expect.element(primaryReplacementRow).toBeInTheDocument();
+      await primaryReplacementRow.click();
+
+      await vi.waitFor(
+        () => {
+          expect(mounted.router.state.location.pathname).toBe(serverThreadPath(tertiaryThreadId));
+        },
+        { timeout: 8_000, interval: 16 },
+      );
+      expect(useSplitPaneStore.getState().secondaryThreadRef?.threadId).toBe(
+        "thread-secondary-project",
+      );
+    } finally {
+      await mounted.cleanup();
+    }
+  });
+
+  it("does not show the preview workspace tab before any browser tab is opened", async () => {
+    const mounted = await mountChatView({
+      viewport: DEFAULT_VIEWPORT,
+      snapshot: createSnapshotForTargetUser({
+        targetMessageId: "msg-user-no-preview-tab" as MessageId,
+        targetText: "preview should stay closed by default",
+      }),
+    });
+
+    try {
+      await waitForServerConfigToApply();
+      await expect.element(page.getByTestId("workspace-tab-chat")).toBeVisible();
+      await expect.element(page.getByTestId("workspace-tab-plan")).toBeVisible();
+      await expect.element(page.getByTestId("workspace-tab-preview")).not.toBeInTheDocument();
+    } finally {
+      await mounted.cleanup();
+    }
+  });
+
+  it("renders cursor-backed threads without crashing the composer model picker", async () => {
+    const snapshot = createSnapshotForTargetUser({
+      targetMessageId: "msg-user-cursor-thread" as MessageId,
+      targetText: "cursor-backed thread",
+    });
+    const mounted = await mountChatView({
+      viewport: DEFAULT_VIEWPORT,
+      snapshot: {
+        ...snapshot,
+        threads: snapshot.threads.map((thread) =>
+          thread.id === THREAD_ID
+            ? {
+                ...thread,
+                modelSelection: {
+                  provider: "cursor",
+                  model: "claude-sonnet-4-6",
+                },
+              }
+            : thread,
+        ),
+      },
+      configureFixture: (nextFixture) => {
+        nextFixture.serverConfig = {
+          ...nextFixture.serverConfig,
+          providers: [
+            ...nextFixture.serverConfig.providers,
+            {
+              provider: "cursor",
+              enabled: true,
+              installed: true,
+              version: "0.1.0",
+              status: "ready",
+              auth: { status: "authenticated" },
+              checkedAt: NOW_ISO,
+              models: [
+                {
+                  slug: "claude-sonnet-4-6",
+                  name: "Claude Sonnet 4.6",
+                  isCustom: false,
+                  capabilities: null,
+                },
+              ],
+              slashCommands: [],
+              skills: [],
+            },
+          ],
+        };
+      },
+    });
+
+    try {
+      await waitForServerConfigToApply();
+      await expect.element(page.getByTestId("workspace-tab-chat")).toBeVisible();
+      await expect
+        .element(page.getByText("Something went wrong.", { exact: true }))
+        .not.toBeInTheDocument();
+    } finally {
+      await mounted.cleanup();
+    }
+  });
+
+  it("starts the first send for cursor-backed threads without crashing", async () => {
+    const snapshot = createSnapshotForTargetUser({
+      targetMessageId: "msg-user-cursor-first-send" as MessageId,
+      targetText: "cursor first send",
+    });
+    const mounted = await mountChatView({
+      viewport: DEFAULT_VIEWPORT,
+      snapshot: {
+        ...snapshot,
+        threads: snapshot.threads.map((thread) =>
+          thread.id === THREAD_ID
+            ? {
+                ...thread,
+                messages: [],
+                modelSelection: {
+                  provider: "cursor",
+                  model: "claude-sonnet-4-6",
+                },
+              }
+            : thread,
+        ),
+      },
+      configureFixture: (nextFixture) => {
+        nextFixture.serverConfig = {
+          ...nextFixture.serverConfig,
+          providers: [
+            ...nextFixture.serverConfig.providers,
+            {
+              provider: "cursor",
+              enabled: true,
+              installed: true,
+              version: "0.1.0",
+              status: "ready",
+              auth: { status: "authenticated" },
+              checkedAt: NOW_ISO,
+              models: [
+                {
+                  slug: "claude-sonnet-4-6",
+                  name: "Claude Sonnet 4.6",
+                  isCustom: false,
+                  capabilities: null,
+                },
+              ],
+              slashCommands: [],
+              skills: [],
+            },
+          ],
+        };
+      },
+      resolveRpc: (body) => {
+        if (body._tag === ORCHESTRATION_WS_METHODS.dispatchCommand) {
+          return {
+            sequence: fixture.snapshot.snapshotSequence + 1,
+          };
+        }
+        return undefined;
+      },
+    });
+
+    try {
+      await waitForServerConfigToApply();
+      useComposerDraftStore.getState().setPrompt(THREAD_REF, "Ship it from cursor");
+      await waitForLayout();
+
+      const sendButton = await waitForSendButton();
+      expect(sendButton.disabled).toBe(false);
+      sendButton.click();
+
+      await vi.waitFor(
+        () => {
+          const turnStartRequest = wsRequests.find(
+            (request) =>
+              request._tag === ORCHESTRATION_WS_METHODS.dispatchCommand &&
+              request.type === "thread.turn.start",
+          ) as
+            | {
+                _tag: string;
+                type?: string;
+                modelSelection?: { provider?: string; model?: string };
+              }
+            | undefined;
+          expect(turnStartRequest).toMatchObject({
+            _tag: ORCHESTRATION_WS_METHODS.dispatchCommand,
+            type: "thread.turn.start",
+            modelSelection: {
+              model: "claude-sonnet-4-6",
+            },
+          });
+        },
+        { timeout: 8_000, interval: 16 },
+      );
+
+      await expect
+        .element(page.getByText("Something went wrong.", { exact: true }))
+        .not.toBeInTheDocument();
     } finally {
       await mounted.cleanup();
     }

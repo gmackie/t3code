@@ -102,16 +102,12 @@ function extensionCandidates(fileName: string): string[] {
   return [...candidates];
 }
 
-function resolveLanguageFallbackDefinition(
-  pathValue: string,
-  theme: "light" | "dark",
-): string | null {
+export function resolveLanguageIdForPath(pathValue: string): string | null {
   const basename = basenameOfPath(pathValue).toLowerCase();
-  const languageIds = theme === "light" ? lightLanguageIds : darkLanguageIds;
 
   const fromBasenameLanguage = languageIdByFileName[basename];
   if (fromBasenameLanguage) {
-    return languageIds[fromBasenameLanguage] ?? darkLanguageIds[fromBasenameLanguage] ?? null;
+    return fromBasenameLanguage;
   }
 
   for (const candidate of extensionCandidates(basename)) {
@@ -119,7 +115,21 @@ function resolveLanguageFallbackDefinition(
       localLanguageIdByExtensionOverrides[
         candidate as keyof typeof localLanguageIdByExtensionOverrides
       ] ?? languageIdByExtension[candidate];
-    if (!languageId) continue;
+    if (languageId) {
+      return languageId;
+    }
+  }
+
+  return null;
+}
+
+function resolveLanguageFallbackDefinition(
+  pathValue: string,
+  theme: "light" | "dark",
+): string | null {
+  const languageIds = theme === "light" ? lightLanguageIds : darkLanguageIds;
+  const languageId = resolveLanguageIdForPath(pathValue);
+  if (languageId) {
     return languageIds[languageId] ?? darkLanguageIds[languageId] ?? null;
   }
 

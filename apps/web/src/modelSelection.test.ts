@@ -4,8 +4,10 @@ import { describe, expect, it } from "vitest";
 import { deriveProviderInstanceEntries } from "./providerInstances";
 import {
   getAppModelOptionsForInstance,
+  getServerModelOptionsByProvider,
   resolveAppModelSelectionForInstance,
   resolveAppModelSelectionState,
+  resolveSelectedModelForPickerWithCustomFallback,
 } from "./modelSelection";
 
 function provider(input: {
@@ -247,5 +249,82 @@ describe("instance-scoped model selection", () => {
       instanceId: ProviderInstanceId.make("claude_openrouter"),
       model: "openai/gpt-5.5",
     });
+  });
+});
+
+describe("getServerModelOptionsByProvider", () => {
+  it("returns model options for every supported provider", () => {
+    const providerStatuses: ReadonlyArray<ServerProvider> = [
+      provider({
+        provider: ProviderDriverKind.make("codex"),
+        instanceId: "codex",
+        models: ["gpt-5"],
+      }),
+      provider({
+        provider: ProviderDriverKind.make("claudeAgent"),
+        instanceId: "claudeAgent",
+        models: ["claude-sonnet-4-5"],
+      }),
+      provider({
+        provider: ProviderDriverKind.make("cursor"),
+        instanceId: "cursor",
+        models: ["claude-sonnet-4-6"],
+      }),
+      provider({
+        provider: ProviderDriverKind.make("opencode"),
+        instanceId: "opencode",
+        models: ["openai/gpt-5"],
+      }),
+    ];
+
+    expect(getServerModelOptionsByProvider(providerStatuses)).toEqual({
+      codex: [
+        { slug: "gpt-5", name: "gpt-5", isCustom: false, capabilities: {} },
+      ],
+      claudeAgent: [
+        {
+          slug: "claude-sonnet-4-5",
+          name: "claude-sonnet-4-5",
+          isCustom: false,
+          capabilities: {},
+        },
+      ],
+      cursor: [
+        {
+          slug: "claude-sonnet-4-6",
+          name: "claude-sonnet-4-6",
+          isCustom: false,
+          capabilities: {},
+        },
+      ],
+      opencode: [
+        {
+          slug: "openai/gpt-5",
+          name: "openai/gpt-5",
+          isCustom: false,
+          capabilities: {},
+        },
+      ],
+    });
+  });
+});
+
+describe("resolveSelectedModelForPickerWithCustomFallback", () => {
+  it("supports cursor-backed selections without throwing", () => {
+    const providerStatuses: ReadonlyArray<ServerProvider> = [
+      provider({
+        provider: ProviderDriverKind.make("cursor"),
+        instanceId: "cursor",
+        models: ["claude-sonnet-4-6"],
+      }),
+    ];
+
+    expect(
+      resolveSelectedModelForPickerWithCustomFallback({
+        modelOptionsByProvider: getServerModelOptionsByProvider(providerStatuses),
+        selectedProvider: ProviderDriverKind.make("cursor"),
+        selectedModel: "claude-sonnet-4-6",
+      }),
+    ).toBe("claude-sonnet-4-6");
   });
 });
