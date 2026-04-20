@@ -22,12 +22,7 @@ import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { ScrollArea } from "../../components/ui/scroll-area";
-import {
-  ExternalLinkIcon,
-  GlobeIcon,
-  PlayIcon,
-  RefreshCwIcon,
-} from "lucide-react";
+import { ExternalLinkIcon, GlobeIcon, PlayIcon, RefreshCwIcon } from "lucide-react";
 import type { PanelDefinition } from "../types";
 import {
   DEFAULT_PREVIEW_URL,
@@ -46,11 +41,7 @@ export const previewWorkspaceExtension: PanelDefinition = {
   render: (context) => <PreviewWorkspacePanel context={context} />,
 };
 
-function PreviewWorkspacePanel({
-  context,
-}: {
-  context: Parameters<PanelDefinition["render"]>[0];
-}) {
+function PreviewWorkspacePanel({ context }: { context: Parameters<PanelDefinition["render"]>[0] }) {
   const threadView = context.threadView;
   const threadId = context.activeThreadId;
   const updateBrowserState = useBrowserStateStore((s) => s.updateThreadBrowserState);
@@ -69,7 +60,12 @@ function PreviewWorkspacePanel({
   );
 
   const persistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(() => () => { if (persistTimerRef.current) clearTimeout(persistTimerRef.current); }, []);
+  useEffect(
+    () => () => {
+      if (persistTimerRef.current) clearTimeout(persistTimerRef.current);
+    },
+    [],
+  );
 
   const handleUrlChange = useCallback(
     (value: string) => {

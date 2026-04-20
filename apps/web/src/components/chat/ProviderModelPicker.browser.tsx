@@ -54,6 +54,31 @@ const TEST_PROVIDERS: ReadonlyArray<ServerProvider> = [
     ],
   },
   {
+    provider: "smolAgent",
+    enabled: true,
+    installed: true,
+    version: null,
+    status: "ready",
+    auth: { status: "unknown" },
+    checkedAt: new Date().toISOString(),
+    slashCommands: [],
+    skills: [],
+    models: [
+      {
+        slug: "qwen2.5-coder:32b",
+        name: "Qwen 2.5 Coder 32B",
+        isCustom: false,
+        capabilities: {
+          reasoningEffortLevels: [],
+          supportsFastMode: false,
+          supportsThinkingToggle: false,
+          contextWindowOptions: [],
+          promptInjectedEffortLevels: [],
+        },
+      },
+    ],
+  },
+  {
     provider: "claudeAgent",
     enabled: true,
     installed: true,
@@ -187,6 +212,7 @@ describe("ProviderModelPicker", () => {
         const text = document.body.textContent ?? "";
         expect(text).toContain("Codex");
         expect(text).toContain("Claude");
+        expect(text).toContain("smol-agent");
         expect(text).not.toContain("Claude Sonnet 4.6");
       });
     } finally {

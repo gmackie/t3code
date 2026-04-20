@@ -25,10 +25,7 @@ import {
   normalizeBrowserDisplayUrl,
   parseSubmittedBrowserUrl,
 } from "../../browser";
-import {
-  selectThreadBrowserState,
-  useBrowserStateStore,
-} from "../../browserStateStore";
+import { selectThreadBrowserState, useBrowserStateStore } from "../../browserStateStore";
 import BrowserPanel from "../../components/BrowserPanel";
 import { readNativeApi } from "../../nativeApi";
 import type { PanelDefinition } from "../types";
@@ -42,11 +39,7 @@ export const browserExtension: PanelDefinition = {
   render: (context) => <BrowserExtensionPanel context={context} />,
 };
 
-function BrowserExtensionPanel({
-  context,
-}: {
-  context: Parameters<PanelDefinition["render"]>[0];
-}) {
+function BrowserExtensionPanel({ context }: { context: Parameters<PanelDefinition["render"]>[0] }) {
   const threadId = context.activeThreadId;
   const browserState = useBrowserStateStore((s) =>
     threadId ? selectThreadBrowserState(s.browserStateByThreadId, threadId) : null,
@@ -64,6 +57,7 @@ function BrowserExtensionPanel({
     if (!threadId || !viewportRef.current) return;
     const api = readNativeApi();
     if (!api?.browser) return;
+    const browser = api.browser;
 
     const el = viewportRef.current;
     let rafId: number | null = null;
@@ -72,7 +66,7 @@ function BrowserExtensionPanel({
       rafId = requestAnimationFrame(() => {
         rafId = null;
         const rect = el.getBoundingClientRect();
-        void api.browser.syncHost({
+        void browser.syncHost({
           threadId,
           tabId: browserState?.activeTabId ?? null,
           visible: true,
@@ -88,7 +82,7 @@ function BrowserExtensionPanel({
     return () => {
       observer.disconnect();
       if (rafId !== null) cancelAnimationFrame(rafId);
-      void api.browser.syncHost({
+      void browser.syncHost({
         threadId,
         tabId: null,
         visible: false,
@@ -102,8 +96,9 @@ function BrowserExtensionPanel({
     if (!threadId) return;
     const api = readNativeApi();
     if (!api?.browser) return;
+    const browser = api.browser;
 
-    const unsub = api.browser.onEvent((event) => {
+    const unsub = browser.onEvent((event) => {
       if (event.type !== "tab-state" || event.threadId !== threadId) return;
       updateBrowserState(threadId, (draft) => ({
         ...draft,

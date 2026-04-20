@@ -134,6 +134,21 @@ const OPENCODE_MODELS: ReadonlyArray<ServerProviderModel> = [
   },
 ];
 
+const SMOL_AGENT_MODELS: ReadonlyArray<ServerProviderModel> = [
+  {
+    slug: "qwen2.5-coder:32b",
+    name: "Qwen 2.5 Coder 32B",
+    isCustom: false,
+    capabilities: {
+      reasoningEffortLevels: [],
+      supportsFastMode: false,
+      supportsThinkingToggle: false,
+      contextWindowOptions: [],
+      promptInjectedEffortLevels: [],
+    },
+  },
+];
+
 describe("getComposerProviderState", () => {
   it("returns codex defaults when no codex draft options exist", () => {
     const state = getComposerProviderState({
@@ -468,6 +483,22 @@ describe("getComposerProviderState", () => {
       },
     });
   });
+
+  it("returns smol-agent state without dispatch options", () => {
+    const state = getComposerProviderState({
+      provider: "smolAgent",
+      model: "qwen2.5-coder:32b",
+      models: SMOL_AGENT_MODELS,
+      prompt: "",
+      modelOptions: undefined,
+    });
+
+    expect(state).toEqual({
+      provider: "smolAgent",
+      promptEffort: null,
+      modelOptionsForDispatch: undefined,
+    });
+  });
 });
 
 describe("getComposerProviderControls", () => {
@@ -482,6 +513,9 @@ describe("getComposerProviderControls", () => {
       showInteractionModeToggle: true,
     });
     expect(getComposerProviderControls("claudeAgent")).toEqual({
+      showInteractionModeToggle: true,
+    });
+    expect(getComposerProviderControls("smolAgent")).toEqual({
       showInteractionModeToggle: true,
     });
   });

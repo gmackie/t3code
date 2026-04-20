@@ -67,7 +67,7 @@ import { waitForBackendStartupReady } from "./backendStartupReadiness.ts";
 import { getAutoUpdateDisabledReason, shouldBroadcastDownloadProgress } from "./updateState.ts";
 import { doesVersionMatchDesktopUpdateChannel } from "./updateChannels.ts";
 import { ServerListeningDetector } from "./serverListeningDetector.ts";
-import { createBrowserManager } from "./browserManager";
+import { createBrowserManager } from "./browserManager.js";
 import {
   createInitialDesktopUpdateState,
   reduceDesktopUpdateStateOnCheckFailure,
@@ -770,7 +770,7 @@ const browserManager = createBrowserManager({
     }
   },
   getWindow: () => mainWindow,
-  openExternal: (url) => {
+  openExternal: (url: string) => {
     const externalUrl = getSafeExternalUrl(url);
     if (!externalUrl) {
       return;

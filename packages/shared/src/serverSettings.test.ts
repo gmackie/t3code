@@ -135,4 +135,30 @@ describe("serverSettings helpers", () => {
       model: "openai/gpt-5",
     });
   });
+
+  it("replaces text generation selection for smol-agent without leaking stale options", () => {
+    const current = {
+      ...DEFAULT_SERVER_SETTINGS,
+      textGenerationModelSelection: {
+        provider: "codex" as const,
+        model: "gpt-5.4-mini",
+        options: {
+          reasoningEffort: "high" as const,
+          fastMode: true,
+        },
+      },
+    };
+
+    expect(
+      applyServerSettingsPatch(current, {
+        textGenerationModelSelection: {
+          provider: "smolAgent",
+          model: "qwen2.5-coder:32b",
+        },
+      }).textGenerationModelSelection,
+    ).toEqual({
+      provider: "smolAgent",
+      model: "qwen2.5-coder:32b",
+    });
+  });
 });

@@ -184,6 +184,15 @@ function makeDesktopBridge(overrides: Partial<DesktopBridge> = {}): DesktopBridg
     setTheme: async () => undefined,
     showContextMenu: async () => null,
     openExternal: async () => true,
+    browserEnsureTab: async () => undefined,
+    browserNavigate: async () => undefined,
+    browserGoBack: async () => undefined,
+    browserGoForward: async () => undefined,
+    browserReload: async () => undefined,
+    browserCloseTab: async () => undefined,
+    browserSyncHost: async () => undefined,
+    browserClearThread: async () => undefined,
+    onBrowserEvent: () => () => undefined,
     onMenuAction: () => () => undefined,
     getUpdateState: async () => {
       throw new Error("getUpdateState not implemented in test");

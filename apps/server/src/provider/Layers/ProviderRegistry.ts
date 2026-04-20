@@ -11,10 +11,12 @@ import { ClaudeProviderLive } from "./ClaudeProvider.ts";
 import { CodexProviderLive } from "./CodexProvider.ts";
 import { CursorProviderLive } from "./CursorProvider.ts";
 import { OpenCodeProviderLive } from "./OpenCodeProvider.ts";
+import { SmolAgentProviderLive } from "./SmolAgentProvider.ts";
 import { ClaudeProvider } from "../Services/ClaudeProvider.ts";
 import { CodexProvider } from "../Services/CodexProvider.ts";
 import { CursorProvider } from "../Services/CursorProvider.ts";
 import { OpenCodeProvider } from "../Services/OpenCodeProvider.ts";
+import { SmolAgentProvider } from "../Services/SmolAgentProvider.ts";
 import { ProviderRegistry, type ProviderRegistryShape } from "../Services/ProviderRegistry.ts";
 import {
   hydrateCachedProvider,
@@ -96,6 +98,7 @@ const ProviderRegistryLiveBase = Layer.effect(
     const path = yield* Path.Path;
 
     const cursorProvider = yield* CursorProvider;
+    const smolAgentProvider = yield* SmolAgentProvider;
 
     const providerSources = [
       {
@@ -121,6 +124,12 @@ const ProviderRegistryLiveBase = Layer.effect(
         getSnapshot: cursorProvider.getSnapshot,
         refresh: cursorProvider.refresh,
         streamChanges: cursorProvider.streamChanges,
+      },
+      {
+        provider: "smolAgent",
+        getSnapshot: smolAgentProvider.getSnapshot,
+        refresh: smolAgentProvider.refresh,
+        streamChanges: smolAgentProvider.streamChanges,
       },
     ] satisfies ReadonlyArray<ProviderSnapshotSource>;
     const activeProviders = PROVIDER_CACHE_IDS;
@@ -287,6 +296,7 @@ export const ProviderRegistryLive = Layer.unwrap(
       Layer.provideMerge(CodexProviderLive),
       Layer.provideMerge(ClaudeProviderLive),
       Layer.provideMerge(OpenCodeProviderLive),
+      Layer.provideMerge(SmolAgentProviderLive),
     ),
   ),
 );

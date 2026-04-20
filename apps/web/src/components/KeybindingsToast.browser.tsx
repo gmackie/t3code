@@ -100,6 +100,15 @@ function createBaseServerConfig(): ServerConfig {
         codex: { enabled: true, binaryPath: "", homePath: "", customModels: [] },
         claudeAgent: { enabled: true, binaryPath: "", customModels: [], launchArgs: "" },
         cursor: { enabled: true, binaryPath: "", apiEndpoint: "", customModels: [] },
+        smolAgent: {
+          enabled: false,
+          binaryPath: "smol-agent",
+          llmProvider: "",
+          host: "",
+          apiKey: "",
+          authToken: "",
+          customModels: [],
+        },
         opencode: {
           enabled: true,
           binaryPath: "",

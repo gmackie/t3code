@@ -8,6 +8,7 @@ import {
   CursorModelOptions,
   DEFAULT_GIT_TEXT_GENERATION_MODEL_BY_PROVIDER,
   OpenCodeModelOptions,
+  SmolAgentModelOptions,
 } from "./model.ts";
 import { ModelSelection } from "./orchestration.ts";
 
@@ -106,6 +107,16 @@ export const OpenCodeSettings = Schema.Struct({
   customModels: Schema.Array(Schema.String).pipe(Schema.withDecodingDefault(Effect.succeed([]))),
 });
 export type OpenCodeSettings = typeof OpenCodeSettings.Type;
+export const SmolAgentSettings = Schema.Struct({
+  enabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
+  binaryPath: makeBinaryPathSetting("smol-agent"),
+  llmProvider: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
+  host: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
+  apiKey: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
+  authToken: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
+  customModels: Schema.Array(Schema.String).pipe(Schema.withDecodingDefault(Effect.succeed([]))),
+});
+export type SmolAgentSettings = typeof SmolAgentSettings.Type;
 
 export const ObservabilitySettings = Schema.Struct({
   otlpTracesUrl: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
@@ -134,6 +145,7 @@ export const ServerSettings = Schema.Struct({
     claudeAgent: ClaudeSettings.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
     cursor: CursorSettings.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
     opencode: OpenCodeSettings.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
+    smolAgent: SmolAgentSettings.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
   }).pipe(Schema.withDecodingDefault(Effect.succeed({}))),
   observability: ObservabilitySettings.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
 });
@@ -188,6 +200,10 @@ const OpenCodeModelOptionsPatch = Schema.Struct({
   agent: Schema.optionalKey(OpenCodeModelOptions.fields.agent),
 });
 
+const SmolAgentModelOptionsPatch = Schema.Struct({
+  ...SmolAgentModelOptions.fields,
+});
+
 const ModelSelectionPatch = Schema.Union([
   Schema.Struct({
     provider: Schema.optionalKey(Schema.Literal("codex")),
@@ -208,6 +224,11 @@ const ModelSelectionPatch = Schema.Union([
     provider: Schema.optionalKey(Schema.Literal("opencode")),
     model: Schema.optionalKey(TrimmedNonEmptyString),
     options: Schema.optionalKey(OpenCodeModelOptionsPatch),
+  }),
+  Schema.Struct({
+    provider: Schema.optionalKey(Schema.Literal("smolAgent")),
+    model: Schema.optionalKey(TrimmedNonEmptyString),
+    options: Schema.optionalKey(SmolAgentModelOptionsPatch),
   }),
 ]);
 
@@ -240,6 +261,16 @@ const OpenCodeSettingsPatch = Schema.Struct({
   customModels: Schema.optionalKey(Schema.Array(Schema.String)),
 });
 
+const SmolAgentSettingsPatch = Schema.Struct({
+  enabled: Schema.optionalKey(Schema.Boolean),
+  binaryPath: Schema.optionalKey(Schema.String),
+  llmProvider: Schema.optionalKey(Schema.String),
+  host: Schema.optionalKey(Schema.String),
+  apiKey: Schema.optionalKey(Schema.String),
+  authToken: Schema.optionalKey(Schema.String),
+  customModels: Schema.optionalKey(Schema.Array(Schema.String)),
+});
+
 export const ServerSettingsPatch = Schema.Struct({
   enableAssistantStreaming: Schema.optionalKey(Schema.Boolean),
   defaultThreadEnvMode: Schema.optionalKey(ThreadEnvMode),
@@ -257,6 +288,7 @@ export const ServerSettingsPatch = Schema.Struct({
       claudeAgent: Schema.optionalKey(ClaudeSettingsPatch),
       cursor: Schema.optionalKey(CursorSettingsPatch),
       opencode: Schema.optionalKey(OpenCodeSettingsPatch),
+      smolAgent: Schema.optionalKey(SmolAgentSettingsPatch),
     }),
   ),
 });

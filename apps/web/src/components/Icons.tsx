@@ -565,3 +565,33 @@ export const OpenCodeIcon: Icon = (props) => (
     </defs>
   </svg>
 );
+
+export const SmolAgentIcon: Icon = (props) => (
+  <svg {...props} viewBox="0 0 24 24" fill="none">
+    <rect x="3" y="4" width="18" height="16" rx="5" fill="currentColor" opacity="0.15" />
+    <path
+      d="M9 2.75 12 5l3-2.25"
+      stroke="currentColor"
+      strokeWidth="1.75"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    <rect
+      x="5.5"
+      y="6.5"
+      width="13"
+      height="11"
+      rx="3.5"
+      stroke="currentColor"
+      strokeWidth="1.75"
+    />
+    <circle cx="10" cy="11.5" r="1" fill="currentColor" />
+    <circle cx="14" cy="11.5" r="1" fill="currentColor" />
+    <path
+      d="M9.5 14.5c.7.67 1.52 1 2.5 1s1.8-.33 2.5-1"
+      stroke="currentColor"
+      strokeWidth="1.75"
+      strokeLinecap="round"
+    />
+  </svg>
+);

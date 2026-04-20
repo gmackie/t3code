@@ -59,6 +59,32 @@ const fakeOpenCodeSnapshot: ServerProvider = {
   message: "OpenCode test stub",
 };
 
+const fakeSmolAgentSnapshot: ServerProvider = {
+  provider: "smolAgent",
+  status: "ready",
+  enabled: true,
+  installed: true,
+  auth: { status: "unknown" },
+  checkedAt: "2026-04-19T00:00:00.000Z",
+  version: null,
+  models: [
+    {
+      slug: "qwen2.5-coder:32b",
+      name: "qwen2.5-coder:32b",
+      isCustom: false,
+      capabilities: {
+        reasoningEffortLevels: [],
+        supportsFastMode: false,
+        supportsThinkingToggle: false,
+        contextWindowOptions: [],
+        promptInjectedEffortLevels: [],
+      },
+    },
+  ],
+  slashCommands: [],
+  skills: [],
+};
+
 function mockHandle(result: { stdout: string; stderr: string; code: number }) {
   return ChildProcessSpawner.makeHandle({
     pid: ChildProcessSpawner.ProcessId(1),
@@ -882,13 +908,27 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsService.layerTest()))(
 
               assert.deepStrictEqual(
                 providers.map((provider) => provider.provider),
-                ["codex", "claudeAgent", "opencode", "cursor"],
+                ["codex", "claudeAgent", "opencode", "cursor", "smolAgent"],
               );
               assert.strictEqual(cursorProvider?.enabled, false);
               assert.strictEqual(cursorProvider?.status, "disabled");
               assert.strictEqual(
                 cursorProvider?.message,
                 "Cursor is disabled in T3 Code settings.",
+              );
+              const smolAgentProvider = providers.find(
+                (provider) => provider.provider === "smolAgent",
+              );
+              assert.strictEqual(smolAgentProvider?.enabled, false);
+              assert.strictEqual(smolAgentProvider?.installed, false);
+              assert.strictEqual(smolAgentProvider?.status, "disabled");
+              assert.strictEqual(
+                smolAgentProvider?.message,
+                "smol-agent is disabled in T3 Code settings.",
+              );
+              assert.deepStrictEqual(
+                smolAgentProvider?.models.map((model) => model.slug),
+                fakeSmolAgentSnapshot.models.map((model) => model.slug),
               );
               assert.strictEqual(cursorSpawned, false);
             }).pipe(Effect.provide(runtimeServices));

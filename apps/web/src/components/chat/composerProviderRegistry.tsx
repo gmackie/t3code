@@ -160,6 +160,7 @@ const composerProviderRegistry: Record<ProviderKind, ProviderRegistryEntry> = {
   codex: createProviderRegistryEntry("codex"),
   claudeAgent: createProviderRegistryEntry("claudeAgent"),
   cursor: createProviderRegistryEntry("cursor"),
+  smolAgent: createProviderRegistryEntry("smolAgent"),
   opencode: createProviderRegistryEntry("opencode", {
     showInteractionModeToggle: false,
   }),

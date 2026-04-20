@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { createBrowserTab } from "./browser";
 import { selectThreadBrowserState, useBrowserStateStore } from "./browserStateStore";
 
-const THREAD_ID = ThreadId.makeUnsafe("thread-1");
+const THREAD_ID = ThreadId.make("thread-1");
 
 describe("browserStateStore actions", () => {
   beforeEach(() => {

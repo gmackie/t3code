@@ -5,12 +5,7 @@ import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { ScrollArea } from "./ui/scroll-area";
 import ChatMarkdown from "./ChatMarkdown";
-import {
-  ChevronDownIcon,
-  ChevronRightIcon,
-  EllipsisIcon,
-  PanelRightCloseIcon,
-} from "lucide-react";
+import { ChevronDownIcon, ChevronRightIcon, EllipsisIcon, PanelRightCloseIcon } from "lucide-react";
 import type { ActivePlanState } from "../session-logic";
 import type { LatestProposedPlanState } from "../session-logic";
 import { formatTimestamp } from "../timestampFormat";

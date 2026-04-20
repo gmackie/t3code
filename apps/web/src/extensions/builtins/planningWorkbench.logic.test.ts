@@ -58,9 +58,7 @@ Experimental extension host
 ~~~
 `;
 
-    expect(buildPlanningTaskDrafts(planMarkdown)).toEqual([
-      { id: "task-1", title: "Keep this" },
-    ]);
+    expect(buildPlanningTaskDrafts(planMarkdown)).toEqual([{ id: "task-1", title: "Keep this" }]);
   });
 
   it("returns fallback requirements for an empty plan", () => {

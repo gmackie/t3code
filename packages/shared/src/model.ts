@@ -10,6 +10,7 @@ import {
   type OpenCodeModelOptions,
   type ProviderKind,
   type ProviderModelOptions,
+  type SmolAgentModelOptions,
 } from "@t3tools/contracts";
 
 export interface SelectableModelOption {
@@ -167,6 +168,8 @@ export function normalizeProviderModelOptionsWithCapabilities(
         caps,
         modelOptions as OpenCodeModelOptions,
       );
+    case "smolAgent":
+      return undefined;
   }
 }
 
@@ -278,6 +281,12 @@ export function createModelSelection(
         provider,
         model,
         ...(options ? { options: options as OpenCodeModelOptions } : {}),
+      };
+    case "smolAgent":
+      return {
+        provider,
+        model,
+        ...(options ? { options: options as SmolAgentModelOptions } : {}),
       };
   }
 }

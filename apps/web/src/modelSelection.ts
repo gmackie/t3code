@@ -56,6 +56,13 @@ const PROVIDER_CUSTOM_MODEL_CONFIG: Record<ProviderKind, ProviderCustomModelConf
     placeholder: "your-cursor-model-slug",
     example: "claude-sonnet-4-6",
   },
+  smolAgent: {
+    provider: "smolAgent",
+    title: "smol-agent",
+    description: "Save additional smol-agent model slugs for the picker and `/model` command.",
+    placeholder: "your-smol-agent-model-slug",
+    example: "qwen2.5-coder:32b",
+  },
   opencode: {
     provider: "opencode",
     title: "OpenCode",
@@ -188,6 +195,12 @@ export function getCustomModelOptionsByProvider(
       providers,
       "cursor",
       selectedProvider === "cursor" ? selectedModel : undefined,
+    ),
+    smolAgent: getAppModelOptions(
+      settings,
+      providers,
+      "smolAgent",
+      selectedProvider === "smolAgent" ? selectedModel : undefined,
     ),
     opencode: getAppModelOptions(
       settings,

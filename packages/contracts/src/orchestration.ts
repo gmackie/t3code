@@ -4,6 +4,7 @@ import {
   CodexModelOptions,
   CursorModelOptions,
   OpenCodeModelOptions,
+  SmolAgentModelOptions,
 } from "./model.ts";
 import { RepositoryIdentity } from "./environment.ts";
 import {
@@ -30,7 +31,13 @@ export const ORCHESTRATION_WS_METHODS = {
   subscribeThread: "orchestration.subscribeThread",
 } as const;
 
-export const ProviderKind = Schema.Literals(["codex", "claudeAgent", "cursor", "opencode"]);
+export const ProviderKind = Schema.Literals([
+  "codex",
+  "claudeAgent",
+  "cursor",
+  "opencode",
+  "smolAgent",
+]);
 export type ProviderKind = typeof ProviderKind.Type;
 export const ProviderApprovalPolicy = Schema.Literals([
   "untrusted",
@@ -74,12 +81,19 @@ export const OpenCodeModelSelection = Schema.Struct({
   options: Schema.optionalKey(OpenCodeModelOptions),
 });
 export type OpenCodeModelSelection = typeof OpenCodeModelSelection.Type;
+export const SmolAgentModelSelection = Schema.Struct({
+  provider: Schema.Literal("smolAgent"),
+  model: TrimmedNonEmptyString,
+  options: Schema.optionalKey(SmolAgentModelOptions),
+});
+export type SmolAgentModelSelection = typeof SmolAgentModelSelection.Type;
 
 export const ModelSelection = Schema.Union([
   CodexModelSelection,
   ClaudeModelSelection,
   CursorModelSelection,
   OpenCodeModelSelection,
+  SmolAgentModelSelection,
 ]);
 export type ModelSelection = typeof ModelSelection.Type;
 

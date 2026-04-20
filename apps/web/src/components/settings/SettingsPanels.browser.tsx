@@ -312,6 +312,15 @@ const createDesktopBridgeStub = (overrides?: {
     setTheme: vi.fn().mockResolvedValue(undefined),
     showContextMenu: vi.fn().mockResolvedValue(null),
     openExternal: vi.fn().mockResolvedValue(true),
+    browserEnsureTab: vi.fn().mockResolvedValue(undefined),
+    browserNavigate: vi.fn().mockResolvedValue(undefined),
+    browserGoBack: vi.fn().mockResolvedValue(undefined),
+    browserGoForward: vi.fn().mockResolvedValue(undefined),
+    browserReload: vi.fn().mockResolvedValue(undefined),
+    browserCloseTab: vi.fn().mockResolvedValue(undefined),
+    browserSyncHost: vi.fn().mockResolvedValue(undefined),
+    browserClearThread: vi.fn().mockResolvedValue(undefined),
+    onBrowserEvent: () => () => {},
     onMenuAction: () => () => {},
     getUpdateState: vi.fn().mockResolvedValue(idleUpdateState),
     setUpdateChannel:
@@ -717,5 +726,21 @@ describe("GeneralSettingsPanel observability", () => {
     await expect.element(page.getByPlaceholder("http://127.0.0.1:4096")).toBeInTheDocument();
     await expect.element(page.getByText("OpenCode server password")).toBeInTheDocument();
     await expect.element(page.getByPlaceholder("Server password")).toBeInTheDocument();
+  });
+
+  it("shows smol-agent ACP fields in provider settings", async () => {
+    setServerConfigSnapshot(createBaseServerConfig());
+
+    mounted = await render(
+      <AppAtomRegistryProvider>
+        <GeneralSettingsPanel />
+      </AppAtomRegistryProvider>,
+    );
+
+    await page.getByLabelText("Toggle smol-agent details").click();
+
+    await expect.element(page.getByPlaceholder("ollama")).toBeInTheDocument();
+    await expect.element(page.getByPlaceholder("http://127.0.0.1:11434")).toBeInTheDocument();
+    await expect.element(page.getByPlaceholder("ACP token")).toBeInTheDocument();
   });
 });

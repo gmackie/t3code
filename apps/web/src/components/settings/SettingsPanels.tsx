@@ -140,6 +140,12 @@ const PROVIDER_SETTINGS: readonly InstallProviderSettings[] = [
     binaryDescription: "Path to the Cursor agent binary",
   },
   {
+    provider: "smolAgent",
+    title: "smol-agent",
+    binaryPlaceholder: "smol-agent binary path",
+    binaryDescription: "Path to the smol-agent binary",
+  },
+  {
     provider: "opencode",
     title: "OpenCode",
     binaryPlaceholder: "OpenCode binary path",
@@ -544,6 +550,17 @@ export function GeneralSettingsPanel() {
         DEFAULT_UNIFIED_SETTINGS.providers.cursor.binaryPath ||
       settings.providers.cursor.customModels.length > 0,
     ),
+    smolAgent: Boolean(
+      settings.providers.smolAgent.binaryPath !==
+        DEFAULT_UNIFIED_SETTINGS.providers.smolAgent.binaryPath ||
+      settings.providers.smolAgent.llmProvider !==
+        DEFAULT_UNIFIED_SETTINGS.providers.smolAgent.llmProvider ||
+      settings.providers.smolAgent.host !== DEFAULT_UNIFIED_SETTINGS.providers.smolAgent.host ||
+      settings.providers.smolAgent.apiKey !== DEFAULT_UNIFIED_SETTINGS.providers.smolAgent.apiKey ||
+      settings.providers.smolAgent.authToken !==
+        DEFAULT_UNIFIED_SETTINGS.providers.smolAgent.authToken ||
+      settings.providers.smolAgent.customModels.length > 0,
+    ),
     opencode: Boolean(
       settings.providers.opencode.binaryPath !==
         DEFAULT_UNIFIED_SETTINGS.providers.opencode.binaryPath ||
@@ -560,6 +577,7 @@ export function GeneralSettingsPanel() {
     codex: "",
     claudeAgent: "",
     cursor: "",
+    smolAgent: "",
     opencode: "",
   });
   const [customModelErrorByProvider, setCustomModelErrorByProvider] = useState<
@@ -1446,6 +1464,133 @@ export function GeneralSettingsPanel() {
                       </div>
                     ) : null}
 
+                    {providerCard.provider === "smolAgent" ? (
+                      <>
+                        <div className="border-t border-border/60 px-4 py-3 sm:px-5">
+                          <label
+                            htmlFor="provider-install-smolAgent-llm-provider"
+                            className="block"
+                          >
+                            <span className="text-xs font-medium text-foreground">
+                              Upstream provider
+                            </span>
+                            <Input
+                              id="provider-install-smolAgent-llm-provider"
+                              className="mt-1.5"
+                              value={settings.providers.smolAgent.llmProvider}
+                              onChange={(event) =>
+                                updateSettings({
+                                  providers: {
+                                    ...settings.providers,
+                                    smolAgent: {
+                                      ...settings.providers.smolAgent,
+                                      llmProvider: event.target.value,
+                                    },
+                                  },
+                                })
+                              }
+                              placeholder="ollama"
+                              spellCheck={false}
+                            />
+                            <span className="mt-1 block text-xs text-muted-foreground">
+                              smol-agent upstream provider name, such as `ollama`, `openai`, or a
+                              custom ACP target.
+                            </span>
+                          </label>
+                        </div>
+
+                        <div className="border-t border-border/60 px-4 py-3 sm:px-5">
+                          <label htmlFor="provider-install-smolAgent-host" className="block">
+                            <span className="text-xs font-medium text-foreground">
+                              API host / base URL
+                            </span>
+                            <Input
+                              id="provider-install-smolAgent-host"
+                              className="mt-1.5"
+                              value={settings.providers.smolAgent.host}
+                              onChange={(event) =>
+                                updateSettings({
+                                  providers: {
+                                    ...settings.providers,
+                                    smolAgent: {
+                                      ...settings.providers.smolAgent,
+                                      host: event.target.value,
+                                    },
+                                  },
+                                })
+                              }
+                              placeholder="http://127.0.0.1:11434"
+                              spellCheck={false}
+                            />
+                            <span className="mt-1 block text-xs text-muted-foreground">
+                              Optional host override passed to smol-agent for the selected upstream
+                              provider.
+                            </span>
+                          </label>
+                        </div>
+
+                        <div className="border-t border-border/60 px-4 py-3 sm:px-5">
+                          <label htmlFor="provider-install-smolAgent-api-key" className="block">
+                            <span className="text-xs font-medium text-foreground">API key</span>
+                            <Input
+                              id="provider-install-smolAgent-api-key"
+                              className="mt-1.5"
+                              type="password"
+                              autoComplete="off"
+                              value={settings.providers.smolAgent.apiKey}
+                              onChange={(event) =>
+                                updateSettings({
+                                  providers: {
+                                    ...settings.providers,
+                                    smolAgent: {
+                                      ...settings.providers.smolAgent,
+                                      apiKey: event.target.value,
+                                    },
+                                  },
+                                })
+                              }
+                              placeholder="API key (optional)"
+                              spellCheck={false}
+                            />
+                            <span className="mt-1 block text-xs text-muted-foreground">
+                              Optional upstream API key. Stored in plain text on disk.
+                            </span>
+                          </label>
+                        </div>
+
+                        <div className="border-t border-border/60 px-4 py-3 sm:px-5">
+                          <label htmlFor="provider-install-smolAgent-auth-token" className="block">
+                            <span className="text-xs font-medium text-foreground">
+                              ACP auth token
+                            </span>
+                            <Input
+                              id="provider-install-smolAgent-auth-token"
+                              className="mt-1.5"
+                              type="password"
+                              autoComplete="off"
+                              value={settings.providers.smolAgent.authToken}
+                              onChange={(event) =>
+                                updateSettings({
+                                  providers: {
+                                    ...settings.providers,
+                                    smolAgent: {
+                                      ...settings.providers.smolAgent,
+                                      authToken: event.target.value,
+                                    },
+                                  },
+                                })
+                              }
+                              placeholder="ACP token"
+                              spellCheck={false}
+                            />
+                            <span className="mt-1 block text-xs text-muted-foreground">
+                              Optional ACP authentication token. Stored in plain text on disk.
+                            </span>
+                          </label>
+                        </div>
+                      </>
+                    ) : null}
+
                     <div className="border-t border-border/60 px-4 py-3 sm:px-5">
                       <div className="text-xs font-medium text-foreground">Models</div>
                       <div className="mt-1 text-xs text-muted-foreground">
@@ -1558,9 +1703,11 @@ export function GeneralSettingsPanel() {
                           placeholder={
                             providerCard.provider === "codex"
                               ? "gpt-6.7-codex-ultra-preview"
-                              : providerCard.provider === "opencode"
-                                ? "openai/gpt-5"
-                                : "claude-sonnet-5-0"
+                              : providerCard.provider === "smolAgent"
+                                ? "qwen2.5-coder:32b"
+                                : providerCard.provider === "opencode"
+                                  ? "openai/gpt-5"
+                                  : "claude-sonnet-5-0"
                           }
                           spellCheck={false}
                         />

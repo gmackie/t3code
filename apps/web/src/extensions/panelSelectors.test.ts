@@ -1,4 +1,5 @@
 import {
+  EnvironmentId,
   EventId,
   ProjectId,
   ThreadId,
@@ -17,11 +18,11 @@ import {
 
 function makeProject(overrides: Partial<Project> = {}): Project {
   return {
-    id: ProjectId.makeUnsafe("project-1"),
+    id: ProjectId.make("project-1"),
+    environmentId: EnvironmentId.make("environment-local"),
     name: "Project",
     cwd: "/tmp/project",
-    model: "gpt-5-codex",
-    expanded: true,
+    defaultModelSelection: null,
     scripts: [],
     ...overrides,
   };
@@ -33,7 +34,7 @@ function makeActivity(
   overrides: Partial<OrchestrationThreadActivity> = {},
 ): OrchestrationThreadActivity {
   return {
-    id: EventId.makeUnsafe(`event-${kind}`),
+    id: EventId.make(`event-${kind}`),
     tone: "info",
     kind,
     summary: kind,
@@ -45,13 +46,14 @@ function makeActivity(
 }
 
 function makeThread(overrides: Partial<Thread> = {}): Thread {
-  const turnId = TurnId.makeUnsafe("turn-1");
+  const turnId = TurnId.make("turn-1");
   return {
-    id: ThreadId.makeUnsafe("thread-1"),
+    id: ThreadId.make("thread-1"),
+    environmentId: EnvironmentId.make("environment-local"),
     codexThreadId: null,
-    projectId: ProjectId.makeUnsafe("project-1"),
+    projectId: ProjectId.make("project-1"),
     title: "Thread",
-    model: "gpt-5-codex",
+    modelSelection: { provider: "codex", model: "gpt-5-codex" },
     runtimeMode: DEFAULT_RUNTIME_MODE,
     interactionMode: DEFAULT_INTERACTION_MODE,
     session: null,
@@ -81,6 +83,7 @@ function makeThread(overrides: Partial<Thread> = {}): Thread {
     ],
     error: null,
     createdAt: "2026-03-21T00:00:00.000Z",
+    archivedAt: null,
     latestTurn: {
       turnId,
       state: "completed",
@@ -91,6 +94,7 @@ function makeThread(overrides: Partial<Thread> = {}): Thread {
     },
     branch: "feature/extensions",
     worktreePath: "/tmp/project",
+    updatedAt: "2026-03-21T00:02:30.000Z",
     ...overrides,
   };
 }

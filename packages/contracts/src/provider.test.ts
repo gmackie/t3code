@@ -88,6 +88,22 @@ describe("ProviderSessionStartInput", () => {
       expect(parsed.modelSelection.options?.fastMode).toBe(true);
     }
   });
+
+  it("accepts smol-agent provider", () => {
+    const parsed = decodeProviderSessionStartInput({
+      threadId: "thread-1",
+      provider: "smolAgent",
+      cwd: "/tmp/workspace",
+      runtimeMode: "full-access",
+      modelSelection: {
+        provider: "smolAgent",
+        model: "qwen2.5-coder:32b",
+      },
+    });
+    expect(parsed.provider).toBe("smolAgent");
+    expect(parsed.modelSelection?.provider).toBe("smolAgent");
+    expect(parsed.modelSelection?.model).toBe("qwen2.5-coder:32b");
+  });
 });
 
 describe("ProviderSendTurnInput", () => {
@@ -132,5 +148,18 @@ describe("ProviderSendTurnInput", () => {
     }
     expect(parsed.modelSelection.options?.effort).toBe("ultrathink");
     expect(parsed.modelSelection.options?.fastMode).toBe(true);
+  });
+
+  it("accepts smol-agent modelSelection", () => {
+    const parsed = decodeProviderSendTurnInput({
+      threadId: "thread-1",
+      modelSelection: {
+        provider: "smolAgent",
+        model: "qwen2.5-coder:32b",
+      },
+    });
+
+    expect(parsed.modelSelection?.provider).toBe("smolAgent");
+    expect(parsed.modelSelection?.model).toBe("qwen2.5-coder:32b");
   });
 });
