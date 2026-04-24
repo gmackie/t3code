@@ -680,6 +680,28 @@ describe("GeneralSettingsPanel observability", () => {
       .toBeInTheDocument();
   });
 
+  it("shows the tailnet endpoint when the desktop backend is tailnet-accessible", async () => {
+    window.desktopBridge = createDesktopBridgeStub({
+      serverExposureState: {
+        mode: "tailnet-accessible",
+        endpointUrl: "http://100.88.12.4:3773",
+        advertisedHost: "100.88.12.4",
+      },
+    });
+
+    setServerConfigSnapshot(createBaseServerConfig());
+
+    mounted = await render(
+      <AppAtomRegistryProvider>
+        <ConnectionsSettings />
+      </AppAtomRegistryProvider>,
+    );
+
+    await expect
+      .element(page.getByText("Reachable at http://100.88.12.4:3773"))
+      .toBeInTheDocument();
+  });
+
   it("opens the logs folder in the preferred editor", async () => {
     const openInEditor = vi.fn<LocalApi["shell"]["openInEditor"]>().mockResolvedValue(undefined);
     window.nativeApi = {

@@ -374,7 +374,7 @@ async function applyDesktopServerExposureMode(
     ...(advertisedHostOverride ? { advertisedHostOverride } : {}),
   });
 
-  if (requestedMode === "network-accessible" && exposure.endpointUrl === null) {
+  if (requestedMode !== "local-only" && exposure.endpointUrl === null) {
     if (options?.rejectIfUnavailable) {
       throw new Error("No reachable network address is available for this desktop right now.");
     }
@@ -1828,7 +1828,11 @@ function registerIpcHandlers(): void {
 
   ipcMain.removeHandler(SET_SERVER_EXPOSURE_MODE_CHANNEL);
   ipcMain.handle(SET_SERVER_EXPOSURE_MODE_CHANNEL, async (_event, rawMode: unknown) => {
-    if (rawMode !== "local-only" && rawMode !== "network-accessible") {
+    if (
+      rawMode !== "local-only" &&
+      rawMode !== "tailnet-accessible" &&
+      rawMode !== "network-accessible"
+    ) {
       throw new Error("Invalid desktop server exposure input.");
     }
 
@@ -2377,7 +2381,7 @@ async function bootstrap(): Promise<void> {
     writeDesktopLogHeader(
       `bootstrap enabled network access endpointUrl=${serverExposureState.endpointUrl}`,
     );
-  } else if (desktopSettings.serverExposureMode === "network-accessible") {
+  } else if (desktopSettings.serverExposureMode !== DEFAULT_DESKTOP_SETTINGS.serverExposureMode) {
     writeDesktopLogHeader(
       "bootstrap fell back to local-only because no advertised network host was available",
     );
