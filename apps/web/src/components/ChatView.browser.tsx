@@ -34,6 +34,7 @@ import {
   __resetEnvironmentApiOverridesForTests,
   __setEnvironmentApiOverrideForTests,
 } from "../environmentApi";
+import { useBrowserStateStore } from "../browserStateStore";
 import {
   resetSavedEnvironmentRegistryStoreForTests,
   resetSavedEnvironmentRuntimeStoreForTests,
@@ -55,6 +56,7 @@ import { useSplitPaneStore } from "../splitPaneStore";
 import { selectBootstrapCompleteForActiveEnvironment, useStore } from "../store";
 import { useTerminalStateStore } from "../terminalStateStore";
 import { useUiStateStore } from "../uiStateStore";
+import { WORKSPACE_PREVIEW_TAB_ID, useWorkspaceViewStore } from "../workspaceViewStore";
 import { createAuthenticatedSessionHandlers } from "../../test/authHttpHandlers";
 import { BrowserWsRpcHarness, type NormalizedWsRpcRequestBody } from "../../test/wsRpcHarness";
 
@@ -1655,6 +1657,19 @@ describe("ChatView timeline estimator parity (full app)", () => {
       terminalLaunchContextByThreadKey: {},
       terminalEventEntriesByKey: {},
       nextTerminalEventId: 1,
+    });
+    useBrowserStateStore.persist.clearStorage();
+    useBrowserStateStore.setState({
+      browserStateByThreadId: {},
+    });
+    useWorkspaceViewStore.setState({
+      sidebarMode: "projects",
+      workspaceViewByThreadId: {},
+    });
+    useSplitPaneStore.setState({
+      secondaryThreadRef: null,
+      focusedPane: "primary",
+      splitRatio: 0.5,
     });
   });
 
@@ -5695,6 +5710,412 @@ describe("ChatView timeline estimator parity (full app)", () => {
     }
   });
 
+  it("replaces the focused secondary pane thread on a normal click", async () => {
+    const secondaryReplacementThreadId = "thread-secondary-replacement" as ThreadId;
+    const snapshot = createSnapshotWithSecondaryProject();
+    const mounted = await mountChatView({
+      viewport: DEFAULT_VIEWPORT,
+      snapshot: {
+        ...snapshot,
+        threads: [
+          ...snapshot.threads,
+          {
+            id: secondaryReplacementThreadId,
+            projectId: SECOND_PROJECT_ID,
+            title: "Secondary replacement",
+            modelSelection: { provider: "codex", model: "gpt-5" },
+            interactionMode: "default",
+            runtimeMode: "full-access",
+            branch: "main",
+            worktreePath: null,
+            latestTurn: null,
+            createdAt: isoAt(36),
+            updatedAt: isoAt(37),
+            deletedAt: null,
+            messages: [],
+            activities: [],
+            proposedPlans: [],
+            checkpoints: [],
+            session: {
+              threadId: secondaryReplacementThreadId,
+              status: "ready",
+              providerName: "codex",
+              runtimeMode: "full-access",
+              activeTurnId: null,
+              lastError: null,
+              updatedAt: isoAt(37),
+            },
+            archivedAt: null,
+          },
+        ],
+      },
+    });
+
+    try {
+      await waitForServerConfigToApply();
+      await waitForElement(
+        () => document.querySelector('[data-testid="workspace-view-tabs"]'),
+        "Primary workspace tabs should render before opening a secondary pane.",
+      );
+      const useMetaForMod = isMacPlatform(navigator.platform);
+      const secondaryThreadRow = page.getByTestId("thread-row-thread-secondary-project");
+      await expect.element(secondaryThreadRow).toBeInTheDocument();
+      await secondaryThreadRow.click({
+        modifiers: [useMetaForMod ? "Meta" : "Control"],
+      });
+      await vi.waitFor(
+        () => {
+          expect(document.querySelectorAll('[data-testid="workspace-view-tabs"]')).toHaveLength(2);
+        },
+        { timeout: 8_000, interval: 16 },
+      );
+
+      const secondaryPane = page.getByTestId("chat-pane-secondary");
+      await expect.element(secondaryPane).toBeInTheDocument();
+      await secondaryPane.click();
+      await waitForLayout();
+
+      const secondaryReplacementRow = page.getByTestId("thread-row-thread-secondary-replacement");
+      await expect.element(secondaryReplacementRow).toBeInTheDocument();
+      await secondaryReplacementRow.click();
+
+      await vi.waitFor(
+        () => {
+          expect(useSplitPaneStore.getState().secondaryThreadRef?.threadId).toBe(
+            secondaryReplacementThreadId,
+          );
+        },
+        { timeout: 8_000, interval: 16 },
+      );
+      expect(mounted.router.state.location.pathname).toBe(serverThreadPath(THREAD_ID));
+    } finally {
+      await mounted.cleanup();
+    }
+  });
+
+  it("reuses the non-focused primary pane on a mod-click when the secondary pane is focused", async () => {
+    const tertiaryThreadId = "thread-primary-replacement-secondary-focused" as ThreadId;
+    const snapshot = createSnapshotWithSecondaryProject();
+    const mounted = await mountChatView({
+      viewport: DEFAULT_VIEWPORT,
+      snapshot: {
+        ...snapshot,
+        threads: [
+          ...snapshot.threads,
+          {
+            id: tertiaryThreadId,
+            projectId: PROJECT_ID,
+            title: "Primary replacement secondary focused",
+            modelSelection: { provider: "codex", model: "gpt-5" },
+            interactionMode: "default",
+            runtimeMode: "full-access",
+            branch: "main",
+            worktreePath: null,
+            latestTurn: null,
+            createdAt: isoAt(38),
+            updatedAt: isoAt(39),
+            deletedAt: null,
+            messages: [],
+            activities: [],
+            proposedPlans: [],
+            checkpoints: [],
+            session: {
+              threadId: tertiaryThreadId,
+              status: "ready",
+              providerName: "codex",
+              runtimeMode: "full-access",
+              activeTurnId: null,
+              lastError: null,
+              updatedAt: isoAt(39),
+            },
+            archivedAt: null,
+          },
+        ],
+      },
+    });
+
+    try {
+      await waitForServerConfigToApply();
+      await waitForElement(
+        () => document.querySelector('[data-testid="workspace-view-tabs"]'),
+        "Primary workspace tabs should render before opening a secondary pane.",
+      );
+      const useMetaForMod = isMacPlatform(navigator.platform);
+      const secondaryThreadRow = page.getByTestId("thread-row-thread-secondary-project");
+      await expect.element(secondaryThreadRow).toBeInTheDocument();
+      await secondaryThreadRow.click({
+        modifiers: [useMetaForMod ? "Meta" : "Control"],
+      });
+      await vi.waitFor(
+        () => {
+          expect(document.querySelectorAll('[data-testid="workspace-view-tabs"]')).toHaveLength(2);
+        },
+        { timeout: 8_000, interval: 16 },
+      );
+
+      const secondaryPane = page.getByTestId("chat-pane-secondary");
+      await expect.element(secondaryPane).toBeInTheDocument();
+      await secondaryPane.click();
+      await waitForLayout();
+
+      const primaryReplacementRow = page.getByTestId(
+        "thread-row-thread-primary-replacement-secondary-focused",
+      );
+      await expect.element(primaryReplacementRow).toBeInTheDocument();
+      await primaryReplacementRow.click({
+        modifiers: [useMetaForMod ? "Meta" : "Control"],
+      });
+
+      await vi.waitFor(
+        () => {
+          expect(mounted.router.state.location.pathname).toBe(serverThreadPath(tertiaryThreadId));
+        },
+        { timeout: 8_000, interval: 16 },
+      );
+      expect(useSplitPaneStore.getState().secondaryThreadRef?.threadId).toBe(
+        "thread-secondary-project",
+      );
+    } finally {
+      await mounted.cleanup();
+    }
+  });
+
+  it("replaces the secondary pane thread when dropping a sidebar thread onto it", async () => {
+    const secondaryReplacementThreadId = "thread-secondary-drop-replacement" as ThreadId;
+    const snapshot = createSnapshotWithSecondaryProject();
+    const mounted = await mountChatView({
+      viewport: DEFAULT_VIEWPORT,
+      snapshot: {
+        ...snapshot,
+        threads: [
+          ...snapshot.threads,
+          {
+            id: secondaryReplacementThreadId,
+            projectId: SECOND_PROJECT_ID,
+            title: "Secondary drop replacement",
+            modelSelection: { provider: "codex", model: "gpt-5" },
+            interactionMode: "default",
+            runtimeMode: "full-access",
+            branch: "main",
+            worktreePath: null,
+            latestTurn: null,
+            createdAt: isoAt(40),
+            updatedAt: isoAt(41),
+            deletedAt: null,
+            messages: [],
+            activities: [],
+            proposedPlans: [],
+            checkpoints: [],
+            session: {
+              threadId: secondaryReplacementThreadId,
+              status: "ready",
+              providerName: "codex",
+              runtimeMode: "full-access",
+              activeTurnId: null,
+              lastError: null,
+              updatedAt: isoAt(41),
+            },
+            archivedAt: null,
+          },
+        ],
+      },
+    });
+
+    try {
+      await waitForServerConfigToApply();
+      await waitForElement(
+        () => document.querySelector('[data-testid="workspace-view-tabs"]'),
+        "Primary workspace tabs should render before opening a secondary pane.",
+      );
+      const useMetaForMod = isMacPlatform(navigator.platform);
+      const secondaryThreadRow = page.getByTestId("thread-row-thread-secondary-project");
+      await expect.element(secondaryThreadRow).toBeInTheDocument();
+      await secondaryThreadRow.click({
+        modifiers: [useMetaForMod ? "Meta" : "Control"],
+      });
+      await vi.waitFor(
+        () => {
+          expect(document.querySelectorAll('[data-testid="workspace-view-tabs"]')).toHaveLength(2);
+        },
+        { timeout: 8_000, interval: 16 },
+      );
+
+      const replacementRow = (await waitForElement(
+        () =>
+          document.querySelector('[data-testid="thread-row-thread-secondary-drop-replacement"]'),
+        "Drag source thread row should render.",
+      )) as HTMLElement;
+      const secondaryPane = (await waitForElement(
+        () => document.querySelector('[data-testid="chat-pane-secondary"]'),
+        "Secondary pane should render before accepting a drop.",
+      )) as HTMLElement;
+
+      const dataTransfer = new DataTransfer();
+      replacementRow.dispatchEvent(
+        new DragEvent("dragstart", {
+          bubbles: true,
+          cancelable: true,
+          dataTransfer,
+        }),
+      );
+      secondaryPane.dispatchEvent(
+        new DragEvent("dragover", {
+          bubbles: true,
+          cancelable: true,
+          dataTransfer,
+        }),
+      );
+      secondaryPane.dispatchEvent(
+        new DragEvent("drop", {
+          bubbles: true,
+          cancelable: true,
+          dataTransfer,
+        }),
+      );
+      await waitForLayout();
+
+      await vi.waitFor(
+        () => {
+          expect(useSplitPaneStore.getState().secondaryThreadRef?.threadId).toBe(
+            secondaryReplacementThreadId,
+          );
+        },
+        { timeout: 8_000, interval: 16 },
+      );
+      expect(mounted.router.state.location.pathname).toBe(serverThreadPath(THREAD_ID));
+    } finally {
+      await mounted.cleanup();
+    }
+  });
+
+  it("moves a workspace file tab from the primary pane into the secondary pane when dropped there", async () => {
+    const secondarySameProjectThreadId = "thread-secondary-same-project" as ThreadId;
+    const snapshot = createSnapshotForTargetUser({
+      targetMessageId: "msg-user-file-tab-drag" as MessageId,
+      targetText: "file tab drag target",
+    });
+    const mounted = await mountChatView({
+      viewport: DEFAULT_VIEWPORT,
+      snapshot: {
+        ...snapshot,
+        threads: [
+          ...snapshot.threads,
+          {
+            id: secondarySameProjectThreadId,
+            projectId: PROJECT_ID,
+            title: "Secondary same project",
+            modelSelection: { provider: "codex", model: "gpt-5" },
+            interactionMode: "default",
+            runtimeMode: "full-access",
+            branch: "main",
+            worktreePath: null,
+            latestTurn: null,
+            createdAt: isoAt(42),
+            updatedAt: isoAt(43),
+            deletedAt: null,
+            messages: [],
+            activities: [],
+            proposedPlans: [],
+            checkpoints: [],
+            session: {
+              threadId: secondarySameProjectThreadId,
+              status: "ready",
+              providerName: "codex",
+              runtimeMode: "full-access",
+              activeTurnId: null,
+              lastError: null,
+              updatedAt: isoAt(43),
+            },
+            archivedAt: null,
+          },
+        ],
+      },
+    });
+
+    try {
+      await waitForServerConfigToApply();
+      await waitForElement(
+        () => document.querySelector('[data-testid="workspace-view-tabs"]'),
+        "Primary workspace tabs should render before opening a secondary pane.",
+      );
+      const useMetaForMod = isMacPlatform(navigator.platform);
+      const secondaryThreadRow = page.getByTestId("thread-row-thread-secondary-same-project");
+      await expect.element(secondaryThreadRow).toBeInTheDocument();
+      await secondaryThreadRow.click({
+        modifiers: [useMetaForMod ? "Meta" : "Control"],
+      });
+      await vi.waitFor(
+        () => {
+          expect(document.querySelectorAll('[data-testid="workspace-view-tabs"]')).toHaveLength(2);
+        },
+        { timeout: 8_000, interval: 16 },
+      );
+
+      useWorkspaceViewStore.getState().openWorkspaceFile(THREAD_ID, {
+        cwd: "/repo/project",
+        relativePath: "src/index.ts",
+        line: 12,
+        column: 3,
+      });
+      await waitForLayout();
+
+      const sourceTab = (await waitForElement(
+        () =>
+          [...document.querySelectorAll('[role="tab"]')].find((node) =>
+            node.textContent?.includes("index.ts"),
+          ) ?? null,
+        "Dragged file tab should render in the primary pane.",
+      )) as HTMLElement;
+      const secondaryPane = (await waitForElement(
+        () => document.querySelector('[data-testid="chat-pane-secondary"]'),
+        "Secondary pane should render before accepting a dropped file tab.",
+      )) as HTMLElement;
+
+      const dataTransfer = new DataTransfer();
+      sourceTab.dispatchEvent(
+        new DragEvent("dragstart", {
+          bubbles: true,
+          cancelable: true,
+          dataTransfer,
+        }),
+      );
+      secondaryPane.dispatchEvent(
+        new DragEvent("dragover", {
+          bubbles: true,
+          cancelable: true,
+          dataTransfer,
+        }),
+      );
+      secondaryPane.dispatchEvent(
+        new DragEvent("drop", {
+          bubbles: true,
+          cancelable: true,
+          dataTransfer,
+        }),
+      );
+      await waitForLayout();
+
+      await vi.waitFor(
+        () => {
+          expect(
+            useWorkspaceViewStore.getState().workspaceViewByThreadId[THREAD_ID]?.tabs ?? [],
+          ).toHaveLength(0);
+          expect(
+            useWorkspaceViewStore.getState().workspaceViewByThreadId[secondarySameProjectThreadId]
+              ?.tabs ?? [],
+          ).toHaveLength(1);
+        },
+        { timeout: 8_000, interval: 16 },
+      );
+      expect(
+        useWorkspaceViewStore.getState().workspaceViewByThreadId[secondarySameProjectThreadId]
+          ?.activeTabId,
+      ).toBe("/repo/project:src/index.ts");
+    } finally {
+      await mounted.cleanup();
+    }
+  });
+
   it("does not show the preview workspace tab before any browser tab is opened", async () => {
     const mounted = await mountChatView({
       viewport: DEFAULT_VIEWPORT,
@@ -5709,6 +6130,411 @@ describe("ChatView timeline estimator parity (full app)", () => {
       await expect.element(page.getByTestId("workspace-tab-chat")).toBeVisible();
       await expect.element(page.getByTestId("workspace-tab-plan")).toBeVisible();
       await expect.element(page.getByTestId("workspace-tab-preview")).not.toBeInTheDocument();
+    } finally {
+      await mounted.cleanup();
+    }
+  });
+
+  it("renders existing browser tabs in the workspace tab strip instead of a preview placeholder", async () => {
+    const mounted = await mountChatView({
+      viewport: DEFAULT_VIEWPORT,
+      snapshot: createSnapshotForTargetUser({
+        targetMessageId: "msg-user-browser-tab-strip" as MessageId,
+        targetText: "browser tab strip target",
+      }),
+    });
+
+    try {
+      await waitForServerConfigToApply();
+      useBrowserStateStore.setState({
+        browserStateByThreadId: {
+          [THREAD_ID]: {
+            activeTabId: "browser-tab-openai",
+            inputValue: "https://openai.com/docs",
+            focusRequestId: 1,
+            automationState: undefined,
+            tabs: [
+              {
+                id: "browser-tab-openai",
+                url: "https://openai.com/docs",
+                title: null,
+                faviconUrl: null,
+                isLoading: false,
+                canGoBack: false,
+                canGoForward: false,
+                lastError: null,
+              },
+              {
+                id: "browser-tab-example",
+                url: "https://example.com/path",
+                title: null,
+                faviconUrl: null,
+                isLoading: false,
+                canGoBack: false,
+                canGoForward: false,
+                lastError: null,
+              },
+            ],
+          },
+        },
+      });
+      useWorkspaceViewStore.setState({
+        sidebarMode: "projects",
+        workspaceViewByThreadId: {
+          [THREAD_ID]: {
+            activeTabId: WORKSPACE_PREVIEW_TAB_ID,
+            tabs: [],
+          },
+        },
+      });
+      await waitForLayout();
+
+      await expect.element(page.getByTestId("workspace-tab-chat")).toBeVisible();
+      await expect.element(page.getByTestId("workspace-tab-preview")).not.toBeInTheDocument();
+      await expect.element(page.getByRole("tab", { name: "openai.com" })).toBeInTheDocument();
+      await expect.element(page.getByRole("tab", { name: "example.com" })).toBeInTheDocument();
+      await expect.element(page.getByTestId("workspace-tab-preview")).not.toBeInTheDocument();
+    } finally {
+      await mounted.cleanup();
+    }
+  });
+
+  it("closes browser tabs from the workspace tab strip", async () => {
+    const mounted = await mountChatView({
+      viewport: DEFAULT_VIEWPORT,
+      snapshot: createSnapshotForTargetUser({
+        targetMessageId: "msg-user-browser-tab-close" as MessageId,
+        targetText: "browser tab close target",
+      }),
+    });
+
+    try {
+      await waitForServerConfigToApply();
+      useBrowserStateStore.setState({
+        browserStateByThreadId: {
+          [THREAD_ID]: {
+            activeTabId: "browser-tab-openai",
+            inputValue: "https://openai.com/docs",
+            focusRequestId: 1,
+            automationState: undefined,
+            tabs: [
+              {
+                id: "browser-tab-openai",
+                url: "https://openai.com/docs",
+                title: null,
+                faviconUrl: null,
+                isLoading: false,
+                canGoBack: false,
+                canGoForward: false,
+                lastError: null,
+              },
+              {
+                id: "browser-tab-example",
+                url: "https://example.com/path",
+                title: null,
+                faviconUrl: null,
+                isLoading: false,
+                canGoBack: false,
+                canGoForward: false,
+                lastError: null,
+              },
+            ],
+          },
+        },
+      });
+      useWorkspaceViewStore.setState({
+        sidebarMode: "projects",
+        workspaceViewByThreadId: {
+          [THREAD_ID]: {
+            activeTabId: WORKSPACE_PREVIEW_TAB_ID,
+            tabs: [],
+          },
+        },
+      });
+      await waitForLayout();
+
+      await expect.element(page.getByRole("tab", { name: "openai.com" })).toBeInTheDocument();
+      await expect.element(page.getByRole("tab", { name: "example.com" })).toBeInTheDocument();
+
+      await page.getByRole("button", { name: "Close openai.com tab" }).click();
+
+      await expect.element(page.getByRole("tab", { name: "openai.com" })).not.toBeInTheDocument();
+      await expect.element(page.getByRole("tab", { name: "example.com" })).toBeInTheDocument();
+    } finally {
+      await mounted.cleanup();
+    }
+  });
+
+  it("moves a browser tab from the primary pane into the secondary pane when dropped there", async () => {
+    const secondarySameProjectThreadId = "thread-secondary-browser-same-project" as ThreadId;
+    const snapshot = createSnapshotForTargetUser({
+      targetMessageId: "msg-user-browser-tab-drag" as MessageId,
+      targetText: "browser tab drag target",
+    });
+    const mounted = await mountChatView({
+      viewport: DEFAULT_VIEWPORT,
+      snapshot: {
+        ...snapshot,
+        threads: [
+          ...snapshot.threads,
+          {
+            id: secondarySameProjectThreadId,
+            projectId: PROJECT_ID,
+            title: "Secondary browser same project",
+            modelSelection: { provider: "codex", model: "gpt-5" },
+            interactionMode: "default",
+            runtimeMode: "full-access",
+            branch: "main",
+            worktreePath: null,
+            latestTurn: null,
+            createdAt: isoAt(44),
+            updatedAt: isoAt(45),
+            deletedAt: null,
+            messages: [],
+            activities: [],
+            proposedPlans: [],
+            checkpoints: [],
+            session: {
+              threadId: secondarySameProjectThreadId,
+              status: "ready",
+              providerName: "codex",
+              runtimeMode: "full-access",
+              activeTurnId: null,
+              lastError: null,
+              updatedAt: isoAt(45),
+            },
+            archivedAt: null,
+          },
+        ],
+      },
+    });
+
+    try {
+      await waitForServerConfigToApply();
+      const useMetaForMod = isMacPlatform(navigator.platform);
+      const secondaryThreadRow = page.getByTestId(
+        "thread-row-thread-secondary-browser-same-project",
+      );
+      await expect.element(secondaryThreadRow).toBeInTheDocument();
+      await secondaryThreadRow.click({
+        modifiers: [useMetaForMod ? "Meta" : "Control"],
+      });
+      await vi.waitFor(
+        () => {
+          expect(document.querySelectorAll('[data-testid="workspace-view-tabs"]')).toHaveLength(2);
+        },
+        { timeout: 8_000, interval: 16 },
+      );
+
+      useBrowserStateStore.setState({
+        browserStateByThreadId: {
+          [THREAD_ID]: {
+            activeTabId: "browser-tab-openai",
+            inputValue: "https://openai.com/docs",
+            focusRequestId: 1,
+            automationState: undefined,
+            tabs: [
+              {
+                id: "browser-tab-openai",
+                url: "https://openai.com/docs",
+                title: null,
+                faviconUrl: null,
+                isLoading: false,
+                canGoBack: false,
+                canGoForward: false,
+                lastError: null,
+              },
+            ],
+          },
+        },
+      });
+      useWorkspaceViewStore.setState({
+        sidebarMode: "projects",
+        workspaceViewByThreadId: {
+          [THREAD_ID]: {
+            activeTabId: WORKSPACE_PREVIEW_TAB_ID,
+            tabs: [],
+          },
+          [secondarySameProjectThreadId]: {
+            activeTabId: null,
+            tabs: [],
+          },
+        },
+      });
+      await waitForLayout();
+
+      const sourceTabElement = (await waitForElement(
+        () =>
+          [...document.querySelectorAll('[role="tab"]')].find((node) =>
+            node.textContent?.includes("openai.com"),
+          ) ?? null,
+        "Dragged browser tab should render in the primary pane.",
+      )) as HTMLElement;
+      const secondaryPane = (await waitForElement(
+        () => document.querySelector('[data-testid="chat-pane-secondary"]'),
+        "Secondary pane should render before accepting a dropped browser tab.",
+      )) as HTMLElement;
+
+      const dataTransfer = new DataTransfer();
+      sourceTabElement.dispatchEvent(
+        new DragEvent("dragstart", {
+          bubbles: true,
+          cancelable: true,
+          dataTransfer,
+        }),
+      );
+      secondaryPane.dispatchEvent(
+        new DragEvent("dragover", {
+          bubbles: true,
+          cancelable: true,
+          dataTransfer,
+        }),
+      );
+      secondaryPane.dispatchEvent(
+        new DragEvent("drop", {
+          bubbles: true,
+          cancelable: true,
+          dataTransfer,
+        }),
+      );
+      await waitForLayout();
+
+      await vi.waitFor(
+        () => {
+          expect(
+            useBrowserStateStore.getState().browserStateByThreadId[THREAD_ID]?.tabs ?? [],
+          ).toHaveLength(0);
+          expect(
+            useBrowserStateStore.getState().browserStateByThreadId[secondarySameProjectThreadId]
+              ?.tabs ?? [],
+          ).toHaveLength(1);
+        },
+        { timeout: 8_000, interval: 16 },
+      );
+      expect(
+        useBrowserStateStore.getState().browserStateByThreadId[secondarySameProjectThreadId]
+          ?.activeTabId,
+      ).toBe("browser-tab-openai");
+      expect(
+        useWorkspaceViewStore.getState().workspaceViewByThreadId[secondarySameProjectThreadId]
+          ?.activeTabId,
+      ).toBe(WORKSPACE_PREVIEW_TAB_ID);
+    } finally {
+      await mounted.cleanup();
+    }
+  });
+
+  it("resizes the split panes when dragging the divider", async () => {
+    const secondarySameProjectThreadId = "thread-secondary-resize-same-project" as ThreadId;
+    const snapshot = createSnapshotForTargetUser({
+      targetMessageId: "msg-user-split-resize" as MessageId,
+      targetText: "split resize target",
+    });
+    const mounted = await mountChatView({
+      viewport: DEFAULT_VIEWPORT,
+      snapshot: {
+        ...snapshot,
+        threads: [
+          ...snapshot.threads,
+          {
+            id: secondarySameProjectThreadId,
+            projectId: PROJECT_ID,
+            title: "Secondary resize same project",
+            modelSelection: { provider: "codex", model: "gpt-5" },
+            interactionMode: "default",
+            runtimeMode: "full-access",
+            branch: "main",
+            worktreePath: null,
+            latestTurn: null,
+            createdAt: isoAt(46),
+            updatedAt: isoAt(47),
+            deletedAt: null,
+            messages: [],
+            activities: [],
+            proposedPlans: [],
+            checkpoints: [],
+            session: {
+              threadId: secondarySameProjectThreadId,
+              status: "ready",
+              providerName: "codex",
+              runtimeMode: "full-access",
+              activeTurnId: null,
+              lastError: null,
+              updatedAt: isoAt(47),
+            },
+            archivedAt: null,
+          },
+        ],
+      },
+    });
+
+    try {
+      await waitForServerConfigToApply();
+      const useMetaForMod = isMacPlatform(navigator.platform);
+      const secondaryThreadRow = page.getByTestId(
+        "thread-row-thread-secondary-resize-same-project",
+      );
+      await expect.element(secondaryThreadRow).toBeInTheDocument();
+      await secondaryThreadRow.click({
+        modifiers: [useMetaForMod ? "Meta" : "Control"],
+      });
+      await vi.waitFor(
+        () => {
+          expect(document.querySelectorAll('[data-testid="workspace-view-tabs"]')).toHaveLength(2);
+        },
+        { timeout: 8_000, interval: 16 },
+      );
+
+      const divider = (await waitForElement(
+        () => document.querySelector('[data-testid="chat-split-divider"]'),
+        "Split pane divider should render.",
+      )) as HTMLElement;
+
+      const readPaneWidths = () => {
+        const primaryPane = document.querySelector('[data-testid="chat-pane-primary"]');
+        const secondaryPane = document.querySelector('[data-testid="chat-pane-secondary"]');
+        return {
+          primaryWidth: primaryPane?.getBoundingClientRect().width ?? 0,
+          secondaryWidth: secondaryPane?.getBoundingClientRect().width ?? 0,
+        };
+      };
+      const before = readPaneWidths();
+      const dividerRect = divider.getBoundingClientRect();
+      const dragStartX = dividerRect.left + dividerRect.width / 2;
+      const dragEndX = dragStartX + 160;
+
+      divider.dispatchEvent(
+        new MouseEvent("mousedown", {
+          clientX: dragStartX,
+          clientY: 200,
+          bubbles: true,
+        }),
+      );
+      window.dispatchEvent(
+        new MouseEvent("mousemove", {
+          clientX: dragEndX,
+          clientY: 200,
+          bubbles: true,
+        }),
+      );
+      window.dispatchEvent(
+        new MouseEvent("mouseup", {
+          clientX: dragEndX,
+          clientY: 200,
+          bubbles: true,
+        }),
+      );
+      await waitForLayout();
+
+      await vi.waitFor(
+        () => {
+          const after = readPaneWidths();
+          expect(after.primaryWidth).toBeGreaterThan(before.primaryWidth + 40);
+          expect(after.secondaryWidth).toBeLessThan(before.secondaryWidth - 40);
+        },
+        { timeout: 8_000, interval: 16 },
+      );
+      expect(useSplitPaneStore.getState().focusedPane).toBe("secondary");
     } finally {
       await mounted.cleanup();
     }

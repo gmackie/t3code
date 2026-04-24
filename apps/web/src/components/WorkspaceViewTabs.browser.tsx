@@ -26,12 +26,6 @@ describe("WorkspaceViewTabs", () => {
             icon: <span aria-hidden="true">P</span>,
             testId: "workspace-tab-plan",
           },
-          {
-            id: "__workspace_preview__",
-            label: "Preview",
-            icon: <span aria-hidden="true">V</span>,
-            testId: "workspace-tab-preview",
-          },
         ]}
         tabs={[]}
         activeTabId={null}
@@ -51,10 +45,9 @@ describe("WorkspaceViewTabs", () => {
     try {
       await expect.element(page.getByTestId("workspace-tab-chat")).toBeInTheDocument();
       await expect.element(page.getByTestId("workspace-tab-plan")).toBeInTheDocument();
-      await expect.element(page.getByTestId("workspace-tab-preview")).toBeInTheDocument();
 
-      await page.getByTestId("workspace-tab-preview").click();
-      expect(onSelectTab).toHaveBeenCalledWith("__workspace_preview__");
+      await page.getByTestId("workspace-tab-plan").click();
+      expect(onSelectTab).toHaveBeenCalledWith("__workspace_plan__");
     } finally {
       await screen.unmount();
       host.remove();

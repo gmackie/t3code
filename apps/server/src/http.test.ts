@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { isAllowedBrowserApiOrigin } from "./http";
+import { isAllowedBrowserApiOrigin } from "./http.js";
 
 describe("isAllowedBrowserApiOrigin", () => {
   it("returns false instead of throwing when the origin header is missing", () => {

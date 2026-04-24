@@ -22,7 +22,7 @@ function saveArtifact(params: {
   title: string;
 }) {
   const api = readNativeApi();
-  if (!api || !params.workspaceRoot) {
+  if (!api?.projects || !params.workspaceRoot) {
     toastManager.add({
       type: "warning",
       title: "Workspace path is unavailable",
@@ -70,6 +70,7 @@ function PlanningWorkbenchPanel({
   const threadView = context.threadView;
   const { copyToClipboard, isCopied } = useCopyToClipboard();
   const planMarkdown = threadView?.latestProposedPlan?.planMarkdown ?? "";
+  const onOpenWorkspaceFile = context.onOpenWorkspaceFile;
   const requirementsMarkdown = useMemo(
     () => buildPlanningRequirementsMarkdown(planMarkdown),
     [planMarkdown],
@@ -112,6 +113,8 @@ function PlanningWorkbenchPanel({
                   text={planMarkdown}
                   cwd={workspaceRoot ?? undefined}
                   isStreaming={false}
+                  workspaceRoot={workspaceRoot ?? undefined}
+                  onOpenWorkspaceFile={onOpenWorkspaceFile}
                 />
               </div>
             </section>
@@ -128,6 +131,8 @@ function PlanningWorkbenchPanel({
                       text={requirementsMarkdown}
                       cwd={workspaceRoot ?? undefined}
                       isStreaming={false}
+                      workspaceRoot={workspaceRoot ?? undefined}
+                      onOpenWorkspaceFile={onOpenWorkspaceFile}
                     />
                   </div>
                   <div className="flex flex-wrap gap-2">

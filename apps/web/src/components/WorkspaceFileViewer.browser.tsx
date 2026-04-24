@@ -173,6 +173,26 @@ describe("WorkspaceFileViewer", () => {
     });
   });
 
+  it("scrolls the requested line into view when opened with a line target", async () => {
+    const scrollIntoViewSpy = vi
+      .spyOn(Element.prototype, "scrollIntoView")
+      .mockImplementation(() => undefined);
+
+    mockNativeApi({
+      contents: ["firstLine();", "secondLine();", "thirdLine();", "fourthLine();"].join("\n"),
+    });
+
+    await using _ = await mountViewer({ line: 3 });
+
+    await vi.waitFor(() => {
+      const selectedCodeRow = document.querySelector<HTMLElement>(
+        '[data-testid="workspace-file-viewer-code-row"][data-line-number="3"]',
+      );
+      expect(selectedCodeRow?.dataset.selected).toBe("true");
+      expect(scrollIntoViewSpy).toHaveBeenCalled();
+    });
+  });
+
   it("renders wrapped code when word wrapping is enabled externally", async () => {
     mockNativeApi({
       relativePath: "src/long-line.ts",

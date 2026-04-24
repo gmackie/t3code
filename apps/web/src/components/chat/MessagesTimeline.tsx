@@ -80,6 +80,16 @@ interface TimelineRowSharedState {
   markdownCwd: string | undefined;
   resolvedTheme: "light" | "dark";
   workspaceRoot: string | undefined;
+  onOpenWorkspaceFile?:
+    | ((input: {
+        cwd: string;
+        relativePath: string;
+        line: number | null;
+        column: number | null;
+        targetPath: string;
+      }) => void)
+    | undefined;
+  onOpenUrl?: ((url: string) => void) | undefined;
   activeThreadEnvironmentId: EnvironmentId;
   onRevertUserMessage: (messageId: MessageId) => void;
   onImageExpand: (preview: ExpandedImagePreview) => void;
@@ -113,6 +123,16 @@ interface MessagesTimelineProps {
   resolvedTheme: "light" | "dark";
   timestampFormat: TimestampFormat;
   workspaceRoot: string | undefined;
+  onOpenWorkspaceFile?:
+    | ((input: {
+        cwd: string;
+        relativePath: string;
+        line: number | null;
+        column: number | null;
+        targetPath: string;
+      }) => void)
+    | undefined;
+  onOpenUrl?: ((url: string) => void) | undefined;
   onIsAtEndChange: (isAtEnd: boolean) => void;
 }
 
@@ -141,6 +161,8 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   resolvedTheme,
   timestampFormat,
   workspaceRoot,
+  onOpenWorkspaceFile,
+  onOpenUrl,
   onIsAtEndChange,
 }: MessagesTimelineProps) {
   const rawRows = useMemo(
@@ -203,6 +225,8 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       markdownCwd,
       resolvedTheme,
       workspaceRoot,
+      onOpenWorkspaceFile,
+      onOpenUrl,
       activeThreadEnvironmentId,
       onRevertUserMessage,
       onImageExpand,
@@ -219,6 +243,8 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       markdownCwd,
       resolvedTheme,
       workspaceRoot,
+      onOpenWorkspaceFile,
+      onOpenUrl,
       activeThreadEnvironmentId,
       onRevertUserMessage,
       onImageExpand,
@@ -406,6 +432,9 @@ function TimelineRowContent({ row }: { row: TimelineRow }) {
                   text={messageText}
                   cwd={ctx.markdownCwd}
                   isStreaming={Boolean(row.message.streaming)}
+                  workspaceRoot={ctx.workspaceRoot}
+                  onOpenWorkspaceFile={ctx.onOpenWorkspaceFile}
+                  onOpenUrl={ctx.onOpenUrl}
                 />
                 <AssistantChangedFilesSection
                   turnSummary={row.assistantTurnDiffSummary}
@@ -452,6 +481,7 @@ function TimelineRowContent({ row }: { row: TimelineRow }) {
             environmentId={ctx.activeThreadEnvironmentId}
             cwd={ctx.markdownCwd}
             workspaceRoot={ctx.workspaceRoot}
+            onOpenWorkspaceFile={ctx.onOpenWorkspaceFile}
           />
         </div>
       )}

@@ -8,10 +8,14 @@ import {
   findLatestProposedPlan,
   isLatestTurnSettled,
 } from "../session-logic";
-import type { AppState } from "../store";
+import type { Project, Thread } from "../types";
 import type { PanelThreadView } from "./types";
 
-export type PanelSelectorState = Pick<AppState, "projects" | "threads" | "threadsHydrated">;
+export interface PanelSelectorState {
+  projects: ReadonlyArray<Project>;
+  threads: ReadonlyArray<Thread>;
+  threadsHydrated: boolean;
+}
 
 let cachedThreadId: ThreadId | null = null;
 let cachedThread: unknown = null;
@@ -39,8 +43,27 @@ export function selectPanelThreadView(
   const latestTurnSettled = isLatestTurnSettled(latestTurn, thread.session);
 
   const result: PanelThreadView = {
-    thread,
-    project,
+    thread: {
+      id: thread.id,
+      projectId: thread.projectId,
+      title: thread.title,
+      model: thread.modelSelection.model,
+      runtimeMode: thread.runtimeMode,
+      interactionMode: thread.interactionMode,
+      branch: thread.branch,
+      worktreePath: thread.worktreePath,
+      createdAt: thread.createdAt,
+      latestTurn: thread.latestTurn,
+    },
+    project: project
+      ? {
+          id: project.id,
+          name: project.name,
+          cwd: project.cwd,
+          model: project.defaultModelSelection?.model ?? thread.modelSelection.model,
+          scripts: project.scripts,
+        }
+      : null,
     activePlan: deriveActivePlanState(activities, latestTurn?.turnId ?? undefined),
     latestProposedPlan: latestTurnSettled
       ? findLatestProposedPlan(thread.proposedPlans, latestTurn?.turnId ?? null)

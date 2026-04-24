@@ -241,7 +241,7 @@ export function buildSearchableModelOptions(input: {
   return input.availableProviderOptions
     .filter((option) => input.lockedProvider === null || option.value === input.lockedProvider)
     .flatMap((option) =>
-      input.modelOptionsByProvider[option.value].map((model) => {
+      (input.modelOptionsByProvider[option.value] ?? []).map((model) => {
         const safeName =
           typeof model.name === "string" && model.name.trim().length > 0 ? model.name : model.slug;
         return {

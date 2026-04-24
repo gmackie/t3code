@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { createLocalEnvironmentBootstrap } from "./localEnvironmentBootstrap";
+import { createLocalEnvironmentBootstrap } from "./localEnvironmentBootstrap.js";
 
 describe("localEnvironmentBootstrap", () => {
   it("preserves the desktop bootstrap token for the renderer auth flow", () => {

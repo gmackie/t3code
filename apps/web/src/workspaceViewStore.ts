@@ -87,6 +87,7 @@ interface WorkspaceViewStoreState {
       column: number | null;
     },
   ) => void;
+  moveWorkspaceTab: (sourceThreadId: ThreadId, targetThreadId: ThreadId, tabId: string) => void;
   setActiveTab: (threadId: ThreadId, tabId: string | null) => void;
   closeTab: (threadId: ThreadId, tabId: string) => void;
   syncWorkspaceRoot: (threadId: ThreadId, cwd: string | null) => void;
@@ -133,6 +134,56 @@ export const useWorkspaceViewStore = create<WorkspaceViewStoreState>()((set) => 
         },
       ),
     })),
+  moveWorkspaceTab: (sourceThreadId, targetThreadId, tabId) =>
+    set((state) => {
+      if (
+        sourceThreadId.length === 0 ||
+        targetThreadId.length === 0 ||
+        sourceThreadId === targetThreadId
+      ) {
+        return state;
+      }
+
+      const sourceState = selectThreadWorkspaceViewState(
+        state.workspaceViewByThreadId,
+        sourceThreadId,
+      );
+      const movedTab = sourceState.tabs.find((tab) => tab.id === tabId);
+      if (!movedTab) {
+        return state;
+      }
+
+      const nextSourceTabs = sourceState.tabs.filter((tab) => tab.id !== tabId);
+      const nextSourceActiveTabId =
+        sourceState.activeTabId !== tabId
+          ? sourceState.activeTabId
+          : (nextSourceTabs.at(sourceState.tabs.findIndex((tab) => tab.id === tabId))?.id ??
+            nextSourceTabs.at(-1)?.id ??
+            null);
+      const targetState = selectThreadWorkspaceViewState(
+        state.workspaceViewByThreadId,
+        targetThreadId,
+      );
+      const nextTargetTabs = targetState.tabs.some((tab) => tab.id === tabId)
+        ? targetState.tabs.map((tab) => (tab.id === tabId ? movedTab : tab))
+        : [...targetState.tabs, movedTab];
+
+      const withoutSource = updateThreadWorkspaceViewState(
+        state.workspaceViewByThreadId,
+        sourceThreadId,
+        () => ({
+          activeTabId: nextSourceActiveTabId,
+          tabs: nextSourceTabs,
+        }),
+      );
+      const withTarget = updateThreadWorkspaceViewState(withoutSource, targetThreadId, () => ({
+        activeTabId: tabId,
+        tabs: nextTargetTabs,
+      }));
+      return withTarget === state.workspaceViewByThreadId
+        ? state
+        : { workspaceViewByThreadId: withTarget };
+    }),
   setActiveTab: (threadId, tabId) =>
     set((state) => ({
       workspaceViewByThreadId: updateThreadWorkspaceViewState(

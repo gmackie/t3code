@@ -1,2 +1,2 @@
-export { buildPlanningRequirementsMarkdown, buildPlanningTaskDrafts } from "./logic";
-export type { PlanningTaskDraft } from "./logic";
+export { buildPlanningRequirementsMarkdown, buildPlanningTaskDrafts } from "./logic.js";
+export type { PlanningTaskDraft } from "./logic.js";

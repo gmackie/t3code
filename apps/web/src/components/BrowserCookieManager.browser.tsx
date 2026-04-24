@@ -36,6 +36,7 @@ describe("BrowserCookieManager", () => {
           {
             domain: ".github.com",
             name: "session_id",
+            value: "secret",
             path: "/",
             secure: true,
             httpOnly: true,

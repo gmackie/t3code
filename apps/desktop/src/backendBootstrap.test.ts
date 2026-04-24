@@ -8,7 +8,7 @@ import {
   createDesktopBackendBootstrapPayload,
   createDesktopBackendEnv,
   getDesktopBackendBootstrapStream,
-} from "./backendBootstrap";
+} from "./backendBootstrap.js";
 
 describe("backendBootstrap", () => {
   it("uses a dedicated pipe for the bootstrap envelope and exposes its fd to the server", () => {

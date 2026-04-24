@@ -1,5 +1,6 @@
 import { Badge } from "../../components/ui/badge";
 import { ScrollArea } from "../../components/ui/scroll-area";
+import ChatMarkdown from "../../components/ChatMarkdown";
 import type { PanelDefinition } from "../types";
 
 export const threadOverviewExtension: PanelDefinition = {
@@ -43,9 +44,15 @@ export const threadOverviewExtension: PanelDefinition = {
               <p className="text-[10px] font-semibold tracking-widest text-muted-foreground/40 uppercase">
                 Latest Plan
               </p>
-              <pre className="overflow-x-auto rounded-lg border border-border/60 bg-background/50 p-3 text-xs leading-relaxed whitespace-pre-wrap text-muted-foreground">
-                {threadView.latestProposedPlan.planMarkdown}
-              </pre>
+              <div className="rounded-lg border border-border/60 bg-background/50 p-3">
+                <ChatMarkdown
+                  text={threadView.latestProposedPlan.planMarkdown}
+                  cwd={threadView.project?.cwd ?? undefined}
+                  workspaceRoot={threadView.project?.cwd ?? undefined}
+                  isStreaming={false}
+                  onOpenWorkspaceFile={context.onOpenWorkspaceFile}
+                />
+              </div>
             </section>
           ) : null}
         </div>

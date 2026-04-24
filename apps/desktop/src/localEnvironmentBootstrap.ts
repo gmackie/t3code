@@ -28,7 +28,5 @@ export function createLocalEnvironmentBootstrap(input: {
     httpBaseUrl: deriveHttpBaseUrl(wsBaseUrl),
     wsBaseUrl,
     ...(bootstrapToken ? { bootstrapToken } : {}),
-    // Keep the legacy field populated so older renderer code paths continue to work.
-    wsUrl: wsBaseUrl,
   };
 }

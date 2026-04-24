@@ -55,8 +55,8 @@ function BrowserExtensionPanel({ context }: { context: Parameters<PanelDefinitio
   // Sync browser host bounds when viewport changes
   useEffect(() => {
     if (!threadId || !viewportRef.current) return;
-    const api = readNativeApi();
-    if (!api?.browser) return;
+    const browserApi = readNativeApi()?.browser;
+    if (!browserApi) return;
 
     const el = viewportRef.current;
     let rafId: number | null = null;
@@ -65,7 +65,7 @@ function BrowserExtensionPanel({ context }: { context: Parameters<PanelDefinitio
       rafId = requestAnimationFrame(() => {
         rafId = null;
         const rect = el.getBoundingClientRect();
-        void api.browser.syncHost({
+        void browserApi.syncHost({
           threadId,
           tabId: browserState?.activeTabId ?? null,
           visible: true,
@@ -81,7 +81,7 @@ function BrowserExtensionPanel({ context }: { context: Parameters<PanelDefinitio
     return () => {
       observer.disconnect();
       if (rafId !== null) cancelAnimationFrame(rafId);
-      void api.browser.syncHost({
+      void browserApi.syncHost({
         threadId,
         tabId: null,
         visible: false,
@@ -93,10 +93,10 @@ function BrowserExtensionPanel({ context }: { context: Parameters<PanelDefinitio
   // Subscribe to browser events from Electron, scoped to current thread
   useEffect(() => {
     if (!threadId) return;
-    const api = readNativeApi();
-    if (!api?.browser) return;
+    const browserApi = readNativeApi()?.browser;
+    if (!browserApi) return;
 
-    const unsub = api.browser.onEvent((event) => {
+    const unsub = browserApi.onEvent((event) => {
       if (event.type !== "tab-state" || event.threadId !== threadId) return;
       updateBrowserState(threadId, (draft) => ({
         ...draft,
@@ -131,9 +131,9 @@ function BrowserExtensionPanel({ context }: { context: Parameters<PanelDefinitio
       focusRequestId: draft.focusRequestId + 1,
     }));
 
-    const api = readNativeApi();
-    if (api?.browser) {
-      void api.browser.ensureTab({ threadId, tabId: tab.id });
+    const browserApi = readNativeApi()?.browser;
+    if (browserApi) {
+      void browserApi.ensureTab({ threadId, tabId: tab.id });
     }
   }, [threadId, updateBrowserState]);
 
@@ -155,9 +155,9 @@ function BrowserExtensionPanel({ context }: { context: Parameters<PanelDefinitio
   const handleCloseTab = useCallback(
     (tabId: string) => {
       if (!threadId) return;
-      const api = readNativeApi();
-      if (api?.browser) {
-        void api.browser.closeTab({ threadId, tabId });
+      const browserApi = readNativeApi()?.browser;
+      if (browserApi) {
+        void browserApi.closeTab({ threadId, tabId });
       }
       updateBrowserState(threadId, (draft) => {
         const nextTabs = draft.tabs.filter((t) => t.id !== tabId);
@@ -198,33 +198,33 @@ function BrowserExtensionPanel({ context }: { context: Parameters<PanelDefinitio
       }));
     }
 
-    const api = readNativeApi();
-    if (api?.browser) {
-      void api.browser.navigate({ threadId, tabId: tabId!, url: result.url });
+    const browserApi = readNativeApi()?.browser;
+    if (browserApi) {
+      void browserApi.navigate({ threadId, tabId: tabId!, url: result.url });
     }
   }, [threadId, browserState, updateBrowserState]);
 
   const handleBack = useCallback(() => {
     if (!threadId || !browserState?.activeTabId) return;
-    const api = readNativeApi();
-    if (api?.browser) {
-      void api.browser.goBack({ threadId, tabId: browserState.activeTabId });
+    const browserApi = readNativeApi()?.browser;
+    if (browserApi) {
+      void browserApi.goBack({ threadId, tabId: browserState.activeTabId });
     }
   }, [threadId, browserState?.activeTabId]);
 
   const handleForward = useCallback(() => {
     if (!threadId || !browserState?.activeTabId) return;
-    const api = readNativeApi();
-    if (api?.browser) {
-      void api.browser.goForward({ threadId, tabId: browserState.activeTabId });
+    const browserApi = readNativeApi()?.browser;
+    if (browserApi) {
+      void browserApi.goForward({ threadId, tabId: browserState.activeTabId });
     }
   }, [threadId, browserState?.activeTabId]);
 
   const handleReload = useCallback(() => {
     if (!threadId || !browserState?.activeTabId) return;
-    const api = readNativeApi();
-    if (api?.browser) {
-      void api.browser.reload({ threadId, tabId: browserState.activeTabId });
+    const browserApi = readNativeApi()?.browser;
+    if (browserApi) {
+      void browserApi.reload({ threadId, tabId: browserState.activeTabId });
     }
   }, [threadId, browserState?.activeTabId]);
 
