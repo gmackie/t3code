@@ -64,6 +64,22 @@ describe("desktopSettings", () => {
     });
   });
 
+  it("persists and reloads tailnet-accessible as a valid server exposure preference", () => {
+    const settingsPath = makeSettingsPath();
+
+    writeDesktopSettings(settingsPath, {
+      serverExposureMode: "tailnet-accessible",
+      updateChannel: "latest",
+      updateChannelConfiguredByUser: true,
+    });
+
+    expect(readDesktopSettings(settingsPath, "0.0.17")).toEqual({
+      serverExposureMode: "tailnet-accessible",
+      updateChannel: "latest",
+      updateChannelConfiguredByUser: true,
+    });
+  });
+
   it("preserves the requested network-accessible preference across temporary fallback", () => {
     expect(
       setDesktopServerExposurePreference(

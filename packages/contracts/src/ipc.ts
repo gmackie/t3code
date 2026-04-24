@@ -148,7 +148,7 @@ export interface PersistedSavedEnvironmentRecord {
   lastConnectedAt: string | null;
 }
 
-export type DesktopServerExposureMode = "local-only" | "network-accessible";
+export type DesktopServerExposureMode = "local-only" | "tailnet-accessible" | "network-accessible";
 
 export interface DesktopServerExposureState {
   mode: DesktopServerExposureMode;

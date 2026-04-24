@@ -66,14 +66,18 @@ export function readDesktopSettings(settingsPath: string, appVersion: string): D
       parsed.updateChannel === "gmacko"
         ? parsed.updateChannel
         : null;
+    const parsedServerExposureMode =
+      parsed.serverExposureMode === "tailnet-accessible" ||
+      parsed.serverExposureMode === "network-accessible"
+        ? parsed.serverExposureMode
+        : "local-only";
     const isLegacySettings = parsed.updateChannelConfiguredByUser === undefined;
     const updateChannelConfiguredByUser =
       parsed.updateChannelConfiguredByUser === true ||
       (isLegacySettings && parsedUpdateChannel !== null && parsedUpdateChannel !== "latest");
 
     return {
-      serverExposureMode:
-        parsed.serverExposureMode === "network-accessible" ? "network-accessible" : "local-only",
+      serverExposureMode: parsedServerExposureMode,
       updateChannel:
         updateChannelConfiguredByUser && parsedUpdateChannel !== null
           ? parsedUpdateChannel
