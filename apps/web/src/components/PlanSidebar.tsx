@@ -57,6 +57,15 @@ interface PlanSidebarProps {
   environmentId: EnvironmentId;
   markdownCwd: string | undefined;
   workspaceRoot: string | undefined;
+  onOpenWorkspaceFile?:
+    | ((input: {
+        cwd: string;
+        relativePath: string;
+        line: number | null;
+        column: number | null;
+        targetPath: string;
+      }) => void)
+    | undefined;
   timestampFormat: TimestampFormat;
   onClose: () => void;
   layout?: "sidebar" | "tab";
@@ -68,6 +77,7 @@ const PlanSidebar = memo(function PlanSidebar({
   environmentId,
   markdownCwd,
   workspaceRoot,
+  onOpenWorkspaceFile,
   timestampFormat,
   onClose,
   layout = "sidebar",
@@ -253,6 +263,8 @@ const PlanSidebar = memo(function PlanSidebar({
                     text={displayedPlanMarkdown ?? ""}
                     cwd={markdownCwd}
                     isStreaming={false}
+                    workspaceRoot={workspaceRoot}
+                    onOpenWorkspaceFile={onOpenWorkspaceFile}
                   />
                 </div>
               ) : null}

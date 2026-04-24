@@ -61,6 +61,8 @@ const STATIC_KEYBINDING_COMMANDS = [
   "chat.newLocal",
   "editor.openFavorite",
   ...MODEL_PICKER_KEYBINDING_COMMANDS,
+  "sidebar.projects",
+  "sidebar.files",
   ...THREAD_KEYBINDING_COMMANDS,
 ] as const;
 

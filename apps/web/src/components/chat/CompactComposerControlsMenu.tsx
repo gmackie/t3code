@@ -18,7 +18,7 @@ export const CompactComposerControlsMenu = memo(function CompactComposerControls
   planSidebarLabel?: string;
   planSidebarOpen: boolean;
   runtimeMode: RuntimeMode;
-  showInteractionModeToggle: boolean;
+  showInteractionModeToggle?: boolean;
   traitsMenuContent?: ReactNode;
   onToggleInteractionMode: () => void;
   onTogglePlanSidebar: () => void;
@@ -26,6 +26,7 @@ export const CompactComposerControlsMenu = memo(function CompactComposerControls
   onToggleRuntimeMode?: () => void;
 }) {
   const planSidebarLabel = props.planSidebarLabel ?? "Plan";
+  const showInteractionModeToggle = props.showInteractionModeToggle ?? true;
 
   return (
     <Menu>
@@ -48,7 +49,7 @@ export const CompactComposerControlsMenu = memo(function CompactComposerControls
             <MenuDivider />
           </>
         ) : null}
-        {props.showInteractionModeToggle ? (
+        {showInteractionModeToggle ? (
           <>
             <div className="px-2 py-1.5 font-medium text-muted-foreground text-xs">Mode</div>
             <MenuRadioGroup

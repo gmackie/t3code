@@ -165,6 +165,48 @@ export interface BrowserBounds {
   height: number;
 }
 
+export interface BrowserCookieSource {
+  id: string;
+  label: string;
+}
+
+export interface BrowserCookieProfile {
+  id: string;
+  label: string;
+}
+
+export interface BrowserCookieDomain {
+  domain: string;
+  count: number;
+}
+
+export interface BrowserSessionCookie {
+  domain: string;
+  name: string;
+  value: string;
+  path: string;
+  secure: boolean;
+  httpOnly: boolean;
+  expirationDate?: number;
+  expirationLabel?: string;
+  sameSite?: string;
+  removalUrl?: string;
+}
+
+export interface BrowserImportCookiesInput {
+  sourceId: string;
+  profileId: string;
+  domains: readonly string[];
+}
+
+export interface BrowserImportCookiesResult {
+  importedCount: number;
+}
+
+export interface BrowserRemoveCookieDomainResult {
+  removedCount: number;
+}
+
 export interface BrowserTabRuntimeState {
   url: string;
   title: string | null;
@@ -210,7 +252,89 @@ export interface BrowserTabStateEvent {
   state: BrowserTabRuntimeState;
 }
 
-export type BrowserEvent = BrowserTabStateEvent;
+export interface BrowserAutomationState {
+  status: "idle" | "running" | "error";
+  tabId: string | null;
+  message: string | null;
+}
+
+export interface BrowserAutomationTarget {
+  selector?: string;
+  text?: string;
+  role?: string;
+  name?: string;
+  index?: number;
+}
+
+export interface BrowserAutomationElement {
+  role: string;
+  name: string;
+}
+
+export interface BrowserAutomationResult {
+  message: string;
+  error?: string;
+  url?: string;
+  title?: string;
+  text?: string;
+  loadingState?: string;
+  lastError?: string;
+  consoleMessages?: string[];
+  networkErrors?: string[];
+  elements?: BrowserAutomationElement[];
+  screenshotDataUrl?: string;
+}
+
+export type BrowserAutomationRequest =
+  | {
+      type: "navigate";
+      threadId: string;
+      url: string;
+    }
+  | {
+      type: "click";
+      threadId: string;
+      target: BrowserAutomationTarget;
+    }
+  | {
+      type: "type";
+      threadId: string;
+      target: BrowserAutomationTarget;
+      text: string;
+      submit?: boolean;
+      clear?: boolean;
+    }
+  | {
+      type: "wait";
+      threadId: string;
+      target?: BrowserAutomationTarget;
+      selector?: string;
+      text?: string;
+      urlIncludes?: string;
+      titleIncludes?: string;
+      timeoutMs?: number;
+    }
+  | {
+      type: "inspect";
+      threadId: string;
+      target?: BrowserAutomationTarget;
+    }
+  | {
+      type: "screenshot";
+      threadId: string;
+    }
+  | {
+      type: "diagnostics";
+      threadId: string;
+    };
+
+export interface BrowserAutomationStateEvent {
+  type: "automation-state";
+  threadId: ThreadId;
+  state: BrowserAutomationState;
+}
+
+export type BrowserEvent = BrowserTabStateEvent | BrowserAutomationStateEvent;
 export interface DesktopBridge {
   getAppBranding: () => DesktopAppBranding | null;
   getLocalEnvironmentBootstrap: () => DesktopEnvironmentBootstrap | null;
@@ -233,15 +357,25 @@ export interface DesktopBridge {
     position?: { x: number; y: number },
   ) => Promise<T | null>;
   openExternal: (url: string) => Promise<boolean>;
-  browserEnsureTab: (input: BrowserEnsureTabInput) => Promise<void>;
-  browserNavigate: (input: BrowserNavigateInput) => Promise<void>;
-  browserGoBack: (input: BrowserTabTargetInput) => Promise<void>;
-  browserGoForward: (input: BrowserTabTargetInput) => Promise<void>;
-  browserReload: (input: BrowserTabTargetInput) => Promise<void>;
-  browserCloseTab: (input: BrowserTabTargetInput) => Promise<void>;
-  browserSyncHost: (input: BrowserSyncHostInput) => Promise<void>;
-  browserClearThread: (input: BrowserClearThreadInput) => Promise<void>;
-  onBrowserEvent: (listener: (event: BrowserEvent) => void) => () => void;
+  browserEnsureTab?: (input: BrowserEnsureTabInput) => Promise<void>;
+  browserNavigate?: (input: BrowserNavigateInput) => Promise<void>;
+  browserGoBack?: (input: BrowserTabTargetInput) => Promise<void>;
+  browserGoForward?: (input: BrowserTabTargetInput) => Promise<void>;
+  browserReload?: (input: BrowserTabTargetInput) => Promise<void>;
+  browserCloseTab?: (input: BrowserTabTargetInput) => Promise<void>;
+  browserSyncHost?: (input: BrowserSyncHostInput) => Promise<void>;
+  browserClearThread?: (input: BrowserClearThreadInput) => Promise<void>;
+  onBrowserEvent?: (listener: (event: BrowserEvent) => void) => () => void;
+  browserListCookieSources?: () => Promise<BrowserCookieSource[]>;
+  browserListCookieProfiles?: (sourceId: string) => Promise<BrowserCookieProfile[]>;
+  browserListCookieDomains?: (input: {
+    sourceId: string;
+    profileId: string;
+    search?: string;
+  }) => Promise<BrowserCookieDomain[]>;
+  browserImportCookies?: (input: BrowserImportCookiesInput) => Promise<BrowserImportCookiesResult>;
+  browserListSessionCookies?: () => Promise<BrowserSessionCookie[]>;
+  browserRemoveCookieDomain?: (domain: string) => Promise<BrowserRemoveCookieDomainResult>;
   onMenuAction: (listener: (action: string) => void) => () => void;
   getUpdateState: () => Promise<DesktopUpdateState>;
   setUpdateChannel: (channel: DesktopUpdateChannel) => Promise<DesktopUpdateState>;
@@ -371,3 +505,20 @@ export interface EnvironmentApi {
     ) => () => void;
   };
 }
+
+export interface NativeBrowserApi {
+  ensureTab: (input: BrowserEnsureTabInput) => Promise<void>;
+  navigate: (input: BrowserNavigateInput) => Promise<void>;
+  goBack: (input: BrowserTabTargetInput) => Promise<void>;
+  goForward: (input: BrowserTabTargetInput) => Promise<void>;
+  reload: (input: BrowserTabTargetInput) => Promise<void>;
+  closeTab: (input: BrowserTabTargetInput) => Promise<void>;
+  syncHost: (input: BrowserSyncHostInput) => Promise<void>;
+  clearThread: (input: BrowserClearThreadInput) => Promise<void>;
+  onEvent: (listener: (event: BrowserEvent) => void) => () => void;
+}
+
+export type NativeApi = LocalApi &
+  Partial<Pick<EnvironmentApi, "projects" | "filesystem" | "git" | "orchestration">> & {
+    browser?: NativeBrowserApi;
+  };

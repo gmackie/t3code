@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { buildPlanningRequirementsMarkdown, buildPlanningTaskDrafts } from "./logic";
+import { buildPlanningRequirementsMarkdown, buildPlanningTaskDrafts } from "./logic.js";
 
 describe("planningWorkbench logic", () => {
   it("builds requirements markdown from a proposed plan", () => {

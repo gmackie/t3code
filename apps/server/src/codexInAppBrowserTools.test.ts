@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { createCodexInAppBrowserDynamicToolHandler } from "./codexInAppBrowserTools";
+import { createCodexInAppBrowserDynamicToolHandler } from "./codexInAppBrowserTools.js";
 
 describe("createCodexInAppBrowserDynamicToolHandler", () => {
   it("maps semantic click arguments into a browser target request", async () => {

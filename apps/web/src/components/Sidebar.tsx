@@ -74,6 +74,7 @@ import {
   useStore,
 } from "../store";
 import { selectThreadTerminalState, useTerminalStateStore } from "../terminalStateStore";
+import { serializeThreadDragData, THREAD_DRAG_MIME_TYPE } from "../threadDrag";
 import { useUiStateStore } from "../uiStateStore";
 import {
   resolveShortcutCommand,
@@ -191,6 +192,7 @@ import {
 } from "../sidebarProjectGrouping";
 import SidebarFilesPanel from "./SidebarFilesPanel";
 import { selectThreadWorkspaceViewState, useWorkspaceViewStore } from "../workspaceViewStore";
+import { useSplitPaneStore } from "../splitPaneStore";
 import * as Schema from "effect/Schema";
 const THREAD_PREVIEW_LIMIT = 6;
 const SIDEBAR_FILES_HIDE_DOTFILES_KEY = "t3code:sidebar-files-hide-dotfiles:v1";
@@ -505,6 +507,13 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
     },
     [],
   );
+  const handleRowDragStart = useCallback(
+    (event: React.DragEvent) => {
+      event.dataTransfer.setData(THREAD_DRAG_MIME_TYPE, serializeThreadDragData(threadRef));
+      event.dataTransfer.effectAllowed = "move";
+    },
+    [threadRef],
+  );
   const handleConfirmArchiveClick = useCallback(
     (event: React.MouseEvent<HTMLButtonElement>) => {
       event.preventDefault();
@@ -546,6 +555,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
         render={rowButtonRender}
         size="sm"
         isActive={isActive}
+        draggable
         data-testid={`thread-row-${thread.id}`}
         className={`${resolveThreadRowClassName({
           isActive,
@@ -554,6 +564,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
         onClick={handleRowClick}
         onKeyDown={handleRowKeyDown}
         onContextMenu={handleRowContextMenu}
+        onDragStart={handleRowDragStart}
       >
         <div className="flex min-w-0 flex-1 items-center gap-1.5 text-left">
           {prStatus && (
@@ -942,11 +953,14 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
   const router = useRouter();
   const markThreadUnread = useUiStateStore((state) => state.markThreadUnread);
   const toggleProject = useUiStateStore((state) => state.toggleProject);
-  const toggleThreadSelection = useThreadSelectionStore((state) => state.toggleThread);
   const rangeSelectTo = useThreadSelectionStore((state) => state.rangeSelectTo);
   const clearSelection = useThreadSelectionStore((state) => state.clearSelection);
   const removeFromSelection = useThreadSelectionStore((state) => state.removeFromSelection);
   const setSelectionAnchor = useThreadSelectionStore((state) => state.setAnchor);
+  const setSecondaryThreadRef = useSplitPaneStore((state) => state.setSecondaryThreadRef);
+  const secondaryThreadRef = useSplitPaneStore((state) => state.secondaryThreadRef);
+  const focusedPane = useSplitPaneStore((state) => state.focusedPane);
+  const focusPane = useSplitPaneStore((state) => state.focusPane);
   const selectedThreadCount = useThreadSelectionStore((state) => state.selectedThreadKeys.size);
   const { copyToClipboard: copyThreadIdToClipboard } = useCopyToClipboard<{
     threadId: ThreadId;
@@ -1523,17 +1537,20 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
   );
 
   const navigateToThread = useCallback(
-    (threadRef: ScopedThreadRef) => {
+    (threadRef: ScopedThreadRef, options?: { focusPrimaryPane?: boolean }) => {
       if (useThreadSelectionStore.getState().selectedThreadKeys.size > 0) {
         clearSelection();
       }
       setSelectionAnchor(scopedThreadKey(threadRef));
+      if (options?.focusPrimaryPane) {
+        focusPane("primary");
+      }
       void router.navigate({
         to: "/$environmentId/$threadId",
         params: buildThreadRouteParams(threadRef),
       });
     },
-    [clearSelection, router, setSelectionAnchor],
+    [clearSelection, focusPane, router, setSelectionAnchor],
   );
 
   const handleThreadClick = useCallback(
@@ -1547,10 +1564,16 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
       const isShiftClick = event.shiftKey;
       const threadKey = scopedThreadKey(threadRef);
       const currentSelectionCount = useThreadSelectionStore.getState().selectedThreadKeys.size;
+      const secondaryPaneOpen = secondaryThreadRef !== null;
+      const routeFocusedInSecondaryPane = focusedPane === "secondary" && secondaryPaneOpen;
 
       if (isModClick) {
         event.preventDefault();
-        toggleThreadSelection(threadKey);
+        if (routeFocusedInSecondaryPane) {
+          navigateToThread(threadRef, { focusPrimaryPane: true });
+          return;
+        }
+        setSecondaryThreadRef(threadRef);
         return;
       }
 
@@ -1564,12 +1587,21 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
         clearSelection();
       }
       setSelectionAnchor(threadKey);
-      void router.navigate({
-        to: "/$environmentId/$threadId",
-        params: buildThreadRouteParams(threadRef),
-      });
+      if (routeFocusedInSecondaryPane) {
+        setSecondaryThreadRef(threadRef);
+        return;
+      }
+      navigateToThread(threadRef, { focusPrimaryPane: true });
     },
-    [clearSelection, rangeSelectTo, router, setSelectionAnchor, toggleThreadSelection],
+    [
+      clearSelection,
+      focusedPane,
+      navigateToThread,
+      rangeSelectTo,
+      secondaryThreadRef,
+      setSecondaryThreadRef,
+      setSelectionAnchor,
+    ],
   );
 
   const handleMultiSelectContextMenu = useCallback(
@@ -3235,6 +3267,18 @@ export default function Sidebar() {
         platform,
         context: shortcutContext,
       });
+      if (command === "sidebar.projects") {
+        event.preventDefault();
+        event.stopPropagation();
+        setSidebarMode("projects");
+        return;
+      }
+      if (command === "sidebar.files") {
+        event.preventDefault();
+        event.stopPropagation();
+        setSidebarMode("files");
+        return;
+      }
       const traversalDirection = threadTraversalDirectionFromCommand(command);
       if (traversalDirection !== null) {
         const targetThreadKey = resolveAdjacentThreadId({
@@ -3288,6 +3332,8 @@ export default function Sidebar() {
     platform,
     routeThreadKey,
     sidebarThreadByKey,
+    setSidebarMode,
+    threadJumpCommandByKey,
     threadJumpThreadKeys,
   ]);
 

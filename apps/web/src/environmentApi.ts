@@ -1,11 +1,38 @@
-import type { EnvironmentId, EnvironmentApi } from "@t3tools/contracts";
+import type {
+  EnvironmentId,
+  EnvironmentApi,
+  ProjectCodeDefinitionsResult,
+  ProjectCodeDocumentSymbolsResult,
+  ProjectCodeHoverResult,
+} from "@t3tools/contracts";
 
 import type { WsRpcClient } from "./rpc/wsRpcClient";
 import { readEnvironmentConnection } from "./environments/runtime";
 
 const environmentApiOverridesForTests = new Map<EnvironmentId, EnvironmentApi>();
 
+const EMPTY_PROJECT_DOCUMENT_SYMBOLS_RESULT: ProjectCodeDocumentSymbolsResult = {
+  source: "none",
+  symbols: [],
+};
+
+const EMPTY_PROJECT_HOVER_RESULT: ProjectCodeHoverResult = {
+  source: "none",
+  hover: null,
+};
+
+const EMPTY_PROJECT_DEFINITIONS_RESULT: ProjectCodeDefinitionsResult = {
+  source: "none",
+  definitions: [],
+};
+
 export function createEnvironmentApi(rpcClient: WsRpcClient): EnvironmentApi {
+  const projectRpcClient = rpcClient.projects as typeof rpcClient.projects & {
+    getDocumentSymbols?: EnvironmentApi["projects"]["getDocumentSymbols"];
+    getHover?: EnvironmentApi["projects"]["getHover"];
+    getDefinitions?: EnvironmentApi["projects"]["getDefinitions"];
+  };
+
   return {
     terminal: {
       open: (input) => rpcClient.terminal.open(input as never),
@@ -20,6 +47,11 @@ export function createEnvironmentApi(rpcClient: WsRpcClient): EnvironmentApi {
       listEntries: rpcClient.projects.listEntries,
       readFile: rpcClient.projects.readFile,
       searchEntries: rpcClient.projects.searchEntries,
+      getDocumentSymbols:
+        projectRpcClient.getDocumentSymbols ?? (async () => EMPTY_PROJECT_DOCUMENT_SYMBOLS_RESULT),
+      getHover: projectRpcClient.getHover ?? (async () => EMPTY_PROJECT_HOVER_RESULT),
+      getDefinitions:
+        projectRpcClient.getDefinitions ?? (async () => EMPTY_PROJECT_DEFINITIONS_RESULT),
       writeFile: rpcClient.projects.writeFile,
     },
     filesystem: {

@@ -122,6 +122,13 @@ export interface PanelThreadView {
 export interface PanelContext {
   activeThreadId: ThreadId | null;
   threadView: PanelThreadView | null;
+  onOpenWorkspaceFile?: (input: {
+    cwd: string;
+    relativePath: string;
+    line: number | null;
+    column: number | null;
+    targetPath: string;
+  }) => void;
 }
 
 export interface PanelDefinition {

@@ -88,6 +88,18 @@ it.effect("parses keybinding rules", () =>
       command: "thread.previous",
     });
     assert.strictEqual(parsedThreadPrevious.command, "thread.previous");
+
+    const parsedSidebarProjects = yield* decode(KeybindingRule, {
+      key: "mod+shift+p",
+      command: "sidebar.projects",
+    });
+    assert.strictEqual(parsedSidebarProjects.command, "sidebar.projects");
+
+    const parsedSidebarFiles = yield* decode(KeybindingRule, {
+      key: "mod+shift+f",
+      command: "sidebar.files",
+    });
+    assert.strictEqual(parsedSidebarFiles.command, "sidebar.files");
   }),
 );
 

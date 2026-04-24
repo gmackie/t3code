@@ -3,7 +3,7 @@ import type {
   BrowserAutomationResult,
   BrowserAutomationTarget,
 } from "@t3tools/contracts";
-import type { DesktopBrowserAutomationClient } from "./desktopBrowserAutomationClient";
+import type { DesktopBrowserAutomationClient } from "./desktopBrowserAutomationClient.js";
 
 export interface CodexDynamicToolSpec {
   name: string;

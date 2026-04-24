@@ -1,7 +1,7 @@
 import type { EnvironmentId, ProjectReadFileResult } from "@t3tools/contracts";
 import { useQuery } from "@tanstack/react-query";
 import { LoaderCircleIcon } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import {
   getHighlightedCodeHtmlPromise,
@@ -74,6 +74,7 @@ function HighlightedFileViewerBody(props: {
   const [selectedLineNumber, setSelectedLineNumber] = useState<number | null>(
     props.initialSelectedLineNumber,
   );
+  const selectedRowRef = useRef<HTMLDivElement | null>(null);
   const highlightedCodeQuery = useQuery({
     queryKey: [
       "workspace-file-viewer",
@@ -95,6 +96,13 @@ function HighlightedFileViewerBody(props: {
     setHoveredLineNumber(null);
     setSelectedLineNumber(props.initialSelectedLineNumber);
   }, [props.initialSelectedLineNumber, props.relativePath]);
+
+  useEffect(() => {
+    if (selectedLineNumber === null) {
+      return;
+    }
+    selectedRowRef.current?.scrollIntoView({ block: "center" });
+  }, [highlightedCodeQuery.data, selectedLineNumber, props.relativePath]);
 
   const highlightedLines = useMemo(
     () =>
@@ -147,6 +155,7 @@ function HighlightedFileViewerBody(props: {
                 data-line-number={lineRecord.lineNumber}
                 data-selected={isSelectedLine ? "true" : "false"}
                 data-testid="workspace-file-viewer-code-row"
+                ref={isSelectedLine ? selectedRowRef : null}
                 onClick={() => setSelectedLineNumber(lineRecord.lineNumber)}
                 onMouseEnter={() => setHoveredLineNumber(lineRecord.lineNumber)}
                 onMouseLeave={() =>

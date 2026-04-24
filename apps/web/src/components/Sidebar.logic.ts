@@ -330,6 +330,10 @@ export function resolveThreadStatusPill(input: {
   thread: ThreadStatusInput;
 }): ThreadStatusPill | null {
   const { thread } = input;
+  const hasUnsettledStartedTurn =
+    thread.latestTurn?.startedAt !== null &&
+    thread.latestTurn?.startedAt !== undefined &&
+    !isLatestTurnSettled(thread.latestTurn, thread.session);
 
   if (thread.hasPendingApprovals) {
     return {
@@ -349,7 +353,7 @@ export function resolveThreadStatusPill(input: {
     };
   }
 
-  if (thread.session?.status === "running") {
+  if (thread.session?.status === "running" || hasUnsettledStartedTurn) {
     return {
       label: "Working",
       colorClass: "text-sky-600 dark:text-sky-300/80",

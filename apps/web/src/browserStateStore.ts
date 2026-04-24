@@ -1,4 +1,4 @@
-import type { ThreadId } from "@t3tools/contracts";
+import type { BrowserAutomationState, ThreadId } from "@t3tools/contracts";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
@@ -9,6 +9,7 @@ export interface ThreadBrowserState {
   tabs: BrowserTab[];
   inputValue: string;
   focusRequestId: number;
+  automationState: BrowserAutomationState | undefined;
 }
 
 const BROWSER_STATE_STORAGE_KEY = "t3code:browser-state:v1";
@@ -18,6 +19,7 @@ const DEFAULT_THREAD_BROWSER_STATE: ThreadBrowserState = Object.freeze({
   tabs: [],
   inputValue: "",
   focusRequestId: 0,
+  automationState: undefined,
 });
 
 function createDefaultThreadBrowserState(): ThreadBrowserState {
@@ -32,6 +34,9 @@ function threadBrowserStateEqual(left: ThreadBrowserState, right: ThreadBrowserS
     left.activeTabId === right.activeTabId &&
     left.inputValue === right.inputValue &&
     left.focusRequestId === right.focusRequestId &&
+    left.automationState?.status === right.automationState?.status &&
+    left.automationState?.tabId === right.automationState?.tabId &&
+    left.automationState?.message === right.automationState?.message &&
     left.tabs === right.tabs
   );
 }
@@ -68,6 +73,7 @@ function normalizeThreadBrowserState(state: ThreadBrowserState): ThreadBrowserSt
       Number.isFinite(state.focusRequestId) && state.focusRequestId > 0
         ? Math.trunc(state.focusRequestId)
         : 0,
+    automationState: state.automationState,
   };
   return threadBrowserStateEqual(state, normalized) ? state : normalized;
 }
@@ -78,6 +84,7 @@ function isDefaultThreadBrowserState(state: ThreadBrowserState): boolean {
     normalized.activeTabId === DEFAULT_THREAD_BROWSER_STATE.activeTabId &&
     normalized.inputValue === DEFAULT_THREAD_BROWSER_STATE.inputValue &&
     normalized.focusRequestId === DEFAULT_THREAD_BROWSER_STATE.focusRequestId &&
+    normalized.automationState === DEFAULT_THREAD_BROWSER_STATE.automationState &&
     normalized.tabs.length === 0
   );
 }
@@ -127,6 +134,7 @@ interface BrowserStateStoreState {
     threadId: ThreadId,
     updater: (state: ThreadBrowserState) => ThreadBrowserState,
   ) => void;
+  moveBrowserTab: (sourceThreadId: ThreadId, targetThreadId: ThreadId, tabId: string) => void;
   removeOrphanedBrowserStates: (activeThreadIds: Set<ThreadId>) => void;
   clearBrowserState: (threadId: ThreadId) => void;
 }
@@ -146,6 +154,60 @@ export const useBrowserStateStore = create<BrowserStateStoreState>()(
             return state;
           }
           return { browserStateByThreadId: nextBrowserStateByThreadId };
+        }),
+      moveBrowserTab: (sourceThreadId, targetThreadId, tabId) =>
+        set((state) => {
+          if (
+            sourceThreadId.length === 0 ||
+            targetThreadId.length === 0 ||
+            sourceThreadId === targetThreadId
+          ) {
+            return state;
+          }
+
+          const sourceState = selectThreadBrowserState(
+            state.browserStateByThreadId,
+            sourceThreadId,
+          );
+          const movedTab = sourceState.tabs.find((tab) => tab.id === tabId);
+          if (!movedTab) {
+            return state;
+          }
+
+          const nextSourceTabs = sourceState.tabs.filter((tab) => tab.id !== tabId);
+          const nextSourceActiveTabId =
+            sourceState.activeTabId === tabId
+              ? (nextSourceTabs[0]?.id ?? null)
+              : sourceState.activeTabId;
+          const targetState = selectThreadBrowserState(
+            state.browserStateByThreadId,
+            targetThreadId,
+          );
+          const nextTargetTabs = targetState.tabs.some((tab) => tab.id === tabId)
+            ? targetState.tabs.map((tab) => (tab.id === tabId ? movedTab : tab))
+            : [...targetState.tabs, movedTab];
+
+          const withoutSource = updateBrowserStateByThreadId(
+            state.browserStateByThreadId,
+            sourceThreadId,
+            (current) => ({
+              ...current,
+              activeTabId: nextSourceActiveTabId,
+              tabs: nextSourceTabs,
+            }),
+          );
+          const withTarget = updateBrowserStateByThreadId(
+            withoutSource,
+            targetThreadId,
+            (current) => ({
+              ...current,
+              activeTabId: tabId,
+              tabs: nextTargetTabs,
+            }),
+          );
+          return withTarget === state.browserStateByThreadId
+            ? state
+            : { browserStateByThreadId: withTarget };
         }),
       removeOrphanedBrowserStates: (activeThreadIds) =>
         set((state) => {

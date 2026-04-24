@@ -12,7 +12,6 @@ import {
   deriveComposerSendState,
   hasServerAcknowledgedLocalDispatch,
   reconcileMountedTerminalThreadIds,
-  resolveSendEnvMode,
   shouldWriteThreadErrorToCurrentServerThread,
   waitForStartedServerThread,
 } from "./ChatView.logic";
@@ -92,6 +91,8 @@ describe("buildSearchableModelOptions", () => {
         modelOptionsByProvider: {
           codex: [{ slug: "gpt-5" } as never],
           claudeAgent: [],
+          cursor: [],
+          opencode: [],
         },
         lockedProvider: null,
       }),
@@ -106,17 +107,6 @@ describe("buildSearchableModelOptions", () => {
         searchProvider: "codex",
       },
     ]);
-  });
-});
-
-describe("resolveSendEnvMode", () => {
-  it("keeps worktree mode for git repositories", () => {
-    expect(resolveSendEnvMode({ requestedEnvMode: "worktree", isGitRepo: true })).toBe("worktree");
-  });
-
-  it("forces local mode for non-git repositories", () => {
-    expect(resolveSendEnvMode({ requestedEnvMode: "worktree", isGitRepo: false })).toBe("local");
-    expect(resolveSendEnvMode({ requestedEnvMode: "local", isGitRepo: false })).toBe("local");
   });
 });
 

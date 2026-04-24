@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { DragEvent, ReactNode } from "react";
 import type { ProjectCodeDocumentSymbol, ProjectCodeIntelligenceSource } from "@t3tools/contracts";
 import { ListTreeIcon, MessageSquareIcon, TextWrapIcon, XIcon } from "lucide-react";
 
@@ -16,6 +16,8 @@ interface WorkspaceViewTabsProps {
     label: string;
     icon: ReactNode;
     testId?: string;
+    closable?: boolean;
+    draggable?: boolean;
   }>;
   tabs: readonly WorkspaceFileTab[];
   activeTabId: string | null;
@@ -26,6 +28,8 @@ interface WorkspaceViewTabsProps {
   activeFileOpen: boolean;
   onSelectTab: (tabId: string | null) => void;
   onCloseTab: (tabId: string) => void;
+  onDragStartFileTab?: (event: DragEvent<HTMLButtonElement>, tab: WorkspaceFileTab) => void;
+  onDragStartExtraTab?: (event: DragEvent<HTMLButtonElement>, tabId: string) => void;
   onSelectSymbol: (symbol: ProjectCodeDocumentSymbol) => void;
   onWordWrapChange: (nextValue: boolean) => void;
 }
@@ -35,6 +39,8 @@ function WorkspaceViewTabButton(props: {
   label: string;
   reserveCloseSpace?: boolean;
   testId?: string;
+  draggable?: boolean;
+  onDragStart?: (event: DragEvent<HTMLButtonElement>) => void;
   onClick: () => void;
   children: ReactNode;
 }) {
@@ -44,6 +50,7 @@ function WorkspaceViewTabButton(props: {
       role="tab"
       aria-selected={props.selected}
       data-testid={props.testId}
+      draggable={props.draggable}
       className={cn(
         "group/tab flex min-w-0 max-w-56 items-center gap-2 rounded-t-md border border-b-0 border-transparent px-3 py-2 text-xs transition-colors",
         props.reserveCloseSpace ? "pr-8" : null,
@@ -51,6 +58,7 @@ function WorkspaceViewTabButton(props: {
           ? "border-border bg-background text-foreground"
           : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
       )}
+      onDragStart={props.onDragStart}
       onClick={props.onClick}
     >
       {props.children}
@@ -70,6 +78,8 @@ export default function WorkspaceViewTabs({
   activeFileOpen,
   onSelectTab,
   onCloseTab,
+  onDragStartFileTab,
+  onDragStartExtraTab,
   onSelectSymbol,
   onWordWrapChange,
 }: WorkspaceViewTabsProps) {
@@ -95,15 +105,39 @@ export default function WorkspaceViewTabs({
             <MessageSquareIcon className="size-3.5 shrink-0" />
           </WorkspaceViewTabButton>
           {extraTabs.map((tab) => (
-            <WorkspaceViewTabButton
-              key={tab.id}
-              selected={activeTabId === tab.id}
-              label={tab.label}
-              {...(tab.testId ? { testId: tab.testId } : {})}
-              onClick={() => onSelectTab(tab.id)}
-            >
-              {tab.icon}
-            </WorkspaceViewTabButton>
+            <div key={tab.id} className="relative flex min-w-0 items-center">
+              <WorkspaceViewTabButton
+                selected={activeTabId === tab.id}
+                label={tab.label}
+                {...(tab.closable ? { reserveCloseSpace: true } : {})}
+                {...(tab.draggable ? { draggable: true } : {})}
+                {...(tab.testId ? { testId: tab.testId } : {})}
+                onDragStart={(event) => {
+                  onDragStartExtraTab?.(event, tab.id);
+                }}
+                onClick={() => onSelectTab(tab.id)}
+              >
+                {tab.icon}
+              </WorkspaceViewTabButton>
+              {tab.closable ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-xs"
+                  className={cn(
+                    "absolute right-1 top-1/2 size-5 -translate-y-1/2 rounded-sm opacity-70 transition-opacity hover:opacity-100 group-hover/tab:opacity-100",
+                    activeTabId === tab.id ? "text-foreground" : "text-muted-foreground",
+                  )}
+                  aria-label={`Close ${tab.label} tab`}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onCloseTab(tab.id);
+                  }}
+                >
+                  <XIcon />
+                </Button>
+              ) : null}
+            </div>
           ))}
           {tabs.map((tab) => {
             const selected = activeTabId === tab.id;
@@ -115,6 +149,10 @@ export default function WorkspaceViewTabs({
                   label={label}
                   reserveCloseSpace
                   testId={`workspace-tab-${tab.id}`}
+                  draggable={onDragStartFileTab !== undefined}
+                  onDragStart={(event) => {
+                    onDragStartFileTab?.(event, tab);
+                  }}
                   onClick={() => onSelectTab(tab.id)}
                 >
                   <VscodeEntryIcon

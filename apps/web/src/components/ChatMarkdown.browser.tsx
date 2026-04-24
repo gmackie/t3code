@@ -33,6 +33,39 @@ describe("ChatMarkdown", () => {
     document.body.innerHTML = "";
   });
 
+  it("opens workspace files in the in-app viewer when the link is inside the active workspace", async () => {
+    const handleOpenWorkspaceFile = vi.fn();
+    const filePath = "/repo/project/src/components/ChatMarkdown.tsx";
+    const screen = await render(
+      <ChatMarkdown
+        text={`[ChatMarkdown.tsx](file://${filePath}#L12C3)`}
+        cwd="/repo/project"
+        workspaceRoot="/repo/project"
+        onOpenWorkspaceFile={handleOpenWorkspaceFile}
+      />,
+    );
+
+    try {
+      const link = page.getByRole("link", { name: "ChatMarkdown.tsx · L12:C3" });
+      await expect.element(link).toBeInTheDocument();
+
+      await link.click();
+
+      await vi.waitFor(() => {
+        expect(handleOpenWorkspaceFile).toHaveBeenCalledWith({
+          cwd: "/repo/project",
+          relativePath: "src/components/ChatMarkdown.tsx",
+          line: 12,
+          column: 3,
+          targetPath: "/repo/project/src/components/ChatMarkdown.tsx:12:3",
+        });
+      });
+      expect(openInPreferredEditorMock).not.toHaveBeenCalled();
+    } finally {
+      await screen.unmount();
+    }
+  });
+
   it("rewrites file uri hrefs into direct paths before rendering", async () => {
     const filePath =
       "/Users/yashsingh/p/sco/claude-code-extract/src/utils/permissions/PermissionRule.ts";
@@ -134,6 +167,30 @@ describe("ChatMarkdown", () => {
       await expect.element(link).toBeInTheDocument();
       await expect.element(link).toHaveAttribute("href", "https://openai.com/docs");
       await expect.element(link).toHaveAttribute("target", "_blank");
+    } finally {
+      await screen.unmount();
+    }
+  });
+
+  it("routes normal web links through the in-app browser when requested", async () => {
+    const handleOpenUrl = vi.fn();
+    const screen = await render(
+      <ChatMarkdown
+        text="[OpenAI](https://openai.com/docs)"
+        cwd="/repo/project"
+        onOpenUrl={handleOpenUrl}
+      />,
+    );
+
+    try {
+      const link = page.getByRole("link", { name: "OpenAI" });
+      await expect.element(link).toBeInTheDocument();
+
+      await link.click();
+
+      await vi.waitFor(() => {
+        expect(handleOpenUrl).toHaveBeenCalledWith("https://openai.com/docs");
+      });
     } finally {
       await screen.unmount();
     }

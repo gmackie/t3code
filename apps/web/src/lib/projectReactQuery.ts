@@ -1,5 +1,6 @@
 import type {
   EnvironmentId,
+  EnvironmentApi,
   NativeApi,
   ProjectCodeDefinitionsResult,
   ProjectCodeDocumentSymbolsResult,
@@ -80,7 +81,7 @@ const EMPTY_LIST_ENTRIES_RESULT: ProjectListEntriesResult = {
   truncated: false,
 };
 
-type ProjectApi = NativeApi["projects"];
+type ProjectApi = NonNullable<NativeApi["projects"]> | EnvironmentApi["projects"];
 
 function supportsProjectMethod<
   TMethod extends "getDocumentSymbols" | "getHover" | "getDefinitions",

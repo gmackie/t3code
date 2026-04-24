@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { createBrowserTab } from "./browser";
 import { selectThreadBrowserState, useBrowserStateStore } from "./browserStateStore";
 
-const THREAD_ID = ThreadId.makeUnsafe("thread-1");
+const THREAD_ID = "thread-1" as ThreadId;
 
 describe("browserStateStore actions", () => {
   beforeEach(() => {
@@ -24,6 +24,7 @@ describe("browserStateStore actions", () => {
       tabs: [],
       inputValue: "",
       focusRequestId: 0,
+      automationState: undefined,
     });
   });
 
@@ -36,6 +37,7 @@ describe("browserStateStore actions", () => {
           tabs: [tab],
           inputValue: tab.url,
           focusRequestId: 0,
+          automationState: undefined,
         },
       },
     });
@@ -62,6 +64,7 @@ describe("browserStateStore actions", () => {
         ],
         inputValue: "",
         focusRequestId: 0,
+        automationState: undefined,
       }));
     }).not.toThrow();
 
@@ -75,6 +78,28 @@ describe("browserStateStore actions", () => {
       tabs: [],
       inputValue: "",
       focusRequestId: 0,
+      automationState: undefined,
     });
+  });
+
+  it("keeps multiple browser tabs for a thread and preserves the latest active tab", () => {
+    const first = { ...createBrowserTab("https://example.com"), id: "browser-1" };
+    const second = { ...createBrowserTab("https://openai.com"), id: "browser-2" };
+
+    useBrowserStateStore.getState().updateThreadBrowserState(THREAD_ID, () => ({
+      activeTabId: second.id,
+      tabs: [first, second],
+      inputValue: second.url,
+      focusRequestId: 2,
+      automationState: undefined,
+    }));
+
+    const browserState = selectThreadBrowserState(
+      useBrowserStateStore.getState().browserStateByThreadId,
+      THREAD_ID,
+    );
+    expect(browserState.activeTabId).toBe(second.id);
+    expect(browserState.tabs.map((tab) => tab.id)).toEqual([first.id, second.id]);
+    expect(browserState.inputValue).toBe("https://openai.com");
   });
 });

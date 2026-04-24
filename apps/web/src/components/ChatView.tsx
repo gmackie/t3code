@@ -1,6 +1,5 @@
 import {
   type ApprovalRequestId,
-  type BrowserAutomationState,
   DEFAULT_MODEL_BY_PROVIDER,
   type EnvironmentId,
   type MessageId,
@@ -68,7 +67,6 @@ import {
   derivePendingUserInputs,
   derivePhase,
   deriveTimelineEntries,
-  deriveLatestBrowserToolEvidence,
   deriveActiveWorkStartedAt,
   deriveActivePlanState,
   findSidebarProposedPlan,
@@ -116,16 +114,18 @@ import { useTurnDiffSummaries } from "../hooks/useTurnDiffSummaries";
 import {
   type BrowserTab,
   createBrowserTab,
+  getBrowserTabLabel,
   normalizeBrowserDisplayUrl,
   parseSubmittedBrowserUrl,
 } from "../browser";
 import { selectThreadBrowserState, useBrowserStateStore } from "../browserStateStore";
+import { BROWSER_TAB_DRAG_MIME_TYPE, serializeBrowserTabDragData } from "../browserTabDrag";
+import { serializeWorkspaceTabDragData, WORKSPACE_TAB_DRAG_MIME_TYPE } from "../workspaceTabDrag";
 import { BranchToolbar } from "./BranchToolbar";
 import { resolveShortcutCommand, shortcutLabelForCommand } from "../keybindings";
 import PlanSidebar from "./PlanSidebar";
 import ThreadTerminalDrawer from "./ThreadTerminalDrawer";
 import BrowserPanel from "./BrowserPanel";
-import BrowserCookieManager from "./BrowserCookieManager";
 import WorkspaceFileViewer from "./WorkspaceFileViewer";
 import WorkspaceViewTabs from "./WorkspaceViewTabs";
 import {
@@ -135,6 +135,7 @@ import {
   ChevronRightIcon,
   CircleAlertIcon,
   FileCode2Icon,
+  GlobeIcon,
   ListTodoIcon,
   LockIcon,
   LockOpenIcon,
@@ -204,7 +205,7 @@ import { ChatHeader } from "./chat/ChatHeader";
 import { ContextWindowMeter } from "./chat/ContextWindowMeter";
 import { buildExpandedImagePreview, ExpandedImagePreview } from "./chat/ExpandedImagePreview";
 import { NoActiveThreadState } from "./NoActiveThreadState";
-import { AVAILABLE_PROVIDER_OPTIONS, ProviderModelPicker } from "./chat/ProviderModelPicker";
+import { ProviderModelPicker } from "./chat/ProviderModelPicker";
 import { ComposerCommandItem, ComposerCommandMenu } from "./chat/ComposerCommandMenu";
 import { ComposerPendingApprovalActions } from "./chat/ComposerPendingApprovalActions";
 import { CompactComposerControlsMenu } from "./chat/CompactComposerControlsMenu";
@@ -216,12 +217,12 @@ import {
   getComposerProviderState,
   renderProviderTraitsMenuContent,
   renderProviderTraitsPicker,
-} from "./chat/composerProviderRegistry";
+} from "./chat/composerProviderState";
+import { searchSlashCommandItems } from "./chat/composerSlashCommandSearch";
 import { ProviderStatusBanner } from "./chat/ProviderStatusBanner";
 import { ThreadErrorBanner } from "./chat/ThreadErrorBanner";
 import {
   MAX_HIDDEN_MOUNTED_TERMINAL_THREADS,
-  buildSearchableModelOptions,
   buildExpiredTerminalContextToastCopy,
   buildLocalDraftThread,
   buildTemporaryWorktreeBranchName,
@@ -249,7 +250,8 @@ import {
   useServerKeybindings,
 } from "~/rpc/serverState";
 import { sanitizeThreadErrorMessage } from "~/rpc/transportError";
-import { useBrowserCookieManager } from "../hooks/useBrowserCookieManager";
+import { formatProviderSkillDisplayName } from "../providerSkillPresentation";
+import { searchProviderSkills } from "../providerSkillSearch";
 import {
   WORKSPACE_PLAN_TAB_ID,
   WORKSPACE_PREVIEW_TAB_ID,
@@ -414,12 +416,6 @@ const extendReplacementRangeForTrailingSpace = (
   }
   return text[rangeEnd] === " " ? rangeEnd + 1 : rangeEnd;
 };
-
-const DEFAULT_BROWSER_AUTOMATION_STATE: BrowserAutomationState = Object.freeze({
-  status: "idle",
-  tabId: null,
-  message: null,
-});
 
 function applyBrowserRuntimeStateToTab(
   tab: BrowserTab,
@@ -850,6 +846,7 @@ export default function ChatView(props: ChatViewProps) {
     useState<Record<string, number>>({});
   const [isComposerFooterCompact, setIsComposerFooterCompact] = useState(false);
   const [isComposerPrimaryActionsCompact, setIsComposerPrimaryActionsCompact] = useState(false);
+  const [providerModelPickerOpen, setProviderModelPickerOpen] = useState(false);
   const browserViewportRef = useRef<HTMLDivElement | null>(null);
   // Tracks whether the user explicitly dismissed the plan tab for the active turn.
   const planSidebarDismissedForTurnRef = useRef<string | null>(null);
@@ -1325,18 +1322,14 @@ export default function ChatView(props: ChatViewProps) {
         model: selectedModel,
         models: selectedProviderModels,
         prompt,
-        modelOptions: composerModelOptions,
+        modelOptions: composerModelOptions?.[selectedProvider],
       }),
     [composerModelOptions, prompt, selectedModel, selectedProvider, selectedProviderModels],
   );
   const selectedPromptEffort = composerProviderState.promptEffort;
   const selectedModelOptionsForDispatch = composerProviderState.modelOptionsForDispatch;
   const selectedModelSelection = useMemo<ModelSelection>(
-    () => ({
-      provider: selectedProvider,
-      model: selectedModel,
-      ...(selectedModelOptionsForDispatch ? { options: selectedModelOptionsForDispatch } : {}),
-    }),
+    () => createModelSelection(selectedProvider, selectedModel, selectedModelOptionsForDispatch),
     [selectedModel, selectedModelOptionsForDispatch, selectedProvider],
   );
   const selectedModelForPicker = selectedModel;
@@ -1344,10 +1337,6 @@ export default function ChatView(props: ChatViewProps) {
   const threadActivities = activeThread?.activities ?? EMPTY_ACTIVITIES;
   const workLogEntries = useMemo(
     () => deriveWorkLogEntries(threadActivities, activeLatestTurn?.turnId ?? undefined),
-    [activeLatestTurn?.turnId, threadActivities],
-  );
-  const latestBrowserToolEvidence = useMemo(
-    () => deriveLatestBrowserToolEvidence(threadActivities, activeLatestTurn?.turnId ?? undefined),
     [activeLatestTurn?.turnId, threadActivities],
   );
   const latestTurnHasToolActivity = useMemo(
@@ -1795,6 +1784,10 @@ export default function ChatView(props: ChatViewProps) {
   const modelOptionsByProvider = useMemo<
     Record<ProviderKind, ReadonlyArray<ServerProvider["models"][number]>>
   >(() => getServerModelOptionsByProvider(providerStatuses), [providerStatuses]);
+  const selectedProviderStatus = useMemo(
+    () => providerStatuses.find((status) => status.provider === selectedProvider) ?? null,
+    [providerStatuses, selectedProvider],
+  );
   const selectedModelForPickerWithCustomFallback = useMemo(() => {
     return resolveSelectedModelForPickerWithCustomFallback({
       modelOptionsByProvider,
@@ -1802,15 +1795,6 @@ export default function ChatView(props: ChatViewProps) {
       selectedModel: selectedModelForPicker,
     });
   }, [modelOptionsByProvider, selectedModelForPicker, selectedProvider]);
-  const searchableModelOptions = useMemo(
-    () =>
-      buildSearchableModelOptions({
-        availableProviderOptions: AVAILABLE_PROVIDER_OPTIONS,
-        modelOptionsByProvider,
-        lockedProvider,
-      }),
-    [lockedProvider, modelOptionsByProvider],
-  );
   const workspaceEntriesQuery = useQuery(
     projectSearchEntriesQueryOptions({
       environmentId,
@@ -1835,7 +1819,7 @@ export default function ChatView(props: ChatViewProps) {
     }
 
     if (composerTrigger.kind === "slash-command") {
-      const slashCommandItems = [
+      const builtInSlashCommandItems = [
         {
           id: "slash:model",
           type: "slash-command",
@@ -1858,32 +1842,40 @@ export default function ChatView(props: ChatViewProps) {
           description: "Switch this thread back to normal build mode",
         },
       ] satisfies ReadonlyArray<Extract<ComposerCommandItem, { type: "slash-command" }>>;
+      const providerSlashCommandItems = (selectedProviderStatus?.slashCommands ?? []).map(
+        (command) => ({
+          id: `provider-slash-command:${selectedProvider}:${command.name}`,
+          type: "provider-slash-command" as const,
+          provider: selectedProvider,
+          command,
+          label: `/${command.name}`,
+          description: command.description ?? command.input?.hint ?? "Run provider command",
+        }),
+      );
       const query = composerTrigger.query.trim().toLowerCase();
+      const slashCommandItems = [...builtInSlashCommandItems, ...providerSlashCommandItems];
       if (!query) {
-        return [...slashCommandItems];
+        return slashCommandItems;
       }
-      return slashCommandItems.filter(
-        (item) => item.command.includes(query) || item.label.slice(1).includes(query),
+      return searchSlashCommandItems(slashCommandItems, query);
+    }
+    if (composerTrigger.kind === "skill") {
+      return searchProviderSkills(selectedProviderStatus?.skills ?? [], composerTrigger.query).map(
+        (skill) => ({
+          id: `skill:${selectedProvider}:${skill.name}`,
+          type: "skill" as const,
+          provider: selectedProvider,
+          skill,
+          label: formatProviderSkillDisplayName(skill),
+          description:
+            skill.shortDescription ??
+            skill.description ??
+            (skill.scope ? `${skill.scope} skill` : "Run provider skill"),
+        }),
       );
     }
-
-    return searchableModelOptions
-      .filter(({ searchSlug, searchName, searchProvider }) => {
-        const query = composerTrigger.query.trim().toLowerCase();
-        if (!query) return true;
-        return (
-          searchSlug.includes(query) || searchName.includes(query) || searchProvider.includes(query)
-        );
-      })
-      .map(({ provider, providerLabel, slug, name }) => ({
-        id: `model:${provider}:${slug}`,
-        type: "model",
-        provider,
-        model: slug,
-        label: name,
-        description: `${providerLabel} · ${slug}`,
-      }));
-  }, [composerTrigger, searchableModelOptions, workspaceEntries]);
+    return [];
+  }, [composerTrigger, selectedProvider, selectedProviderStatus, workspaceEntries]);
   const composerMenuOpen = Boolean(composerTrigger);
   const activeComposerMenuItem = useMemo(
     () =>
@@ -1899,10 +1891,7 @@ export default function ChatView(props: ChatViewProps) {
     () => new Set(nonPersistedComposerImageIds),
     [nonPersistedComposerImageIds],
   );
-  const activeProviderStatus = useMemo(
-    () => providerStatuses.find((status) => status.provider === selectedProvider) ?? null,
-    [selectedProvider, providerStatuses],
-  );
+  const activeProviderStatus = selectedProviderStatus;
   const activeProjectCwd = activeProject?.cwd ?? null;
   const activeThreadWorktreePath = activeThread?.worktreePath ?? null;
   const activeWorkspaceRoot = activeThreadWorktreePath ?? activeProjectCwd ?? undefined;
@@ -1965,14 +1954,23 @@ export default function ChatView(props: ChatViewProps) {
   const activeBrowserTab = browserState.activeTabId
     ? (browserState.tabs.find((tab) => tab.id === browserState.activeTabId) ?? null)
     : null;
-  const browserAutomationState = browserState.automationState ?? DEFAULT_BROWSER_AUTOMATION_STATE;
-  const browserPanelAvailable = activeThread !== undefined;
   const browserPanelOpen = workspaceViewState.activeTabId === WORKSPACE_PREVIEW_TAB_ID;
+  const workspaceVisibleActiveTabId =
+    browserPanelOpen && browserState.activeTabId
+      ? browserState.activeTabId
+      : workspaceViewState.activeTabId;
   const planTabOpen = workspaceViewState.activeTabId === WORKSPACE_PLAN_TAB_ID;
-  const browserCookieManager = useBrowserCookieManager({
-    enabled: browserPanelOpen,
-    activeUrl: activeBrowserTab?.url ?? null,
-  });
+  const browserWorkspaceTabs = useMemo(
+    () =>
+      browserState.tabs.map((tab) => ({
+        id: tab.id,
+        label: getBrowserTabLabel(tab),
+        icon: <GlobeIcon className="size-3.5 shrink-0" />,
+        closable: true,
+        draggable: true,
+      })),
+    [browserState.tabs],
+  );
   const activeTerminalLaunchContext =
     terminalLaunchContext?.threadId === activeThreadId
       ? terminalLaunchContext
@@ -2527,10 +2525,6 @@ export default function ChatView(props: ChatViewProps) {
     sidebarProposedPlan?.turnId,
     threadId,
   ]);
-  const toggleBrowserPanel = useCallback(() => {
-    setWorkspaceActiveTab(threadId, browserPanelOpen ? null : WORKSPACE_PREVIEW_TAB_ID);
-  }, [browserPanelOpen, setWorkspaceActiveTab, threadId]);
-
   const handleBrowserInputChange = useCallback(
     (value: string) => {
       updateBrowserState(threadId, (draft) => ({
@@ -3402,7 +3396,7 @@ export default function ChatView(props: ChatViewProps) {
       const shortcutContext = {
         terminalFocus: isTerminalFocused(),
         terminalOpen: Boolean(terminalState.terminalOpen),
-        modelPickerOpen: composerRef.current?.isModelPickerOpen() ?? false,
+        modelPickerOpen: providerModelPickerOpen,
       };
 
       const command = resolveShortcutCommand(event, keybindings, {
@@ -3455,7 +3449,7 @@ export default function ChatView(props: ChatViewProps) {
       if (command === "modelPicker.toggle") {
         event.preventDefault();
         event.stopPropagation();
-        composerRef.current?.toggleModelPicker();
+        setProviderModelPickerOpen((current) => !current);
         return;
       }
 
@@ -3481,6 +3475,7 @@ export default function ChatView(props: ChatViewProps) {
     splitTerminal,
     keybindings,
     onToggleDiff,
+    providerModelPickerOpen,
     toggleTerminalVisibility,
   ]);
 
@@ -4556,6 +4551,7 @@ export default function ChatView(props: ChatViewProps) {
             { expectedText: snapshot.value.slice(trigger.rangeStart, replacementRangeEnd) },
           );
           if (applied) {
+            setProviderModelPickerOpen(true);
             setComposerHighlightedItemId(null);
           }
           return;
@@ -4569,19 +4565,47 @@ export default function ChatView(props: ChatViewProps) {
         }
         return;
       }
-      onProviderModelSelect(item.provider, item.model);
-      const applied = applyPromptReplacement(trigger.rangeStart, trigger.rangeEnd, "", {
-        expectedText: snapshot.value.slice(trigger.rangeStart, trigger.rangeEnd),
-      });
-      if (applied) {
-        setComposerHighlightedItemId(null);
+      if (item.type === "provider-slash-command") {
+        const replacement = `/${item.command.name} `;
+        const replacementRangeEnd = extendReplacementRangeForTrailingSpace(
+          snapshot.value,
+          trigger.rangeEnd,
+          replacement,
+        );
+        const applied = applyPromptReplacement(
+          trigger.rangeStart,
+          replacementRangeEnd,
+          replacement,
+          { expectedText: snapshot.value.slice(trigger.rangeStart, replacementRangeEnd) },
+        );
+        if (applied) {
+          setComposerHighlightedItemId(null);
+        }
+        return;
+      }
+      if (item.type === "skill") {
+        const replacement = `$${item.skill.name} `;
+        const replacementRangeEnd = extendReplacementRangeForTrailingSpace(
+          snapshot.value,
+          trigger.rangeEnd,
+          replacement,
+        );
+        const applied = applyPromptReplacement(
+          trigger.rangeStart,
+          replacementRangeEnd,
+          replacement,
+          { expectedText: snapshot.value.slice(trigger.rangeStart, replacementRangeEnd) },
+        );
+        if (applied) {
+          setComposerHighlightedItemId(null);
+        }
       }
     },
     [
       applyPromptReplacement,
       handleInteractionModeChange,
-      onProviderModelSelect,
       resolveActiveComposerTrigger,
+      setProviderModelPickerOpen,
     ],
   );
   const onComposerMenuItemHighlighted = useCallback((itemId: string | null) => {
@@ -4752,8 +4776,6 @@ export default function ChatView(props: ChatViewProps) {
           availableEditors={availableEditors}
           terminalAvailable={activeProject !== undefined}
           terminalOpen={terminalState.terminalOpen}
-          browserAvailable={browserPanelAvailable}
-          browserOpen={browserPanelOpen}
           terminalToggleShortcutLabel={terminalToggleShortcutLabel}
           diffToggleShortcutLabel={diffPanelShortcutLabel}
           gitCwd={gitCwd}
@@ -4765,7 +4787,6 @@ export default function ChatView(props: ChatViewProps) {
           onUpdateProjectScript={updateProjectScript}
           onDeleteProjectScript={deleteProjectScript}
           onToggleTerminal={toggleTerminalVisibility}
-          onToggleBrowser={toggleBrowserPanel}
           onToggleDiff={onToggleDiff}
         />
       </header>
@@ -4788,16 +4809,53 @@ export default function ChatView(props: ChatViewProps) {
                 icon: <FileCode2Icon className="size-3.5 shrink-0" />,
                 testId: "workspace-tab-plan",
               },
+              ...browserWorkspaceTabs,
             ]}
             tabs={workspaceViewState.tabs}
-            activeTabId={workspaceViewState.activeTabId}
+            activeTabId={workspaceVisibleActiveTabId}
             codeIntelligenceSource={activeWorkspaceFileDocumentSymbolsQuery.data?.source ?? "none"}
             documentSymbols={activeWorkspaceFileDocumentSymbolsQuery.data?.symbols ?? []}
             theme={resolvedTheme}
             wordWrap={workspaceFileWordWrap}
             activeFileOpen={activeWorkspaceFile !== null}
-            onSelectTab={(tabId) => setWorkspaceActiveTab(activeThread.id, tabId)}
-            onCloseTab={(tabId) => closeWorkspaceTab(activeThread.id, tabId)}
+            onSelectTab={(tabId) => {
+              if (tabId && browserState.tabs.some((tab) => tab.id === tabId)) {
+                handleActivateBrowserTab(tabId);
+                setWorkspaceActiveTab(activeThread.id, WORKSPACE_PREVIEW_TAB_ID);
+                return;
+              }
+              setWorkspaceActiveTab(activeThread.id, tabId);
+            }}
+            onCloseTab={(tabId) => {
+              if (browserState.tabs.some((tab) => tab.id === tabId)) {
+                handleCloseBrowserTab(tabId);
+                return;
+              }
+              closeWorkspaceTab(activeThread.id, tabId);
+            }}
+            onDragStartFileTab={(event, tab) => {
+              event.dataTransfer.effectAllowed = "move";
+              event.dataTransfer.setData(
+                WORKSPACE_TAB_DRAG_MIME_TYPE,
+                serializeWorkspaceTabDragData({
+                  sourceThreadRef: scopeThreadRef(activeThread.environmentId, activeThread.id),
+                  tabId: tab.id,
+                }),
+              );
+            }}
+            onDragStartExtraTab={(event, tabId) => {
+              if (!browserState.tabs.some((tab) => tab.id === tabId)) {
+                return;
+              }
+              event.dataTransfer.effectAllowed = "move";
+              event.dataTransfer.setData(
+                BROWSER_TAB_DRAG_MIME_TYPE,
+                serializeBrowserTabDragData({
+                  sourceThreadRef: scopeThreadRef(activeThread.environmentId, activeThread.id),
+                  tabId,
+                }),
+              );
+            }}
             onSelectSymbol={(symbol) => {
               if (!activeWorkspaceFile) {
                 return;
@@ -4816,8 +4874,6 @@ export default function ChatView(props: ChatViewProps) {
               <BrowserPanel
                 state={browserState}
                 activeTab={activeBrowserTab}
-                automationState={browserAutomationState}
-                latestEvidence={latestBrowserToolEvidence}
                 inputValue={browserState.inputValue}
                 focusRequestId={browserState.focusRequestId}
                 onInputChange={handleBrowserInputChange}
@@ -4858,28 +4914,6 @@ export default function ChatView(props: ChatViewProps) {
                   }
                   void window.desktopBridge?.openExternal(activeBrowserTab.url);
                 }}
-                cookieManager={
-                  browserCookieManager.isAvailable ? (
-                    <BrowserCookieManager
-                      availableSources={browserCookieManager.availableSources}
-                      selectedSourceId={browserCookieManager.selectedSourceId}
-                      availableProfiles={browserCookieManager.availableProfiles}
-                      selectedProfileId={browserCookieManager.selectedProfileId}
-                      sourceSearch={browserCookieManager.sourceSearch}
-                      sourceDomains={browserCookieManager.sourceDomains}
-                      sessionCookies={browserCookieManager.sessionCookies}
-                      isLoadingSources={browserCookieManager.isLoadingSources}
-                      isLoadingDomains={browserCookieManager.isLoadingDomains}
-                      isImporting={browserCookieManager.isImporting}
-                      isRemoving={browserCookieManager.isRemoving}
-                      onSourceChange={browserCookieManager.onSourceChange}
-                      onProfileChange={browserCookieManager.onProfileChange}
-                      onSearchChange={browserCookieManager.onSearchChange}
-                      onImportDomain={browserCookieManager.onImportDomain}
-                      onRemoveDomain={browserCookieManager.onRemoveDomain}
-                    />
-                  ) : null
-                }
                 viewportRef={handleBrowserViewportRef}
               />
             </div>
@@ -4890,6 +4924,7 @@ export default function ChatView(props: ChatViewProps) {
               environmentId={environmentId}
               markdownCwd={gitCwd ?? undefined}
               workspaceRoot={activeWorkspaceRoot}
+              onOpenWorkspaceFile={handleOpenWorkspaceFileFromChat}
               timestampFormat={timestampFormat}
               layout="tab"
               onClose={() => {
@@ -5198,6 +5233,8 @@ export default function ChatView(props: ChatViewProps) {
                               lockedProvider={lockedProvider}
                               providers={providerStatuses}
                               modelOptionsByProvider={modelOptionsByProvider}
+                              open={providerModelPickerOpen}
+                              onOpenChange={setProviderModelPickerOpen}
                               {...(composerProviderState.modelPickerIconClassName
                                 ? {
                                     activeProviderIconClassName:

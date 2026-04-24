@@ -70,13 +70,13 @@ import {
   getAutoUpdaterChannelConfig,
 } from "./updateChannels.ts";
 import { ServerListeningDetector } from "./serverListeningDetector.ts";
-import { createBrowserManager } from "./browserManager";
+import { createBrowserManager } from "./browserManager.js";
 import {
   createDesktopBackendBootstrapPayload,
   createDesktopBackendEnv,
   DESKTOP_BACKEND_CHILD_STDIO,
   getDesktopBackendBootstrapStream,
-} from "./backendBootstrap";
+} from "./backendBootstrap.js";
 import { getDesktopRuntimeIdentity } from "./appIdentity.js";
 import {
   createInitialDesktopUpdateState,
