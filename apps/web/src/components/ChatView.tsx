@@ -2,7 +2,6 @@ import {
   type ApprovalRequestId,
   type BrowserAutomationState,
   DEFAULT_MODEL_BY_PROVIDER,
-  type ClaudeCodeEffort,
   type EnvironmentId,
   type MessageId,
   type ModelSelection,
@@ -30,7 +29,11 @@ import {
   scopeProjectRef,
   scopeThreadRef,
 } from "@t3tools/client-runtime";
-import { applyClaudePromptEffortPrefix, createModelSelection } from "@t3tools/shared/model";
+import {
+  applyClaudePromptEffortPrefix,
+  createModelSelection,
+  resolvePromptInjectedEffort,
+} from "@t3tools/shared/model";
 import { projectScriptCwd, projectScriptRuntimeEnv } from "@t3tools/shared/projectScripts";
 import { truncate } from "@t3tools/shared/String";
 import * as Schema from "effect/Schema";
@@ -141,7 +144,7 @@ import { Button } from "./ui/button";
 import { Separator } from "./ui/separator";
 import { cn, randomUUID } from "~/lib/utils";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
-import { toastManager } from "./ui/toast";
+import { stackedThreadToast, toastManager } from "./ui/toast";
 import { decodeProjectScriptKeybindingRule } from "~/lib/projectScriptKeybindings";
 import { type NewProjectScriptInput } from "./ProjectScriptsControl";
 import {
@@ -394,10 +397,8 @@ function formatOutgoingPrompt(params: {
   text: string;
 }): string {
   const caps = getProviderModelCapabilities(params.models, params.model, params.provider);
-  if (params.effort && caps.promptInjectedEffortLevels.includes(params.effort)) {
-    return applyClaudePromptEffortPrefix(params.text, params.effort as ClaudeCodeEffort | null);
-  }
-  return params.text;
+  const promptEffort = resolvePromptInjectedEffort(caps, params.effort);
+  return applyClaudePromptEffortPrefix(params.text, promptEffort);
 }
 const COMPOSER_PATH_QUERY_DEBOUNCE_MS = 120;
 const SCRIPT_TERMINAL_COLS = 120;
@@ -760,6 +761,7 @@ export default function ChatView(props: ChatViewProps) {
     (store) => store.setStickyModelSelection,
   );
   const timestampFormat = settings.timestampFormat;
+  const autoOpenPlanSidebar = settings.autoOpenPlanSidebar;
   const navigate = useNavigate();
   const rawSearch = useSearch({
     strict: false,
@@ -2455,11 +2457,13 @@ export default function ChatView(props: ChatViewProps) {
           title: `Deleted action "${deletedName ?? "Unknown"}"`,
         });
       } catch (error) {
-        toastManager.add({
-          type: "error",
-          title: "Could not delete action",
-          description: error instanceof Error ? error.message : "An unexpected error occurred.",
-        });
+        toastManager.add(
+          stackedThreadToast({
+            type: "error",
+            title: "Could not delete action",
+            description: error instanceof Error ? error.message : "An unexpected error occurred.",
+          }),
+        );
       }
     },
     [activeProject, persistProjectScripts],
@@ -2952,6 +2956,25 @@ export default function ChatView(props: ChatViewProps) {
   }, [composerMenuItems, composerMenuOpen]);
 
   useEffect(() => {
+    if (!autoOpenPlanSidebar) return;
+    if (!activePlan) return;
+    if (planTabOpen) return;
+    const latestTurnId = activeLatestTurn?.turnId ?? null;
+    if (latestTurnId && activePlan.turnId !== latestTurnId) return;
+    const turnKey = activePlan.turnId ?? sidebarProposedPlan?.turnId ?? "__dismissed__";
+    if (planSidebarDismissedForTurnRef.current === turnKey) return;
+    setWorkspaceActiveTab(threadId, WORKSPACE_PLAN_TAB_ID);
+  }, [
+    activePlan,
+    activeLatestTurn?.turnId,
+    autoOpenPlanSidebar,
+    planTabOpen,
+    setWorkspaceActiveTab,
+    sidebarProposedPlan?.turnId,
+    threadId,
+  ]);
+
+  useEffect(() => {
     setIsRevertingCheckpoint(false);
   }, [activeThread?.id]);
 
@@ -3379,6 +3402,7 @@ export default function ChatView(props: ChatViewProps) {
       const shortcutContext = {
         terminalFocus: isTerminalFocused(),
         terminalOpen: Boolean(terminalState.terminalOpen),
+        modelPickerOpen: composerRef.current?.isModelPickerOpen() ?? false,
       };
 
       const command = resolveShortcutCommand(event, keybindings, {
@@ -3425,6 +3449,13 @@ export default function ChatView(props: ChatViewProps) {
         event.preventDefault();
         event.stopPropagation();
         onToggleDiff();
+        return;
+      }
+
+      if (command === "modelPicker.toggle") {
+        event.preventDefault();
+        event.stopPropagation();
+        composerRef.current?.toggleModelPicker();
         return;
       }
 
@@ -3668,11 +3699,13 @@ export default function ChatView(props: ChatViewProps) {
           expiredTerminalContextCount,
           "empty",
         );
-        toastManager.add({
-          type: "warning",
-          title: toastCopy.title,
-          description: toastCopy.description,
-        });
+        toastManager.add(
+          stackedThreadToast({
+            type: "warning",
+            title: toastCopy.title,
+            description: toastCopy.description,
+          }),
+        );
       }
       return;
     }
@@ -3749,11 +3782,13 @@ export default function ChatView(props: ChatViewProps) {
         expiredTerminalContextCount,
         "omitted",
       );
-      toastManager.add({
-        type: "warning",
-        title: toastCopy.title,
-        description: toastCopy.description,
-      });
+      toastManager.add(
+        stackedThreadToast({
+          type: "warning",
+          title: toastCopy.title,
+          description: toastCopy.description,
+        }),
+      );
     }
     promptRef.current = "";
     clearComposerDraftContent(scopeThreadRef(activeThread.environmentId, threadIdForSend));
@@ -4156,7 +4191,7 @@ export default function ChatView(props: ChatViewProps) {
         // Optimistically open the plan sidebar when implementing (not refining).
         // "default" mode here means the agent is executing the plan, which produces
         // step-tracking activities that the sidebar will display.
-        if (nextInteractionMode === "default") {
+        if (nextInteractionMode === "default" && autoOpenPlanSidebar) {
           planSidebarDismissedForTurnRef.current = null;
           setWorkspaceActiveTab(threadIdForSend, WORKSPACE_PLAN_TAB_ID);
         }
@@ -4192,6 +4227,7 @@ export default function ChatView(props: ChatViewProps) {
       setWorkspaceActiveTab,
       setThreadError,
       selectedModel,
+      autoOpenPlanSidebar,
       environmentId,
     ],
   );
@@ -4272,8 +4308,8 @@ export default function ChatView(props: ChatViewProps) {
         return waitForStartedServerThread(scopeThreadRef(activeThread.environmentId, nextThreadId));
       })
       .then(() => {
-        // Signal that the plan sidebar should open on the new thread.
-        planSidebarOpenOnNextThreadRef.current = true;
+        // Signal that the plan sidebar should open on the new thread when enabled.
+        planSidebarOpenOnNextThreadRef.current = autoOpenPlanSidebar;
         return navigate({
           to: "/$environmentId/$threadId",
           params: {
@@ -4290,12 +4326,16 @@ export default function ChatView(props: ChatViewProps) {
             threadId: nextThreadId,
           })
           .catch(() => undefined);
-        toastManager.add({
-          type: "error",
-          title: "Could not start implementation thread",
-          description:
-            err instanceof Error ? err.message : "An error occurred while creating the new thread.",
-        });
+        toastManager.add(
+          stackedThreadToast({
+            type: "error",
+            title: "Could not start implementation thread",
+            description:
+              err instanceof Error
+                ? err.message
+                : "An error occurred while creating the new thread.",
+          }),
+        );
       })
       .then(finish, finish);
   }, [
@@ -4314,6 +4354,7 @@ export default function ChatView(props: ChatViewProps) {
     selectedProvider,
     selectedProviderModels,
     selectedModel,
+    autoOpenPlanSidebar,
     environmentId,
   ]);
 
