@@ -365,6 +365,7 @@ function resolveConfiguredHostEnvValue(value: string | undefined): string | unde
 
 export function resolveDesktopAdvertisedHostOverride(
   mode: DesktopServerExposureMode,
+  networkInterfaces?: NodeJS.Dict<OS.NetworkInterfaceInfo[]>,
 ): string | undefined {
   if (mode === "tailnet-accessible") {
     const configuredTailnetHost = resolveConfiguredHostEnvValue(
@@ -375,6 +376,7 @@ export function resolveDesktopAdvertisedHostOverride(
       resolveTailnetAdvertisedHost({
         ...(configuredTailnetHost ? { tailnetHost: configuredTailnetHost } : {}),
         ...(configuredTsCertDomain ? { tsCertDomain: configuredTsCertDomain } : {}),
+        ...(networkInterfaces ? { networkInterfaces } : {}),
       }) ?? undefined
     );
   }
@@ -441,11 +443,12 @@ async function applyDesktopServerExposureMode(
   options?: { readonly persist?: boolean; readonly rejectIfUnavailable?: boolean },
 ): Promise<DesktopServerExposureState> {
   const requestedMode = mode;
-  const advertisedHostOverride = resolveDesktopAdvertisedHostOverride(mode);
+  const networkInterfaces = OS.networkInterfaces();
+  const advertisedHostOverride = resolveDesktopAdvertisedHostOverride(mode, networkInterfaces);
   const exposure = resolveDesktopServerExposureForMainProcess({
     mode,
     port: backendPort,
-    networkInterfaces: OS.networkInterfaces(),
+    networkInterfaces,
     ...(advertisedHostOverride ? { advertisedHostOverride } : {}),
     ...(options?.rejectIfUnavailable !== undefined
       ? { rejectIfUnavailable: options.rejectIfUnavailable }

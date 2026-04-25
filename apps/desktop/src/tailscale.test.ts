@@ -43,6 +43,39 @@ describe("resolveTailnetAdvertisedHost", () => {
     });
   });
 
+  it("falls back to a Tailnet interface address when the tailscale CLI is unavailable", () => {
+    execFileSyncMock.mockImplementation(() => {
+      throw new Error("tailscale not installed");
+    });
+
+    expect(
+      resolveTailnetAdvertisedHost({
+        networkInterfaces: {
+          en0: [
+            {
+              address: "192.168.1.44",
+              family: "IPv4",
+              internal: false,
+              netmask: "255.255.255.0",
+              cidr: "192.168.1.44/24",
+              mac: "00:00:00:00:00:00",
+            },
+          ],
+          utun5: [
+            {
+              address: "100.76.132.28",
+              family: "IPv4",
+              internal: false,
+              netmask: "255.255.255.255",
+              cidr: "100.76.132.28/32",
+              mac: "00:00:00:00:00:00",
+            },
+          ],
+        },
+      }),
+    ).toBe("100.76.132.28");
+  });
+
   it("returns null when tailscale host detection fails", () => {
     execFileSyncMock.mockImplementation(() => {
       throw new Error("tailscale not installed");

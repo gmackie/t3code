@@ -54,6 +54,11 @@ export default function PairScreen() {
         <Pressable onPress={handlePair} style={styles.button}>
           <Text style={styles.buttonLabel}>{isPairing ? "Pairing..." : "Pair Environment"}</Text>
         </Pressable>
+        <Link asChild href="/scan-pairing">
+          <Pressable style={styles.secondaryButton}>
+            <Text style={styles.secondaryButtonLabel}>Scan QR Code</Text>
+          </Pressable>
+        </Link>
         <Link href="/settings" style={styles.link}>
           Back to paired environments
         </Link>
@@ -104,6 +109,18 @@ const styles = StyleSheet.create({
   },
   buttonLabel: {
     color: "#fffaf2",
+    fontSize: 16,
+    fontWeight: "700",
+  },
+  secondaryButton: {
+    alignItems: "center",
+    backgroundColor: "#fffaf2",
+    borderRadius: 16,
+    minHeight: 52,
+    justifyContent: "center",
+  },
+  secondaryButtonLabel: {
+    color: mobileTheme.colors.accent,
     fontSize: 16,
     fontWeight: "700",
   },
