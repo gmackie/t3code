@@ -1282,22 +1282,22 @@ export function ConnectionsSettings() {
                   </AlertDialog>
                 }
               >
-                {isDesktopServerExposureEnabled && desktopServerExposureState ? (
+                {desktopServerExposureState ? (
                   <div className="mt-4 flex flex-col gap-3 border-t border-border/60 py-4 sm:flex-row sm:items-center sm:justify-between">
                     <div className="space-y-1">
                       <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-foreground/50">
                         Remote mode
                       </p>
                       <p className="text-xs leading-relaxed text-muted-foreground/80">
-                        Tailnet is recommended. Switch to LAN if you need generic private-network
-                        reachability instead.
+                        Tailnet is recommended. Choose LAN only when you intentionally need generic
+                        private-network reachability instead.
                       </p>
                     </div>
                     <div className="flex flex-col gap-2 sm:flex-row">
                       <Button
                         size="xs"
                         variant={
-                          desktopServerExposureState.mode === "tailnet-accessible"
+                          desktopServerExposureState.mode !== "network-accessible"
                             ? "secondary"
                             : "outline"
                         }
