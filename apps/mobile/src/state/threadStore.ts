@@ -21,6 +21,10 @@ export interface MobileThreadSummary {
 
 export interface MobileThreadDetail extends MobileThreadSummary {
   readonly messages: ReadonlyArray<OrchestrationMessage>;
+  readonly pendingApproval: {
+    readonly requestId: string;
+    readonly summary: string | null;
+  } | null;
 }
 
 export interface MobileInboxItem {
@@ -87,6 +91,15 @@ export function threadStoreKey(environmentId: EnvironmentId, threadId: ThreadId)
   return `${environmentId}:${threadId}`;
 }
 
+function readStringField(value: unknown, key: string): string | null {
+  if (typeof value !== "object" || value === null || !(key in value)) {
+    return null;
+  }
+
+  const field = (value as Record<string, unknown>)[key];
+  return typeof field === "string" && field.trim() ? field : null;
+}
+
 export function reduceRuntimeSnapshot(
   state: Omit<ThreadStoreState, "applySnapshot" | "setEnvironmentConnectionState" | "reset">,
   input: {
@@ -115,9 +128,21 @@ export function reduceRuntimeSnapshot(
     };
 
     nextSummaryByKey[key] = summary;
+    const pendingApprovalActivity =
+      thread.activities.find((activity) => activity.tone === "approval") ?? null;
+    const pendingApprovalRequestId = pendingApprovalActivity
+      ? readStringField(pendingApprovalActivity.payload, "requestId")
+      : null;
     nextDetailByKey[key] = {
       ...summary,
       messages: thread.messages,
+      pendingApproval:
+        pendingApprovalActivity && pendingApprovalRequestId
+          ? {
+              requestId: pendingApprovalRequestId,
+              summary: pendingApprovalActivity.summary,
+            }
+          : null,
     };
   }
 
