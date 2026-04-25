@@ -77,6 +77,7 @@ import { selectThreadTerminalState, useTerminalStateStore } from "../terminalSta
 import { serializeThreadDragData, THREAD_DRAG_MIME_TYPE } from "../threadDrag";
 import { useUiStateStore } from "../uiStateStore";
 import { PROJECT_COLORS, type ProjectColor } from "../uiStateStore";
+import { PROJECT_COLOR_LABELS, PROJECT_COLOR_VALUES } from "../projectColors";
 import {
   resolveShortcutCommand,
   shortcutLabelForCommand,
@@ -216,25 +217,6 @@ const PROJECT_GROUPING_MODE_LABELS: Record<SidebarProjectGroupingMode, string> =
   repository_path: "Group by repository path",
   separate: "Keep separate",
 };
-const PROJECT_COLOR_LABELS: Record<ProjectColor, string> = {
-  red: "Red",
-  orange: "Orange",
-  yellow: "Yellow",
-  green: "Green",
-  blue: "Blue",
-  purple: "Purple",
-  pink: "Pink",
-};
-const PROJECT_COLOR_VALUES: Record<ProjectColor, string> = {
-  red: "#ef4444",
-  orange: "#f97316",
-  yellow: "#eab308",
-  green: "#22c55e",
-  blue: "#3b82f6",
-  purple: "#a855f7",
-  pink: "#ec4899",
-};
-
 function formatProjectMemberActionLabel(
   member: SidebarProjectGroupMember,
   groupedProjectCount: number,
@@ -2068,13 +2050,10 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
               }`}
             />
           )}
-          <ProjectFavicon environmentId={project.environmentId} cwd={project.cwd} />
-          <span
-            aria-hidden="true"
-            className="h-4 w-1 shrink-0 rounded-full"
-            style={{
-              backgroundColor: projectColor ? PROJECT_COLOR_VALUES[projectColor] : "transparent",
-            }}
+          <ProjectFavicon
+            environmentId={project.environmentId}
+            cwd={project.cwd}
+            projectColor={projectColor}
           />
           <span className="flex min-w-0 flex-1 items-center gap-2">
             <span className="truncate text-xs font-medium text-foreground/90">

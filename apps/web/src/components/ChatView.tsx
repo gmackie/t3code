@@ -1117,6 +1117,9 @@ export default function ChatView(props: ChatViewProps) {
   const activeProject = useStore(
     useMemo(() => createProjectSelectorByRef(activeProjectRef), [activeProjectRef]),
   );
+  const activeProjectColor = useUiStateStore((state) =>
+    activeProject ? (state.projectColorById[deriveLogicalProjectKey(activeProject)] ?? null) : null,
+  );
 
   // Compute the list of environments this logical project spans, used to
   // drive the environment picker in BranchToolbar.
@@ -4802,6 +4805,7 @@ export default function ChatView(props: ChatViewProps) {
           activeThreadId={activeThread.id}
           activeThreadTitle={activeThread.title}
           activeProjectName={activeProject?.name}
+          activeProjectColor={activeProjectColor}
           isGitRepo={isGitRepo}
           openInCwd={gitCwd}
           activeProjectScripts={activeProject?.scripts}
