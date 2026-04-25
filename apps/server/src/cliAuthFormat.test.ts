@@ -7,6 +7,7 @@ import {
   formatPairingCredentialList,
   formatSessionList,
 } from "./cliAuthFormat.ts";
+import { buildPairingUrl } from "./startupAccess.ts";
 
 it("formats issued pairing credentials with the secret and optional pair URL", () => {
   const output = formatIssuedPairingCredential(
@@ -23,6 +24,12 @@ it("formats issued pairing credentials with the secret and optional pair URL", (
 
   expect(output).toContain("secret-pairing-token");
   expect(output).toContain("https://example.com/pair#token=secret-pairing-token");
+});
+
+it("formats pairing URLs with the tailnet host when supplied", () => {
+  expect(buildPairingUrl("http://100.88.12.4:3773", "secret-pairing-token")).toBe(
+    "http://100.88.12.4:3773/pair#token=secret-pairing-token",
+  );
 });
 
 it("formats pairing listings without exposing the secret token", () => {

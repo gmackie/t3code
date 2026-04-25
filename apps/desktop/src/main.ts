@@ -93,6 +93,7 @@ import {
 import { isArm64HostRunningIntelBuild, resolveDesktopRuntimeInfo } from "./runtimeArch.ts";
 import { resolveDesktopAppBranding } from "./appBranding.ts";
 import { bindFirstRevealTrigger, type RevealSubscription } from "./windowReveal.ts";
+import { resolveTailnetAdvertisedHost } from "./tailscale.ts";
 
 syncShellEnvironment();
 
@@ -337,6 +338,7 @@ function backendChildEnv(): NodeJS.ProcessEnv {
   delete env.T3CODE_DESKTOP_WS_URL;
   delete env.T3CODE_DESKTOP_LAN_ACCESS;
   delete env.T3CODE_DESKTOP_LAN_HOST;
+  delete env.T3CODE_DESKTOP_TAILNET_HOST;
   return env;
 }
 
@@ -356,9 +358,32 @@ function getDesktopSecretStorage() {
   } as const;
 }
 
-function resolveAdvertisedHostOverride(): string | undefined {
-  const override = process.env.T3CODE_DESKTOP_LAN_HOST?.trim();
-  return override && override.length > 0 ? override : undefined;
+function resolveConfiguredHostEnvValue(value: string | undefined): string | undefined {
+  const normalized = value?.trim();
+  return normalized && normalized.length > 0 ? normalized : undefined;
+}
+
+export function resolveDesktopAdvertisedHostOverride(
+  mode: DesktopServerExposureMode,
+): string | undefined {
+  if (mode === "tailnet-accessible") {
+    const configuredTailnetHost = resolveConfiguredHostEnvValue(
+      process.env.T3CODE_DESKTOP_TAILNET_HOST,
+    );
+    const configuredTsCertDomain = resolveConfiguredHostEnvValue(process.env.TS_CERT_DOMAIN);
+    return (
+      resolveTailnetAdvertisedHost({
+        ...(configuredTailnetHost ? { tailnetHost: configuredTailnetHost } : {}),
+        ...(configuredTsCertDomain ? { tsCertDomain: configuredTsCertDomain } : {}),
+      }) ?? undefined
+    );
+  }
+
+  if (mode === "network-accessible") {
+    return resolveConfiguredHostEnvValue(process.env.T3CODE_DESKTOP_LAN_HOST);
+  }
+
+  return undefined;
 }
 
 export function resolveDesktopServerExposureForMainProcess(input: {
@@ -400,7 +425,7 @@ async function applyDesktopServerExposureMode(
   options?: { readonly persist?: boolean; readonly rejectIfUnavailable?: boolean },
 ): Promise<DesktopServerExposureState> {
   const requestedMode = mode;
-  const advertisedHostOverride = resolveAdvertisedHostOverride();
+  const advertisedHostOverride = resolveDesktopAdvertisedHostOverride(mode);
   const exposure = resolveDesktopServerExposureForMainProcess({
     mode,
     port: backendPort,

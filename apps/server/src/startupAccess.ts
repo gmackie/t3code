@@ -89,12 +89,17 @@ export const resolveListeningPort = (address: unknown, fallbackPort: number): nu
   return fallbackPort;
 };
 
-export const buildPairingUrl = (connectionString: string, token: string): string => {
-  const url = new URL(connectionString);
-  url.pathname = "/pair";
+const PAIRING_PATHNAME = "/pair";
+
+const setPairingUrlToken = (url: URL, token: string): URL => {
+  url.pathname = PAIRING_PATHNAME;
   url.searchParams.delete("token");
   url.hash = new URLSearchParams([["token", token]]).toString();
-  return url.toString();
+  return url;
+};
+
+export const buildPairingUrl = (connectionString: string, token: string): string => {
+  return setPairingUrlToken(new URL(connectionString), token).toString();
 };
 
 export const renderTerminalQrCode = (value: string, margin = 2): string => {
