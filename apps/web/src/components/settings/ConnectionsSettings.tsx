@@ -280,6 +280,55 @@ function describeDesktopServerExposureState(
   return "Limited to this machine. Enable Tailnet access for the recommended remote pairing path.";
 }
 
+function getDesktopServerExposureDialogTitle(
+  mode: DesktopServerExposureState["mode"] | null,
+): string {
+  switch (mode) {
+    case "local-only":
+      return "Disable remote access?";
+    case "network-accessible":
+      return "Switch remote access to LAN mode?";
+    case "tailnet-accessible":
+      return "Enable Tailnet access?";
+    default:
+      return "Update remote access?";
+  }
+}
+
+function getDesktopServerExposureDialogDescription(
+  mode: DesktopServerExposureState["mode"] | null,
+): string {
+  switch (mode) {
+    case "local-only":
+      return "T3 Code will restart and limit this environment back to this machine.";
+    case "network-accessible":
+      return "T3 Code will restart to keep remote access available on your local network instead of your Tailnet.";
+    case "tailnet-accessible":
+      return "T3 Code will restart to expose this environment on your Tailnet.";
+    default:
+      return "T3 Code will restart to update how this environment is exposed.";
+  }
+}
+
+function getDesktopServerExposureActionLabel(
+  mode: DesktopServerExposureState["mode"] | null,
+  isUpdatingDesktopServerExposure: boolean,
+): string {
+  if (isUpdatingDesktopServerExposure) {
+    return "Restarting…";
+  }
+
+  if (mode === "local-only") {
+    return "Restart and disable";
+  }
+
+  if (mode === "network-accessible") {
+    return "Restart and switch";
+  }
+
+  return "Restart and enable";
+}
+
 type PairingLinkListRowProps = {
   pairingLink: ServerPairingLinkRecord;
   endpointUrl: string | null | undefined;
@@ -845,14 +894,12 @@ export function ConnectionsSettings() {
     : currentAuthPolicy === "remote-reachable";
 
   const handleDesktopServerExposureChange = useCallback(
-    async (checked: boolean) => {
+    async (mode: DesktopServerExposureState["mode"]) => {
       if (!desktopBridge) return;
       setIsUpdatingDesktopServerExposure(true);
       setDesktopServerExposureError(null);
       try {
-        const nextState = await desktopBridge.setServerExposureMode(
-          checked ? "tailnet-accessible" : "local-only",
-        );
+        const nextState = await desktopBridge.setServerExposureMode(mode);
         setDesktopServerExposureState(nextState);
         setPendingDesktopServerExposureMode(null);
         setIsUpdatingDesktopServerExposure(false);
@@ -875,8 +922,7 @@ export function ConnectionsSettings() {
 
   const handleConfirmDesktopServerExposureChange = useCallback(() => {
     if (pendingDesktopServerExposureMode === null) return;
-    const checked = pendingDesktopServerExposureMode !== "local-only";
-    void handleDesktopServerExposureChange(checked);
+    void handleDesktopServerExposureChange(pendingDesktopServerExposureMode);
   }, [handleDesktopServerExposureChange, pendingDesktopServerExposureMode]);
 
   const handleRevokeDesktopPairingLink = useCallback(async (id: string) => {
@@ -1192,14 +1238,12 @@ export function ConnectionsSettings() {
                     <AlertDialogPopup>
                       <AlertDialogHeader>
                         <AlertDialogTitle>
-                          {pendingDesktopServerExposureMode === "local-only"
-                            ? "Disable remote access?"
-                            : "Enable Tailnet access?"}
+                          {getDesktopServerExposureDialogTitle(pendingDesktopServerExposureMode)}
                         </AlertDialogTitle>
                         <AlertDialogDescription>
-                          {pendingDesktopServerExposureMode === "local-only"
-                            ? "T3 Code will restart and limit this environment back to this machine."
-                            : "T3 Code will restart to expose this environment on your Tailnet."}
+                          {getDesktopServerExposureDialogDescription(
+                            pendingDesktopServerExposureMode,
+                          )}
                         </AlertDialogDescription>
                       </AlertDialogHeader>
                       <AlertDialogFooter>
@@ -1221,19 +1265,73 @@ export function ConnectionsSettings() {
                           {isUpdatingDesktopServerExposure ? (
                             <>
                               <Spinner className="size-3.5" />
-                              Restarting…
+                              {getDesktopServerExposureActionLabel(
+                                pendingDesktopServerExposureMode,
+                                isUpdatingDesktopServerExposure,
+                              )}
                             </>
-                          ) : pendingDesktopServerExposureMode !== "local-only" ? (
-                            "Restart and enable"
                           ) : (
-                            "Restart and disable"
+                            getDesktopServerExposureActionLabel(
+                              pendingDesktopServerExposureMode,
+                              isUpdatingDesktopServerExposure,
+                            )
                           )}
                         </Button>
                       </AlertDialogFooter>
                     </AlertDialogPopup>
                   </AlertDialog>
                 }
-              />
+              >
+                {isDesktopServerExposureEnabled && desktopServerExposureState ? (
+                  <div className="mt-4 flex flex-col gap-3 border-t border-border/60 py-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="space-y-1">
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-foreground/50">
+                        Remote mode
+                      </p>
+                      <p className="text-xs leading-relaxed text-muted-foreground/80">
+                        Tailnet is recommended. Switch to LAN if you need generic private-network
+                        reachability instead.
+                      </p>
+                    </div>
+                    <div className="flex flex-col gap-2 sm:flex-row">
+                      <Button
+                        size="xs"
+                        variant={
+                          desktopServerExposureState.mode === "tailnet-accessible"
+                            ? "secondary"
+                            : "outline"
+                        }
+                        disabled={
+                          isUpdatingDesktopServerExposure ||
+                          desktopServerExposureState.mode === "tailnet-accessible"
+                        }
+                        onClick={() => {
+                          setPendingDesktopServerExposureMode("tailnet-accessible");
+                        }}
+                      >
+                        Use Tailnet
+                      </Button>
+                      <Button
+                        size="xs"
+                        variant={
+                          desktopServerExposureState.mode === "network-accessible"
+                            ? "secondary"
+                            : "outline"
+                        }
+                        disabled={
+                          isUpdatingDesktopServerExposure ||
+                          desktopServerExposureState.mode === "network-accessible"
+                        }
+                        onClick={() => {
+                          setPendingDesktopServerExposureMode("network-accessible");
+                        }}
+                      >
+                        Use LAN instead
+                      </Button>
+                    </div>
+                  </div>
+                ) : null}
+              </SettingsRow>
             ) : (
               <SettingsRow
                 title="Remote access"

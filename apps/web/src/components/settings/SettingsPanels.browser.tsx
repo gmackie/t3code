@@ -662,7 +662,7 @@ describe("GeneralSettingsPanel observability", () => {
     expect(fetchMock).toHaveBeenCalled();
   });
 
-  it("shows a disabled remote access toggle with guidance in desktop builds", async () => {
+  it("defaults desktop remote access to Tailnet and keeps a LAN fallback action available", async () => {
     const desktopBridge = createDesktopBridgeStub();
     window.desktopBridge = desktopBridge;
 
@@ -691,6 +691,50 @@ describe("GeneralSettingsPanel observability", () => {
           "Recommended for mobile. Reachable on your Tailnet at http://mackbook.tailnet.ts.net:3773",
         ),
       )
+      .toBeInTheDocument();
+    await expect.element(page.getByRole("button", { name: "Use LAN instead" })).toBeInTheDocument();
+  });
+
+  it("lets desktop users switch the remote access mode from Tailnet to LAN", async () => {
+    const desktopBridge = createDesktopBridgeStub({
+      serverExposureState: {
+        mode: "tailnet-accessible",
+        endpointUrl: "http://mackbook.tailnet.ts.net:3773",
+        advertisedHost: "mackbook.tailnet.ts.net",
+      },
+    });
+    window.desktopBridge = desktopBridge;
+
+    setServerConfigSnapshot(createBaseServerConfig());
+
+    mounted = await render(
+      <AppAtomRegistryProvider>
+        <ConnectionsSettings />
+      </AppAtomRegistryProvider>,
+    );
+
+    await expect
+      .element(
+        page.getByText(
+          "Recommended for mobile. Reachable on your Tailnet at http://mackbook.tailnet.ts.net:3773",
+        ),
+      )
+      .toBeInTheDocument();
+    await page.getByRole("button", { name: "Use LAN instead" }).click();
+    await expect.element(page.getByText("Switch remote access to LAN mode?")).toBeInTheDocument();
+    await expect
+      .element(
+        page.getByText(
+          "T3 Code will restart to keep remote access available on your local network instead of your Tailnet.",
+        ),
+      )
+      .toBeInTheDocument();
+    await page.getByRole("button", { name: "Restart and switch", exact: true }).click();
+    await vi.waitFor(() => {
+      expect(desktopBridge.setServerExposureMode).toHaveBeenCalledWith("network-accessible");
+    });
+    await expect
+      .element(page.getByText("LAN mode. Reachable at http://192.168.1.44:3773"))
       .toBeInTheDocument();
   });
 
