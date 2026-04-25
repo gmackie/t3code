@@ -862,6 +862,9 @@ export default function ChatView(props: ChatViewProps) {
   const activeProject = useStore(
     useMemo(() => createProjectSelectorByRef(activeProjectRef), [activeProjectRef]),
   );
+  const activeProjectColor = useUiStateStore((state) =>
+    activeProject ? (state.projectColorById[deriveLogicalProjectKey(activeProject)] ?? null) : null,
+  );
 
   useEffect(() => {
     if (routeKind !== "server") {
@@ -3359,6 +3362,7 @@ export default function ChatView(props: ChatViewProps) {
           {...(routeKind === "draft" && draftId ? { draftId } : {})}
           activeThreadTitle={activeThread.title}
           activeProjectName={activeProject?.name}
+          activeProjectColor={activeProjectColor}
           isGitRepo={isGitRepo}
           openInCwd={gitCwd}
           activeProjectScripts={activeProject?.scripts}
