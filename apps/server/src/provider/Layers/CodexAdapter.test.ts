@@ -26,6 +26,7 @@ import { ServerSettingsService } from "../../serverSettings.ts";
 import { ProviderAdapterValidationError } from "../Errors.ts";
 import { CodexAdapter } from "../Services/CodexAdapter.ts";
 import { ProviderSessionDirectory } from "../Services/ProviderSessionDirectory.ts";
+import { CODEX_IN_APP_BROWSER_DYNAMIC_TOOLS } from "../../codexInAppBrowserTools.ts";
 import {
   type CodexSessionRuntimeOptions,
   type CodexSessionRuntimeSendTurnInput,
@@ -249,14 +250,25 @@ validationLayer("CodexAdapterLive validation", (it) => {
         runtimeMode: "full-access",
       });
 
-      assert.deepStrictEqual(validationRuntimeFactory.factory.mock.calls[0]?.[0], {
-        binaryPath: "codex",
-        cwd: process.cwd(),
-        model: "gpt-5.3-codex",
-        serviceTier: "fast",
-        threadId: asThreadId("thread-1"),
-        runtimeMode: "full-access",
-      });
+      const runtimeOptions = validationRuntimeFactory.factory.mock.calls[0]?.[0];
+      assert.deepStrictEqual(
+        {
+          binaryPath: runtimeOptions?.binaryPath,
+          cwd: runtimeOptions?.cwd,
+          model: runtimeOptions?.model,
+          serviceTier: runtimeOptions?.serviceTier,
+          threadId: runtimeOptions?.threadId,
+          runtimeMode: runtimeOptions?.runtimeMode,
+        },
+        {
+          binaryPath: "codex",
+          cwd: process.cwd(),
+          model: "gpt-5.3-codex",
+          serviceTier: "fast",
+          threadId: asThreadId("thread-1"),
+          runtimeMode: "full-access",
+        },
+      );
     }),
   );
 });
@@ -1020,5 +1032,29 @@ it.effect("flushes managed native logs when the adapter layer shuts down", () =>
       }
       fs.rmSync(tempDir, { recursive: true, force: true });
     }
+  }),
+);
+
+it.effect("passes in-app browser dynamic tools to Codex runtime sessions", () =>
+  Effect.gen(function* () {
+    const runtimeFactory = makeRuntimeFactory();
+    const layer = makeCodexAdapterLive({ makeRuntime: runtimeFactory.factory }).pipe(
+      Layer.provideMerge(ServerConfig.layerTest(process.cwd(), process.cwd())),
+      Layer.provideMerge(ServerSettingsService.layerTest()),
+      Layer.provideMerge(providerSessionDirectoryTestLayer),
+      Layer.provideMerge(NodeServices.layer),
+    );
+    const adapter = yield* Effect.service(CodexAdapter).pipe(Effect.provide(layer));
+
+    yield* adapter.startSession({
+      provider: "codex",
+      threadId: asThreadId("thread-browser-tools"),
+      runtimeMode: "full-access",
+    });
+
+    assert.deepStrictEqual(
+      runtimeFactory.lastRuntime?.options.dynamicTools,
+      CODEX_IN_APP_BROWSER_DYNAMIC_TOOLS,
+    );
   }),
 );

@@ -195,6 +195,66 @@ describe("isRecoverableThreadResumeError", () => {
 });
 
 describe("openCodexThread", () => {
+  it("advertises dynamic tools when opening a thread", async () => {
+    const calls: Array<{ method: "thread/start" | "thread/resume"; payload: unknown }> = [];
+    const client = {
+      request: <M extends "thread/start" | "thread/resume">(
+        method: M,
+        payload: CodexRpc.ClientRequestParamsByMethod[M],
+      ) => {
+        calls.push({ method, payload });
+        return Effect.succeed(
+          makeThreadOpenResponse("fresh-thread") as CodexRpc.ClientRequestResponsesByMethod[M],
+        );
+      },
+    };
+
+    await Effect.runPromise(
+      openCodexThread({
+        client,
+        threadId: ThreadId.make("thread-1"),
+        runtimeMode: "full-access",
+        cwd: "/tmp/project",
+        requestedModel: "gpt-5.3-codex",
+        serviceTier: undefined,
+        resumeThreadId: undefined,
+        dynamicTools: [
+          {
+            name: "browser.navigate",
+            description: "Navigate the in-app browser.",
+            inputSchema: {
+              type: "object",
+              properties: {
+                url: { type: "string" },
+              },
+              required: ["url"],
+            },
+          },
+        ],
+      }),
+    );
+
+    assert.deepStrictEqual(calls[0]?.payload, {
+      cwd: "/tmp/project",
+      approvalPolicy: "never",
+      sandbox: "danger-full-access",
+      model: "gpt-5.3-codex",
+      dynamicTools: [
+        {
+          name: "browser.navigate",
+          description: "Navigate the in-app browser.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              url: { type: "string" },
+            },
+            required: ["url"],
+          },
+        },
+      ],
+    });
+  });
+
   it("falls back to thread/start when resume fails recoverably", async () => {
     const calls: Array<{ method: "thread/start" | "thread/resume"; payload: unknown }> = [];
     const started = makeThreadOpenResponse("fresh-thread");

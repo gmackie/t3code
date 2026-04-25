@@ -104,6 +104,18 @@ export function reconcileMountedTerminalThreadIds(input: {
   return nextThreadIds;
 }
 
+export function resolvePlanSidebarDismissedTurnKeyOnWorkspaceTabSelect(input: {
+  selectedTabId: string | null;
+  planTabOpen: boolean;
+  activePlanTurnId: TurnId | null | undefined;
+  sidebarProposedPlanTurnId: TurnId | null | undefined;
+}): TurnId | null {
+  if (input.selectedTabId !== null || !input.planTabOpen) {
+    return null;
+  }
+  return input.activePlanTurnId ?? input.sidebarProposedPlanTurnId ?? null;
+}
+
 export function revokeBlobPreviewUrl(previewUrl: string | undefined): void {
   if (!previewUrl || typeof URL === "undefined" || !previewUrl.startsWith("blob:")) {
     return;

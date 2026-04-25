@@ -41,6 +41,10 @@ import {
 } from "../Errors.ts";
 import { CodexAdapter, type CodexAdapterShape } from "../Services/CodexAdapter.ts";
 import { resolveAttachmentPath } from "../../attachmentStore.ts";
+import {
+  CODEX_IN_APP_BROWSER_DYNAMIC_TOOLS,
+  createCodexInAppBrowserDynamicToolHandler,
+} from "../../codexInAppBrowserTools.ts";
 import { ServerConfig } from "../../config.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
 import {
@@ -1381,6 +1385,8 @@ const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
           getModelSelectionBooleanOptionValue(input.modelSelection, "fastMode") === true
             ? { serviceTier: "fast" }
             : {}),
+          dynamicTools: CODEX_IN_APP_BROWSER_DYNAMIC_TOOLS,
+          dynamicToolCallHandler: createCodexInAppBrowserDynamicToolHandler(null),
         };
         const sessionScope = yield* Scope.make("sequential");
         let sessionScopeTransferred = false;

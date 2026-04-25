@@ -173,6 +173,7 @@ import {
 } from "../environments/runtime";
 import { retainThreadDetailSubscription } from "../environments/runtime/service";
 import { buildDraftThreadRouteParams } from "../threadRoutes";
+import { mergeTerminalRuntimeEnv } from "../terminalSettings";
 import {
   type ComposerImageAttachment,
   type DraftThreadEnvMode,
@@ -237,6 +238,7 @@ import {
   PullRequestDialogState,
   readFileAsDataUrl,
   reconcileMountedTerminalThreadIds,
+  resolvePlanSidebarDismissedTurnKeyOnWorkspaceTabSelect,
   revokeBlobPreviewUrl,
   revokeUserMessagePreviewUrls,
   shouldWriteThreadErrorToCurrentServerThread,
@@ -614,15 +616,19 @@ function PersistentThreadTerminalDrawer({
         : null),
     [effectiveWorktreePath, launchContext?.cwd, project],
   );
+  const terminalSettings = useSettings((settings) => settings.terminal);
   const runtimeEnv = useMemo(
     () =>
       project
-        ? projectScriptRuntimeEnv({
-            project: { cwd: project.cwd },
-            worktreePath: effectiveWorktreePath,
-          })
+        ? mergeTerminalRuntimeEnv(
+            projectScriptRuntimeEnv({
+              project: { cwd: project.cwd },
+              worktreePath: effectiveWorktreePath,
+            }),
+            terminalSettings,
+          )
         : {},
-    [effectiveWorktreePath, project],
+    [effectiveWorktreePath, project, terminalSettings],
   );
 
   const bumpFocusRequestId = useCallback(() => {
@@ -2275,13 +2281,16 @@ export default function ChatView(props: ChatViewProps) {
       }
       setTerminalFocusRequestId((value) => value + 1);
 
-      const runtimeEnv = projectScriptRuntimeEnv({
-        project: {
-          cwd: activeProject.cwd,
-        },
-        worktreePath: targetWorktreePath,
-        ...(options?.env ? { extraEnv: options.env } : {}),
-      });
+      const runtimeEnv = mergeTerminalRuntimeEnv(
+        projectScriptRuntimeEnv({
+          project: {
+            cwd: activeProject.cwd,
+          },
+          worktreePath: targetWorktreePath,
+          ...(options?.env ? { extraEnv: options.env } : {}),
+        }),
+        settings.terminal,
+      );
       const openTerminalInput: TerminalOpenInput = shouldCreateNewTerminal
         ? {
             threadId: activeThreadId,
@@ -2325,6 +2334,7 @@ export default function ChatView(props: ChatViewProps) {
       storeNewTerminal,
       storeSetActiveTerminal,
       setLastInvokedScriptByProjectId,
+      settings.terminal,
       environmentId,
       terminalState.activeTerminalId,
       terminalState.runningTerminalIds,
@@ -2507,24 +2517,21 @@ export default function ChatView(props: ChatViewProps) {
   const toggleInteractionMode = useCallback(() => {
     handleInteractionModeChange(interactionMode === "plan" ? "default" : "plan");
   }, [handleInteractionModeChange, interactionMode]);
+  const dismissPlanSidebarForCurrentTurn = useCallback(() => {
+    const turnKey = activePlan?.turnId ?? sidebarProposedPlan?.turnId ?? null;
+    if (turnKey) {
+      planSidebarDismissedForTurnRef.current = turnKey;
+    }
+  }, [activePlan?.turnId, sidebarProposedPlan?.turnId]);
   const togglePlanSidebar = useCallback(() => {
     if (planTabOpen) {
-      const turnKey = activePlan?.turnId ?? sidebarProposedPlan?.turnId ?? null;
-      if (turnKey) {
-        planSidebarDismissedForTurnRef.current = turnKey;
-      }
+      dismissPlanSidebarForCurrentTurn();
       setWorkspaceActiveTab(threadId, null);
       return;
     }
     planSidebarDismissedForTurnRef.current = null;
     setWorkspaceActiveTab(threadId, WORKSPACE_PLAN_TAB_ID);
-  }, [
-    activePlan?.turnId,
-    planTabOpen,
-    setWorkspaceActiveTab,
-    sidebarProposedPlan?.turnId,
-    threadId,
-  ]);
+  }, [dismissPlanSidebarForCurrentTurn, planTabOpen, setWorkspaceActiveTab, threadId]);
   const handleBrowserInputChange = useCallback(
     (value: string) => {
       updateBrowserState(threadId, (draft) => ({
@@ -2563,6 +2570,35 @@ export default function ChatView(props: ChatViewProps) {
       });
     },
     [threadId, updateBrowserState],
+  );
+
+  const handleSelectWorkspaceTab = useCallback(
+    (tabId: string | null) => {
+      const dismissedTurnKey = resolvePlanSidebarDismissedTurnKeyOnWorkspaceTabSelect({
+        selectedTabId: tabId,
+        planTabOpen,
+        activePlanTurnId: activePlan?.turnId,
+        sidebarProposedPlanTurnId: sidebarProposedPlan?.turnId,
+      });
+      if (dismissedTurnKey) {
+        planSidebarDismissedForTurnRef.current = dismissedTurnKey;
+      }
+      if (tabId && browserState.tabs.some((tab) => tab.id === tabId)) {
+        handleActivateBrowserTab(tabId);
+        setWorkspaceActiveTab(threadId, WORKSPACE_PREVIEW_TAB_ID);
+        return;
+      }
+      setWorkspaceActiveTab(threadId, tabId);
+    },
+    [
+      activePlan?.turnId,
+      browserState.tabs,
+      handleActivateBrowserTab,
+      planTabOpen,
+      setWorkspaceActiveTab,
+      sidebarProposedPlan?.turnId,
+      threadId,
+    ],
   );
 
   const handleCloseBrowserTab = useCallback(
@@ -4818,14 +4854,7 @@ export default function ChatView(props: ChatViewProps) {
             theme={resolvedTheme}
             wordWrap={workspaceFileWordWrap}
             activeFileOpen={activeWorkspaceFile !== null}
-            onSelectTab={(tabId) => {
-              if (tabId && browserState.tabs.some((tab) => tab.id === tabId)) {
-                handleActivateBrowserTab(tabId);
-                setWorkspaceActiveTab(activeThread.id, WORKSPACE_PREVIEW_TAB_ID);
-                return;
-              }
-              setWorkspaceActiveTab(activeThread.id, tabId);
-            }}
+            onSelectTab={handleSelectWorkspaceTab}
             onCloseTab={(tabId) => {
               if (browserState.tabs.some((tab) => tab.id === tabId)) {
                 handleCloseBrowserTab(tabId);
@@ -4928,11 +4957,8 @@ export default function ChatView(props: ChatViewProps) {
               timestampFormat={timestampFormat}
               layout="tab"
               onClose={() => {
+                dismissPlanSidebarForCurrentTurn();
                 setWorkspaceActiveTab(threadId, null);
-                const turnKey = activePlan?.turnId ?? sidebarProposedPlan?.turnId ?? null;
-                if (turnKey) {
-                  planSidebarDismissedForTurnRef.current = turnKey;
-                }
               }}
             />
           ) : activeWorkspaceFile ? (

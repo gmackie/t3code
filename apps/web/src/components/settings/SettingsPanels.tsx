@@ -6,6 +6,7 @@ import {
   LoaderIcon,
   PlusIcon,
   RefreshCwIcon,
+  TerminalIcon,
   XIcon,
 } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -61,6 +62,7 @@ import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "..
 import { Input } from "../ui/input";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { Switch } from "../ui/switch";
+import { Textarea } from "../ui/textarea";
 import { stackedThreadToast, toastManager } from "../ui/toast";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import {
@@ -491,6 +493,9 @@ export function useSettingsRestore(onRestored?: () => void) {
       ...(settings.addProjectBaseDirectory !== DEFAULT_UNIFIED_SETTINGS.addProjectBaseDirectory
         ? ["Add project base directory"]
         : []),
+      ...(!Equal.equals(settings.terminal, DEFAULT_UNIFIED_SETTINGS.terminal)
+        ? ["Terminal"]
+        : []),
       ...(settings.confirmThreadArchive !== DEFAULT_UNIFIED_SETTINGS.confirmThreadArchive
         ? ["Archive confirmation"]
         : []),
@@ -511,6 +516,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       settings.diffWordWrap,
       settings.enableAssistantStreaming,
       settings.timestampFormat,
+      settings.terminal,
       theme,
     ],
   );
@@ -534,6 +540,108 @@ export function useSettingsRestore(onRestored?: () => void) {
     changedSettingLabels,
     restoreDefaults,
   };
+}
+
+export function TerminalSettingsPanel() {
+  const settings = useSettings();
+  const { updateSettings } = useUpdateSettings();
+  const terminalSettings = settings.terminal;
+
+  return (
+    <SettingsPageContainer>
+      <SettingsSection title="Terminal">
+        <SettingsRow
+          title="Environment variables"
+          description="One KEY=value per line. These are merged into every terminal before project/worktree variables are added."
+          resetAction={
+            terminalSettings.environmentVariablesText !==
+            DEFAULT_UNIFIED_SETTINGS.terminal.environmentVariablesText ? (
+              <SettingResetButton
+                label="terminal environment variables"
+                onClick={() =>
+                  updateSettings({
+                    terminal: {
+                      ...terminalSettings,
+                      environmentVariablesText:
+                        DEFAULT_UNIFIED_SETTINGS.terminal.environmentVariablesText,
+                    },
+                  })
+                }
+              />
+            ) : null
+          }
+          control={
+            <Textarea
+              className="min-h-28 w-full font-mono text-xs sm:w-96"
+              value={terminalSettings.environmentVariablesText}
+              onChange={(event) =>
+                updateSettings({
+                  terminal: {
+                    ...terminalSettings,
+                    environmentVariablesText: event.target.value,
+                  },
+                })
+              }
+              placeholder={"T3_SANDBOX=1\nFEATURE_FLAG=true"}
+              spellCheck={false}
+              aria-label="Terminal environment variables"
+            />
+          }
+        />
+
+        <SettingsRow
+          title="Zsh startup directory"
+          description='Sets ZDOTDIR for integrated terminals. Point this at a directory containing a separate ".zshrc".'
+          resetAction={
+            terminalSettings.zshStartupDirectory !==
+            DEFAULT_UNIFIED_SETTINGS.terminal.zshStartupDirectory ? (
+              <SettingResetButton
+                label="zsh startup directory"
+                onClick={() =>
+                  updateSettings({
+                    terminal: {
+                      ...terminalSettings,
+                      zshStartupDirectory: DEFAULT_UNIFIED_SETTINGS.terminal.zshStartupDirectory,
+                    },
+                  })
+                }
+              />
+            ) : null
+          }
+          control={
+            <Input
+              className="w-full sm:w-96"
+              value={terminalSettings.zshStartupDirectory}
+              onChange={(event) =>
+                updateSettings({
+                  terminal: {
+                    ...terminalSettings,
+                    zshStartupDirectory: event.target.value,
+                  },
+                })
+              }
+              placeholder="~/.config/t3code/zsh"
+              spellCheck={false}
+              aria-label="Zsh startup directory"
+            />
+          }
+        />
+      </SettingsSection>
+
+      <SettingsSection title="How it works">
+        <SettingsRow
+          title={
+            <span className="inline-flex items-center gap-2">
+              <TerminalIcon className="size-4 text-muted-foreground" />
+              Terminal startup
+            </span>
+          }
+          description="T3 Code passes these values through the existing terminal env override path, so regular terminals, script terminals, and worktree terminals share the same base environment."
+          control={null}
+        />
+      </SettingsSection>
+    </SettingsPageContainer>
+  );
 }
 
 export function GeneralSettingsPanel() {
