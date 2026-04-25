@@ -36,7 +36,7 @@ export default function SettingsScreen() {
         {environments.length === 0 ? (
           <View style={styles.emptyState}>
             <Text style={styles.emptyTitle}>No paired environments yet.</Text>
-            <Text style={styles.emptyCopy}>Add one from a pairing URL on your Tailnet.</Text>
+            <Text style={styles.emptyCopy}>Scan a pairing QR code from your Mac.</Text>
           </View>
         ) : (
           environments.map((environment) => (
@@ -49,9 +49,14 @@ export default function SettingsScreen() {
           ))
         )}
       </View>
-      <Link asChild href="/pair">
+      <Link asChild href="/scan-pairing">
         <Pressable style={styles.button}>
-          <Text style={styles.buttonLabel}>Add Pairing URL</Text>
+          <Text style={styles.buttonLabel}>Scan Pairing QR</Text>
+        </Pressable>
+      </Link>
+      <Link asChild href="/pair">
+        <Pressable style={styles.secondaryButton}>
+          <Text style={styles.secondaryButtonLabel}>Enter URL Manually</Text>
         </Pressable>
       </Link>
     </SafeAreaView>
@@ -130,6 +135,18 @@ const styles = StyleSheet.create({
   },
   buttonLabel: {
     color: "#fffaf2",
+    fontSize: 16,
+    fontWeight: "700",
+  },
+  secondaryButton: {
+    alignItems: "center",
+    backgroundColor: mobileTheme.colors.surface,
+    borderRadius: 16,
+    justifyContent: "center",
+    minHeight: 54,
+  },
+  secondaryButtonLabel: {
+    color: mobileTheme.colors.accent,
     fontSize: 16,
     fontWeight: "700",
   },

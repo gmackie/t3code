@@ -102,17 +102,31 @@ describe("resolveDesktopServerExposureForMainProcess", () => {
     const mainModule = (await import("./main.ts")) as {
       resolveDesktopAdvertisedHostOverride: (
         mode: "tailnet-accessible" | "network-accessible" | "local-only",
+        networkInterfaces?: NodeJS.Dict<import("node:os").NetworkInterfaceInfo[]>,
       ) => string | undefined;
     };
 
-    expect(mainModule.resolveDesktopAdvertisedHostOverride("tailnet-accessible")).toBe(
-      "mackbook.tailnet.ts.net",
-    );
+    const networkInterfaces: NodeJS.Dict<import("node:os").NetworkInterfaceInfo[]> = {
+      utun5: [
+        {
+          address: "100.76.132.28",
+          family: "IPv4",
+          internal: false,
+          netmask: "255.255.255.255",
+          cidr: "100.76.132.28/32",
+          mac: "00:00:00:00:00:00",
+        },
+      ],
+    };
+
+    expect(
+      mainModule.resolveDesktopAdvertisedHostOverride("tailnet-accessible", networkInterfaces),
+    ).toBe("mackbook.tailnet.ts.net");
     expect(mainModule.resolveDesktopAdvertisedHostOverride("network-accessible")).toBe(
       "192.168.1.44",
     );
     expect(mainModule.resolveDesktopAdvertisedHostOverride("local-only")).toBeUndefined();
-    expect(resolveTailnetAdvertisedHost).toHaveBeenCalledTimes(1);
+    expect(resolveTailnetAdvertisedHost).toHaveBeenCalledWith({ networkInterfaces });
   }, 15_000);
 
   it("falls back or rejects tailnet-accessible when no advertised host is available", async () => {
