@@ -2,13 +2,19 @@ import { ScrollView, StyleSheet, Text, View } from "react-native";
 
 import type { MobileThreadDetail } from "../state/threadStore";
 import { mobileTheme } from "../theme";
+import { ChangedFilesList } from "./ChangedFilesList";
+import { FilePreview } from "./FilePreview";
 
 export function ThreadTranscript({
   thread,
   connectionState,
+  selectedFilePath,
+  onSelectFile,
 }: {
   readonly thread: MobileThreadDetail | null;
   readonly connectionState: "idle" | "syncing" | "ready" | "error";
+  readonly selectedFilePath?: string | null;
+  readonly onSelectFile?: (path: string) => void;
 }) {
   if (!thread) {
     return (
@@ -25,10 +31,20 @@ export function ThreadTranscript({
         <Text style={styles.title}>{thread.title}</Text>
         <Text style={styles.badge}>{connectionState}</Text>
       </View>
-      <View style={styles.stub}>
-        <Text style={styles.stubTitle}>Changed files</Text>
-        <Text style={styles.stubCopy}>Diff summaries land here in Task 8.</Text>
-      </View>
+      <ChangedFilesList
+        files={thread.changedFiles}
+        onSelect={onSelectFile ?? (() => undefined)}
+        selectedPath={selectedFilePath ?? null}
+      />
+      {selectedFilePath ? (
+        <FilePreview
+          contents={
+            thread.changedFiles.find((file) => file.path === selectedFilePath)?.summary ??
+            "Preview unavailable from the current snapshot."
+          }
+          path={selectedFilePath}
+        />
+      ) : null}
       {thread.messages.map((message) => (
         <View
           key={message.id}
@@ -63,21 +79,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "700",
     textTransform: "capitalize",
-  },
-  stub: {
-    backgroundColor: mobileTheme.colors.surface,
-    borderRadius: 18,
-    gap: mobileTheme.spacing.xs,
-    padding: mobileTheme.spacing.md,
-  },
-  stubTitle: {
-    color: mobileTheme.colors.text,
-    fontSize: 16,
-    fontWeight: "700",
-  },
-  stubCopy: {
-    color: mobileTheme.colors.textMuted,
-    fontSize: 13,
   },
   message: {
     borderRadius: 18,
