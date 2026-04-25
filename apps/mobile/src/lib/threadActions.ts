@@ -1,6 +1,7 @@
 import type {
   ApprovalRequestId,
   ClientOrchestrationCommand,
+  GitRunStackedActionResult,
   ProviderApprovalDecision,
   ProviderUserInputAnswers,
   ThreadId,
@@ -16,8 +17,20 @@ function buildDispatchUrl(httpBaseUrl: string): string {
   return url.toString();
 }
 
+function buildGitActionUrl(httpBaseUrl: string): string {
+  const url = new URL(httpBaseUrl);
+  url.pathname = "/api/git/run-stacked-action";
+  url.search = "";
+  url.hash = "";
+  return url.toString();
+}
+
 function createCommandId(): ClientOrchestrationCommand["commandId"] {
   return `mobile-command-${Date.now()}-${Math.random().toString(16).slice(2)}` as never;
+}
+
+function createGitActionId(): string {
+  return `mobile-git-action-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
 function createMessageId(): string {
@@ -164,4 +177,31 @@ export function stopThreadSession(input: {
       createdAt: new Date().toISOString(),
     },
   });
+}
+
+export async function createThreadPullRequest(input: {
+  readonly httpBaseUrl: string;
+  readonly sessionToken: string;
+  readonly cwd: string;
+  readonly fetch?: typeof globalThis.fetch;
+}): Promise<GitRunStackedActionResult> {
+  const fetchImpl = input.fetch ?? globalThis.fetch;
+  const response = await fetchImpl(buildGitActionUrl(input.httpBaseUrl), {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      ...createBearerHeaders(input.sessionToken),
+    },
+    body: JSON.stringify({
+      actionId: createGitActionId(),
+      cwd: input.cwd,
+      action: "commit_push_pr",
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(await readError(response, "Unable to create pull request."));
+  }
+
+  return (await response.json()) as GitRunStackedActionResult;
 }

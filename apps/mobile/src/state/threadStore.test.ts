@@ -168,4 +168,64 @@ describe("threadStore", () => {
       }
     }
   });
+
+  it("keeps the thread git cwd on detail records for mobile PR actions", () => {
+    const state = reduceRuntimeSnapshot(
+      {
+        threadSummaryByKey: {},
+        threadDetailByKey: {},
+        inbox: [],
+        connectionStateByEnvironment: {},
+      },
+      {
+        environmentId: "env_mobile_test" as EnvironmentId,
+        snapshot: {
+          snapshotSequence: 1,
+          updatedAt: "2026-04-24T20:00:00Z",
+          projects: [
+            {
+              id: "project-1" as never,
+              title: "T3 Code",
+              workspaceRoot: "/repo/t3code",
+              defaultModelSelection: null,
+              scripts: [],
+              createdAt: "2026-04-24T20:00:00Z",
+              updatedAt: "2026-04-24T20:00:00Z",
+              deletedAt: null,
+            },
+          ],
+          threads: [
+            {
+              id: "thread-1" as never,
+              projectId: "project-1" as never,
+              title: "Fix mobile controls",
+              modelSelection: {
+                provider: "codex",
+                model: "gpt-5.4",
+              },
+              runtimeMode: "approval-required",
+              interactionMode: "default",
+              branch: "t3code/mobile-controls",
+              worktreePath: "/repo/worktrees/t3code/mobile-controls",
+              latestTurn: null,
+              createdAt: "2026-04-24T20:00:00Z",
+              updatedAt: "2026-04-24T20:00:00Z",
+              archivedAt: null,
+              deletedAt: null,
+              messages: [],
+              proposedPlans: [],
+              checkpoints: [],
+              activities: [],
+              session: null,
+            },
+          ],
+        },
+      },
+    );
+
+    expect(state.threadDetailByKey["env_mobile_test:thread-1"]).toMatchObject({
+      branch: "t3code/mobile-controls",
+      projectCwd: "/repo/worktrees/t3code/mobile-controls",
+    });
+  });
 });

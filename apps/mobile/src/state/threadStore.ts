@@ -13,6 +13,8 @@ export interface MobileThreadSummary {
   readonly environmentId: EnvironmentId;
   readonly threadId: ThreadId;
   readonly title: string;
+  readonly branch: string | null;
+  readonly projectCwd: string | null;
   readonly updatedAt: string;
   readonly sessionStatus: OrchestrationSessionStatus | "unknown";
   readonly hasPendingApprovals: boolean;
@@ -115,13 +117,19 @@ export function reduceRuntimeSnapshot(
 ): Omit<ThreadStoreState, "applySnapshot" | "setEnvironmentConnectionState" | "reset"> {
   const nextSummaryByKey = { ...state.threadSummaryByKey };
   const nextDetailByKey = { ...state.threadDetailByKey };
+  const projectWorkspaceRootById = new Map(
+    input.snapshot.projects.map((project) => [project.id, project.workspaceRoot] as const),
+  );
 
   for (const thread of input.snapshot.threads) {
     const key = threadStoreKey(input.environmentId, thread.id);
+    const projectWorkspaceRoot = projectWorkspaceRootById.get(thread.projectId) ?? null;
     const summary: MobileThreadSummary = {
       environmentId: input.environmentId,
       threadId: thread.id,
       title: thread.title,
+      branch: thread.branch,
+      projectCwd: thread.worktreePath ?? projectWorkspaceRoot,
       updatedAt: thread.updatedAt,
       sessionStatus: thread.session?.status ?? "unknown",
       hasPendingApprovals: thread.activities.some((activity) => activity.tone === "approval"),

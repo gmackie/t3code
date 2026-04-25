@@ -32,6 +32,7 @@ import { TextGenerationLive } from "./git/Layers/TextGenerationLive.ts";
 import { ProviderInstanceRegistryHydrationLive } from "./provider/Layers/ProviderInstanceRegistryHydration.ts";
 import { TerminalManagerLive } from "./terminal/Layers/Manager.ts";
 import { GitManagerLive } from "./git/Layers/GitManager.ts";
+import { gitRunStackedActionRouteLayer } from "./git/http.ts";
 import { KeybindingsLive } from "./keybindings.ts";
 import { ServerRuntimeStartup, ServerRuntimeStartupLive } from "./serverRuntimeStartup.ts";
 import { OrchestrationReactorLive } from "./orchestration/Layers/OrchestrationReactor.ts";
@@ -254,6 +255,7 @@ export const makeRoutesLayer = Layer.mergeAll(
   authSessionRouteLayer,
   authWebSocketTokenRouteLayer,
   attachmentsRouteLayer,
+  gitRunStackedActionRouteLayer,
   orchestrationDispatchRouteLayer,
   orchestrationSnapshotRouteLayer,
   otlpTracesProxyRouteLayer,
