@@ -12,7 +12,10 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.gmacko.t3code.dev"
+      "bundleIdentifier": "com.gmacko.t3code.dev",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "extra": {
       "router": {},
