@@ -28,6 +28,7 @@ export default function ThreadDetailScreen() {
   );
   const thread =
     threadId && environmentId ? getThreadDetail(environmentId as never, threadId as never) : null;
+  const [selectedFilePath, setSelectedFilePath] = useState<string | null>(null);
   const applySnapshot = useThreadStore((state) => state.applySnapshot);
   const setConnectionState = useThreadStore((state) => state.setEnvironmentConnectionState);
   const connectionState = useThreadStore(
@@ -88,7 +89,12 @@ export default function ThreadDetailScreen() {
 
   return (
     <SafeAreaView style={styles.screen}>
-      <ThreadTranscript connectionState={connectionState} thread={thread} />
+      <ThreadTranscript
+        connectionState={connectionState}
+        onSelectFile={setSelectedFilePath}
+        selectedFilePath={selectedFilePath}
+        thread={thread}
+      />
       <View style={styles.controls}>
         <ApprovalCard
           disabled={actionsDisabled}

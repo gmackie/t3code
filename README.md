@@ -47,6 +47,10 @@ We are not accepting contributions yet.
 
 Observability guide: [docs/observability.md](./docs/observability.md)
 
+Mobile remote control is being developed in `apps/mobile`. It is an in-progress
+Expo workspace for pairing an iPhone to a Mac-hosted T3 Code server, with
+Tailnet access as the recommended remote path.
+
 ## If you REALLY want to contribute still.... read this first
 
 Before local development, prepare the environment and install dependencies:

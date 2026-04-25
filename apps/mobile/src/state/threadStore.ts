@@ -21,6 +21,10 @@ export interface MobileThreadSummary {
 
 export interface MobileThreadDetail extends MobileThreadSummary {
   readonly messages: ReadonlyArray<OrchestrationMessage>;
+  readonly changedFiles: ReadonlyArray<{
+    readonly path: string;
+    readonly summary: string;
+  }>;
   readonly pendingApproval: {
     readonly requestId: string;
     readonly summary: string | null;
@@ -135,6 +139,11 @@ export function reduceRuntimeSnapshot(
       : null;
     nextDetailByKey[key] = {
       ...summary,
+      changedFiles:
+        thread.checkpoints.at(-1)?.files.map((file) => ({
+          path: file.path,
+          summary: `${file.additions}+ / ${file.deletions}-`,
+        })) ?? [],
       messages: thread.messages,
       pendingApproval:
         pendingApprovalActivity && pendingApprovalRequestId
