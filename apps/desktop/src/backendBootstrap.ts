@@ -12,6 +12,7 @@ export interface DesktopBackendBootstrapPayload {
   readonly mode: "desktop";
   readonly noBrowser: true;
   readonly port: number;
+  readonly host?: string;
   readonly t3Home: string;
   readonly authToken: string;
   readonly desktopBootstrapToken?: string;
@@ -41,6 +42,7 @@ export function createDesktopBackendEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessE
 
 export function createDesktopBackendBootstrapPayload(input: {
   readonly port: number;
+  readonly host?: string;
   readonly t3Home: string;
   readonly authToken: string;
   readonly desktopBootstrapToken?: string;
@@ -51,6 +53,7 @@ export function createDesktopBackendBootstrapPayload(input: {
     mode: "desktop",
     noBrowser: true,
     port: input.port,
+    ...(input.host ? { host: input.host } : {}),
     t3Home: input.t3Home,
     authToken: input.authToken,
     ...(input.desktopBootstrapToken ? { desktopBootstrapToken: input.desktopBootstrapToken } : {}),

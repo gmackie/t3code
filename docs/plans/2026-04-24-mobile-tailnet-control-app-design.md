@@ -2,13 +2,22 @@
 
 Date: 2026-04-24
 Branch: `main-local`
-Status: approved for planning
+Status: v1 implementation in progress
 
 ## Summary
 
 Build an iPhone-first mobile app that acts as a privileged remote control for T3 Code sessions running on a Mac. The Mac remains the only execution host. The phone connects directly to the Mac over Tailscale, pairs once with a one-time credential, then uses authenticated HTTP and WebSocket access for ongoing control.
 
 This is not a relay architecture, and it is not an on-device agent runtime. It is a direct Tailnet client for an existing T3 Code server.
+
+## Implementation Status
+
+The current v1 branch has the Expo mobile workspace scaffolded with environment
+pairing, secure bearer-token storage, authenticated snapshot refresh, inbox and
+thread views, prompt and approval controls, recovery actions, and compact
+changed-file summaries with a preview surface. The first implementation reuses
+the existing server orchestration and auth APIs; it does not add relay
+infrastructure or mobile-side agent execution.
 
 ## Why This Exists
 

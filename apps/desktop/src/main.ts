@@ -93,6 +93,7 @@ import {
 import { isArm64HostRunningIntelBuild, resolveDesktopRuntimeInfo } from "./runtimeArch.ts";
 import { resolveDesktopAppBranding } from "./appBranding.ts";
 import { bindFirstRevealTrigger, type RevealSubscription } from "./windowReveal.ts";
+import { resolveTailnetAdvertisedHost } from "./tailscale.ts";
 
 syncShellEnvironment();
 
@@ -337,6 +338,7 @@ function backendChildEnv(): NodeJS.ProcessEnv {
   delete env.T3CODE_DESKTOP_WS_URL;
   delete env.T3CODE_DESKTOP_LAN_ACCESS;
   delete env.T3CODE_DESKTOP_LAN_HOST;
+  delete env.T3CODE_DESKTOP_TAILNET_HOST;
   return env;
 }
 
@@ -356,35 +358,99 @@ function getDesktopSecretStorage() {
   } as const;
 }
 
-function resolveAdvertisedHostOverride(): string | undefined {
-  const override = process.env.T3CODE_DESKTOP_LAN_HOST?.trim();
-  return override && override.length > 0 ? override : undefined;
+function resolveConfiguredHostEnvValue(value: string | undefined): string | undefined {
+  const normalized = value?.trim();
+  return normalized && normalized.length > 0 ? normalized : undefined;
+}
+
+export function resolveDesktopAdvertisedHostOverride(
+  mode: DesktopServerExposureMode,
+): string | undefined {
+  if (mode === "tailnet-accessible") {
+    const configuredTailnetHost = resolveConfiguredHostEnvValue(
+      process.env.T3CODE_DESKTOP_TAILNET_HOST,
+    );
+    const configuredTsCertDomain = resolveConfiguredHostEnvValue(process.env.TS_CERT_DOMAIN);
+    return (
+      resolveTailnetAdvertisedHost({
+        ...(configuredTailnetHost ? { tailnetHost: configuredTailnetHost } : {}),
+        ...(configuredTsCertDomain ? { tsCertDomain: configuredTsCertDomain } : {}),
+      }) ?? undefined
+    );
+  }
+
+  if (mode === "network-accessible") {
+    return resolveConfiguredHostEnvValue(process.env.T3CODE_DESKTOP_LAN_HOST);
+  }
+
+  return undefined;
+}
+
+export function resolveDesktopServerExposureForMainProcess(input: {
+  readonly mode: DesktopServerExposureMode;
+  readonly port: number;
+  readonly networkInterfaces: NodeJS.Dict<OS.NetworkInterfaceInfo[]>;
+  readonly advertisedHostOverride?: string;
+  readonly rejectIfUnavailable?: boolean;
+}): ReturnType<typeof resolveDesktopServerExposure> {
+  const requestedMode = input.mode;
+  const networkInterfacesForRequestedMode =
+    requestedMode === "tailnet-accessible" && input.advertisedHostOverride === undefined
+      ? {}
+      : input.networkInterfaces;
+  let exposure = resolveDesktopServerExposure({
+    mode: requestedMode,
+    port: input.port,
+    networkInterfaces: networkInterfacesForRequestedMode,
+    ...(input.advertisedHostOverride
+      ? { advertisedHostOverride: input.advertisedHostOverride }
+      : {}),
+  });
+
+  if (requestedMode !== "local-only" && exposure.endpointUrl === null) {
+    if (input.rejectIfUnavailable) {
+      throw new Error("No reachable network address is available for this desktop right now.");
+    }
+    exposure = resolveDesktopServerExposure({
+      mode: "local-only",
+      port: input.port,
+      networkInterfaces: input.networkInterfaces,
+      ...(input.advertisedHostOverride
+        ? { advertisedHostOverride: input.advertisedHostOverride }
+        : {}),
+    });
+  }
+
+  return exposure;
+}
+
+export function createDesktopBackendBootstrapPayloadForMainProcess(input: {
+  readonly port: number;
+  readonly host: string;
+  readonly t3Home: string;
+  readonly authToken: string;
+  readonly desktopBootstrapToken?: string;
+  readonly otlpTracesUrl?: string;
+  readonly otlpMetricsUrl?: string;
+}) {
+  return createDesktopBackendBootstrapPayload(input);
 }
 
 async function applyDesktopServerExposureMode(
   mode: DesktopServerExposureMode,
   options?: { readonly persist?: boolean; readonly rejectIfUnavailable?: boolean },
 ): Promise<DesktopServerExposureState> {
-  const advertisedHostOverride = resolveAdvertisedHostOverride();
   const requestedMode = mode;
-  let exposure = resolveDesktopServerExposure({
+  const advertisedHostOverride = resolveDesktopAdvertisedHostOverride(mode);
+  const exposure = resolveDesktopServerExposureForMainProcess({
     mode,
     port: backendPort,
     networkInterfaces: OS.networkInterfaces(),
     ...(advertisedHostOverride ? { advertisedHostOverride } : {}),
+    ...(options?.rejectIfUnavailable !== undefined
+      ? { rejectIfUnavailable: options.rejectIfUnavailable }
+      : {}),
   });
-
-  if (requestedMode === "network-accessible" && exposure.endpointUrl === null) {
-    if (options?.rejectIfUnavailable) {
-      throw new Error("No reachable network address is available for this desktop right now.");
-    }
-    exposure = resolveDesktopServerExposure({
-      mode: "local-only",
-      port: backendPort,
-      networkInterfaces: OS.networkInterfaces(),
-      ...(advertisedHostOverride ? { advertisedHostOverride } : {}),
-    });
-  }
 
   desktopServerExposureMode = exposure.mode;
   desktopSettings = setDesktopServerExposurePreference(desktopSettings, requestedMode);
@@ -1572,8 +1638,9 @@ function startBackend(): void {
   if (bootstrapStream) {
     bootstrapStream.write(
       `${JSON.stringify(
-        createDesktopBackendBootstrapPayload({
+        createDesktopBackendBootstrapPayloadForMainProcess({
           port: backendPort,
+          host: backendBindHost,
           t3Home: BASE_DIR,
           authToken: backendAuthToken,
           ...(backendBootstrapToken ? { desktopBootstrapToken: backendBootstrapToken } : {}),
@@ -1828,7 +1895,11 @@ function registerIpcHandlers(): void {
 
   ipcMain.removeHandler(SET_SERVER_EXPOSURE_MODE_CHANNEL);
   ipcMain.handle(SET_SERVER_EXPOSURE_MODE_CHANNEL, async (_event, rawMode: unknown) => {
-    if (rawMode !== "local-only" && rawMode !== "network-accessible") {
+    if (
+      rawMode !== "local-only" &&
+      rawMode !== "tailnet-accessible" &&
+      rawMode !== "network-accessible"
+    ) {
       throw new Error("Invalid desktop server exposure input.");
     }
 
@@ -2377,7 +2448,7 @@ async function bootstrap(): Promise<void> {
     writeDesktopLogHeader(
       `bootstrap enabled network access endpointUrl=${serverExposureState.endpointUrl}`,
     );
-  } else if (desktopSettings.serverExposureMode === "network-accessible") {
+  } else if (desktopSettings.serverExposureMode !== DEFAULT_DESKTOP_SETTINGS.serverExposureMode) {
     writeDesktopLogHeader(
       "bootstrap fell back to local-only because no advertised network host was available",
     );

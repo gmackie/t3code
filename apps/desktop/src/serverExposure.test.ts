@@ -120,6 +120,41 @@ describe("resolveDesktopServerExposure", () => {
     });
   });
 
+  it("prefers an explicit tailnet host in tailnet-accessible mode", () => {
+    expect(
+      resolveDesktopServerExposure({
+        mode: "tailnet-accessible",
+        port: 3773,
+        networkInterfaces: {},
+        advertisedHostOverride: "100.88.12.4",
+      }),
+    ).toEqual({
+      mode: "tailnet-accessible",
+      bindHost: "0.0.0.0",
+      localHttpUrl: "http://127.0.0.1:3773",
+      localWsUrl: "ws://127.0.0.1:3773",
+      endpointUrl: "http://100.88.12.4:3773",
+      advertisedHost: "100.88.12.4",
+    });
+  });
+
+  it("stays tailnet-accessible even when no tailnet host is currently detectable", () => {
+    expect(
+      resolveDesktopServerExposure({
+        mode: "tailnet-accessible",
+        port: 3773,
+        networkInterfaces: {},
+      }),
+    ).toEqual({
+      mode: "tailnet-accessible",
+      bindHost: "0.0.0.0",
+      localHttpUrl: "http://127.0.0.1:3773",
+      localWsUrl: "ws://127.0.0.1:3773",
+      endpointUrl: null,
+      advertisedHost: null,
+    });
+  });
+
   it("stays network-accessible even when no LAN address is currently detectable", () => {
     expect(
       resolveDesktopServerExposure({

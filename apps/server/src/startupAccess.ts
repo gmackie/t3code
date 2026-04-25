@@ -1,5 +1,6 @@
 import { networkInterfaces } from "node:os";
 
+import { resolveTailnetAdvertisedHost } from "@t3tools/shared/tailscale";
 import { QrCode } from "@t3tools/shared/qrCode";
 import { Effect } from "effect";
 import { HttpServer } from "effect/unstable/http";
@@ -14,6 +15,11 @@ export interface HeadlessServeAccessInfo {
 }
 
 type NetworkInterfacesMap = ReturnType<typeof networkInterfaces>;
+
+interface HeadlessConnectionResolutionOptions {
+  readonly env?: NodeJS.ProcessEnv;
+  readonly resolveTailnetHost?: typeof resolveTailnetAdvertisedHost;
+}
 
 export const isLoopbackHost = (host: string | undefined): boolean => {
   if (!host || host.length === 0) {
@@ -38,6 +44,11 @@ export const formatHostForUrl = (host: string): string =>
 const normalizeHost = (host: string): string =>
   host.startsWith("[") && host.endsWith("]") ? host.slice(1, -1) : host;
 
+const normalizeConfiguredHostValue = (value: string | undefined): string | undefined => {
+  const normalized = value?.trim();
+  return normalized && normalized.length > 0 ? normalized : undefined;
+};
+
 const isIpv4Family = (family: string | number): boolean => family === "IPv4" || family === 4;
 
 const isIpv6Family = (family: string | number): boolean => family === "IPv6" || family === 6;
@@ -45,13 +56,30 @@ const isIpv6Family = (family: string | number): boolean => family === "IPv6" || 
 export const resolveHeadlessConnectionHost = (
   host: string | undefined,
   interfaces: NetworkInterfacesMap = networkInterfaces(),
+  options?: HeadlessConnectionResolutionOptions,
 ): string => {
+  const resolvePreferredTailnetHost = (): string | null => {
+    const env = options?.env ?? process.env;
+    const resolveHost = options?.resolveTailnetHost ?? resolveTailnetAdvertisedHost;
+    const configuredTailnetHost = normalizeConfiguredHostValue(env.T3CODE_TAILNET_HOST);
+    const configuredTsCertDomain = normalizeConfiguredHostValue(env.TS_CERT_DOMAIN);
+    return resolveHost({
+      ...(configuredTailnetHost ? { tailnetHost: configuredTailnetHost } : {}),
+      ...(configuredTsCertDomain ? { tsCertDomain: configuredTsCertDomain } : {}),
+    });
+  };
+
   if (!host) {
-    return "localhost";
+    return resolvePreferredTailnetHost() ?? "localhost";
   }
 
   if (!isWildcardHost(host)) {
     return normalizeHost(host);
+  }
+
+  const preferredTailnetHost = resolvePreferredTailnetHost();
+  if (preferredTailnetHost) {
+    return preferredTailnetHost;
   }
 
   const interfaceEntries = Object.values(interfaces).flatMap((entries) => entries ?? []);
@@ -72,8 +100,9 @@ export const resolveHeadlessConnectionString = (
   host: string | undefined,
   port: number,
   interfaces: NetworkInterfacesMap = networkInterfaces(),
+  options?: HeadlessConnectionResolutionOptions,
 ): string => {
-  const connectionHost = resolveHeadlessConnectionHost(host, interfaces);
+  const connectionHost = resolveHeadlessConnectionHost(host, interfaces, options);
   return `http://${formatHostForUrl(connectionHost)}:${port}`;
 };
 
@@ -89,12 +118,17 @@ export const resolveListeningPort = (address: unknown, fallbackPort: number): nu
   return fallbackPort;
 };
 
-export const buildPairingUrl = (connectionString: string, token: string): string => {
-  const url = new URL(connectionString);
-  url.pathname = "/pair";
+const PAIRING_PATHNAME = "/pair";
+
+const setPairingUrlToken = (url: URL, token: string): URL => {
+  url.pathname = PAIRING_PATHNAME;
   url.searchParams.delete("token");
   url.hash = new URLSearchParams([["token", token]]).toString();
-  return url.toString();
+  return url;
+};
+
+export const buildPairingUrl = (connectionString: string, token: string): string => {
+  return setPairingUrlToken(new URL(connectionString), token).toString();
 };
 
 export const renderTerminalQrCode = (value: string, margin = 2): string => {
