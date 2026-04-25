@@ -21,10 +21,11 @@ There are two ways to expose your server for remote connections: from the deskto
 If you are already running the desktop app and want to make it reachable from other devices:
 
 1. Open **Settings** → **Connections**.
-2. Under **Manage Local Backend**, toggle **Remote access** on. The desktop app will restart in the recommended Tailnet mode.
+2. Under **Manage Local Backend**, toggle **Remote access** on. The desktop app will restart in the recommended Tailnet mode by default.
 3. If Tailscale is available, the settings panel will show the Tailnet-specific address the server is reachable at (for example `http://mackbook.tailnet.ts.net:3773` or `http://100.x.y.z:3773`).
 4. Use **Create Link** to generate a pairing link. The link uses that Tailnet endpoint, so opening or scanning it from another device stays on your tailnet.
-5. If Tailnet host detection is unavailable, the desktop app stays local-only. Use the CLI option below for manual LAN or custom host setups.
+5. Tailnet remains the recommended desktop path. If you need a generic private-network or LAN address instead, use the **Use LAN instead** action in the same settings panel to switch modes.
+6. Use the CLI option below for headless or custom host setups.
 
 ### Option 2: Headless Server (CLI)
 
