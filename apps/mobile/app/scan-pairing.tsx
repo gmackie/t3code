@@ -1,16 +1,31 @@
-import { type BarcodeScanningResult, CameraView, useCameraPermissions } from "expo-camera";
 import { Link, useRouter } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
 import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
+import {
+  type BarcodeScanningResultLike,
+  type ExpoCameraModule,
+  loadExpoCameraModule,
+} from "../src/lib/cameraModule";
 import { pairEnvironmentFromUrl } from "../src/lib/pairing";
 import { normalizeScannedPairingUrl } from "../src/lib/scannedPairing";
 import { savePairedEnvironment } from "../src/state/environmentStore";
 import { mobileTheme } from "../src/theme";
 
 export default function ScanPairingScreen() {
+  const [cameraModule] = useState(() => loadExpoCameraModule());
+
+  if (!cameraModule.available) {
+    return <CameraUnavailable errorMessage={cameraModule.errorMessage} />;
+  }
+
+  return <CameraScanner cameraModule={cameraModule.module} />;
+}
+
+function CameraScanner({ cameraModule }: { readonly cameraModule: ExpoCameraModule }) {
   const router = useRouter();
+  const { CameraView, useCameraPermissions } = cameraModule;
   const [permission, requestPermission] = useCameraPermissions();
   const [isPairing, setIsPairing] = useState(false);
 
@@ -21,7 +36,7 @@ export default function ScanPairingScreen() {
   }, [permission, requestPermission]);
 
   const handleScan = useCallback(
-    async (result: BarcodeScanningResult) => {
+    async (result: BarcodeScanningResultLike) => {
       if (isPairing) {
         return;
       }
@@ -79,6 +94,38 @@ export default function ScanPairingScreen() {
             </Pressable>
           </View>
         )}
+      </View>
+
+      <View style={styles.actions}>
+        <Link asChild href="/pair">
+          <Pressable style={styles.secondaryButton}>
+            <Text style={styles.secondaryButtonLabel}>Enter URL Manually</Text>
+          </Pressable>
+        </Link>
+        <Link href="/settings" style={styles.link}>
+          Back to paired environments
+        </Link>
+      </View>
+    </SafeAreaView>
+  );
+}
+
+function CameraUnavailable({ errorMessage }: { readonly errorMessage: string }) {
+  return (
+    <SafeAreaView style={styles.screen}>
+      <View style={styles.header}>
+        <Text style={styles.eyebrow}>Pair Environment</Text>
+        <Text style={styles.title}>Install the latest dev build</Text>
+        <Text style={styles.copy}>
+          {errorMessage} Install the newest iOS build, then reopen this scanner.
+        </Text>
+      </View>
+
+      <View style={styles.unavailableState}>
+        <Text style={styles.permissionTitle}>Camera module unavailable.</Text>
+        <Text style={styles.permissionCopy}>
+          The current native app was built before QR scanning support was added.
+        </Text>
       </View>
 
       <View style={styles.actions}>
@@ -160,6 +207,15 @@ const styles = StyleSheet.create({
     fontSize: 15,
     lineHeight: 22,
     textAlign: "center",
+  },
+  unavailableState: {
+    alignItems: "center",
+    backgroundColor: "#1d1914",
+    borderRadius: 32,
+    gap: mobileTheme.spacing.md,
+    justifyContent: "center",
+    minHeight: 260,
+    padding: mobileTheme.spacing.lg,
   },
   actions: {
     alignItems: "center",
