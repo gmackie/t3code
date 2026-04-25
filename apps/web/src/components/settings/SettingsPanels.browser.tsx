@@ -695,6 +695,47 @@ describe("GeneralSettingsPanel observability", () => {
     await expect.element(page.getByRole("button", { name: "Use LAN instead" })).toBeInTheDocument();
   });
 
+  it("keeps a LAN action available after a Tailnet enable attempt fails from local-only", async () => {
+    const desktopBridge = createDesktopBridgeStub({
+      setServerExposureMode: vi.fn().mockImplementation(async (mode) => {
+        if (mode === "tailnet-accessible") {
+          throw new Error("Tailscale is not running.");
+        }
+
+        return {
+          mode,
+          endpointUrl: mode === "network-accessible" ? "http://192.168.1.44:3773" : null,
+          advertisedHost: mode === "network-accessible" ? "192.168.1.44" : null,
+        };
+      }),
+    });
+    window.desktopBridge = desktopBridge;
+
+    setServerConfigSnapshot(createBaseServerConfig());
+
+    mounted = await render(
+      <AppAtomRegistryProvider>
+        <ConnectionsSettings />
+      </AppAtomRegistryProvider>,
+    );
+
+    const remoteAccessToggle = page.getByLabelText("Enable remote access");
+    await remoteAccessToggle.click();
+    await page.getByRole("button", { name: "Restart and enable", exact: true }).click();
+    await expect.element(page.getByText("Tailscale is not running.")).toBeInTheDocument();
+    await expect.element(page.getByRole("button", { name: "Use LAN instead" })).toBeInTheDocument();
+
+    await page.getByRole("button", { name: "Use LAN instead" }).click();
+    await expect.element(page.getByText("Switch remote access to LAN mode?")).toBeInTheDocument();
+    await page.getByRole("button", { name: "Restart and switch", exact: true }).click();
+    await vi.waitFor(() => {
+      expect(desktopBridge.setServerExposureMode).toHaveBeenCalledWith("network-accessible");
+    });
+    await expect
+      .element(page.getByText("LAN mode. Reachable at http://192.168.1.44:3773"))
+      .toBeInTheDocument();
+  });
+
   it("lets desktop users switch the remote access mode from Tailnet to LAN", async () => {
     const desktopBridge = createDesktopBridgeStub({
       serverExposureState: {
