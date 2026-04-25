@@ -149,4 +149,61 @@ describe("resolveDesktopServerExposureForMainProcess", () => {
       }),
     ).toThrow("No reachable network address is available for this desktop right now.");
   });
+
+  it("does not fall back to a LAN address when tailnet-accessible host detection fails", async () => {
+    const mainModule = (await import("./main.ts")) as {
+      resolveDesktopServerExposureForMainProcess: (input: {
+        readonly mode: "tailnet-accessible";
+        readonly port: number;
+        readonly networkInterfaces: NodeJS.Dict<import("node:os").NetworkInterfaceInfo[]>;
+        readonly rejectIfUnavailable: boolean;
+      }) => {
+        readonly mode: string;
+        readonly endpointUrl: string | null;
+      };
+    };
+
+    expect(
+      mainModule.resolveDesktopServerExposureForMainProcess({
+        mode: "tailnet-accessible",
+        port: 3773,
+        networkInterfaces: {
+          en0: [
+            {
+              address: "192.168.1.44",
+              family: "IPv4",
+              internal: false,
+              netmask: "255.255.255.0",
+              cidr: "192.168.1.44/24",
+              mac: "00:00:00:00:00:00",
+            },
+          ],
+        },
+        rejectIfUnavailable: false,
+      }),
+    ).toMatchObject({
+      mode: "local-only",
+      endpointUrl: null,
+    });
+
+    expect(() =>
+      mainModule.resolveDesktopServerExposureForMainProcess({
+        mode: "tailnet-accessible",
+        port: 3773,
+        networkInterfaces: {
+          en0: [
+            {
+              address: "192.168.1.44",
+              family: "IPv4",
+              internal: false,
+              netmask: "255.255.255.0",
+              cidr: "192.168.1.44/24",
+              mac: "00:00:00:00:00:00",
+            },
+          ],
+        },
+        rejectIfUnavailable: true,
+      }),
+    ).toThrow("No reachable network address is available for this desktop right now.");
+  });
 });
