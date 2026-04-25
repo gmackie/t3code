@@ -1,6 +1,6 @@
 import { useLocalSearchParams } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
-import { Alert, StyleSheet, View } from "react-native";
+import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { ApprovalCard } from "../../src/components/ApprovalCard";
@@ -10,6 +10,7 @@ import { ThreadTranscript } from "../../src/components/ThreadTranscript";
 import { loadSavedEnvironmentSnapshot } from "../../src/lib/runtimeClient";
 import {
   approveThreadRequest,
+  createThreadPullRequest,
   interruptThreadTurn,
   sendThreadPrompt,
   stopThreadSession,
@@ -134,6 +135,28 @@ export default function ThreadDetailScreen() {
             )
           }
         />
+        <Pressable
+          disabled={actionsDisabled || !thread?.projectCwd}
+          onPress={() =>
+            runAction(async () => {
+              const result = await createThreadPullRequest({
+                httpBaseUrl: record?.httpBaseUrl ?? "",
+                sessionToken: sessionToken ?? "",
+                cwd: thread?.projectCwd ?? "",
+              });
+              const url =
+                result.pr.url ??
+                (result.toast.cta.kind === "open_pr" ? result.toast.cta.url : null);
+              Alert.alert(
+                result.pr.status === "opened_existing" ? "PR already exists" : "PR created",
+                url ?? result.toast.description ?? result.toast.title,
+              );
+            })
+          }
+          style={[styles.prButton, actionsDisabled || !thread?.projectCwd ? styles.disabled : null]}
+        >
+          <Text style={styles.prButtonLabel}>Create PR</Text>
+        </Pressable>
       </View>
       <ThreadComposer
         disabled={actionsDisabled}
@@ -160,5 +183,20 @@ const styles = StyleSheet.create({
   controls: {
     gap: mobileTheme.spacing.sm,
     padding: mobileTheme.spacing.md,
+  },
+  prButton: {
+    alignItems: "center",
+    backgroundColor: mobileTheme.colors.text,
+    borderRadius: 8,
+    justifyContent: "center",
+    minHeight: 46,
+  },
+  prButtonLabel: {
+    color: "#fffaf2",
+    fontSize: 14,
+    fontWeight: "700",
+  },
+  disabled: {
+    opacity: 0.45,
   },
 });

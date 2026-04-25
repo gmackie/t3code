@@ -2679,6 +2679,82 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 
+  it.effect("runs git stacked actions through the authenticated HTTP API", () =>
+    Effect.gen(function* () {
+      const actionResult = {
+        action: "commit_push_pr" as const,
+        branch: { status: "skipped_not_requested" as const },
+        commit: {
+          status: "created" as const,
+          commitSha: "abcdef123456",
+          subject: "Fix mobile controls",
+        },
+        push: {
+          status: "pushed" as const,
+          branch: "t3code/mobile-controls",
+          upstreamBranch: "origin/t3code/mobile-controls",
+          setUpstream: true,
+        },
+        pr: {
+          status: "created" as const,
+          url: "https://github.com/pingdotgg/t3code/pull/123",
+          number: 123,
+          baseBranch: "main",
+          headBranch: "t3code/mobile-controls",
+          title: "Fix mobile controls",
+        },
+        toast: {
+          title: "Pull request created",
+          cta: {
+            kind: "open_pr" as const,
+            label: "Open PR",
+            url: "https://github.com/pingdotgg/t3code/pull/123",
+          },
+        },
+      };
+      const calls: unknown[] = [];
+      yield* buildAppUnderTest({
+        layers: {
+          gitManager: {
+            runStackedAction: (input) =>
+              Effect.sync(() => {
+                calls.push(input);
+                return actionResult;
+              }),
+          },
+        },
+      });
+
+      const token = yield* getAuthenticatedBearerSessionToken();
+      const url = yield* getHttpServerUrl("/api/git/run-stacked-action");
+      const response = yield* Effect.promise(() =>
+        fetch(url, {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${token}`,
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({
+            actionId: "mobile-action-1",
+            cwd: "/repo/worktrees/t3code/mobile-controls",
+            action: "commit_push_pr",
+          }),
+        }),
+      );
+      const body = (yield* Effect.promise(() => response.json())) as typeof actionResult;
+
+      assert.equal(response.status, 200);
+      assert.deepStrictEqual(calls, [
+        {
+          actionId: "mobile-action-1",
+          cwd: "/repo/worktrees/t3code/mobile-controls",
+          action: "commit_push_pr",
+        },
+      ]);
+      assert.equal(body.pr.url, "https://github.com/pingdotgg/t3code/pull/123");
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
   it.effect("routes websocket rpc git.runStackedAction errors after refreshing git status", () =>
     Effect.gen(function* () {
       const gitError = new GitCommandError({
