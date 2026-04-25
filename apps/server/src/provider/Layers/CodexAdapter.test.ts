@@ -29,6 +29,7 @@ import { ServerSettingsService } from "../../serverSettings.ts";
 import { ProviderAdapterValidationError } from "../Errors.ts";
 import type { CodexAdapterShape } from "../Services/CodexAdapter.ts";
 import { ProviderSessionDirectory } from "../Services/ProviderSessionDirectory.ts";
+import { CODEX_IN_APP_BROWSER_DYNAMIC_TOOLS } from "../../codexInAppBrowserTools.ts";
 import {
   type CodexSessionRuntimeOptions,
   type CodexSessionRuntimeSendTurnInput,
@@ -1130,5 +1131,29 @@ it.effect("flushes managed native logs when the adapter layer shuts down", () =>
       }
       fs.rmSync(tempDir, { recursive: true, force: true });
     }
+  }),
+);
+
+it.effect("passes in-app browser dynamic tools to Codex runtime sessions", () =>
+  Effect.gen(function* () {
+    const runtimeFactory = makeRuntimeFactory();
+    const layer = makeCodexAdapterLive({ makeRuntime: runtimeFactory.factory }).pipe(
+      Layer.provideMerge(ServerConfig.layerTest(process.cwd(), process.cwd())),
+      Layer.provideMerge(ServerSettingsService.layerTest()),
+      Layer.provideMerge(providerSessionDirectoryTestLayer),
+      Layer.provideMerge(NodeServices.layer),
+    );
+    const adapter = yield* Effect.service(CodexAdapter).pipe(Effect.provide(layer));
+
+    yield* adapter.startSession({
+      provider: "codex",
+      threadId: asThreadId("thread-browser-tools"),
+      runtimeMode: "full-access",
+    });
+
+    assert.deepStrictEqual(
+      runtimeFactory.lastRuntime?.options.dynamicTools,
+      CODEX_IN_APP_BROWSER_DYNAMIC_TOOLS,
+    );
   }),
 );

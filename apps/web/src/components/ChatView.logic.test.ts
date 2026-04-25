@@ -19,6 +19,7 @@ import {
   deriveComposerSendState,
   hasServerAcknowledgedLocalDispatch,
   reconcileMountedTerminalThreadIds,
+  resolvePlanSidebarDismissedTurnKeyOnWorkspaceTabSelect,
   shouldWriteThreadErrorToCurrentServerThread,
   waitForStartedServerThread,
 } from "./ChatView.logic";
@@ -195,6 +196,30 @@ describe("reconcileMountedTerminalThreadIds", () => {
         activeThreadTerminalOpen: false,
       }),
     ).toEqual(currentThreadIds.slice(-MAX_HIDDEN_MOUNTED_TERMINAL_THREADS));
+  });
+});
+
+describe("resolvePlanSidebarDismissedTurnKeyOnWorkspaceTabSelect", () => {
+  it("dismisses the active plan turn when selecting chat from the plan tab", () => {
+    expect(
+      resolvePlanSidebarDismissedTurnKeyOnWorkspaceTabSelect({
+        selectedTabId: null,
+        planTabOpen: true,
+        activePlanTurnId: TurnId.make("turn-active-plan"),
+        sidebarProposedPlanTurnId: null,
+      }),
+    ).toBe("turn-active-plan");
+  });
+
+  it("does not dismiss the plan when selecting another workspace tab", () => {
+    expect(
+      resolvePlanSidebarDismissedTurnKeyOnWorkspaceTabSelect({
+        selectedTabId: "/repo/project:src/index.ts",
+        planTabOpen: true,
+        activePlanTurnId: TurnId.make("turn-active-plan"),
+        sidebarProposedPlanTurnId: null,
+      }),
+    ).toBeNull();
   });
 });
 

@@ -136,6 +136,12 @@ export const ObservabilitySettings = Schema.Struct({
 });
 export type ObservabilitySettings = typeof ObservabilitySettings.Type;
 
+export const TerminalSettings = Schema.Struct({
+  environmentVariablesText: Schema.String.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
+  zshStartupDirectory: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
+});
+export type TerminalSettings = typeof TerminalSettings.Type;
+
 export const ServerSettings = Schema.Struct({
   enableAssistantStreaming: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   defaultThreadEnvMode: ThreadEnvMode.pipe(
@@ -172,6 +178,7 @@ export const ServerSettings = Schema.Struct({
     Schema.withDecodingDefault(Effect.succeed({})),
   ),
   observability: ObservabilitySettings.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
+  terminal: TerminalSettings.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
 });
 export type ServerSettings = typeof ServerSettings.Type;
 
@@ -247,6 +254,12 @@ export const ServerSettingsPatch = Schema.Struct({
     Schema.Struct({
       otlpTracesUrl: Schema.optionalKey(Schema.String),
       otlpMetricsUrl: Schema.optionalKey(Schema.String),
+    }),
+  ),
+  terminal: Schema.optionalKey(
+    Schema.Struct({
+      environmentVariablesText: Schema.optionalKey(Schema.String),
+      zshStartupDirectory: Schema.optionalKey(Schema.String),
     }),
   ),
   providers: Schema.optionalKey(

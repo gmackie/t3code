@@ -44,6 +44,10 @@ import {
 } from "../Errors.ts";
 import { type CodexAdapterShape } from "../Services/CodexAdapter.ts";
 import { resolveAttachmentPath } from "../../attachmentStore.ts";
+import {
+  CODEX_IN_APP_BROWSER_DYNAMIC_TOOLS,
+  createCodexInAppBrowserDynamicToolHandler,
+} from "../../codexInAppBrowserTools.ts";
 import { ServerConfig } from "../../config.ts";
 import {
   CodexResumeCursorSchema,
@@ -1385,6 +1389,8 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
           getModelSelectionBooleanOptionValue(input.modelSelection, "fastMode") === true
             ? { serviceTier: "fast" }
             : {}),
+          dynamicTools: CODEX_IN_APP_BROWSER_DYNAMIC_TOOLS,
+          dynamicToolCallHandler: createCodexInAppBrowserDynamicToolHandler(null),
         };
         const sessionScope = yield* Scope.make("sequential");
         let sessionScopeTransferred = false;
