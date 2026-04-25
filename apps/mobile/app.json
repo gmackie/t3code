@@ -10,7 +10,8 @@
       "typedRoutes": false
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.mackieg.t3-code-mobile"
     }
   }
 }

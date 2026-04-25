@@ -42,6 +42,7 @@ function sessionResponse(body: unknown, init?: ResponseInit) {
 describe("resolveInitialServerAuthGateState", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
     vi.useRealTimers();
     installTestBrowser("http://localhost/");
   });
@@ -49,6 +50,7 @@ describe("resolveInitialServerAuthGateState", () => {
   afterEach(async () => {
     const { __resetServerAuthBootstrapForTests } = await import("./environments/primary");
     __resetServerAuthBootstrapForTests();
+    vi.unstubAllGlobals();
     vi.unstubAllEnvs();
     vi.useRealTimers();
     vi.restoreAllMocks();

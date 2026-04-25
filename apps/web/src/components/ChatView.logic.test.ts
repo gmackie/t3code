@@ -590,7 +590,7 @@ describe("hasServerAcknowledgedLocalDispatch", () => {
     ).toBe(true);
   });
 
-  it("does not clear local dispatch while the session is running a newer turn than latestTurn", () => {
+  it("clears local dispatch once the session enters running for a newer turn", () => {
     const localDispatch = createLocalDispatchSnapshot({
       id: ThreadId.make("thread-1"),
       environmentId: localEnvironmentId,
@@ -630,10 +630,10 @@ describe("hasServerAcknowledgedLocalDispatch", () => {
         hasPendingUserInput: false,
         threadError: null,
       }),
-    ).toBe(false);
+    ).toBe(true);
   });
 
-  it("does not clear local dispatch while the session is running but latestTurn has not advanced yet", () => {
+  it("clears local dispatch once the session enters running before latestTurn advances", () => {
     const localDispatch = createLocalDispatchSnapshot({
       id: ThreadId.make("thread-1"),
       environmentId: localEnvironmentId,
@@ -673,7 +673,7 @@ describe("hasServerAcknowledgedLocalDispatch", () => {
         hasPendingUserInput: false,
         threadError: null,
       }),
-    ).toBe(false);
+    ).toBe(true);
   });
 
   it("clears local dispatch once the running latestTurn matches the active session turn", () => {

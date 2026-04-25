@@ -7,6 +7,8 @@ import type {
 } from "@t3tools/contracts";
 import { create } from "zustand";
 
+import { findLastCompat, sortCopy } from "../lib/arrayCompat";
+
 export interface MobileThreadSummary {
   readonly environmentId: EnvironmentId;
   readonly threadId: ThreadId;
@@ -128,7 +130,7 @@ export function reduceRuntimeSnapshot(
         thread.activities.some((activity) => activity.tone === "tool"),
       hasActionableProposedPlan: thread.proposedPlans.some((plan) => plan.implementedAt === null),
       latestUserMessageAt:
-        thread.messages.toReversed().find((message) => message.role === "user")?.createdAt ?? null,
+        findLastCompat(thread.messages, (message) => message.role === "user")?.createdAt ?? null,
     };
 
     nextSummaryByKey[key] = summary;
@@ -155,19 +157,21 @@ export function reduceRuntimeSnapshot(
     };
   }
 
-  const nextInbox = Object.values(nextSummaryByKey)
-    .filter((thread) => thread.environmentId === input.environmentId)
-    .flatMap((thread) => inboxItemsForThread(thread))
-    .toSorted((left, right) => right.updatedAt.localeCompare(left.updatedAt));
+  const nextInbox = sortCopy(
+    Object.values(nextSummaryByKey)
+      .filter((thread) => thread.environmentId === input.environmentId)
+      .flatMap((thread) => inboxItemsForThread(thread)),
+    (left, right) => right.updatedAt.localeCompare(left.updatedAt),
+  );
 
   return {
     ...state,
     threadSummaryByKey: nextSummaryByKey,
     threadDetailByKey: nextDetailByKey,
-    inbox: [
-      ...nextInbox,
-      ...state.inbox.filter((item) => item.environmentId !== input.environmentId),
-    ].toSorted((left, right) => right.updatedAt.localeCompare(left.updatedAt)),
+    inbox: sortCopy(
+      [...nextInbox, ...state.inbox.filter((item) => item.environmentId !== input.environmentId)],
+      (left, right) => right.updatedAt.localeCompare(left.updatedAt),
+    ),
     connectionStateByEnvironment: {
       ...state.connectionStateByEnvironment,
       [input.environmentId]: "ready",
@@ -205,7 +209,7 @@ export const useThreadStore = create<ThreadStoreState>()((set) => ({
 }));
 
 export function listThreadSummaries(): ReadonlyArray<MobileThreadSummary> {
-  return Object.values(useThreadStore.getState().threadSummaryByKey).toSorted((left, right) =>
+  return sortCopy(Object.values(useThreadStore.getState().threadSummaryByKey), (left, right) =>
     right.updatedAt.localeCompare(left.updatedAt),
   );
 }
