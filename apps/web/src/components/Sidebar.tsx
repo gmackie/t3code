@@ -72,6 +72,7 @@ import {
 } from "../store";
 import { selectThreadTerminalState, useTerminalStateStore } from "../terminalStateStore";
 import { useUiStateStore } from "../uiStateStore";
+import { PROJECT_COLORS, type ProjectColor } from "../uiStateStore";
 import {
   resolveShortcutCommand,
   shortcutLabelForCommand,
@@ -203,6 +204,24 @@ const PROJECT_GROUPING_MODE_LABELS: Record<SidebarProjectGroupingMode, string> =
   repository: "Group by repository",
   repository_path: "Group by repository path",
   separate: "Keep separate",
+};
+const PROJECT_COLOR_LABELS: Record<ProjectColor, string> = {
+  red: "Red",
+  orange: "Orange",
+  yellow: "Yellow",
+  green: "Green",
+  blue: "Blue",
+  purple: "Purple",
+  pink: "Pink",
+};
+const PROJECT_COLOR_VALUES: Record<ProjectColor, string> = {
+  red: "#ef4444",
+  orange: "#f97316",
+  yellow: "#eab308",
+  green: "#22c55e",
+  blue: "#3b82f6",
+  purple: "#a855f7",
+  pink: "#ec4899",
 };
 
 function formatProjectMemberActionLabel(
@@ -934,6 +953,10 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
   const markThreadUnread = useUiStateStore((state) => state.markThreadUnread);
   const toggleProject = useUiStateStore((state) => state.toggleProject);
   const toggleThreadSelection = useThreadSelectionStore((state) => state.toggleThread);
+  const projectColor = useUiStateStore(
+    (state) => state.projectColorById[project.projectKey] ?? null,
+  );
+  const setProjectColor = useUiStateStore((state) => state.setProjectColor);
   const rangeSelectTo = useThreadSelectionStore((state) => state.rangeSelectTo);
   const clearSelection = useThreadSelectionStore((state) => state.clearSelection);
   const removeFromSelection = useThreadSelectionStore((state) => state.removeFromSelection);
@@ -1052,6 +1075,8 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
   const [projectGroupingSelection, setProjectGroupingSelection] = useState<
     SidebarProjectGroupingMode | "inherit"
   >("inherit");
+  const [projectColorDialogOpen, setProjectColorDialogOpen] = useState(false);
+  const [projectColorSelection, setProjectColorSelection] = useState<ProjectColor | null>(null);
   const renamingCommittedRef = useRef(false);
   const renamingInputRef = useRef<HTMLInputElement | null>(null);
   const confirmArchiveButtonRefs = useRef(new Map<string, HTMLButtonElement>());
@@ -1270,6 +1295,11 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
     [projectGroupingSettings.sidebarProjectGroupingOverrides],
   );
 
+  const openProjectColorDialog = useCallback(() => {
+    setProjectColorSelection(projectColor);
+    setProjectColorDialogOpen(true);
+  }, [projectColor]);
+
   const removeProject = useCallback(
     async (member: SidebarProjectGroupMember, options: { force?: boolean } = {}): Promise<void> => {
       const memberProjectRef = scopeProjectRef(member.environmentId, member.id);
@@ -1483,6 +1513,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
         const clicked = await api.contextMenu.show(
           [
             buildTargetedItem("rename", "Rename project"),
+            { id: "project-color", label: "Project color..." },
             buildTargetedItem("grouping", "Project grouping…"),
             buildTargetedItem("copy-path", "Copy Project Path"),
             buildTargetedItem("delete", "Remove project", {
@@ -1499,12 +1530,18 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
           return;
         }
 
+        if (clicked === "project-color") {
+          openProjectColorDialog();
+          return;
+        }
+
         await actionHandlers.get(clicked)?.();
       })();
     },
     [
       copyPathToClipboard,
       handleRemoveProject,
+      openProjectColorDialog,
       openProjectGroupingDialog,
       openProjectRenameDialog,
       project.groupedProjectCount,
@@ -1512,6 +1549,15 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
       suppressProjectClickForContextMenuRef,
     ],
   );
+
+  const closeProjectColorDialog = useCallback(() => {
+    setProjectColorDialogOpen(false);
+  }, []);
+
+  const saveProjectColor = useCallback(() => {
+    setProjectColor(project.projectKey, projectColorSelection);
+    closeProjectColorDialog();
+  }, [closeProjectColorDialog, project.projectKey, projectColorSelection, setProjectColor]);
 
   const navigateToThread = useCallback(
     (threadRef: ScopedThreadRef) => {
@@ -1982,6 +2028,13 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
             />
           )}
           <ProjectFavicon environmentId={project.environmentId} cwd={project.cwd} />
+          <span
+            aria-hidden="true"
+            className="h-4 w-1 shrink-0 rounded-full"
+            style={{
+              backgroundColor: projectColor ? PROJECT_COLOR_VALUES[projectColor] : "transparent",
+            }}
+          />
           <span className="flex min-w-0 flex-1 items-center gap-2">
             <span className="truncate text-xs font-medium text-foreground/90">
               {project.displayName}
@@ -2189,6 +2242,63 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
               Cancel
             </Button>
             <Button onClick={saveProjectGroupingPreference}>Save</Button>
+          </DialogFooter>
+        </DialogPopup>
+      </Dialog>
+
+      <Dialog
+        open={projectColorDialogOpen}
+        onOpenChange={(open) => {
+          if (!open) {
+            closeProjectColorDialog();
+          }
+        }}
+      >
+        <DialogPopup className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Project color</DialogTitle>
+            <DialogDescription>{`Choose a sidebar color for ${project.displayName}.`}</DialogDescription>
+          </DialogHeader>
+          <DialogPanel>
+            <div className="grid grid-cols-4 gap-2">
+              <button
+                type="button"
+                aria-label="No project color"
+                aria-pressed={projectColorSelection === null}
+                className={cn(
+                  "flex h-9 items-center justify-center rounded-md border border-border text-xs text-muted-foreground hover:bg-accent focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring",
+                  projectColorSelection === null ? "ring-1 ring-ring" : "",
+                )}
+                onClick={() => setProjectColorSelection(null)}
+              >
+                None
+              </button>
+              {PROJECT_COLORS.map((color) => (
+                <button
+                  key={color}
+                  type="button"
+                  aria-label={`${PROJECT_COLOR_LABELS[color]} project color`}
+                  aria-pressed={projectColorSelection === color}
+                  className={cn(
+                    "flex h-9 items-center justify-center rounded-md border border-border hover:bg-accent focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring",
+                    projectColorSelection === color ? "ring-1 ring-ring" : "",
+                  )}
+                  onClick={() => setProjectColorSelection(color)}
+                >
+                  <span
+                    aria-hidden="true"
+                    className="size-4 rounded-full"
+                    style={{ backgroundColor: PROJECT_COLOR_VALUES[color] }}
+                  />
+                </button>
+              ))}
+            </div>
+          </DialogPanel>
+          <DialogFooter>
+            <Button variant="outline" onClick={closeProjectColorDialog}>
+              Cancel
+            </Button>
+            <Button onClick={saveProjectColor}>Save</Button>
           </DialogFooter>
         </DialogPopup>
       </Dialog>
