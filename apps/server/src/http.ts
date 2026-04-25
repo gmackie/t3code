@@ -5,6 +5,7 @@ import {
   HttpBody,
   HttpClient,
   HttpClientResponse,
+  HttpMiddleware,
   HttpRouter,
   HttpServerResponse,
   HttpServerRequest,
@@ -31,14 +32,6 @@ const OTLP_TRACES_PROXY_PATH = "/api/observability/v1/traces";
 const LOOPBACK_HOSTNAMES = new Set(["127.0.0.1", "::1", "localhost"]);
 const DESKTOP_APP_ORIGIN = "t3://app";
 
-export const browserApiCorsLayer = HttpRouter.cors({
-  allowedOrigins: [DESKTOP_APP_ORIGIN],
-  allowedMethods: ["GET", "POST", "OPTIONS"],
-  allowedHeaders: ["authorization", "b3", "traceparent", "content-type"],
-  credentials: true,
-  maxAge: 600,
-});
-
 export function isLoopbackHostname(hostname: string): boolean {
   const normalizedHostname = hostname
     .trim()
@@ -64,6 +57,17 @@ export function isAllowedBrowserApiOrigin(origin: string | undefined): boolean {
     return false;
   }
 }
+
+export const browserApiCorsLayer = HttpRouter.middleware(
+  HttpMiddleware.cors({
+    allowedOrigins: isAllowedBrowserApiOrigin,
+    allowedMethods: ["GET", "POST", "OPTIONS"],
+    allowedHeaders: ["authorization", "b3", "traceparent", "content-type"],
+    credentials: true,
+    maxAge: 600,
+  }),
+  { global: true },
+);
 
 export function resolveDevRedirectUrl(devUrl: URL, requestUrl: URL): string {
   const redirectUrl = new URL(devUrl.toString());

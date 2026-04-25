@@ -1,12 +1,13 @@
 import type { EnvironmentId, PersistedSavedEnvironmentRecord } from "@t3tools/contracts";
 import { create } from "zustand";
 
+import { sortCopy } from "../lib/arrayCompat";
 import { createNativeMobileStorageBag, type MobileStorage, type MobileStorageBag } from "./storage";
 
 export type MobileEnvironmentRecord = PersistedSavedEnvironmentRecord;
 
 const REGISTRY_STORAGE_KEY = "t3code:mobile:saved-environment-registry:v1";
-const SECRET_KEY_PREFIX = "t3code:mobile:saved-environment-secret:";
+const SECRET_KEY_PREFIX = "t3code.mobile.saved-environment-secret.";
 
 export interface MobileEnvironmentPersistence {
   readonly readRegistry: () => Promise<ReadonlyArray<MobileEnvironmentRecord>>;
@@ -32,7 +33,7 @@ function valuesOf(
 }
 
 function createSecretKey(environmentId: EnvironmentId): string {
-  return `${SECRET_KEY_PREFIX}${environmentId}`;
+  return `${SECRET_KEY_PREFIX}${environmentId.replace(/[^A-Za-z0-9._-]/g, "_")}`;
 }
 
 async function readRegistryDocument(
@@ -117,7 +118,7 @@ export const useEnvironmentStore = create<EnvironmentStoreState>()((set) => ({
 }));
 
 export function listEnvironmentRecords(): ReadonlyArray<MobileEnvironmentRecord> {
-  return valuesOf(useEnvironmentStore.getState().recordsById).toSorted((left, right) =>
+  return sortCopy(valuesOf(useEnvironmentStore.getState().recordsById), (left, right) =>
     left.label.localeCompare(right.label),
   );
 }

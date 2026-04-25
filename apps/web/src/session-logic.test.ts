@@ -1542,23 +1542,32 @@ describe("deriveActiveWorkStartedAt", () => {
 });
 
 describe("PROVIDER_OPTIONS", () => {
-  it("advertises Claude as available while keeping Cursor as a placeholder", () => {
+  it("advertises the enabled agent providers", () => {
     const claude = PROVIDER_OPTIONS.find((option) => option.value === "claudeAgent");
+    const opencode = PROVIDER_OPTIONS.find((option) => option.value === "opencode");
     const cursor = PROVIDER_OPTIONS.find((option) => option.value === "cursor");
     expect(PROVIDER_OPTIONS).toEqual([
       { value: "codex", label: "Codex", available: true },
       { value: "claudeAgent", label: "Claude", available: true },
-      { value: "cursor", label: "Cursor", available: false },
+      { value: "opencode", label: "OpenCode", available: true, pickerSidebarBadge: "new" },
+      { value: "cursor", label: "Cursor", available: true, pickerSidebarBadge: "new" },
     ]);
     expect(claude).toEqual({
       value: "claudeAgent",
       label: "Claude",
       available: true,
     });
+    expect(opencode).toEqual({
+      value: "opencode",
+      label: "OpenCode",
+      available: true,
+      pickerSidebarBadge: "new",
+    });
     expect(cursor).toEqual({
       value: "cursor",
       label: "Cursor",
-      available: false,
+      available: true,
+      pickerSidebarBadge: "new",
     });
   });
 });
