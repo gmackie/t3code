@@ -1,6 +1,7 @@
 {
   "expo": {
     "name": "T3 Code Mobile",
+    "owner": "gmacko",
     "slug": "t3-code-mobile",
     "scheme": "t3code-mobile",
     "version": "0.0.0",
@@ -11,7 +12,13 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.mackieg.t3-code-mobile"
+      "bundleIdentifier": "com.gmacko.t3code.dev"
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "7c2e766b-c51e-42b5-86b1-0ba0f2c277c7"
+      }
     }
   }
 }
