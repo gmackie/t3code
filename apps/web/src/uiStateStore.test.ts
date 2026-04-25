@@ -10,6 +10,7 @@ import {
   persistState,
   reorderProjects,
   setProjectExpanded,
+  setProjectColor,
   setThreadChangedFilesExpanded,
   syncProjects,
   syncThreads,
@@ -19,6 +20,7 @@ import {
 function makeUiState(overrides: Partial<UiState> = {}): UiState {
   return {
     projectExpandedById: {},
+    projectColorById: {},
     projectOrder: [],
     threadLastVisitedAtById: {},
     threadChangedFilesExpandedById: {},
@@ -360,6 +362,37 @@ describe("uiStateStore pure functions", () => {
     expect(next.projectOrder).toEqual([project1]);
   });
 
+  it("setProjectColor stores and clears project color without touching order", () => {
+    const project1 = ProjectId.make("project-1");
+    const initialState = makeUiState({
+      projectOrder: [project1],
+    });
+
+    const colored = setProjectColor(initialState, project1, "red");
+    const cleared = setProjectColor(colored, project1, null);
+
+    expect(colored.projectColorById[project1]).toBe("red");
+    expect(colored.projectOrder).toEqual([project1]);
+    expect(cleared.projectColorById).toEqual({});
+    expect(cleared.projectOrder).toEqual([project1]);
+  });
+
+  it("syncProjects preserves color when a project's logical key changes", () => {
+    const physicalKey = "env-local:/repo/project";
+    const previousLogicalKey = physicalKey;
+    const nextLogicalKey = "repo-canonical-key";
+
+    const initial = syncProjects(makeUiState(), [
+      { key: physicalKey, logicalKey: previousLogicalKey, cwd: "/repo/project" },
+    ]);
+    const colored = setProjectColor(initial, previousLogicalKey, "blue");
+    const next = syncProjects(colored, [
+      { key: physicalKey, logicalKey: nextLogicalKey, cwd: "/repo/project" },
+    ]);
+
+    expect(next.projectColorById).toEqual({ [nextLogicalKey]: "blue" });
+  });
+
   it("clearThreadUi removes visit state for deleted threads", () => {
     const thread1 = ThreadId.make("thread-1");
     const initialState = makeUiState({
@@ -558,5 +591,30 @@ describe("uiStateStore persistence round-trip", () => {
     ]);
 
     expect(rehydrated.projectExpandedById[nextLogicalKey]).toBe(false);
+  });
+
+  it("preserves project colors across restart when project's logical key changes", () => {
+    const physicalKey = "env-local:/color-restart-proj";
+    const previousLogicalKey = physicalKey;
+    const cwd = "/color-restart-proj";
+
+    let state = syncProjects(makeUiState(), [
+      { key: physicalKey, logicalKey: previousLogicalKey, cwd },
+    ]);
+    state = setProjectColor(state, previousLogicalKey, "green");
+    persistState(state);
+
+    const persisted = JSON.parse(
+      localStorageStub.getItem(PERSISTED_STATE_KEY) ?? "{}",
+    ) as PersistedUiState;
+    expect(persisted.projectColorCwds).toEqual({ [cwd]: "green" });
+
+    hydratePersistedProjectState(persisted);
+    const nextLogicalKey = "color-restart-canonical";
+    const rehydrated = syncProjects(makeUiState(), [
+      { key: physicalKey, logicalKey: nextLogicalKey, cwd },
+    ]);
+
+    expect(rehydrated.projectColorById[nextLogicalKey]).toBe("green");
   });
 });
