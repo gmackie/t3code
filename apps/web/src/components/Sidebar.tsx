@@ -61,7 +61,7 @@ import { usePrimaryEnvironmentId } from "../environments/primary";
 import { isElectron } from "../env";
 import { APP_STAGE_LABEL, APP_VERSION } from "../branding";
 import { isTerminalFocused } from "../lib/terminalFocus";
-import { isMacPlatform, newCommandId } from "../lib/utils";
+import { cn, isMacPlatform, newCommandId } from "../lib/utils";
 import {
   selectProjectByRef,
   selectProjectsAcrossEnvironments,
@@ -72,6 +72,8 @@ import {
 } from "../store";
 import { selectThreadTerminalState, useTerminalStateStore } from "../terminalStateStore";
 import { useUiStateStore } from "../uiStateStore";
+import { normalizeProjectHexColor, PROJECT_COLORS, type ProjectColor } from "../uiStateStore";
+import { isProjectColorPreset, PROJECT_COLOR_LABELS, PROJECT_COLOR_VALUES } from "../projectColors";
 import {
   resolveShortcutCommand,
   shortcutLabelForCommand,
@@ -204,6 +206,11 @@ const PROJECT_GROUPING_MODE_LABELS: Record<SidebarProjectGroupingMode, string> =
   repository_path: "Group by repository path",
   separate: "Keep separate",
 };
+const DEFAULT_CUSTOM_PROJECT_COLOR = "#14b8a6" as const;
+
+function formatProjectColorInput(color: ProjectColor | null): string {
+  return color && !isProjectColorPreset(color) ? color : DEFAULT_CUSTOM_PROJECT_COLOR;
+}
 
 function formatProjectMemberActionLabel(
   member: SidebarProjectGroupMember,
@@ -934,6 +941,10 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
   const markThreadUnread = useUiStateStore((state) => state.markThreadUnread);
   const toggleProject = useUiStateStore((state) => state.toggleProject);
   const toggleThreadSelection = useThreadSelectionStore((state) => state.toggleThread);
+  const projectColor = useUiStateStore(
+    (state) => state.projectColorById[project.projectKey] ?? null,
+  );
+  const setProjectColor = useUiStateStore((state) => state.setProjectColor);
   const rangeSelectTo = useThreadSelectionStore((state) => state.rangeSelectTo);
   const clearSelection = useThreadSelectionStore((state) => state.clearSelection);
   const removeFromSelection = useThreadSelectionStore((state) => state.removeFromSelection);
@@ -1052,6 +1063,11 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
   const [projectGroupingSelection, setProjectGroupingSelection] = useState<
     SidebarProjectGroupingMode | "inherit"
   >("inherit");
+  const [projectColorDialogOpen, setProjectColorDialogOpen] = useState(false);
+  const [projectColorSelection, setProjectColorSelection] = useState<ProjectColor | null>(null);
+  const [projectCustomColorInput, setProjectCustomColorInput] = useState<string>(
+    DEFAULT_CUSTOM_PROJECT_COLOR,
+  );
   const renamingCommittedRef = useRef(false);
   const renamingInputRef = useRef<HTMLInputElement | null>(null);
   const confirmArchiveButtonRefs = useRef(new Map<string, HTMLButtonElement>());
@@ -1270,6 +1286,12 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
     [projectGroupingSettings.sidebarProjectGroupingOverrides],
   );
 
+  const openProjectColorDialog = useCallback(() => {
+    setProjectColorSelection(projectColor);
+    setProjectCustomColorInput(formatProjectColorInput(projectColor));
+    setProjectColorDialogOpen(true);
+  }, [projectColor]);
+
   const removeProject = useCallback(
     async (member: SidebarProjectGroupMember, options: { force?: boolean } = {}): Promise<void> => {
       const memberProjectRef = scopeProjectRef(member.environmentId, member.id);
@@ -1483,6 +1505,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
         const clicked = await api.contextMenu.show(
           [
             buildTargetedItem("rename", "Rename project"),
+            { id: "project-color", label: "Project color..." },
             buildTargetedItem("grouping", "Project grouping…"),
             buildTargetedItem("copy-path", "Copy Project Path"),
             buildTargetedItem("delete", "Remove project", {
@@ -1499,18 +1522,49 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
           return;
         }
 
+        if (clicked === "project-color") {
+          openProjectColorDialog();
+          return;
+        }
+
         await actionHandlers.get(clicked)?.();
       })();
     },
     [
       copyPathToClipboard,
       handleRemoveProject,
+      openProjectColorDialog,
       openProjectGroupingDialog,
       openProjectRenameDialog,
       project.groupedProjectCount,
       project.memberProjects,
       suppressProjectClickForContextMenuRef,
     ],
+  );
+
+  const closeProjectColorDialog = useCallback(() => {
+    setProjectColorDialogOpen(false);
+  }, []);
+
+  const saveProjectColor = useCallback(() => {
+    setProjectColor(project.projectKey, projectColorSelection);
+    closeProjectColorDialog();
+  }, [closeProjectColorDialog, project.projectKey, projectColorSelection, setProjectColor]);
+
+  const normalizedProjectCustomColor = normalizeProjectHexColor(projectCustomColorInput);
+  const selectedProjectCustomColorInvalid =
+    projectColorSelection !== null &&
+    !isProjectColorPreset(projectColorSelection) &&
+    normalizedProjectCustomColor === null;
+  const selectCustomProjectColor = useCallback(
+    (value: string) => {
+      setProjectCustomColorInput(value);
+      const normalized = normalizeProjectHexColor(value);
+      if (normalized) {
+        setProjectColorSelection(normalized);
+      }
+    },
+    [setProjectColorSelection],
   );
 
   const navigateToThread = useCallback(
@@ -1981,7 +2035,11 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
               }`}
             />
           )}
-          <ProjectFavicon environmentId={project.environmentId} cwd={project.cwd} />
+          <ProjectFavicon
+            environmentId={project.environmentId}
+            cwd={project.cwd}
+            projectColor={projectColor}
+          />
           <span className="flex min-w-0 flex-1 items-center gap-2">
             <span className="truncate text-xs font-medium text-foreground/90">
               {project.displayName}
@@ -2189,6 +2247,108 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
               Cancel
             </Button>
             <Button onClick={saveProjectGroupingPreference}>Save</Button>
+          </DialogFooter>
+        </DialogPopup>
+      </Dialog>
+
+      <Dialog
+        open={projectColorDialogOpen}
+        onOpenChange={(open) => {
+          if (!open) {
+            closeProjectColorDialog();
+          }
+        }}
+      >
+        <DialogPopup className="max-w-xs">
+          <DialogHeader>
+            <DialogTitle>Project color</DialogTitle>
+            <DialogDescription>{`Choose a sidebar color for ${project.displayName}.`}</DialogDescription>
+          </DialogHeader>
+          <DialogPanel>
+            <div className="grid grid-cols-4 gap-1.5">
+              <button
+                type="button"
+                aria-label="No project color"
+                aria-pressed={projectColorSelection === null}
+                className={cn(
+                  "flex h-7 items-center justify-center rounded-md border border-border px-2 text-[11px] text-muted-foreground hover:bg-accent focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring",
+                  projectColorSelection === null ? "ring-1 ring-ring" : "",
+                )}
+                onClick={() => setProjectColorSelection(null)}
+              >
+                None
+              </button>
+              {PROJECT_COLORS.map((color) => (
+                <button
+                  key={color}
+                  type="button"
+                  aria-label={`${PROJECT_COLOR_LABELS[color]} project color`}
+                  aria-pressed={projectColorSelection === color}
+                  className={cn(
+                    "flex h-7 items-center justify-center rounded-md border border-border hover:bg-accent focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring",
+                    projectColorSelection === color ? "ring-1 ring-ring" : "",
+                  )}
+                  onClick={() => setProjectColorSelection(color)}
+                >
+                  <span
+                    aria-hidden="true"
+                    className="size-3.5 rounded-full"
+                    style={{ backgroundColor: PROJECT_COLOR_VALUES[color] }}
+                  />
+                </button>
+              ))}
+            </div>
+            <div className="mt-3 flex items-center gap-2">
+              <button
+                type="button"
+                aria-label="Custom project color"
+                aria-pressed={
+                  projectColorSelection !== null && !isProjectColorPreset(projectColorSelection)
+                }
+                className={cn(
+                  "relative flex size-7 shrink-0 items-center justify-center overflow-hidden rounded-md border border-border focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring",
+                  projectColorSelection !== null && !isProjectColorPreset(projectColorSelection)
+                    ? "ring-1 ring-ring"
+                    : "",
+                )}
+                style={{
+                  backgroundColor: normalizedProjectCustomColor ?? DEFAULT_CUSTOM_PROJECT_COLOR,
+                }}
+                onClick={() =>
+                  setProjectColorSelection(
+                    normalizedProjectCustomColor ?? DEFAULT_CUSTOM_PROJECT_COLOR,
+                  )
+                }
+              >
+                <input
+                  aria-label="Pick custom project color"
+                  className="absolute inset-0 size-full cursor-pointer opacity-0"
+                  type="color"
+                  value={normalizedProjectCustomColor ?? DEFAULT_CUSTOM_PROJECT_COLOR}
+                  onChange={(event) => selectCustomProjectColor(event.currentTarget.value)}
+                />
+              </button>
+              <Input
+                nativeInput
+                size="sm"
+                value={projectCustomColorInput}
+                aria-label="Custom project color hex value"
+                aria-invalid={normalizedProjectCustomColor === null}
+                className="flex-1 rounded-md"
+                inputMode="text"
+                spellCheck={false}
+                maxLength={7}
+                onChange={(event) => selectCustomProjectColor(event.currentTarget.value)}
+              />
+            </div>
+          </DialogPanel>
+          <DialogFooter>
+            <Button variant="outline" onClick={closeProjectColorDialog}>
+              Cancel
+            </Button>
+            <Button onClick={saveProjectColor} disabled={selectedProjectCustomColorInvalid}>
+              Save
+            </Button>
           </DialogFooter>
         </DialogPopup>
       </Dialog>

@@ -19,11 +19,42 @@ export interface PersistedUiState {
   collapsedProjectCwds?: string[];
   expandedProjectCwds?: string[];
   projectOrderCwds?: string[];
+  projectColorCwds?: Record<string, ProjectColor>;
   threadChangedFilesExpandedById?: Record<string, Record<string, boolean>>;
+}
+
+export const PROJECT_COLOR_PRESETS = [
+  "red",
+  "orange",
+  "yellow",
+  "green",
+  "blue",
+  "purple",
+  "pink",
+] as const;
+export const PROJECT_COLORS = PROJECT_COLOR_PRESETS;
+export type ProjectColorPreset = (typeof PROJECT_COLOR_PRESETS)[number];
+export type ProjectColor = ProjectColorPreset | `#${string}`;
+
+const HEX_PROJECT_COLOR_PATTERN = /^#[0-9a-f]{6}$/;
+
+export function normalizeProjectHexColor(value: string): `#${string}` | null {
+  const trimmed = value.trim().toLowerCase();
+  const withHash = trimmed.startsWith("#") ? trimmed : `#${trimmed}`;
+  const expanded = /^#[0-9a-f]{3}$/.test(withHash)
+    ? (`#${withHash[1]}${withHash[1]}${withHash[2]}${withHash[2]}${withHash[3]}${withHash[3]}` as const)
+    : withHash;
+
+  return HEX_PROJECT_COLOR_PATTERN.test(expanded) ? (expanded as `#${string}`) : null;
+}
+
+function isProjectColor(value: string): value is ProjectColor {
+  return projectColorSet.has(value) || normalizeProjectHexColor(value) === value;
 }
 
 export interface UiProjectState {
   projectExpandedById: Record<string, boolean>;
+  projectColorById: Record<string, ProjectColor>;
   projectOrder: string[];
 }
 
@@ -49,14 +80,17 @@ export interface SyncThreadInput {
 
 const initialState: UiState = {
   projectExpandedById: {},
+  projectColorById: {},
   projectOrder: [],
   threadLastVisitedAtById: {},
   threadChangedFilesExpandedById: {},
 };
 
+const projectColorSet = new Set<string>(PROJECT_COLOR_PRESETS);
 const persistedCollapsedProjectCwds = new Set<string>();
 const persistedExpandedProjectCwds = new Set<string>();
 const persistedProjectOrderCwds: string[] = [];
+const persistedProjectColorByCwd = new Map<string, ProjectColor>();
 // Pre-fix persisted shape only listed expanded cwds, so anything not listed
 // was treated as collapsed. Track whether the loaded blob carried the new
 // `collapsedProjectCwds` field so we can preserve that legacy semantic for
@@ -129,6 +163,7 @@ export function hydratePersistedProjectState(parsed: PersistedUiState): void {
   persistedCollapsedProjectCwds.clear();
   persistedExpandedProjectCwds.clear();
   persistedProjectOrderCwds.length = 0;
+  persistedProjectColorByCwd.clear();
   persistedProjectStateUsesLegacyShape = !Array.isArray(parsed.collapsedProjectCwds);
   for (const cwd of parsed.collapsedProjectCwds ?? []) {
     if (typeof cwd === "string" && cwd.length > 0) {
@@ -143,6 +178,11 @@ export function hydratePersistedProjectState(parsed: PersistedUiState): void {
   for (const cwd of parsed.projectOrderCwds ?? []) {
     if (typeof cwd === "string" && cwd.length > 0 && !persistedProjectOrderCwds.includes(cwd)) {
       persistedProjectOrderCwds.push(cwd);
+    }
+  }
+  for (const [cwd, color] of Object.entries(parsed.projectColorCwds ?? {})) {
+    if (cwd.length > 0 && isProjectColor(color)) {
+      persistedProjectColorByCwd.set(cwd, color);
     }
   }
 }
@@ -165,6 +205,12 @@ export function persistState(state: UiState): void {
       const cwd = currentProjectCwdById.get(projectId);
       return cwd ? [cwd] : [];
     });
+    const projectColorCwds = Object.fromEntries(
+      Object.entries(state.projectColorById).flatMap(([logicalKey, color]) => {
+        const cwds = currentProjectCwdsByLogicalKey.get(logicalKey) ?? [];
+        return cwds.map((cwd) => [cwd, color] as const);
+      }),
+    );
     const threadChangedFilesExpandedById = Object.fromEntries(
       Object.entries(state.threadChangedFilesExpandedById).flatMap(([threadId, turns]) => {
         const nextTurns = Object.fromEntries(
@@ -179,6 +225,7 @@ export function persistState(state: UiState): void {
         collapsedProjectCwds,
         expandedProjectCwds,
         projectOrderCwds,
+        projectColorCwds,
         threadChangedFilesExpandedById,
       } satisfies PersistedUiState),
     );
@@ -274,7 +321,9 @@ export function syncProjects(state: UiState, projects: readonly SyncProjectInput
     projects.some((project) => previousProjectCwdById.get(project.key) !== project.cwd);
 
   const nextExpandedById: Record<string, boolean> = {};
+  const nextProjectColorById: Record<string, ProjectColor> = {};
   const previousExpandedById = state.projectExpandedById;
+  const previousProjectColorById = state.projectColorById;
   const persistedOrderByCwd = new Map(
     persistedProjectOrderCwds.map((cwd, index) => [cwd, index] as const),
   );
@@ -310,6 +359,38 @@ export function syncProjects(state: UiState, projects: readonly SyncProjectInput
         fallbackFromPreviousLogicalKey ??
         fallbackFromPersistedShape;
       nextExpandedById[project.logicalKey] = expanded;
+    }
+    if (!(project.logicalKey in nextProjectColorById)) {
+      const groupCwds = currentProjectCwdsByLogicalKey.get(project.logicalKey) ?? [project.cwd];
+      const fallbackFromPreviousLogicalKey = (() => {
+        const previousKeys = previousLogicalKeysByNewLogicalKey.get(project.logicalKey);
+        if (!previousKeys) {
+          return undefined;
+        }
+        for (const previousKey of previousKeys) {
+          const color = previousProjectColorById[previousKey];
+          if (color !== undefined) {
+            return color;
+          }
+        }
+        return undefined;
+      })();
+      const fallbackFromPersistedShape = (() => {
+        for (const cwd of groupCwds) {
+          const color = persistedProjectColorByCwd.get(cwd);
+          if (color !== undefined) {
+            return color;
+          }
+        }
+        return undefined;
+      })();
+      const color =
+        previousProjectColorById[project.logicalKey] ??
+        fallbackFromPreviousLogicalKey ??
+        fallbackFromPersistedShape;
+      if (color !== undefined) {
+        nextProjectColorById[project.logicalKey] = color;
+      }
     }
     return {
       id: project.key,
@@ -370,6 +451,7 @@ export function syncProjects(state: UiState, projects: readonly SyncProjectInput
 
   if (
     recordsEqual(state.projectExpandedById, nextExpandedById) &&
+    recordsEqual(state.projectColorById, nextProjectColorById) &&
     projectOrdersEqual(state.projectOrder, nextProjectOrder) &&
     !cwdMappingChanged
   ) {
@@ -379,6 +461,7 @@ export function syncProjects(state: UiState, projects: readonly SyncProjectInput
   return {
     ...state,
     projectExpandedById: nextExpandedById,
+    projectColorById: nextProjectColorById,
     projectOrder: nextProjectOrder,
   };
 }
@@ -556,6 +639,35 @@ export function setProjectExpanded(state: UiState, projectId: string, expanded: 
   };
 }
 
+export function setProjectColor(
+  state: UiState,
+  projectId: string,
+  color: ProjectColor | null,
+): UiState {
+  if (color === null) {
+    if (!(projectId in state.projectColorById)) {
+      return state;
+    }
+    const nextProjectColorById = { ...state.projectColorById };
+    delete nextProjectColorById[projectId];
+    return {
+      ...state,
+      projectColorById: nextProjectColorById,
+    };
+  }
+
+  if (state.projectColorById[projectId] === color) {
+    return state;
+  }
+  return {
+    ...state,
+    projectColorById: {
+      ...state.projectColorById,
+      [projectId]: color,
+    },
+  };
+}
+
 export function reorderProjects(
   state: UiState,
   draggedProjectIds: readonly string[],
@@ -608,6 +720,7 @@ interface UiStateStore extends UiState {
   setThreadChangedFilesExpanded: (threadId: string, turnId: string, expanded: boolean) => void;
   toggleProject: (projectId: string) => void;
   setProjectExpanded: (projectId: string, expanded: boolean) => void;
+  setProjectColor: (projectId: string, color: ProjectColor | null) => void;
   reorderProjects: (
     draggedProjectIds: readonly string[],
     targetProjectIds: readonly string[],
@@ -628,6 +741,7 @@ export const useUiStateStore = create<UiStateStore>((set) => ({
   toggleProject: (projectId) => set((state) => toggleProject(state, projectId)),
   setProjectExpanded: (projectId, expanded) =>
     set((state) => setProjectExpanded(state, projectId, expanded)),
+  setProjectColor: (projectId, color) => set((state) => setProjectColor(state, projectId, color)),
   reorderProjects: (draggedProjectIds, targetProjectIds) =>
     set((state) => reorderProjects(state, draggedProjectIds, targetProjectIds)),
 }));

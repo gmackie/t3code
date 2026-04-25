@@ -857,6 +857,13 @@ export default function ChatView(props: ChatViewProps) {
     sidebarProjectGroupingMode: settings.sidebarProjectGroupingMode,
     sidebarProjectGroupingOverrides: settings.sidebarProjectGroupingOverrides,
   }));
+  const activeProjectColor = useUiStateStore((state) =>
+    activeProject
+      ? (state.projectColorById[
+          deriveLogicalProjectKeyFromSettings(activeProject, projectGroupingSettings)
+        ] ?? null)
+      : null,
+  );
   const logicalProjectEnvironments = useMemo(() => {
     if (!activeProject) return [];
     const logicalKey = deriveLogicalProjectKeyFromSettings(activeProject, projectGroupingSettings);
@@ -3253,6 +3260,7 @@ export default function ChatView(props: ChatViewProps) {
           {...(routeKind === "draft" && draftId ? { draftId } : {})}
           activeThreadTitle={activeThread.title}
           activeProjectName={activeProject?.name}
+          activeProjectColor={activeProjectColor}
           isGitRepo={isGitRepo}
           openInCwd={gitCwd}
           activeProjectScripts={activeProject?.scripts}
