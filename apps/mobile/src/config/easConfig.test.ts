@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import npmrc from "../../../../.npmrc?raw";
 import appConfig from "../../app.json";
 import easConfig from "../../eas.json";
 import packageJson from "../../package.json";
@@ -21,5 +22,9 @@ describe("mobile EAS configuration", () => {
     expect(easConfig.build?.preview?.ios).toBeDefined();
     expect(easConfig.build?.production?.ios).toBeDefined();
     expect(easConfig.submit?.production?.ios).toBeDefined();
+  });
+
+  it("disables Bun lifecycle scripts during EAS dependency installs", () => {
+    expect(npmrc).toMatch(/^ignore-scripts=true$/m);
   });
 });
