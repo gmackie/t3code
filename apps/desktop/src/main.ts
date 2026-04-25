@@ -361,30 +361,55 @@ function resolveAdvertisedHostOverride(): string | undefined {
   return override && override.length > 0 ? override : undefined;
 }
 
-async function applyDesktopServerExposureMode(
-  mode: DesktopServerExposureMode,
-  options?: { readonly persist?: boolean; readonly rejectIfUnavailable?: boolean },
-): Promise<DesktopServerExposureState> {
-  const advertisedHostOverride = resolveAdvertisedHostOverride();
-  const requestedMode = mode;
+export function resolveDesktopServerExposureForMainProcess(input: {
+  readonly mode: DesktopServerExposureMode;
+  readonly port: number;
+  readonly networkInterfaces: NodeJS.Dict<OS.NetworkInterfaceInfo[]>;
+  readonly advertisedHostOverride?: string;
+  readonly rejectIfUnavailable?: boolean;
+}): ReturnType<typeof resolveDesktopServerExposure> {
+  const requestedMode = input.mode;
   let exposure = resolveDesktopServerExposure({
-    mode,
-    port: backendPort,
-    networkInterfaces: OS.networkInterfaces(),
-    ...(advertisedHostOverride ? { advertisedHostOverride } : {}),
+    mode: requestedMode,
+    port: input.port,
+    networkInterfaces: input.networkInterfaces,
+    ...(input.advertisedHostOverride
+      ? { advertisedHostOverride: input.advertisedHostOverride }
+      : {}),
   });
 
   if (requestedMode !== "local-only" && exposure.endpointUrl === null) {
-    if (options?.rejectIfUnavailable) {
+    if (input.rejectIfUnavailable) {
       throw new Error("No reachable network address is available for this desktop right now.");
     }
     exposure = resolveDesktopServerExposure({
       mode: "local-only",
-      port: backendPort,
-      networkInterfaces: OS.networkInterfaces(),
-      ...(advertisedHostOverride ? { advertisedHostOverride } : {}),
+      port: input.port,
+      networkInterfaces: input.networkInterfaces,
+      ...(input.advertisedHostOverride
+        ? { advertisedHostOverride: input.advertisedHostOverride }
+        : {}),
     });
   }
+
+  return exposure;
+}
+
+async function applyDesktopServerExposureMode(
+  mode: DesktopServerExposureMode,
+  options?: { readonly persist?: boolean; readonly rejectIfUnavailable?: boolean },
+): Promise<DesktopServerExposureState> {
+  const requestedMode = mode;
+  const advertisedHostOverride = resolveAdvertisedHostOverride();
+  const exposure = resolveDesktopServerExposureForMainProcess({
+    mode,
+    port: backendPort,
+    networkInterfaces: OS.networkInterfaces(),
+    ...(advertisedHostOverride ? { advertisedHostOverride } : {}),
+    ...(options?.rejectIfUnavailable !== undefined
+      ? { rejectIfUnavailable: options.rejectIfUnavailable }
+      : {}),
+  });
 
   desktopServerExposureMode = exposure.mode;
   desktopSettings = setDesktopServerExposurePreference(desktopSettings, requestedMode);

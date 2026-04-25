@@ -811,8 +811,11 @@ export function ConnectionsSettings() {
     DesktopServerExposureState["mode"] | null
   >(null);
   const canManageLocalBackend = currentSessionRole === "owner";
+  const isDesktopServerExposureEnabled = desktopServerExposureState
+    ? desktopServerExposureState.mode !== "local-only"
+    : false;
   const isLocalBackendNetworkAccessible = desktopBridge
-    ? desktopServerExposureState?.mode === "network-accessible"
+    ? isDesktopServerExposureEnabled
     : currentAuthPolicy === "remote-reachable";
 
   const handleDesktopServerExposureChange = useCallback(
@@ -1162,7 +1165,7 @@ export function ConnectionsSettings() {
                     }}
                   >
                     <Switch
-                      checked={desktopServerExposureState?.mode === "network-accessible"}
+                      checked={isDesktopServerExposureEnabled}
                       disabled={!desktopServerExposureState || isUpdatingDesktopServerExposure}
                       onCheckedChange={(checked) => {
                         setPendingDesktopServerExposureMode(
