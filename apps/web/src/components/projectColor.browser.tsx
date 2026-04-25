@@ -41,4 +41,16 @@ describe("project color rendering", () => {
       await screen.unmount();
     }
   });
+
+  it("uses custom hex project colors for the thread-title project badge", async () => {
+    const screen = await render(<ProjectNameBadge projectName="t3code" projectColor="#14b8a6" />);
+
+    try {
+      const badge = document.querySelector("[data-project-name-badge]");
+      expect(badge).not.toBeNull();
+      expect(getComputedStyle(badge as Element).backgroundColor).toBe("rgb(20, 184, 166)");
+    } finally {
+      await screen.unmount();
+    }
+  });
 });

@@ -400,6 +400,15 @@ describe("uiStateStore pure functions", () => {
     expect(cleared.projectOrder).toEqual([project1]);
   });
 
+  it("setProjectColor stores custom hex colors", () => {
+    const project1 = ProjectId.make("project-1");
+    const initialState = makeUiState();
+
+    const colored = setProjectColor(initialState, project1, "#14b8a6");
+
+    expect(colored.projectColorById[project1]).toBe("#14b8a6");
+  });
+
   it("syncProjects preserves color when a project's logical key changes", () => {
     const physicalKey = "env-local:/repo/project";
     const previousLogicalKey = physicalKey;
@@ -616,7 +625,7 @@ describe("uiStateStore persistence round-trip", () => {
     expect(rehydrated.projectExpandedById[nextLogicalKey]).toBe(false);
   });
 
-  it("preserves project colors across restart when project's logical key changes", () => {
+  it("preserves custom project colors across restart when project's logical key changes", () => {
     const physicalKey = "env-local:/color-restart-proj";
     const previousLogicalKey = physicalKey;
     const cwd = "/color-restart-proj";
@@ -624,13 +633,13 @@ describe("uiStateStore persistence round-trip", () => {
     let state = syncProjects(makeUiState(), [
       { key: physicalKey, logicalKey: previousLogicalKey, cwd },
     ]);
-    state = setProjectColor(state, previousLogicalKey, "green");
+    state = setProjectColor(state, previousLogicalKey, "#14b8a6");
     persistState(state);
 
     const persisted = JSON.parse(
       localStorageStub.getItem(PERSISTED_STATE_KEY) ?? "{}",
     ) as PersistedUiState;
-    expect(persisted.projectColorCwds).toEqual({ [cwd]: "green" });
+    expect(persisted.projectColorCwds).toEqual({ [cwd]: "#14b8a6" });
 
     hydratePersistedProjectState(persisted);
     const nextLogicalKey = "color-restart-canonical";
@@ -638,6 +647,6 @@ describe("uiStateStore persistence round-trip", () => {
       { key: physicalKey, logicalKey: nextLogicalKey, cwd },
     ]);
 
-    expect(rehydrated.projectColorById[nextLogicalKey]).toBe("green");
+    expect(rehydrated.projectColorById[nextLogicalKey]).toBe("#14b8a6");
   });
 });

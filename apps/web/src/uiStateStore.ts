@@ -23,7 +23,7 @@ export interface PersistedUiState {
   threadChangedFilesExpandedById?: Record<string, Record<string, boolean>>;
 }
 
-export const PROJECT_COLORS = [
+export const PROJECT_COLOR_PRESETS = [
   "red",
   "orange",
   "yellow",
@@ -32,7 +32,25 @@ export const PROJECT_COLORS = [
   "purple",
   "pink",
 ] as const;
-export type ProjectColor = (typeof PROJECT_COLORS)[number];
+export const PROJECT_COLORS = PROJECT_COLOR_PRESETS;
+export type ProjectColorPreset = (typeof PROJECT_COLOR_PRESETS)[number];
+export type ProjectColor = ProjectColorPreset | `#${string}`;
+
+const HEX_PROJECT_COLOR_PATTERN = /^#[0-9a-f]{6}$/;
+
+export function normalizeProjectHexColor(value: string): `#${string}` | null {
+  const trimmed = value.trim().toLowerCase();
+  const withHash = trimmed.startsWith("#") ? trimmed : `#${trimmed}`;
+  const expanded = /^#[0-9a-f]{3}$/.test(withHash)
+    ? (`#${withHash[1]}${withHash[1]}${withHash[2]}${withHash[2]}${withHash[3]}${withHash[3]}` as const)
+    : withHash;
+
+  return HEX_PROJECT_COLOR_PATTERN.test(expanded) ? (expanded as `#${string}`) : null;
+}
+
+function isProjectColor(value: string): value is ProjectColor {
+  return projectColorSet.has(value) || normalizeProjectHexColor(value) === value;
+}
 
 export interface UiProjectState {
   projectExpandedById: Record<string, boolean>;
@@ -68,7 +86,7 @@ const initialState: UiState = {
   threadChangedFilesExpandedById: {},
 };
 
-const projectColorSet = new Set<string>(PROJECT_COLORS);
+const projectColorSet = new Set<string>(PROJECT_COLOR_PRESETS);
 const persistedCollapsedProjectCwds = new Set<string>();
 const persistedExpandedProjectCwds = new Set<string>();
 const persistedProjectOrderCwds: string[] = [];
@@ -163,7 +181,7 @@ export function hydratePersistedProjectState(parsed: PersistedUiState): void {
     }
   }
   for (const [cwd, color] of Object.entries(parsed.projectColorCwds ?? {})) {
-    if (cwd.length > 0 && projectColorSet.has(color)) {
+    if (cwd.length > 0 && isProjectColor(color)) {
       persistedProjectColorByCwd.set(cwd, color);
     }
   }
