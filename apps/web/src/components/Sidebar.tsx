@@ -76,8 +76,8 @@ import {
 import { selectThreadTerminalState, useTerminalStateStore } from "../terminalStateStore";
 import { serializeThreadDragData, THREAD_DRAG_MIME_TYPE } from "../threadDrag";
 import { useUiStateStore } from "../uiStateStore";
-import { PROJECT_COLORS, type ProjectColor } from "../uiStateStore";
-import { PROJECT_COLOR_LABELS, PROJECT_COLOR_VALUES } from "../projectColors";
+import { normalizeProjectHexColor, PROJECT_COLORS, type ProjectColor } from "../uiStateStore";
+import { isProjectColorPreset, PROJECT_COLOR_LABELS, PROJECT_COLOR_VALUES } from "../projectColors";
 import {
   resolveShortcutCommand,
   shortcutLabelForCommand,
@@ -217,6 +217,12 @@ const PROJECT_GROUPING_MODE_LABELS: Record<SidebarProjectGroupingMode, string> =
   repository_path: "Group by repository path",
   separate: "Keep separate",
 };
+const DEFAULT_CUSTOM_PROJECT_COLOR = "#14b8a6" as const;
+
+function formatProjectColorInput(color: ProjectColor | null): string {
+  return color && !isProjectColorPreset(color) ? color : DEFAULT_CUSTOM_PROJECT_COLOR;
+}
+
 function formatProjectMemberActionLabel(
   member: SidebarProjectGroupMember,
   groupedProjectCount: number,
@@ -1082,6 +1088,9 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
   >("inherit");
   const [projectColorDialogOpen, setProjectColorDialogOpen] = useState(false);
   const [projectColorSelection, setProjectColorSelection] = useState<ProjectColor | null>(null);
+  const [projectCustomColorInput, setProjectCustomColorInput] = useState<string>(
+    DEFAULT_CUSTOM_PROJECT_COLOR,
+  );
   const renamingCommittedRef = useRef(false);
   const renamingInputRef = useRef<HTMLInputElement | null>(null);
   const confirmArchiveButtonRefs = useRef(new Map<string, HTMLButtonElement>());
@@ -1302,6 +1311,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
 
   const openProjectColorDialog = useCallback(() => {
     setProjectColorSelection(projectColor);
+    setProjectCustomColorInput(formatProjectColorInput(projectColor));
     setProjectColorDialogOpen(true);
   }, [projectColor]);
 
@@ -1563,6 +1573,22 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
     setProjectColor(project.projectKey, projectColorSelection);
     closeProjectColorDialog();
   }, [closeProjectColorDialog, project.projectKey, projectColorSelection, setProjectColor]);
+
+  const normalizedProjectCustomColor = normalizeProjectHexColor(projectCustomColorInput);
+  const selectedProjectCustomColorInvalid =
+    projectColorSelection !== null &&
+    !isProjectColorPreset(projectColorSelection) &&
+    normalizedProjectCustomColor === null;
+  const selectCustomProjectColor = useCallback(
+    (value: string) => {
+      setProjectCustomColorInput(value);
+      const normalized = normalizeProjectHexColor(value);
+      if (normalized) {
+        setProjectColorSelection(normalized);
+      }
+    },
+    [setProjectColorSelection],
+  );
 
   const navigateToThread = useCallback(
     (threadRef: ScopedThreadRef, options?: { focusPrimaryPane?: boolean }) => {
@@ -2274,19 +2300,19 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
           }
         }}
       >
-        <DialogPopup className="max-w-sm">
+        <DialogPopup className="max-w-xs">
           <DialogHeader>
             <DialogTitle>Project color</DialogTitle>
             <DialogDescription>{`Choose a sidebar color for ${project.displayName}.`}</DialogDescription>
           </DialogHeader>
           <DialogPanel>
-            <div className="grid grid-cols-4 gap-2">
+            <div className="grid grid-cols-4 gap-1.5">
               <button
                 type="button"
                 aria-label="No project color"
                 aria-pressed={projectColorSelection === null}
                 className={cn(
-                  "flex h-9 items-center justify-center rounded-md border border-border text-xs text-muted-foreground hover:bg-accent focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring",
+                  "flex h-7 items-center justify-center rounded-md border border-border px-2 text-[11px] text-muted-foreground hover:bg-accent focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring",
                   projectColorSelection === null ? "ring-1 ring-ring" : "",
                 )}
                 onClick={() => setProjectColorSelection(null)}
@@ -2300,25 +2326,70 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
                   aria-label={`${PROJECT_COLOR_LABELS[color]} project color`}
                   aria-pressed={projectColorSelection === color}
                   className={cn(
-                    "flex h-9 items-center justify-center rounded-md border border-border hover:bg-accent focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring",
+                    "flex h-7 items-center justify-center rounded-md border border-border hover:bg-accent focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring",
                     projectColorSelection === color ? "ring-1 ring-ring" : "",
                   )}
                   onClick={() => setProjectColorSelection(color)}
                 >
                   <span
                     aria-hidden="true"
-                    className="size-4 rounded-full"
+                    className="size-3.5 rounded-full"
                     style={{ backgroundColor: PROJECT_COLOR_VALUES[color] }}
                   />
                 </button>
               ))}
+            </div>
+            <div className="mt-3 flex items-center gap-2">
+              <button
+                type="button"
+                aria-label="Custom project color"
+                aria-pressed={
+                  projectColorSelection !== null && !isProjectColorPreset(projectColorSelection)
+                }
+                className={cn(
+                  "relative flex size-7 shrink-0 items-center justify-center overflow-hidden rounded-md border border-border focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring",
+                  projectColorSelection !== null && !isProjectColorPreset(projectColorSelection)
+                    ? "ring-1 ring-ring"
+                    : "",
+                )}
+                style={{
+                  backgroundColor: normalizedProjectCustomColor ?? DEFAULT_CUSTOM_PROJECT_COLOR,
+                }}
+                onClick={() =>
+                  setProjectColorSelection(
+                    normalizedProjectCustomColor ?? DEFAULT_CUSTOM_PROJECT_COLOR,
+                  )
+                }
+              >
+                <input
+                  aria-label="Pick custom project color"
+                  className="absolute inset-0 size-full cursor-pointer opacity-0"
+                  type="color"
+                  value={normalizedProjectCustomColor ?? DEFAULT_CUSTOM_PROJECT_COLOR}
+                  onChange={(event) => selectCustomProjectColor(event.currentTarget.value)}
+                />
+              </button>
+              <Input
+                nativeInput
+                size="sm"
+                value={projectCustomColorInput}
+                aria-label="Custom project color hex value"
+                aria-invalid={normalizedProjectCustomColor === null}
+                className="flex-1 rounded-md"
+                inputMode="text"
+                spellCheck={false}
+                maxLength={7}
+                onChange={(event) => selectCustomProjectColor(event.currentTarget.value)}
+              />
             </div>
           </DialogPanel>
           <DialogFooter>
             <Button variant="outline" onClick={closeProjectColorDialog}>
               Cancel
             </Button>
-            <Button onClick={saveProjectColor}>Save</Button>
+            <Button onClick={saveProjectColor} disabled={selectedProjectCustomColorInvalid}>
+              Save
+            </Button>
           </DialogFooter>
         </DialogPopup>
       </Dialog>

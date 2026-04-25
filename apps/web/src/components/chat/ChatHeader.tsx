@@ -16,7 +16,7 @@ import ProjectScriptsControl, { type NewProjectScriptInput } from "../ProjectScr
 import { Toggle } from "../ui/toggle";
 import { SidebarTrigger } from "../ui/sidebar";
 import { OpenInPicker } from "./OpenInPicker";
-import { PROJECT_COLOR_FOREGROUND_VALUES, PROJECT_COLOR_VALUES } from "../../projectColors";
+import { resolveProjectColorForegroundValue, resolveProjectColorValue } from "../../projectColors";
 import type { ProjectColor } from "../../uiStateStore";
 import { cn } from "../../lib/utils";
 
@@ -186,8 +186,8 @@ export function ProjectNameBadge({
       style={
         projectColor
           ? {
-              backgroundColor: PROJECT_COLOR_VALUES[projectColor],
-              color: PROJECT_COLOR_FOREGROUND_VALUES[projectColor],
+              backgroundColor: resolveProjectColorValue(projectColor),
+              color: resolveProjectColorForegroundValue(projectColor),
             }
           : undefined
       }
