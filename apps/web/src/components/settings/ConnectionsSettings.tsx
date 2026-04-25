@@ -254,6 +254,32 @@ function resolveCurrentOriginPairingUrl(credential: string): string {
   return setPairingTokenOnUrl(url, credential).toString();
 }
 
+function describeDesktopServerExposureState(
+  state: DesktopServerExposureState | null | undefined,
+): string {
+  if (!state) {
+    return "Loading…";
+  }
+
+  if (state.endpointUrl) {
+    if (state.mode === "tailnet-accessible") {
+      return `Recommended for mobile. Reachable on your Tailnet at ${state.endpointUrl}`;
+    }
+
+    if (state.mode === "network-accessible") {
+      return `LAN mode. Reachable at ${state.endpointUrl}`;
+    }
+  }
+
+  if (state.mode === "network-accessible") {
+    return state.advertisedHost
+      ? `LAN mode. Exposed on all interfaces. Pairing links use ${state.advertisedHost}.`
+      : "LAN mode. Exposed on all interfaces.";
+  }
+
+  return "Limited to this machine. Enable Tailnet access for the recommended remote pairing path.";
+}
+
 type PairingLinkListRowProps = {
   pairingLink: ServerPairingLinkRecord;
   endpointUrl: string | null | undefined;
@@ -814,7 +840,7 @@ export function ConnectionsSettings() {
   const isDesktopServerExposureEnabled = desktopServerExposureState
     ? desktopServerExposureState.mode !== "local-only"
     : false;
-  const isLocalBackendNetworkAccessible = desktopBridge
+  const isLocalBackendRemoteAccessible = desktopBridge
     ? isDesktopServerExposureEnabled
     : currentAuthPolicy === "remote-reachable";
 
@@ -825,20 +851,19 @@ export function ConnectionsSettings() {
       setDesktopServerExposureError(null);
       try {
         const nextState = await desktopBridge.setServerExposureMode(
-          checked ? "network-accessible" : "local-only",
+          checked ? "tailnet-accessible" : "local-only",
         );
         setDesktopServerExposureState(nextState);
         setPendingDesktopServerExposureMode(null);
         setIsUpdatingDesktopServerExposure(false);
       } catch (error) {
-        const message =
-          error instanceof Error ? error.message : "Failed to update network exposure.";
+        const message = error instanceof Error ? error.message : "Failed to update remote access.";
         setPendingDesktopServerExposureMode(null);
         setDesktopServerExposureError(message);
         toastManager.add(
           stackedThreadToast({
             type: "error",
-            title: "Could not update network access",
+            title: "Could not update remote access",
             description: message,
           }),
         );
@@ -850,7 +875,7 @@ export function ConnectionsSettings() {
 
   const handleConfirmDesktopServerExposureChange = useCallback(() => {
     if (pendingDesktopServerExposureMode === null) return;
-    const checked = pendingDesktopServerExposureMode === "network-accessible";
+    const checked = pendingDesktopServerExposureMode !== "local-only";
     void handleDesktopServerExposureChange(checked);
   }, [handleDesktopServerExposureChange, pendingDesktopServerExposureMode]);
 
@@ -1139,18 +1164,8 @@ export function ConnectionsSettings() {
           <SettingsSection title="Manage local backend">
             {desktopBridge ? (
               <SettingsRow
-                title="Network access"
-                description={
-                  desktopServerExposureState?.endpointUrl
-                    ? `Reachable at ${desktopServerExposureState.endpointUrl}`
-                    : desktopServerExposureState?.mode === "network-accessible"
-                      ? desktopServerExposureState.advertisedHost
-                        ? `Exposed on all interfaces. Pairing links use ${desktopServerExposureState.advertisedHost}.`
-                        : "Exposed on all interfaces."
-                      : desktopServerExposureState
-                        ? "Limited to this machine."
-                        : "Loading…"
-                }
+                title="Remote access"
+                description={describeDesktopServerExposureState(desktopServerExposureState)}
                 status={
                   desktopServerExposureError ? (
                     <span className="block text-destructive">{desktopServerExposureError}</span>
@@ -1169,22 +1184,22 @@ export function ConnectionsSettings() {
                       disabled={!desktopServerExposureState || isUpdatingDesktopServerExposure}
                       onCheckedChange={(checked) => {
                         setPendingDesktopServerExposureMode(
-                          checked ? "network-accessible" : "local-only",
+                          checked ? "tailnet-accessible" : "local-only",
                         );
                       }}
-                      aria-label="Enable network access"
+                      aria-label="Enable remote access"
                     />
                     <AlertDialogPopup>
                       <AlertDialogHeader>
                         <AlertDialogTitle>
-                          {pendingDesktopServerExposureMode === "network-accessible"
-                            ? "Enable network access?"
-                            : "Disable network access?"}
+                          {pendingDesktopServerExposureMode === "local-only"
+                            ? "Disable remote access?"
+                            : "Enable Tailnet access?"}
                         </AlertDialogTitle>
                         <AlertDialogDescription>
-                          {pendingDesktopServerExposureMode === "network-accessible"
-                            ? "T3 Code will restart to expose this environment over the network."
-                            : "T3 Code will restart and limit this environment back to this machine."}
+                          {pendingDesktopServerExposureMode === "local-only"
+                            ? "T3 Code will restart and limit this environment back to this machine."
+                            : "T3 Code will restart to expose this environment on your Tailnet."}
                         </AlertDialogDescription>
                       </AlertDialogHeader>
                       <AlertDialogFooter>
@@ -1208,7 +1223,7 @@ export function ConnectionsSettings() {
                               <Spinner className="size-3.5" />
                               Restarting…
                             </>
-                          ) : pendingDesktopServerExposureMode === "network-accessible" ? (
+                          ) : pendingDesktopServerExposureMode !== "local-only" ? (
                             "Restart and enable"
                           ) : (
                             "Restart and disable"
@@ -1221,11 +1236,11 @@ export function ConnectionsSettings() {
               />
             ) : (
               <SettingsRow
-                title="Network access"
+                title="Remote access"
                 description={
                   currentAuthPolicy === "remote-reachable"
-                    ? "This backend is already configured for remote access. Network exposure changes must be made where the server is launched."
-                    : "This backend is only reachable on this machine. Restart it with a non-loopback host to enable remote pairing."
+                    ? "This backend is already configured for remote access. Tailnet access is the recommended desktop pairing path, but launch-time exposure changes must be made where the server is started."
+                    : "This backend is only reachable on this machine. Restart it in Tailnet mode for the recommended remote pairing path, or launch it with a non-loopback host manually."
                 }
                 control={
                   <Tooltip>
@@ -1233,15 +1248,15 @@ export function ConnectionsSettings() {
                       render={
                         <span className="inline-flex">
                           <Switch
-                            checked={isLocalBackendNetworkAccessible}
+                            checked={isLocalBackendRemoteAccessible}
                             disabled
-                            aria-label="Enable network access"
+                            aria-label="Enable remote access"
                           />
                         </span>
                       }
                     />
                     <TooltipPopup side="top">
-                      Network exposure changes restart the backend and must be controlled where the
+                      Remote exposure changes restart the backend and must be controlled where the
                       server process is launched.
                     </TooltipPopup>
                   </Tooltip>
@@ -1250,7 +1265,7 @@ export function ConnectionsSettings() {
             )}
           </SettingsSection>
 
-          {isLocalBackendNetworkAccessible ? (
+          {isLocalBackendRemoteAccessible ? (
             <SettingsSection
               title="Authorized clients"
               headerAction={

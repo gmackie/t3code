@@ -304,8 +304,18 @@ const createDesktopBridgeStub = (overrides?: {
       overrides?.setServerExposureMode ??
       vi.fn().mockImplementation(async (mode) => ({
         mode,
-        endpointUrl: mode === "network-accessible" ? "http://192.168.1.44:3773" : null,
-        advertisedHost: mode === "network-accessible" ? "192.168.1.44" : null,
+        endpointUrl:
+          mode === "tailnet-accessible"
+            ? "http://mackbook.tailnet.ts.net:3773"
+            : mode === "network-accessible"
+              ? "http://192.168.1.44:3773"
+              : null,
+        advertisedHost:
+          mode === "tailnet-accessible"
+            ? "mackbook.tailnet.ts.net"
+            : mode === "network-accessible"
+              ? "192.168.1.44"
+              : null,
       })),
     pickFolder: vi.fn().mockResolvedValue(null),
     confirm: vi.fn().mockResolvedValue(false),
@@ -414,11 +424,11 @@ describe("GeneralSettingsPanel observability", () => {
     );
 
     await expect.element(page.getByText("Manage local backend")).toBeInTheDocument();
-    await expect.element(page.getByLabelText("Enable network access")).toBeDisabled();
+    await expect.element(page.getByLabelText("Enable remote access")).toBeDisabled();
     await expect
       .element(
         page.getByText(
-          "This backend is only reachable on this machine. Restart it with a non-loopback host to enable remote pairing.",
+          "This backend is only reachable on this machine. Restart it in Tailnet mode for the recommended remote pairing path, or launch it with a non-loopback host manually.",
         ),
       )
       .toBeInTheDocument();
@@ -652,7 +662,7 @@ describe("GeneralSettingsPanel observability", () => {
     expect(fetchMock).toHaveBeenCalled();
   });
 
-  it("shows a disabled network access toggle with guidance in desktop builds", async () => {
+  it("shows a disabled remote access toggle with guidance in desktop builds", async () => {
     const desktopBridge = createDesktopBridgeStub();
     window.desktopBridge = desktopBridge;
 
@@ -664,19 +674,23 @@ describe("GeneralSettingsPanel observability", () => {
       </AppAtomRegistryProvider>,
     );
 
-    const networkAccessToggle = page.getByLabelText("Enable network access");
-    await expect.element(networkAccessToggle).not.toBeDisabled();
-    await networkAccessToggle.click();
-    await expect.element(page.getByText("Enable network access?")).toBeInTheDocument();
+    const remoteAccessToggle = page.getByLabelText("Enable remote access");
+    await expect.element(remoteAccessToggle).not.toBeDisabled();
+    await remoteAccessToggle.click();
+    await expect.element(page.getByText("Enable Tailnet access?")).toBeInTheDocument();
     await expect
-      .element(page.getByText("T3 Code will restart to expose this environment over the network."))
+      .element(page.getByText("T3 Code will restart to expose this environment on your Tailnet."))
       .toBeInTheDocument();
     await page.getByRole("button", { name: "Restart and enable", exact: true }).click();
     await vi.waitFor(() => {
-      expect(desktopBridge.setServerExposureMode).toHaveBeenCalledWith("network-accessible");
+      expect(desktopBridge.setServerExposureMode).toHaveBeenCalledWith("tailnet-accessible");
     });
     await expect
-      .element(page.getByText("Reachable at http://192.168.1.44:3773"))
+      .element(
+        page.getByText(
+          "Recommended for mobile. Reachable on your Tailnet at http://mackbook.tailnet.ts.net:3773",
+        ),
+      )
       .toBeInTheDocument();
   });
 
@@ -699,12 +713,16 @@ describe("GeneralSettingsPanel observability", () => {
     );
 
     await expect
-      .element(page.getByText("Reachable at http://100.88.12.4:3773"))
+      .element(
+        page.getByText(
+          "Recommended for mobile. Reachable on your Tailnet at http://100.88.12.4:3773",
+        ),
+      )
       .toBeInTheDocument();
-    const networkAccessToggle = page.getByLabelText("Enable network access");
-    await expect.element(networkAccessToggle).toBeChecked();
-    await networkAccessToggle.click();
-    await expect.element(page.getByText("Disable network access?")).toBeInTheDocument();
+    const remoteAccessToggle = page.getByLabelText("Enable remote access");
+    await expect.element(remoteAccessToggle).toBeChecked();
+    await remoteAccessToggle.click();
+    await expect.element(page.getByText("Disable remote access?")).toBeInTheDocument();
     await page.getByRole("button", { name: "Restart and disable", exact: true }).click();
     await vi.waitFor(() => {
       expect(desktopBridge.setServerExposureMode).toHaveBeenCalledWith("local-only");

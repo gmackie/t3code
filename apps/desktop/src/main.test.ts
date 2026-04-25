@@ -83,11 +83,37 @@ vi.mock("electron-updater", () => ({
 describe("resolveDesktopServerExposureForMainProcess", () => {
   beforeEach(() => {
     vi.resetModules();
+    delete process.env.T3CODE_DESKTOP_LAN_HOST;
+    delete process.env.T3CODE_DESKTOP_TAILNET_HOST;
+    delete process.env.TS_CERT_DOMAIN;
     Object.defineProperty(process, "resourcesPath", {
       configurable: true,
       value: "/tmp/t3code-desktop",
     });
   });
+
+  it("uses the tailnet resolver only for tailnet-accessible mode", async () => {
+    process.env.T3CODE_DESKTOP_LAN_HOST = "192.168.1.44";
+    const resolveTailnetAdvertisedHost = vi.fn(() => "mackbook.tailnet.ts.net");
+    vi.doMock("./tailscale.ts", () => ({
+      resolveTailnetAdvertisedHost,
+    }));
+
+    const mainModule = (await import("./main.ts")) as {
+      resolveDesktopAdvertisedHostOverride: (
+        mode: "tailnet-accessible" | "network-accessible" | "local-only",
+      ) => string | undefined;
+    };
+
+    expect(mainModule.resolveDesktopAdvertisedHostOverride("tailnet-accessible")).toBe(
+      "mackbook.tailnet.ts.net",
+    );
+    expect(mainModule.resolveDesktopAdvertisedHostOverride("network-accessible")).toBe(
+      "192.168.1.44",
+    );
+    expect(mainModule.resolveDesktopAdvertisedHostOverride("local-only")).toBeUndefined();
+    expect(resolveTailnetAdvertisedHost).toHaveBeenCalledTimes(1);
+  }, 15_000);
 
   it("falls back or rejects tailnet-accessible when no advertised host is available", async () => {
     const mainModule = (await import("./main.ts")) as {
