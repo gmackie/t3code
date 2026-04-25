@@ -424,6 +424,18 @@ export function resolveDesktopServerExposureForMainProcess(input: {
   return exposure;
 }
 
+export function createDesktopBackendBootstrapPayloadForMainProcess(input: {
+  readonly port: number;
+  readonly host: string;
+  readonly t3Home: string;
+  readonly authToken: string;
+  readonly desktopBootstrapToken?: string;
+  readonly otlpTracesUrl?: string;
+  readonly otlpMetricsUrl?: string;
+}) {
+  return createDesktopBackendBootstrapPayload(input);
+}
+
 async function applyDesktopServerExposureMode(
   mode: DesktopServerExposureMode,
   options?: { readonly persist?: boolean; readonly rejectIfUnavailable?: boolean },
@@ -1626,8 +1638,9 @@ function startBackend(): void {
   if (bootstrapStream) {
     bootstrapStream.write(
       `${JSON.stringify(
-        createDesktopBackendBootstrapPayload({
+        createDesktopBackendBootstrapPayloadForMainProcess({
           port: backendPort,
+          host: backendBindHost,
           t3Home: BASE_DIR,
           authToken: backendAuthToken,
           ...(backendBootstrapToken ? { desktopBootstrapToken: backendBootstrapToken } : {}),

@@ -207,3 +207,35 @@ describe("resolveDesktopServerExposureForMainProcess", () => {
     ).toThrow("No reachable network address is available for this desktop right now.");
   });
 });
+
+describe("createDesktopBackendBootstrapPayloadForMainProcess", () => {
+  it("passes the resolved bind host through to the desktop backend bootstrap payload", async () => {
+    const mainModule = (await import("./main.ts")) as {
+      createDesktopBackendBootstrapPayloadForMainProcess: (input: {
+        readonly port: number;
+        readonly host: string;
+        readonly t3Home: string;
+        readonly authToken: string;
+        readonly desktopBootstrapToken?: string;
+      }) => {
+        readonly port: number;
+        readonly host?: string;
+        readonly desktopBootstrapToken?: string;
+      };
+    };
+
+    expect(
+      mainModule.createDesktopBackendBootstrapPayloadForMainProcess({
+        port: 3773,
+        host: "0.0.0.0",
+        t3Home: "/tmp/t3",
+        authToken: "server-auth-token",
+        desktopBootstrapToken: "desktop-bootstrap-token",
+      }),
+    ).toMatchObject({
+      port: 3773,
+      host: "0.0.0.0",
+      desktopBootstrapToken: "desktop-bootstrap-token",
+    });
+  });
+});
