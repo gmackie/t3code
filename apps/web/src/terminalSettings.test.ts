@@ -5,7 +5,9 @@ import { parseTerminalEnvironmentText, resolveTerminalSettingsEnv } from "./term
 describe("parseTerminalEnvironmentText", () => {
   it("parses KEY=value lines and ignores comments", () => {
     expect(
-      parseTerminalEnvironmentText(["# local terminal flags", "T3_SANDBOX=1", "FEATURE_FLAG=true"].join("\n")),
+      parseTerminalEnvironmentText(
+        ["# local terminal flags", "T3_SANDBOX=1", "FEATURE_FLAG=true"].join("\n"),
+      ),
     ).toEqual({
       T3_SANDBOX: "1",
       FEATURE_FLAG: "true",

@@ -463,9 +463,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       ...(settings.addProjectBaseDirectory !== DEFAULT_UNIFIED_SETTINGS.addProjectBaseDirectory
         ? ["Add project base directory"]
         : []),
-      ...(!Equal.equals(settings.terminal, DEFAULT_UNIFIED_SETTINGS.terminal)
-        ? ["Terminal"]
-        : []),
+      ...(!Equal.equals(settings.terminal, DEFAULT_UNIFIED_SETTINGS.terminal) ? ["Terminal"] : []),
       ...(settings.confirmThreadArchive !== DEFAULT_UNIFIED_SETTINGS.confirmThreadArchive
         ? ["Archive confirmation"]
         : []),
