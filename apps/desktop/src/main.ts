@@ -394,10 +394,14 @@ export function resolveDesktopServerExposureForMainProcess(input: {
   readonly rejectIfUnavailable?: boolean;
 }): ReturnType<typeof resolveDesktopServerExposure> {
   const requestedMode = input.mode;
+  const networkInterfacesForRequestedMode =
+    requestedMode === "tailnet-accessible" && input.advertisedHostOverride === undefined
+      ? {}
+      : input.networkInterfaces;
   let exposure = resolveDesktopServerExposure({
     mode: requestedMode,
     port: input.port,
-    networkInterfaces: input.networkInterfaces,
+    networkInterfaces: networkInterfacesForRequestedMode,
     ...(input.advertisedHostOverride
       ? { advertisedHostOverride: input.advertisedHostOverride }
       : {}),
