@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import npmrc from "../../../../.npmrc?raw";
+import rootEasIgnore from "../../../../.easignore?raw";
 import easIgnore from "../../.easignore?raw";
 import appConfig from "../../app.json";
 import easConfig from "../../eas.json";
@@ -30,6 +31,9 @@ describe("mobile EAS configuration", () => {
   });
 
   it("excludes local native build artifacts from EAS archives", () => {
+    expect(rootEasIgnore).toMatch(/^apps\/mobile\/ios\/$/m);
+    expect(rootEasIgnore).toMatch(/^\.tmp-build\/$/m);
+    expect(rootEasIgnore).toMatch(/^release-gmacko-\*\/$/m);
     expect(easIgnore).toMatch(/^ios\/$/m);
     expect(easIgnore).toMatch(/^\.expo\/$/m);
     expect(easIgnore).toMatch(/^node_modules\/$/m);
