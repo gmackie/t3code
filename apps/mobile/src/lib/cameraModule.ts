@@ -42,13 +42,53 @@ export type LoadedExpoCameraModule =
 export const missingCameraModuleMessage =
   "Camera scanning requires the latest T3 Code development build with expo-camera included.";
 
+type RequireOptionalNativeModule = (moduleName: string) => unknown;
+
+function isExpoCameraModule(value: unknown): value is ExpoCameraModule {
+  if (value == null || typeof value !== "object") {
+    return false;
+  }
+
+  const candidate = value as Partial<ExpoCameraModule>;
+  return (
+    typeof candidate.CameraView === "function" &&
+    typeof candidate.useCameraPermissions === "function"
+  );
+}
+
+function requireNativeCameraModule(): unknown {
+  const expoModulesCore = require("expo-modules-core") as {
+    readonly requireOptionalNativeModule?: RequireOptionalNativeModule;
+  };
+  if (typeof expoModulesCore.requireOptionalNativeModule !== "function") {
+    return {};
+  }
+  return expoModulesCore.requireOptionalNativeModule("ExpoCamera");
+}
+
 export function loadExpoCameraModule(
   requireCamera: () => unknown = () => require("expo-camera"),
+  requireNativeCamera: () => unknown = requireNativeCameraModule,
 ): LoadedExpoCameraModule {
   try {
+    if (requireNativeCamera() == null) {
+      return {
+        available: false,
+        errorMessage: missingCameraModuleMessage,
+      };
+    }
+
+    const cameraModule = requireCamera();
+    if (!isExpoCameraModule(cameraModule)) {
+      return {
+        available: false,
+        errorMessage: missingCameraModuleMessage,
+      };
+    }
+
     return {
       available: true,
-      module: requireCamera() as ExpoCameraModule,
+      module: cameraModule,
     };
   } catch {
     return {
