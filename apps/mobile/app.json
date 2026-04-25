@@ -1,0 +1,16 @@
+{
+  "expo": {
+    "name": "T3 Code Mobile",
+    "slug": "t3-code-mobile",
+    "scheme": "t3code-mobile",
+    "version": "0.0.0",
+    "orientation": "portrait",
+    "plugins": ["expo-router", "expo-secure-store"],
+    "experiments": {
+      "typedRoutes": false
+    },
+    "ios": {
+      "supportsTablet": true
+    }
+  }
+}
