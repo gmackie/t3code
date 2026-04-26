@@ -498,7 +498,7 @@ describe("buildCursorDiscoveredModelsFromConfigOptions", () => {
 });
 
 describe("checkCursorProviderStatus", () => {
-  it("passes the injected environment to ACP model discovery", async () => {
+  it("does not launch Cursor ACP during provider status refresh", async () => {
     const { requestLogPath, wrapperPath } = await runNode(makeProviderStatusEnvFixture());
 
     const provider = await Effect.runPromise(
@@ -516,13 +516,11 @@ describe("checkCursorProviderStatus", () => {
       ).pipe(Effect.provide(NodeServices.layer)),
     );
 
-    expect(provider.models.map((model) => model.slug)).toEqual([
-      "default",
-      "composer-2",
-      "gpt-5.4",
-      "claude-opus-4-6",
-    ]);
-    await expect(runNode(waitForFileContent(requestLogPath))).resolves.toContain("initialize");
+    expect(provider.status).toBe("ready");
+    expect(provider.models).toEqual([]);
+    await expect(runNode(waitForFileContent(requestLogPath, 2))).rejects.toThrow(
+      "Timed out waiting for file content",
+    );
   });
 });
 
