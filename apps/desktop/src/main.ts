@@ -1286,12 +1286,15 @@ function resolveUserDataPath(): string {
         ? Path.join(OS.homedir(), "Library", "Application Support")
         : process.env.XDG_CONFIG_HOME || Path.join(OS.homedir(), ".config");
 
-  const legacyPath = Path.join(appDataBase, LEGACY_USER_DATA_DIR_NAME);
-  if (FS.existsSync(legacyPath)) {
-    return legacyPath;
+  const userDataPath = Path.join(appDataBase, USER_DATA_DIR_NAME);
+  if (USER_DATA_DIR_NAME === "t3code") {
+    const legacyPath = Path.join(appDataBase, LEGACY_USER_DATA_DIR_NAME);
+    if (FS.existsSync(legacyPath)) {
+      return legacyPath;
+    }
   }
 
-  return Path.join(appDataBase, USER_DATA_DIR_NAME);
+  return userDataPath;
 }
 
 function configureAppIdentity(): void {
