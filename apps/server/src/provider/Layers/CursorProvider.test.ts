@@ -14,6 +14,7 @@ import {
   buildCursorProviderSnapshot,
   buildCursorCapabilitiesFromConfigOptions,
   buildCursorDiscoveredModelsFromConfigOptions,
+  checkCursorProviderStatus,
   discoverCursorModelCapabilitiesViaAcp,
   discoverCursorModelsViaAcp,
   getCursorFallbackModels,
@@ -24,6 +25,7 @@ import {
   resolveCursorAcpBaseModelId,
   resolveCursorAcpConfigUpdates,
 } from "./CursorProvider.ts";
+import { ServerSettingsService } from "../../serverSettings.ts";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const mockAgentPath = path.join(__dirname, "../../../scripts/acp-mock-agent.ts");
@@ -61,6 +63,22 @@ async function makeMockAgentWrapper(extraEnv?: Record<string, string>) {
     .join("\n");
   const script = `#!/bin/sh
 ${envExports}
+exec ${JSON.stringify("bun")} ${JSON.stringify(mockAgentPath)} "$@"
+`;
+  await writeFile(wrapperPath, script, "utf8");
+  await chmod(wrapperPath, 0o755);
+  return wrapperPath;
+}
+
+async function makeCursorStatusProbeWrapper(logPath: string) {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "cursor-status-probe-"));
+  const wrapperPath = path.join(dir, "fake-agent.sh");
+  const script = `#!/bin/sh
+printf '%s\\n' "$*" >> ${JSON.stringify(logPath)}
+if [ "$1" = "about" ]; then
+  printf '{"cliVersion":"2026.04.09-f2b0fcd","subscriptionTier":"Team","userEmail":"user@example.com"}\\n'
+  exit 0
+fi
 exec ${JSON.stringify("bun")} ${JSON.stringify(mockAgentPath)} "$@"
 `;
   await writeFile(wrapperPath, script, "utf8");
@@ -324,6 +342,29 @@ describe("buildCursorProviderSnapshot", () => {
         },
       ],
     });
+  });
+});
+
+describe("checkCursorProviderStatus", () => {
+  it("does not launch Cursor ACP during provider status refresh", async () => {
+    const tempDir = await mkdtemp(path.join(os.tmpdir(), "cursor-status-refresh-"));
+    const logPath = path.join(tempDir, "calls.log");
+    const wrapperPath = await makeCursorStatusProbeWrapper(logPath);
+
+    const snapshot = await Effect.runPromise(
+      checkCursorProviderStatus().pipe(
+        Effect.provide(
+          ServerSettingsService.layerTest({
+            providers: { cursor: { enabled: true, binaryPath: wrapperPath } },
+          }),
+        ),
+        Effect.provide(NodeServices.layer),
+      ),
+    );
+
+    expect(snapshot.status).toBe("ready");
+    expect(snapshot.models).toEqual([]);
+    expect(await readFile(logPath, "utf8")).toBe("about --format json\n");
   });
 });
 

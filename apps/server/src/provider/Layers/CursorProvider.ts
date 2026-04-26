@@ -13,7 +13,7 @@ import type {
   ServerSettingsError,
 } from "@t3tools/contracts";
 import type * as EffectAcpSchema from "effect-acp/schema";
-import { Cause, Effect, Equal, Exit, Layer, Option, Result, Stream } from "effect";
+import { Cause, Effect, Equal, Layer, Option, Result, Stream } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 import {
   createModelCapabilities,
@@ -45,7 +45,6 @@ const EMPTY_CAPABILITIES: ModelCapabilities = createModelCapabilities({
   optionDescriptors: [],
 });
 
-const CURSOR_ACP_MODEL_DISCOVERY_TIMEOUT_MS = 15_000;
 const CURSOR_ACP_MODEL_CAPABILITY_TIMEOUT = "4 seconds";
 const CURSOR_ACP_MODEL_DISCOVERY_CONCURRENCY = 4;
 const CURSOR_REFRESH_INTERVAL = "1 hour";
@@ -1122,36 +1121,14 @@ export const checkCursorProviderStatus = Effect.fn("checkCursorProviderStatus")(
         },
       });
     }
-    let discoveredModels = Option.none<ReadonlyArray<ServerProviderModel>>();
-    let discoveryWarning: string | undefined;
-    if (parsed.auth.status !== "unauthenticated") {
-      const discoveryExit = yield* Effect.exit(
-        discoverCursorModelsViaAcp(cursorSettings).pipe(
-          Effect.timeoutOption(CURSOR_ACP_MODEL_DISCOVERY_TIMEOUT_MS),
-        ),
-      );
-      if (Exit.isFailure(discoveryExit)) {
-        yield* Effect.logWarning("Cursor ACP model discovery failed", {
-          cause: Cause.pretty(discoveryExit.cause),
-        });
-        discoveryWarning = "Cursor ACP model discovery failed. Check server logs for details.";
-      } else if (Option.isNone(discoveryExit.value)) {
-        discoveryWarning = `Cursor ACP model discovery timed out after ${CURSOR_ACP_MODEL_DISCOVERY_TIMEOUT_MS}ms.`;
-      } else if (discoveryExit.value.value.length === 0) {
-        discoveryWarning = "Cursor ACP model discovery returned no built-in models.";
-      } else {
-        discoveredModels = discoveryExit.value;
-      }
-    }
+    // Do not launch Cursor ACP from provider status refreshes. On macOS those background
+    // probes can touch Cursor/GitLens app support data through child processes, causing
+    // repeated "access data from other apps" TCC prompts attributed to T3 Code.
     return buildCursorProviderSnapshot({
       checkedAt,
       cursorSettings,
       parsed,
-      discoveredModels: Option.getOrElse(
-        Option.filter(discoveredModels, (models) => models.length > 0),
-        () => [] as const,
-      ),
-      ...(discoveryWarning ? { discoveryWarning } : {}),
+      discoveredModels: [],
     });
   },
 );
@@ -1178,40 +1155,6 @@ export const CursorProviderLive = Layer.effect(
       haveSettingsChanged: (previous, next) => !Equal.equals(previous, next),
       initialSnapshot: buildInitialCursorProviderSnapshot,
       checkProvider,
-      enrichSnapshot: ({ settings, snapshot, publishSnapshot }) => {
-        if (
-          !settings.enabled ||
-          snapshot.auth.status === "unauthenticated" ||
-          !snapshot.models.some((model) => !model.isCustom && !hasCursorModelCapabilities(model))
-        ) {
-          return Effect.void;
-        }
-
-        return discoverCursorModelCapabilitiesViaAcp(settings, snapshot.models).pipe(
-          Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
-          Effect.flatMap((discoveredModels) => {
-            if (discoveredModels.length === 0) {
-              return Effect.void;
-            }
-
-            return publishSnapshot({
-              ...snapshot,
-              models: providerModelsFromSettings(
-                discoveredModels,
-                PROVIDER,
-                settings.customModels,
-                EMPTY_CAPABILITIES,
-              ),
-            });
-          }),
-          Effect.catchCause((cause) =>
-            Effect.logWarning("Cursor ACP background capability enrichment failed", {
-              models: snapshot.models.map((model) => model.slug),
-              cause: Cause.pretty(cause),
-            }).pipe(Effect.asVoid),
-          ),
-        );
-      },
       refreshInterval: CURSOR_REFRESH_INTERVAL,
     });
   }),
