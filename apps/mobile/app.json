@@ -24,6 +24,11 @@
       "bundleIdentifier": "com.gmacko.t3code.dev",
       "infoPlist": {
         "NSCameraUsageDescription": "Allow T3 Code to scan pairing QR codes from your desktop.",
+        "NSLocalNetworkUsageDescription": "Allow T3 Code to connect to your Mac on your local network or Tailnet.",
+        "NSAppTransportSecurity": {
+          "NSAllowsArbitraryLoads": true,
+          "NSAllowsLocalNetworking": true
+        },
         "ITSAppUsesNonExemptEncryption": false
       }
     },

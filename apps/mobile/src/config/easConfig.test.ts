@@ -14,6 +14,18 @@ describe("mobile EAS configuration", () => {
     expect(appConfig.expo?.ios?.infoPlist?.ITSAppUsesNonExemptEncryption).toBe(false);
   });
 
+  it("allows the dev client to pair with local Tailnet HTTP backends", () => {
+    expect(appConfig.expo?.ios?.infoPlist?.NSLocalNetworkUsageDescription).toBe(
+      "Allow T3 Code to connect to your Mac on your local network or Tailnet.",
+    );
+    expect(appConfig.expo?.ios?.infoPlist?.NSAppTransportSecurity?.NSAllowsArbitraryLoads).toBe(
+      true,
+    );
+    expect(appConfig.expo?.ios?.infoPlist?.NSAppTransportSecurity?.NSAllowsLocalNetworking).toBe(
+      true,
+    );
+  });
+
   it("defines EAS build and submit profiles for iOS", () => {
     expect(easConfig.build?.development?.developmentClient).toBe(true);
     expect(easConfig.build?.development?.distribution).toBe("internal");

@@ -576,6 +576,10 @@ describe("GeneralSettingsPanel observability", () => {
     await expect
       .element(page.getByRole("button", { name: /^(Copy|Show link)$/ }))
       .toBeInTheDocument();
+    await page.getByLabelText("Show QR code").hover();
+    await expect
+      .element(page.getByLabelText("Pairing link — scan to open on another device"))
+      .toHaveAttribute("width", "220");
     await expect.element(page.getByText("Revoke others")).toBeInTheDocument();
   });
 
