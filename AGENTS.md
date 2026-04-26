@@ -5,6 +5,22 @@
 - All of `bun fmt`, `bun lint`, and `bun typecheck` must pass before considering tasks completed.
 - NEVER run `bun test`. Always use `bun run test` (runs Vitest).
 
+## Branch Workflow
+
+- `upstream/main` is the canonical upstream baseline when an `upstream` remote is configured. Keep the local `origin/main` branch pristine and updated from `upstream/main`; do not put feature commits on `origin/main`.
+- In checkouts where `origin` already points at the upstream repository, treat `origin/main` itself as the pristine upstream baseline.
+- Before starting or refreshing feature work, fetch the upstream baseline and rebase the feature branch onto the latest pristine main (`origin/main`, or `upstream/main` then update `origin/main`).
+- Keep feature work on durable fork branches, normally under `gmackie/<feature-name>` or another explicit feature branch name in the fork. Do not delete these remote feature branches just because their work has landed in `main-local`.
+- `main-local` is an integration branch for the local app: it should also be kept up to date with the latest pristine main, but its history is not the source of truth for individual feature work.
+- It is acceptable for `main-local` to contain many features combined, merge commits, or local integration commits. Prefer clean, independently shippable feature commits/stacks on the feature branches.
+- When a feature is useful in `main-local`, merge or cherry-pick it there from its feature branch, while preserving the feature branch so it can still be reviewed, shipped, or updated independently.
+- If a feature needs more work after being integrated into `main-local`, make those updates on the feature branch rebased from latest `origin/main`, then bring the refreshed branch back into `main-local`.
+
+## Desktop Release Safety
+
+- Do not leave runnable `.app` backup bundles in `/Applications`. If a manual install needs a backup of an existing app, move it outside LaunchServices search paths, for example under `~/.config/superpowers/app-backups/`, before copying the replacement app into `/Applications`.
+- For the Gmacko release stream, the app bundle must use the gmacko identity end to end: product name `T3 Code (gmacko)`, bundle id `com.t3tools.t3code.gmacko`, updater channel `gmacko`, updater cache `t3code-gmacko-updater`, state dir `userdata-gmacko`, and Electron userData dir `t3code-gmacko`.
+
 ## Project Snapshot
 
 T3 Code is a minimal web GUI for using coding agents like Codex and Claude.
