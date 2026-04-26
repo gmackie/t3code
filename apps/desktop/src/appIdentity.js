@@ -5,6 +5,7 @@ const GMACKO_UPDATER_CACHE_DIR_NAME = "t3code-gmacko-updater";
 const DEFAULT_PACKAGE_NAME = "t3code";
 const GMACKO_PACKAGE_NAME = "t3code-gmacko";
 const DEFAULT_USER_DATA_DIR_NAME = "t3code";
+const GMACKO_USER_DATA_DIR_NAME = "t3code-gmacko";
 const DEV_USER_DATA_DIR_NAME = "t3code-dev";
 const DEFAULT_STATE_DIR_NAME = "userdata";
 const GMACKO_STATE_DIR_NAME = "userdata-gmacko";
@@ -86,7 +87,7 @@ export function getDesktopRuntimeIdentity(input) {
       packageName: GMACKO_PACKAGE_NAME,
       stateDirName: GMACKO_STATE_DIR_NAME,
       updaterCacheDirName: GMACKO_UPDATER_CACHE_DIR_NAME,
-      userDataDirName: DEFAULT_USER_DATA_DIR_NAME,
+      userDataDirName: GMACKO_USER_DATA_DIR_NAME,
     };
   }
 
