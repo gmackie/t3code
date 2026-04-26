@@ -430,9 +430,9 @@ const PairingLinkListRow = memo(function PairingLinkListRow({
                   <PopoverPopup side="top" align="start" tooltipStyle className="w-max">
                     <QRCodeSvg
                       value={shareablePairingUrl}
-                      size={88}
-                      level="M"
-                      marginSize={2}
+                      size={220}
+                      level="Q"
+                      marginSize={3}
                       title="Pairing link — scan to open on another device"
                     />
                   </PopoverPopup>
@@ -482,9 +482,9 @@ const PairingLinkListRow = memo(function PairingLinkListRow({
                   <div className="flex justify-center rounded-xl border border-border/60 bg-muted/30 p-4">
                     <QRCodeSvg
                       value={shareablePairingUrl}
-                      size={132}
-                      level="M"
-                      marginSize={2}
+                      size={260}
+                      level="Q"
+                      marginSize={3}
                       title="Pairing link — scan to open on another device"
                     />
                   </div>
