@@ -16,7 +16,7 @@ describe("getDesktopRuntimeIdentity", () => {
       packageName: "t3code-gmacko",
       stateDirName: "userdata-gmacko",
       updaterCacheDirName: "t3code-gmacko-updater",
-      userDataDirName: "t3code",
+      userDataDirName: "t3code-gmacko",
     });
   });
 
@@ -34,7 +34,7 @@ describe("getDesktopRuntimeIdentity", () => {
       packageName: "t3code-gmacko",
       stateDirName: "userdata-gmacko",
       updaterCacheDirName: "t3code-gmacko-updater",
-      userDataDirName: "t3code",
+      userDataDirName: "t3code-gmacko",
     });
   });
 
