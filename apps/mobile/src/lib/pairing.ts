@@ -16,17 +16,15 @@ export async function pairEnvironmentFromUrl(input: {
   const fetchImpl = input.fetch ?? globalThis.fetch;
   const parsed = parsePairingUrl(input.pairingUrl);
   const target = resolveSessionTarget(parsed.httpBaseUrl);
-  const [descriptor, bearerSession] = await Promise.all([
-    fetchEnvironmentDescriptor({
-      httpBaseUrl: parsed.httpBaseUrl,
-      fetch: fetchImpl,
-    }),
-    bootstrapBearerSession({
-      httpBaseUrl: parsed.httpBaseUrl,
-      credential: parsed.credential,
-      fetch: fetchImpl,
-    }),
-  ]);
+  const descriptor = await fetchEnvironmentDescriptor({
+    httpBaseUrl: parsed.httpBaseUrl,
+    fetch: fetchImpl,
+  });
+  const bearerSession = await bootstrapBearerSession({
+    httpBaseUrl: parsed.httpBaseUrl,
+    credential: parsed.credential,
+    fetch: fetchImpl,
+  });
 
   if (
     !bearerSession.authenticated ||

@@ -36,21 +36,25 @@ async function fetchJson<T>(input: {
   readonly bearerToken?: string;
   readonly body?: unknown;
 }): Promise<T> {
-  const response = await input.fetch(buildEndpointUrl(input.httpBaseUrl, input.pathname), {
-    method: input.method ?? "GET",
-    headers: {
-      ...(input.body !== undefined ? { "content-type": "application/json" } : {}),
-      ...(input.bearerToken ? createBearerHeaders(input.bearerToken) : {}),
-    },
-    ...(input.body !== undefined ? { body: JSON.stringify(input.body) } : {}),
-  });
+  const endpointUrl = buildEndpointUrl(input.httpBaseUrl, input.pathname);
+  let response: Response;
+  try {
+    response = await input.fetch(endpointUrl, {
+      method: input.method ?? "GET",
+      headers: {
+        ...(input.body !== undefined ? { "content-type": "application/json" } : {}),
+        ...(input.bearerToken ? createBearerHeaders(input.bearerToken) : {}),
+      },
+      ...(input.body !== undefined ? { body: JSON.stringify(input.body) } : {}),
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`Could not reach ${endpointUrl}. Native error: ${message}`, { cause: error });
+  }
 
   if (!response.ok) {
     throw new Error(
-      await readErrorMessage(
-        response,
-        `Request failed for ${input.pathname} (${response.status}).`,
-      ),
+      await readErrorMessage(response, `Request failed for ${endpointUrl} (${response.status}).`),
     );
   }
 
