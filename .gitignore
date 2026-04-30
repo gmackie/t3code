@@ -25,4 +25,4 @@ __screenshots__/
 .tanstack
 squashfs-root/
 .tmp-build/
-release-gmacko-cors-fix/
+release-gmacko-*/

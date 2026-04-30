@@ -1,16 +1,16 @@
 # Release Checklist
 
-This document covers the unified release workflow for stable and nightly desktop releases.
+This document covers the unified release workflow for stable, nightly, and gmacko desktop releases.
 
 ## What the workflow does
 
 - Workflow: `.github/workflows/release.yml`
 - Triggers:
   - push tag matching `v*.*.*` for stable releases
-  - scheduled nightly at `09:00 UTC`
-  - manual `workflow_dispatch` for either channel
+  - scheduled nightly every 3 hours in `pingdotgg/t3code` and `gmackie/t3code@main-local`
+  - manual `workflow_dispatch` for stable, nightly, or gmacko
 - Runs quality gates first: lint, typecheck, test.
-- Builds four artifacts in parallel for both channels:
+- Builds four artifacts in parallel for each desktop release channel:
   - macOS `arm64` DMG
   - macOS `x64` DMG
   - Linux `x64` AppImage
@@ -19,18 +19,20 @@ This document covers the unified release workflow for stable and nightly desktop
   - Stable tags with a suffix after `X.Y.Z` (for example `1.2.3-alpha.1`) are published as GitHub prereleases.
   - Only plain stable `X.Y.Z` releases are marked as the repository's latest release.
   - Nightly runs are always GitHub prereleases and never marked latest.
-  - Automatically generated release notes are pinned to the previous tag in the same channel, so stable compares to the previous stable tag and nightly compares to the previous nightly tag.
-- Includes Electron auto-update metadata (for example `latest*.yml`, `nightly*.yml`, and `*.blockmap`) in release assets.
+  - Gmacko runs are always GitHub prereleases and never marked latest.
+  - Automatically generated release notes are pinned to the previous tag in the same channel, so stable compares to stable, nightly compares to nightly, and gmacko compares to gmacko.
+- Includes Electron auto-update metadata (for example `latest*.yml`, `nightly*.yml`, `gmacko*.yml`, and `*.blockmap`) in release assets.
 - Publishes the CLI package (`apps/server`, npm package `t3`) with OIDC trusted publishing from the same workflow file:
   - stable releases publish npm dist-tag `latest`
   - nightly releases publish npm dist-tag `nightly`
+  - gmacko releases skip CLI publishing
 - Signing is optional and auto-detected per platform from secrets.
 
 ## Nightly builds
 
 - Workflow: `.github/workflows/release.yml`
 - Triggers:
-  - scheduled every day at `09:00 UTC`
+  - scheduled every 3 hours
   - manual `workflow_dispatch` with `channel=nightly`
 - Runs the same desktop quality gates and artifact matrix as the tagged release flow.
 - Publishes a GitHub prerelease only:
@@ -41,6 +43,23 @@ This document covers the unified release workflow for stable and nightly desktop
 - Publishes Electron auto-update metadata to the dedicated `nightly` updater channel, so desktop users can opt into that track independently from stable.
 - Publishes the CLI package (`apps/server`, npm package `t3`) to the `nightly` npm dist-tag using the same nightly version.
 - Does not commit version bumps back to `main`.
+
+## Gmacko builds
+
+- Workflow: `.github/workflows/release.yml`
+- Repository: `gmackie/t3code`
+- Branch: `main-local`
+- Trigger: manual `workflow_dispatch` with `channel=gmacko`
+- Version:
+  - omit `version` to derive `X.Y.Z-gmacko.YYYYMMDDHHMM` from `apps/desktop/package.json`
+  - or provide an explicit `X.Y.Z-gmacko.<digits>` / `vX.Y.Z-gmacko.<digits>` version
+- Publishes a GitHub prerelease only:
+  - tag format: `vX.Y.Z-gmacko.YYYYMMDDHHMM`
+  - release name: `T3 Code (gmacko) X.Y.Z-gmacko.YYYYMMDDHHMM`
+  - `make_latest` is always `false`
+- Uses the `gmacko` Electron updater channel and forces updater metadata to point at `gmackie/t3code`.
+- Uses the workflow `GITHUB_TOKEN` for the fork release instead of requiring the upstream release GitHub App secrets.
+- Does not publish the CLI package and does not commit version bumps back to `main`.
 
 ## Desktop auto-update notes
 
@@ -58,10 +77,10 @@ This document covers the unified release workflow for stable and nightly desktop
   - the app forwards it as an `Authorization: Bearer <token>` request header for updater HTTP calls.
 - Required release assets for updater:
   - platform installers (`.exe`, `.dmg`, `.AppImage`, plus macOS `.zip` for Squirrel.Mac update payloads)
-  - channel metadata: `latest*.yml` for stable releases, `nightly*.yml` for nightly releases
+  - channel metadata: `latest*.yml` for stable releases, `nightly*.yml` for nightly releases, and `gmacko*.yml` for gmacko releases
   - `*.blockmap` files (used for differential downloads)
 - macOS metadata note:
-  - `electron-updater` reads `latest-mac.yml` on stable and `nightly-mac.yml` on nightly, for both Intel and Apple Silicon.
+  - `electron-updater` reads `latest-mac.yml` on stable, `nightly-mac.yml` on nightly, and `gmacko-mac.yml` on gmacko, for both Intel and Apple Silicon.
   - The workflow merges the per-arch mac manifests into one channel-specific mac manifest before publishing the GitHub Release.
 
 ## 0) npm OIDC trusted publishing setup (CLI)

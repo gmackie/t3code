@@ -170,9 +170,46 @@ function assertMissing(path: string, message: string): void {
   }
 }
 
+function assertWorkflowSupportsGmackoForkReleases(): void {
+  const workflow = readFileSync(resolve(repoRoot, ".github/workflows/release.yml"), "utf8");
+  assertContains(workflow, "- gmacko", "Release workflow is missing the gmacko channel option.");
+  assertContains(
+    workflow,
+    "workflow_dispatch gmacko releases must run from main-local.",
+    "Release workflow does not enforce main-local for manual gmacko releases.",
+  );
+  assertContains(
+    workflow,
+    "workflow_dispatch gmacko releases must run in gmackie/t3code.",
+    "Release workflow does not enforce the gmackie/t3code fork for manual gmacko releases.",
+  );
+  assertContains(
+    workflow,
+    "needs.preflight.outputs.release_channel != 'gmacko'",
+    "Release workflow does not skip CLI publishing for gmacko releases.",
+  );
+  assertContains(
+    workflow,
+    "needs.publish_cli.result == 'skipped'",
+    "Release workflow does not allow GitHub release publishing after gmacko skips CLI publishing.",
+  );
+  assertContains(
+    workflow,
+    "steps.release_token.outputs.token",
+    "Release workflow does not use the fork-compatible release token fallback.",
+  );
+  assertContains(
+    workflow,
+    "if: github.event_name == 'schedule'",
+    "Release workflow does not allow scheduled nightly releases to run in the fork.",
+  );
+}
+
 const tempRoot = mkdtempSync(join(tmpdir(), "t3-release-smoke-"));
 
 try {
+  assertWorkflowSupportsGmackoForkReleases();
+
   copyWorkspaceManifestFixture(tempRoot);
 
   execFileSync(
