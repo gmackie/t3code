@@ -3,14 +3,26 @@ import type {
   OrchestrationMessage,
   OrchestrationReadModel,
   OrchestrationSessionStatus,
+  ProjectId,
   ThreadId,
 } from "@t3tools/contracts";
 import { create } from "zustand";
 
 import { findLastCompat, sortCopy } from "../lib/arrayCompat";
 
+export interface MobileProjectSummary {
+  readonly environmentId: EnvironmentId;
+  readonly projectId: ProjectId;
+  readonly title: string;
+  readonly workspaceRoot: string;
+  readonly updatedAt: string;
+  readonly threadCount: number;
+  readonly activeThreadCount: number;
+}
+
 export interface MobileThreadSummary {
   readonly environmentId: EnvironmentId;
+  readonly projectId: ProjectId;
   readonly threadId: ThreadId;
   readonly title: string;
   readonly branch: string | null;
@@ -80,6 +92,7 @@ function inboxItemsForThread(thread: MobileThreadSummary): ReadonlyArray<MobileI
 }
 
 export interface ThreadStoreState {
+  readonly projectSummaryByKey: Record<string, MobileProjectSummary>;
   readonly threadSummaryByKey: Record<string, MobileThreadSummary>;
   readonly threadDetailByKey: Record<string, MobileThreadDetail>;
   readonly inbox: ReadonlyArray<MobileInboxItem>;
@@ -97,6 +110,10 @@ export interface ThreadStoreState {
 
 export function threadStoreKey(environmentId: EnvironmentId, threadId: ThreadId): string {
   return `${environmentId}:${threadId}`;
+}
+
+export function projectStoreKey(environmentId: EnvironmentId, projectId: ProjectId): string {
+  return `${environmentId}:${projectId}`;
 }
 
 function readStringField(value: unknown, key: string): string | null {
@@ -117,15 +134,41 @@ export function reduceRuntimeSnapshot(
 ): Omit<ThreadStoreState, "applySnapshot" | "setEnvironmentConnectionState" | "reset"> {
   const nextSummaryByKey = { ...state.threadSummaryByKey };
   const nextDetailByKey = { ...state.threadDetailByKey };
+  const nextProjectSummaryByKey = { ...state.projectSummaryByKey };
   const projectWorkspaceRootById = new Map(
     input.snapshot.projects.map((project) => [project.id, project.workspaceRoot] as const),
   );
+  type SnapshotThread = (typeof input.snapshot.threads)[number];
+  const threadsByProjectId = new Map(
+    input.snapshot.projects.map((project) => [project.id, [] as SnapshotThread[]]),
+  );
+
+  for (const thread of input.snapshot.threads) {
+    const threads = threadsByProjectId.get(thread.projectId);
+    if (threads) {
+      threads.push(thread);
+    }
+  }
+
+  for (const project of input.snapshot.projects) {
+    const projectThreads = threadsByProjectId.get(project.id) ?? [];
+    nextProjectSummaryByKey[projectStoreKey(input.environmentId, project.id)] = {
+      environmentId: input.environmentId,
+      projectId: project.id,
+      title: project.title,
+      workspaceRoot: project.workspaceRoot,
+      updatedAt: project.updatedAt,
+      threadCount: projectThreads.length,
+      activeThreadCount: projectThreads.filter((thread) => thread.deletedAt === null).length,
+    };
+  }
 
   for (const thread of input.snapshot.threads) {
     const key = threadStoreKey(input.environmentId, thread.id);
     const projectWorkspaceRoot = projectWorkspaceRootById.get(thread.projectId) ?? null;
     const summary: MobileThreadSummary = {
       environmentId: input.environmentId,
+      projectId: thread.projectId,
       threadId: thread.id,
       title: thread.title,
       branch: thread.branch,
@@ -174,6 +217,7 @@ export function reduceRuntimeSnapshot(
 
   return {
     ...state,
+    projectSummaryByKey: nextProjectSummaryByKey,
     threadSummaryByKey: nextSummaryByKey,
     threadDetailByKey: nextDetailByKey,
     inbox: sortCopy(
@@ -188,6 +232,7 @@ export function reduceRuntimeSnapshot(
 }
 
 const initialState = {
+  projectSummaryByKey: {},
   threadSummaryByKey: {},
   threadDetailByKey: {},
   inbox: [],
@@ -217,8 +262,66 @@ export const useThreadStore = create<ThreadStoreState>()((set) => ({
 }));
 
 export function listThreadSummaries(): ReadonlyArray<MobileThreadSummary> {
-  return sortCopy(Object.values(useThreadStore.getState().threadSummaryByKey), (left, right) =>
+  return listThreadSummariesFromState(useThreadStore.getState());
+}
+
+export function listThreadSummariesFromState(
+  state: Pick<ThreadStoreState, "threadSummaryByKey">,
+): ReadonlyArray<MobileThreadSummary> {
+  return sortCopy(Object.values(state.threadSummaryByKey), (left, right) =>
     right.updatedAt.localeCompare(left.updatedAt),
+  );
+}
+
+export function listProjectSummariesFromState(
+  state: Pick<ThreadStoreState, "projectSummaryByKey">,
+  environmentId?: EnvironmentId,
+): ReadonlyArray<MobileProjectSummary> {
+  return sortCopy(
+    Object.values(state.projectSummaryByKey).filter(
+      (project) => !environmentId || project.environmentId === environmentId,
+    ),
+    (left, right) =>
+      right.updatedAt.localeCompare(left.updatedAt) || left.title.localeCompare(right.title),
+  );
+}
+
+export function listProjectSummaries(
+  environmentId?: EnvironmentId,
+): ReadonlyArray<MobileProjectSummary> {
+  return listProjectSummariesFromState(useThreadStore.getState(), environmentId);
+}
+
+export function getProjectSummary(
+  environmentId: EnvironmentId,
+  projectId: ProjectId,
+): MobileProjectSummary | null {
+  return (
+    useThreadStore.getState().projectSummaryByKey[projectStoreKey(environmentId, projectId)] ?? null
+  );
+}
+
+export function listThreadSummariesForProjectFromState(
+  state: Pick<ThreadStoreState, "threadSummaryByKey">,
+  environmentId: EnvironmentId,
+  projectId: ProjectId,
+): ReadonlyArray<MobileThreadSummary> {
+  return sortCopy(
+    Object.values(state.threadSummaryByKey).filter(
+      (thread) => thread.environmentId === environmentId && thread.projectId === projectId,
+    ),
+    (left, right) => right.updatedAt.localeCompare(left.updatedAt),
+  );
+}
+
+export function listThreadSummariesForProject(
+  environmentId: EnvironmentId,
+  projectId: ProjectId,
+): ReadonlyArray<MobileThreadSummary> {
+  return listThreadSummariesForProjectFromState(
+    useThreadStore.getState(),
+    environmentId,
+    projectId,
   );
 }
 

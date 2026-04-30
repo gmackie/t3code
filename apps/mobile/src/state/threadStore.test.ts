@@ -1,12 +1,17 @@
 import type { EnvironmentId } from "@t3tools/contracts";
 import { describe, expect, it } from "vitest";
 
-import { reduceRuntimeSnapshot } from "./threadStore";
+import {
+  listProjectSummariesFromState,
+  listThreadSummariesForProjectFromState,
+  reduceRuntimeSnapshot,
+} from "./threadStore";
 
 describe("threadStore", () => {
   it("promotes blocked approvals into the inbox", () => {
     const state = reduceRuntimeSnapshot(
       {
+        projectSummaryByKey: {},
         threadSummaryByKey: {},
         threadDetailByKey: {},
         inbox: [],
@@ -78,6 +83,7 @@ describe("threadStore", () => {
     try {
       const state = reduceRuntimeSnapshot(
         {
+          projectSummaryByKey: {},
           threadSummaryByKey: {},
           threadDetailByKey: {},
           inbox: [],
@@ -172,6 +178,7 @@ describe("threadStore", () => {
   it("keeps the thread git cwd on detail records for mobile PR actions", () => {
     const state = reduceRuntimeSnapshot(
       {
+        projectSummaryByKey: {},
         threadSummaryByKey: {},
         threadDetailByKey: {},
         inbox: [],
@@ -227,5 +234,107 @@ describe("threadStore", () => {
       branch: "t3code/mobile-controls",
       projectCwd: "/repo/worktrees/t3code/mobile-controls",
     });
+  });
+
+  it("keeps project summaries and filters threads by project for workspace navigation", () => {
+    const state = reduceRuntimeSnapshot(
+      {
+        projectSummaryByKey: {},
+        threadSummaryByKey: {},
+        threadDetailByKey: {},
+        inbox: [],
+        connectionStateByEnvironment: {},
+      },
+      {
+        environmentId: "env_mobile_test" as EnvironmentId,
+        snapshot: {
+          snapshotSequence: 1,
+          updatedAt: "2026-04-24T20:00:00Z",
+          projects: [
+            {
+              id: "project-1" as never,
+              title: "T3 Code",
+              workspaceRoot: "/repo/t3code",
+              defaultModelSelection: null,
+              scripts: [],
+              createdAt: "2026-04-24T20:00:00Z",
+              updatedAt: "2026-04-24T20:00:00Z",
+              deletedAt: null,
+            },
+            {
+              id: "project-2" as never,
+              title: "ForgeGraph",
+              workspaceRoot: "/repo/forgegraph",
+              defaultModelSelection: null,
+              scripts: [],
+              createdAt: "2026-04-24T20:00:00Z",
+              updatedAt: "2026-04-24T21:00:00Z",
+              deletedAt: null,
+            },
+          ],
+          threads: [
+            {
+              id: "thread-1" as never,
+              projectId: "project-1" as never,
+              title: "Fix mobile controls",
+              modelSelection: {
+                instanceId: "codex" as never,
+                model: "gpt-5.4",
+              },
+              runtimeMode: "approval-required",
+              interactionMode: "default",
+              branch: null,
+              worktreePath: null,
+              latestTurn: null,
+              createdAt: "2026-04-24T20:00:00Z",
+              updatedAt: "2026-04-24T20:00:00Z",
+              archivedAt: null,
+              deletedAt: null,
+              messages: [],
+              proposedPlans: [],
+              checkpoints: [],
+              activities: [],
+              session: null,
+            },
+            {
+              id: "thread-2" as never,
+              projectId: "project-2" as never,
+              title: "Ship graph filters",
+              modelSelection: {
+                instanceId: "codex" as never,
+                model: "gpt-5.4",
+              },
+              runtimeMode: "approval-required",
+              interactionMode: "default",
+              branch: null,
+              worktreePath: null,
+              latestTurn: null,
+              createdAt: "2026-04-24T20:00:00Z",
+              updatedAt: "2026-04-24T21:00:00Z",
+              archivedAt: null,
+              deletedAt: null,
+              messages: [],
+              proposedPlans: [],
+              checkpoints: [],
+              activities: [],
+              session: null,
+            },
+          ],
+        },
+      },
+    );
+
+    expect(
+      listProjectSummariesFromState(state, "env_mobile_test" as EnvironmentId).map(
+        (project) => project.title,
+      ),
+    ).toEqual(["ForgeGraph", "T3 Code"]);
+    expect(
+      listThreadSummariesForProjectFromState(
+        state,
+        "env_mobile_test" as EnvironmentId,
+        "project-1" as never,
+      ).map((thread) => thread.title),
+    ).toEqual(["Fix mobile controls"]);
   });
 });

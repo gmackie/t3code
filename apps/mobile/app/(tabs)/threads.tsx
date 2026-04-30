@@ -4,42 +4,9 @@ import { ScrollView, StyleSheet, Text } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { ThreadList } from "../../src/components/ThreadList";
-import { loadSavedEnvironmentSnapshot } from "../../src/lib/runtimeClient";
-import {
-  hydrateEnvironmentStore,
-  listEnvironmentRecords,
-  readEnvironmentSecret,
-} from "../../src/state/environmentStore";
+import { refreshAllEnvironmentRuntimes } from "../../src/lib/runtimeRefresh";
 import { listThreadSummaries, useThreadStore } from "../../src/state/threadStore";
 import { mobileTheme } from "../../src/theme";
-
-async function refreshRuntime(
-  applySnapshot: (environmentId: never, snapshot: never) => void,
-  setConnectionState: (environmentId: never, state: "idle" | "syncing" | "ready" | "error") => void,
-): Promise<void> {
-  await hydrateEnvironmentStore();
-  const records = listEnvironmentRecords();
-  await Promise.all(
-    records.map(async (record) => {
-      const token = await readEnvironmentSecret(record.environmentId);
-      if (!token) {
-        return;
-      }
-
-      setConnectionState(record.environmentId as never, "syncing");
-      try {
-        const loaded = await loadSavedEnvironmentSnapshot({
-          record,
-          sessionToken: token,
-        });
-        applySnapshot(loaded.environmentId as never, loaded.snapshot as never);
-      } catch (error) {
-        console.error("[mobile] failed to refresh runtime", error);
-        setConnectionState(record.environmentId as never, "error");
-      }
-    }),
-  );
-}
 
 export default function ThreadsScreen() {
   const applySnapshot = useThreadStore((state) => state.applySnapshot);
@@ -49,7 +16,10 @@ export default function ThreadsScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      void refreshRuntime(applySnapshot as never, setConnectionState as never);
+      void refreshAllEnvironmentRuntimes({
+        applySnapshot,
+        setConnectionState,
+      });
     }, [applySnapshot, setConnectionState]),
   );
 

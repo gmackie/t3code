@@ -188,6 +188,9 @@ describe("resolveTailnetAdvertisedHost", () => {
     expect(resolveTailnetAdvertisedHost()).toBe("100.88.12.4");
     expect(execFileSyncMock).toHaveBeenCalledWith("tailscale", ["ip", "-4"], {
       encoding: "utf8",
+      env: expect.objectContaining({
+        TERM: expect.any(String),
+      }),
     });
   });
 
@@ -301,5 +304,43 @@ describe("resolveTailnetAdvertisedHost", () => {
     });
 
     expect(ensureTailnetServeProxy({ port: 3773 })).toBe("mackbook.tail1e1a32.ts.net");
+  });
+
+  it("sets TERM for Tailscale CLI calls when launched without a terminal environment", () => {
+    const previousTerm = process.env.TERM;
+    delete process.env.TERM;
+    try {
+      execFileSyncMock.mockImplementation((command: string, args: string[], options) => {
+        if (command !== "tailscale" || args.join(" ") !== "serve status --json") {
+          throw new Error(`unexpected command ${command} ${args.join(" ")}`);
+        }
+
+        expect(options).toMatchObject({
+          env: expect.objectContaining({
+            TERM: "xterm-256color",
+          }),
+        });
+
+        return JSON.stringify({
+          Web: {
+            "mackbook.tail1e1a32.ts.net:443": {
+              Handlers: {
+                "/": {
+                  Proxy: "http://127.0.0.1:3773",
+                },
+              },
+            },
+          },
+        });
+      });
+
+      expect(ensureTailnetServeProxy({ port: 3773 })).toBe("mackbook.tail1e1a32.ts.net");
+    } finally {
+      if (previousTerm === undefined) {
+        delete process.env.TERM;
+      } else {
+        process.env.TERM = previousTerm;
+      }
+    }
   });
 });

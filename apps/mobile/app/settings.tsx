@@ -40,12 +40,24 @@ export default function SettingsScreen() {
           </View>
         ) : (
           environments.map((environment) => (
-            <View key={environment.environmentId} style={styles.row}>
-              <View style={styles.rowText}>
-                <Text style={styles.rowTitle}>{environment.label}</Text>
-                <Text style={styles.rowMeta}>{environment.httpBaseUrl}</Text>
-              </View>
-            </View>
+            <Link
+              asChild
+              href={{
+                pathname: "/environment/[environmentId]",
+                params: {
+                  environmentId: environment.environmentId,
+                },
+              }}
+              key={environment.environmentId}
+            >
+              <Pressable style={styles.row}>
+                <View style={styles.rowText}>
+                  <Text style={styles.rowTitle}>{environment.label}</Text>
+                  <Text style={styles.rowMeta}>{environment.httpBaseUrl}</Text>
+                </View>
+                <Text style={styles.rowChevron}>Open</Text>
+              </Pressable>
+            </Link>
           ))
         )}
       </View>
@@ -110,11 +122,16 @@ const styles = StyleSheet.create({
     fontSize: 15,
   },
   row: {
+    alignItems: "center",
     backgroundColor: mobileTheme.colors.surface,
     borderRadius: 20,
+    flexDirection: "row",
+    gap: mobileTheme.spacing.sm,
+    justifyContent: "space-between",
     padding: mobileTheme.spacing.md,
   },
   rowText: {
+    flex: 1,
     gap: mobileTheme.spacing.xs,
   },
   rowTitle: {
@@ -125,6 +142,11 @@ const styles = StyleSheet.create({
   rowMeta: {
     color: mobileTheme.colors.textMuted,
     fontSize: 14,
+  },
+  rowChevron: {
+    color: mobileTheme.colors.accent,
+    fontSize: 13,
+    fontWeight: "700",
   },
   button: {
     alignItems: "center",

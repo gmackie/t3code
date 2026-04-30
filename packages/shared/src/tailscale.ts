@@ -8,6 +8,13 @@ const TAILSCALE_CLI_CANDIDATES = [
 
 const TAILSCALE_STATUS_MAX_BUFFER_BYTES = 8 * 1024 * 1024;
 
+function tailscaleCliEnv(): NodeJS.ProcessEnv {
+  return {
+    ...process.env,
+    TERM: process.env.TERM?.trim() || "xterm-256color",
+  };
+}
+
 function firstNonEmpty(values: ReadonlyArray<string | undefined>): string | undefined {
   return values.map((value) => value?.trim()).find((value) => value && value.length > 0);
 }
@@ -67,6 +74,7 @@ function resolveTailnetServeHostFromStatus(serveProxyPort: number | undefined): 
     try {
       const output = execFileSync(binary, ["serve", "status", "--json"], {
         encoding: "utf8",
+        env: tailscaleCliEnv(),
         maxBuffer: TAILSCALE_STATUS_MAX_BUFFER_BYTES,
       });
       const parsed = JSON.parse(output) as {
@@ -119,6 +127,7 @@ export function ensureTailnetServeProxy(input: { readonly port: number }): strin
     try {
       execFileSync(binary, ["serve", "--bg", "--yes", `http://127.0.0.1:${input.port}`], {
         encoding: "utf8",
+        env: tailscaleCliEnv(),
         maxBuffer: TAILSCALE_STATUS_MAX_BUFFER_BYTES,
       });
 
@@ -139,6 +148,7 @@ function resolveTailnetCertDomainFromStatus(): string | null {
     try {
       const output = execFileSync(binary, ["status", "--json"], {
         encoding: "utf8",
+        env: tailscaleCliEnv(),
         maxBuffer: TAILSCALE_STATUS_MAX_BUFFER_BYTES,
       });
       const parsed = JSON.parse(output) as {
@@ -162,7 +172,10 @@ function resolveTailnetCertDomainFromStatus(): string | null {
 function resolveTailnetIpv4FromCli(): string | null {
   for (const binary of TAILSCALE_CLI_CANDIDATES) {
     try {
-      const output = execFileSync(binary, ["ip", "-4"], { encoding: "utf8" });
+      const output = execFileSync(binary, ["ip", "-4"], {
+        encoding: "utf8",
+        env: tailscaleCliEnv(),
+      });
       const address = firstNonEmpty(output.split(/\s+/));
       if (address && isTailnetIpv4Address(address)) {
         return address;

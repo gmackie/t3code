@@ -61,7 +61,12 @@ function CameraScanner({ cameraModule }: { readonly cameraModule: ExpoCameraModu
           record: paired.record,
           sessionToken: paired.sessionToken,
         });
-        router.replace("/settings");
+        router.replace({
+          pathname: "/environment/[environmentId]",
+          params: {
+            environmentId: paired.record.environmentId,
+          },
+        });
       } catch (error) {
         showPairingFailureAlert(error);
         scanningRef.current = false;

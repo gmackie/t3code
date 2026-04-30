@@ -1,4 +1,4 @@
-import { cp, mkdir, readdir, stat } from "node:fs/promises";
+import { cp, mkdir, readdir, rm, stat } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
@@ -36,6 +36,12 @@ const PROFILE_DEFAULTS: Record<
 };
 
 const DEFAULT_EXCLUDED_TOP_LEVEL_NAMES = new Set(["logs"]);
+const SQLITE_STATE_FILE_NAMES = [
+  "state.sqlite",
+  "state.sqlite-wal",
+  "state.sqlite-shm",
+  "state.sqlite-journal",
+] as const;
 
 function toPortableRelativePath(relativePath: string): string {
   return relativePath.split(path.sep).join("/");
@@ -107,6 +113,14 @@ function readFlagValue(args: ReadonlyArray<string>, flag: string): string | unde
   return args[index + 1];
 }
 
+async function removeTargetSqliteStateFiles(targetStateDir: string): Promise<void> {
+  await Promise.all(
+    SQLITE_STATE_FILE_NAMES.map((fileName) =>
+      rm(path.join(targetStateDir, fileName), { force: true }),
+    ),
+  );
+}
+
 export function parseT3StateSyncCliArgs(args: ReadonlyArray<string>): T3StateSyncCliArgs {
   const from = readFlagValue(args, "--from");
   const to = readFlagValue(args, "--to");
@@ -116,7 +130,6 @@ export function parseT3StateSyncCliArgs(args: ReadonlyArray<string>): T3StateSyn
   if (!to || to.startsWith("--")) {
     throw new Error("Missing --to. Use stable, gmacko, or an explicit state directory path.");
   }
-
   return {
     sourceStateDir: resolveStateEndpoint(from),
     targetStateDir: resolveStateEndpoint(to),
@@ -155,6 +168,7 @@ export async function syncT3State(input: {
   }
 
   await mkdir(input.targetStateDir, { recursive: true });
+  await removeTargetSqliteStateFiles(input.targetStateDir);
   await cp(input.sourceStateDir, input.targetStateDir, {
     recursive: true,
     force: true,

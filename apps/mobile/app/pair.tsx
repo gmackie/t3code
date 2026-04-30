@@ -27,7 +27,12 @@ export default function PairScreen() {
         record: paired.record,
         sessionToken: paired.sessionToken,
       });
-      router.replace("/settings");
+      router.replace({
+        pathname: "/environment/[environmentId]",
+        params: {
+          environmentId: paired.record.environmentId,
+        },
+      });
     } catch (error) {
       showPairingFailureAlert(error);
     } finally {
