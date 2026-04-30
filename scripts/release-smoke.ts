@@ -23,9 +23,14 @@ const workspaceFiles = [
   "apps/marketing/package.json",
   "packages/client-runtime/package.json",
   "packages/contracts/package.json",
-  "packages/shared/package.json",
   "packages/effect-acp/package.json",
   "packages/effect-codex-app-server/package.json",
+  "packages/ext-browser/package.json",
+  "packages/ext-planning-workbench/package.json",
+  "packages/ext-preview-workspace/package.json",
+  "packages/ext-thread-overview/package.json",
+  "packages/extension-api/package.json",
+  "packages/shared/package.json",
   "scripts/package.json",
 ] as const;
 

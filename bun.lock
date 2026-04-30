@@ -13,7 +13,7 @@
     },
     "apps/desktop": {
       "name": "@t3tools/desktop",
-      "version": "0.0.21-gmacko.202604241932",
+      "version": "0.0.21-gmacko.202604300228",
       "dependencies": {
         "effect": "catalog:",
         "electron": "40.6.0",
@@ -69,7 +69,7 @@
     },
     "apps/server": {
       "name": "t3",
-      "version": "0.0.21-gmacko.202604241932",
+      "version": "0.0.21-gmacko.202604300228",
       "bin": {
         "t3": "./dist/bin.mjs",
       },
@@ -100,7 +100,7 @@
     },
     "apps/web": {
       "name": "@t3tools/web",
-      "version": "0.0.21-gmacko.202604241932",
+      "version": "0.0.21-gmacko.202604300228",
       "dependencies": {
         "@base-ui/react": "^1.2.0",
         "@dnd-kit/core": "^6.3.1",
@@ -170,7 +170,7 @@
     },
     "packages/contracts": {
       "name": "@t3tools/contracts",
-      "version": "0.0.21-gmacko.202604241932",
+      "version": "0.0.21-gmacko.202604300228",
       "dependencies": {
         "effect": "catalog:",
       },
