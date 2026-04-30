@@ -14,6 +14,7 @@ export interface DesktopBackendBootstrapPayload {
   readonly port: number;
   readonly host?: string;
   readonly t3Home: string;
+  readonly stateDirName?: string;
   readonly authToken: string;
   readonly desktopBootstrapToken?: string;
   readonly otlpTracesUrl?: string;
@@ -44,6 +45,7 @@ export function createDesktopBackendBootstrapPayload(input: {
   readonly port: number;
   readonly host?: string;
   readonly t3Home: string;
+  readonly stateDirName?: string;
   readonly authToken: string;
   readonly desktopBootstrapToken?: string;
   readonly otlpTracesUrl?: string;
@@ -55,6 +57,7 @@ export function createDesktopBackendBootstrapPayload(input: {
     port: input.port,
     ...(input.host ? { host: input.host } : {}),
     t3Home: input.t3Home,
+    ...(input.stateDirName ? { stateDirName: input.stateDirName } : {}),
     authToken: input.authToken,
     ...(input.desktopBootstrapToken ? { desktopBootstrapToken: input.desktopBootstrapToken } : {}),
     ...(input.otlpTracesUrl ? { otlpTracesUrl: input.otlpTracesUrl } : {}),

@@ -73,6 +73,7 @@ const BootstrapEnvelopeSchema = Schema.Struct({
   port: Schema.optional(PortSchema),
   host: Schema.optional(Schema.String),
   t3Home: Schema.optional(Schema.String),
+  stateDirName: Schema.optional(Schema.String),
   devUrl: Schema.optional(Schema.URLFromString),
   noBrowser: Schema.optional(Schema.Boolean),
   desktopBootstrapToken: Schema.optional(Schema.String),
@@ -286,7 +287,7 @@ export const resolveServerConfig = (
     const rawCwd = Option.getOrElse(normalizedFlags.cwd, () => process.cwd());
     const cwd = path.resolve(yield* expandHomePath(rawCwd.trim()));
     yield* fs.makeDirectory(cwd, { recursive: true });
-    const derivedPaths = yield* deriveServerPaths(baseDir, devUrl);
+    const derivedPaths = yield* deriveServerPaths(baseDir, devUrl, bootstrap?.stateDirName);
     yield* ensureServerDirectories(derivedPaths);
     const persistedObservabilitySettings = yield* loadPersistedObservabilitySettings(
       derivedPaths.settingsPath,

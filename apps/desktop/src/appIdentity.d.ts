@@ -1,6 +1,7 @@
 export interface DesktopRuntimeIdentity {
   readonly appId: string;
   readonly appUserModelId: string;
+  readonly baseDirName: string;
   readonly displayName: string;
   readonly packageName: string;
   readonly stateDirName: string;

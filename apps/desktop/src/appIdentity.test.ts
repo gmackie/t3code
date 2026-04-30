@@ -12,6 +12,7 @@ describe("getDesktopRuntimeIdentity", () => {
     ).toEqual({
       appId: "com.t3tools.t3code.gmacko",
       appUserModelId: "com.t3tools.t3code.gmacko",
+      baseDirName: ".t3-gmacko",
       displayName: "T3 Code (gmacko)",
       packageName: "t3code-gmacko",
       stateDirName: "userdata-gmacko",
@@ -30,6 +31,7 @@ describe("getDesktopRuntimeIdentity", () => {
     ).toEqual({
       appId: "com.t3tools.t3code.gmacko",
       appUserModelId: "com.t3tools.t3code.gmacko",
+      baseDirName: ".t3-gmacko",
       displayName: "T3 Code (gmacko)",
       packageName: "t3code-gmacko",
       stateDirName: "userdata-gmacko",
@@ -47,6 +49,7 @@ describe("getDesktopRuntimeIdentity", () => {
     ).toEqual({
       appId: "com.t3tools.t3code",
       appUserModelId: "com.t3tools.t3code",
+      baseDirName: ".t3",
       displayName: "T3 Code (Alpha)",
       packageName: "t3code",
       stateDirName: "userdata",
@@ -64,6 +67,7 @@ describe("getDesktopRuntimeIdentity", () => {
     ).toEqual({
       appId: "com.t3tools.t3code",
       appUserModelId: "com.t3tools.t3code",
+      baseDirName: ".t3",
       displayName: "T3 Code (Dev)",
       packageName: "t3code",
       stateDirName: "userdata-dev",

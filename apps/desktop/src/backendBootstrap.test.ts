@@ -58,11 +58,13 @@ describe("backendBootstrap", () => {
         port: 3773,
         host: "0.0.0.0",
         t3Home: "/tmp/t3",
+        stateDirName: "userdata-gmacko",
         authToken: "server-auth-token",
         desktopBootstrapToken: "desktop-bootstrap-token",
       }),
     ).toMatchObject({
       host: "0.0.0.0",
+      stateDirName: "userdata-gmacko",
       desktopBootstrapToken: "desktop-bootstrap-token",
     });
   });

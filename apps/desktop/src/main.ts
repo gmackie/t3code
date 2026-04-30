@@ -129,7 +129,6 @@ const SET_SAVED_ENVIRONMENT_SECRET_CHANNEL = "desktop:set-saved-environment-secr
 const REMOVE_SAVED_ENVIRONMENT_SECRET_CHANNEL = "desktop:remove-saved-environment-secret";
 const GET_SERVER_EXPOSURE_STATE_CHANNEL = "desktop:get-server-exposure-state";
 const SET_SERVER_EXPOSURE_MODE_CHANNEL = "desktop:set-server-exposure-mode";
-const BASE_DIR = process.env.T3CODE_HOME?.trim() || Path.join(OS.homedir(), ".t3");
 const DESKTOP_SCHEME = "t3";
 const ROOT_DIR = Path.resolve(__dirname, "../../..");
 const isDevelopment = Boolean(process.env.VITE_DEV_SERVER_URL);
@@ -151,6 +150,8 @@ const APP_DISPLAY_NAME =
   process.env.T3CODE_DESKTOP_APP_DISPLAY_NAME?.trim() ||
   APP_IDENTITY.displayName ||
   desktopAppBranding.displayName;
+const BASE_DIR =
+  process.env.T3CODE_HOME?.trim() || Path.join(OS.homedir(), APP_IDENTITY.baseDirName);
 const APP_USER_MODEL_ID = APP_IDENTITY.appUserModelId;
 const LINUX_DESKTOP_ENTRY_NAME = isDevelopment ? "t3code-dev.desktop" : "t3code.desktop";
 const LINUX_WM_CLASS = isDevelopment ? "t3code-dev" : "t3code";
@@ -438,6 +439,7 @@ export function createDesktopBackendBootstrapPayloadForMainProcess(input: {
   readonly port: number;
   readonly host: string;
   readonly t3Home: string;
+  readonly stateDirName?: string;
   readonly authToken: string;
   readonly desktopBootstrapToken?: string;
   readonly otlpTracesUrl?: string;
@@ -1677,6 +1679,7 @@ function startBackend(): void {
           port: backendPort,
           host: backendBindHost,
           t3Home: BASE_DIR,
+          stateDirName: APP_IDENTITY.stateDirName,
           authToken: backendAuthToken,
           ...(backendBootstrapToken ? { desktopBootstrapToken: backendBootstrapToken } : {}),
           ...(backendObservabilitySettings.otlpTracesUrl

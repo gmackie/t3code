@@ -4,6 +4,8 @@ const DEFAULT_UPDATER_CACHE_DIR_NAME = "t3code-updater";
 const GMACKO_UPDATER_CACHE_DIR_NAME = "t3code-gmacko-updater";
 const DEFAULT_PACKAGE_NAME = "t3code";
 const GMACKO_PACKAGE_NAME = "t3code-gmacko";
+const DEFAULT_BASE_DIR_NAME = ".t3";
+const GMACKO_BASE_DIR_NAME = ".t3-gmacko";
 const DEFAULT_USER_DATA_DIR_NAME = "t3code";
 const GMACKO_USER_DATA_DIR_NAME = "t3code-gmacko";
 const DEV_USER_DATA_DIR_NAME = "t3code-dev";
@@ -55,6 +57,7 @@ export function isGmackoDesktopAppId(appId) {
  * @returns {{
  *   appId: string;
  *   appUserModelId: string;
+ *   baseDirName: string;
  *   displayName: string;
  *   packageName: string;
  *   stateDirName: string;
@@ -67,6 +70,7 @@ export function getDesktopRuntimeIdentity(input) {
     return {
       appId: DEFAULT_APP_ID,
       appUserModelId: DEFAULT_APP_ID,
+      baseDirName: DEFAULT_BASE_DIR_NAME,
       displayName: "T3 Code (Dev)",
       packageName: DEFAULT_PACKAGE_NAME,
       stateDirName: DEV_STATE_DIR_NAME,
@@ -83,6 +87,7 @@ export function getDesktopRuntimeIdentity(input) {
     return {
       appId: GMACKO_APP_ID,
       appUserModelId: GMACKO_APP_ID,
+      baseDirName: GMACKO_BASE_DIR_NAME,
       displayName: GMACKO_APP_DISPLAY_NAME,
       packageName: GMACKO_PACKAGE_NAME,
       stateDirName: GMACKO_STATE_DIR_NAME,
@@ -94,6 +99,7 @@ export function getDesktopRuntimeIdentity(input) {
   return {
     appId: DEFAULT_APP_ID,
     appUserModelId: DEFAULT_APP_ID,
+    baseDirName: DEFAULT_BASE_DIR_NAME,
     displayName: DEFAULT_APP_DISPLAY_NAME,
     packageName: DEFAULT_PACKAGE_NAME,
     stateDirName: DEFAULT_STATE_DIR_NAME,
