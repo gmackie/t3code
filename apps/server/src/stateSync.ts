@@ -14,6 +14,13 @@ export interface T3StateSyncResult {
   readonly skippedFiles: ReadonlyArray<string>;
 }
 
+export interface T3StateSyncCliArgs {
+  readonly sourceStateDir: string;
+  readonly targetStateDir: string;
+  readonly dryRun: boolean;
+  readonly includeLogs: boolean;
+}
+
 const PROFILE_DEFAULTS: Record<
   T3StateProfile,
   { readonly baseDirName: string; readonly stateDirName: string }
@@ -82,6 +89,39 @@ export function resolveT3StateProfile(
   return {
     baseDir,
     stateDir: path.join(baseDir, defaults.stateDirName),
+  };
+}
+
+function resolveStateEndpoint(value: string): string {
+  if (value === "stable" || value === "gmacko") {
+    return resolveT3StateProfile(value).stateDir;
+  }
+  return path.resolve(value);
+}
+
+function readFlagValue(args: ReadonlyArray<string>, flag: string): string | undefined {
+  const index = args.indexOf(flag);
+  if (index === -1) {
+    return undefined;
+  }
+  return args[index + 1];
+}
+
+export function parseT3StateSyncCliArgs(args: ReadonlyArray<string>): T3StateSyncCliArgs {
+  const from = readFlagValue(args, "--from");
+  const to = readFlagValue(args, "--to");
+  if (!from || from.startsWith("--")) {
+    throw new Error("Missing --from. Use stable, gmacko, or an explicit state directory path.");
+  }
+  if (!to || to.startsWith("--")) {
+    throw new Error("Missing --to. Use stable, gmacko, or an explicit state directory path.");
+  }
+
+  return {
+    sourceStateDir: resolveStateEndpoint(from),
+    targetStateDir: resolveStateEndpoint(to),
+    dryRun: args.includes("--dry-run"),
+    includeLogs: args.includes("--include-logs"),
   };
 }
 
