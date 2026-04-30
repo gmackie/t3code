@@ -31,6 +31,12 @@ const FALLBACK_PROJECT_FAVICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" vi
 const OTLP_TRACES_PROXY_PATH = "/api/observability/v1/traces";
 const LOOPBACK_HOSTNAMES = new Set(["127.0.0.1", "::1", "localhost"]);
 const DESKTOP_APP_ORIGIN = "t3://app";
+const ALLOWED_APP_ORIGIN_PROTOCOLS = new Set([
+  "exp:",
+  "exps:",
+  "exp+t3-code-mobile:",
+  "t3code-mobile:",
+]);
 
 export function isLoopbackHostname(hostname: string): boolean {
   const normalizedHostname = hostname
@@ -52,7 +58,11 @@ export function isAllowedBrowserApiOrigin(origin: string | undefined): boolean {
 
   try {
     const url = new URL(normalizedOrigin);
-    return url.protocol === "http:" || url.protocol === "https:";
+    return (
+      url.protocol === "http:" ||
+      url.protocol === "https:" ||
+      ALLOWED_APP_ORIGIN_PROTOCOLS.has(url.protocol)
+    );
   } catch {
     return false;
   }

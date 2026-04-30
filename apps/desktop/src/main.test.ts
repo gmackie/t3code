@@ -80,6 +80,10 @@ vi.mock("electron-updater", () => ({
   },
 }));
 
+vi.mock("./syncShellEnvironment.ts", () => ({
+  syncShellEnvironment: vi.fn(),
+}));
+
 describe("resolveDesktopServerExposureForMainProcess", () => {
   beforeEach(() => {
     vi.resetModules();
@@ -95,7 +99,9 @@ describe("resolveDesktopServerExposureForMainProcess", () => {
   it("uses the tailnet resolver only for tailnet-accessible mode", async () => {
     process.env.T3CODE_DESKTOP_LAN_HOST = "192.168.1.44";
     const resolveTailnetAdvertisedHost = vi.fn(() => "mackbook.tailnet.ts.net");
+    const ensureTailnetServeProxy = vi.fn(() => "mackbook.tailnet.ts.net");
     vi.doMock("./tailscale.ts", () => ({
+      ensureTailnetServeProxy,
       resolveTailnetAdvertisedHost,
     }));
 
@@ -103,6 +109,7 @@ describe("resolveDesktopServerExposureForMainProcess", () => {
       resolveDesktopAdvertisedHostOverride: (
         mode: "tailnet-accessible" | "network-accessible" | "local-only",
         networkInterfaces?: NodeJS.Dict<import("node:os").NetworkInterfaceInfo[]>,
+        serveProxyPort?: number,
       ) => string | undefined;
     };
 
@@ -120,13 +127,18 @@ describe("resolveDesktopServerExposureForMainProcess", () => {
     };
 
     expect(
-      mainModule.resolveDesktopAdvertisedHostOverride("tailnet-accessible", networkInterfaces),
+      mainModule.resolveDesktopAdvertisedHostOverride(
+        "tailnet-accessible",
+        networkInterfaces,
+        3773,
+      ),
     ).toBe("mackbook.tailnet.ts.net");
     expect(mainModule.resolveDesktopAdvertisedHostOverride("network-accessible")).toBe(
       "192.168.1.44",
     );
     expect(mainModule.resolveDesktopAdvertisedHostOverride("local-only")).toBeUndefined();
-    expect(resolveTailnetAdvertisedHost).toHaveBeenCalledWith({ networkInterfaces });
+    expect(ensureTailnetServeProxy).toHaveBeenCalledWith({ port: 3773 });
+    expect(resolveTailnetAdvertisedHost).not.toHaveBeenCalled();
   }, 15_000);
 
   it("falls back or rejects tailnet-accessible when no advertised host is available", async () => {

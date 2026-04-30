@@ -2165,6 +2165,115 @@ it.effect("restores pending turn-start metadata across projection pipeline resta
   ),
 );
 
+it.layer(BaseTestLayer)("OrchestrationProjectionPipeline", (it) => {
+  it.effect(
+    "does not mark a running turn completed when a non-streaming assistant message arrives mid-turn",
+    () =>
+      Effect.gen(function* () {
+        const projectionPipeline = yield* OrchestrationProjectionPipeline;
+        const eventStore = yield* OrchestrationEventStore;
+        const sql = yield* SqlClient.SqlClient;
+        const threadId = ThreadId.make("thread-midturn-assistant");
+        const turnId = TurnId.make("turn-midturn-assistant");
+        const requestedAt = "2026-02-26T15:00:00.000Z";
+        const runningAt = "2026-02-26T15:00:01.000Z";
+        const assistantAt = "2026-02-26T15:00:02.000Z";
+
+        const appendAndProject = (event: Parameters<typeof eventStore.append>[0]) =>
+          eventStore
+            .append(event)
+            .pipe(Effect.flatMap((savedEvent) => projectionPipeline.projectEvent(savedEvent)));
+
+        yield* appendAndProject({
+          type: "thread.turn-start-requested",
+          eventId: EventId.make("evt-midturn-assistant-1"),
+          aggregateKind: "thread",
+          aggregateId: threadId,
+          occurredAt: requestedAt,
+          commandId: CommandId.make("cmd-midturn-assistant-1"),
+          causationEventId: null,
+          correlationId: CorrelationId.make("cmd-midturn-assistant-1"),
+          metadata: {},
+          payload: {
+            threadId,
+            messageId: MessageId.make("message-midturn-assistant"),
+            sourceProposedPlan: undefined,
+            runtimeMode: "full-access",
+            createdAt: requestedAt,
+          },
+        });
+
+        yield* appendAndProject({
+          type: "thread.session-set",
+          eventId: EventId.make("evt-midturn-assistant-2"),
+          aggregateKind: "thread",
+          aggregateId: threadId,
+          occurredAt: runningAt,
+          commandId: CommandId.make("cmd-midturn-assistant-2"),
+          causationEventId: null,
+          correlationId: CorrelationId.make("cmd-midturn-assistant-2"),
+          metadata: {},
+          payload: {
+            threadId,
+            session: {
+              threadId,
+              status: "running",
+              providerName: "codex",
+              runtimeMode: "full-access",
+              activeTurnId: turnId,
+              lastError: null,
+              updatedAt: runningAt,
+            },
+          },
+        });
+
+        yield* appendAndProject({
+          type: "thread.message-sent",
+          eventId: EventId.make("evt-midturn-assistant-3"),
+          aggregateKind: "thread",
+          aggregateId: threadId,
+          occurredAt: assistantAt,
+          commandId: CommandId.make("cmd-midturn-assistant-3"),
+          causationEventId: null,
+          correlationId: CorrelationId.make("cmd-midturn-assistant-3"),
+          metadata: {},
+          payload: {
+            threadId,
+            messageId: MessageId.make("assistant-midturn-assistant"),
+            role: "assistant",
+            text: "Still working",
+            turnId,
+            streaming: false,
+            createdAt: assistantAt,
+            updatedAt: assistantAt,
+          },
+        });
+
+        const turnRows = yield* sql<{
+          readonly state: string;
+          readonly completedAt: string | null;
+          readonly assistantMessageId: string | null;
+        }>`
+          SELECT
+            state,
+            completed_at AS "completedAt",
+            assistant_message_id AS "assistantMessageId"
+          FROM projection_turns
+          WHERE thread_id = ${threadId}
+            AND turn_id = ${turnId}
+        `;
+
+        assert.deepEqual(turnRows, [
+          {
+            state: "running",
+            completedAt: null,
+            assistantMessageId: "assistant-midturn-assistant",
+          },
+        ]);
+      }),
+  );
+});
+
 const engineLayer = it.layer(
   OrchestrationEngineLive.pipe(
     Layer.provide(OrchestrationProjectionSnapshotQueryLive),

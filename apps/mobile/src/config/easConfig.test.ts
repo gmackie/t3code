@@ -15,6 +15,13 @@ describe("mobile EAS configuration", () => {
   });
 
   it("allows the dev client to pair with local Tailnet HTTP backends", () => {
+    expect(appConfig.expo?.plugins).toContainEqual([
+      "expo-build-properties",
+      {
+        android: { networkInspector: false },
+        ios: { networkInspector: false },
+      },
+    ]);
     expect(appConfig.expo?.ios?.infoPlist?.NSLocalNetworkUsageDescription).toBe(
       "Allow T3 Code to connect to your Mac on your local network or Tailnet.",
     );
@@ -30,6 +37,7 @@ describe("mobile EAS configuration", () => {
     expect(easConfig.build?.development?.developmentClient).toBe(true);
     expect(easConfig.build?.development?.distribution).toBe("internal");
     expect(Object.hasOwn(easConfig.build?.development?.ios ?? {}, "simulator")).toBe(false);
+    expect(packageJson.dependencies?.["expo-build-properties"]).toBeDefined();
     expect(packageJson.dependencies?.["expo-dev-client"]).toBeDefined();
     expect(easConfig.build?.simulator?.developmentClient).toBe(true);
     expect(easConfig.build?.simulator?.ios?.simulator).toBe(true);

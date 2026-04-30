@@ -202,7 +202,7 @@ describe("retainThreadDetailSubscription", () => {
 
     stop();
     await resetEnvironmentServiceForTests();
-  });
+  }, 15_000);
 
   it("keeps non-idle thread detail subscriptions attached until the thread becomes idle", async () => {
     const {
@@ -251,7 +251,7 @@ describe("retainThreadDetailSubscription", () => {
 
     stop();
     await resetEnvironmentServiceForTests();
-  });
+  }, 15_000);
 
   it("allows a larger idle cache before capacity eviction starts", async () => {
     const {

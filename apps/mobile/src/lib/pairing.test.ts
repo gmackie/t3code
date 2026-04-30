@@ -93,9 +93,7 @@ describe("pairEnvironmentFromUrl", () => {
         pairingUrl: "http://100.88.12.4:3773/pair#token=pairing-token",
         fetch: fetchMock as typeof globalThis.fetch,
       }),
-    ).rejects.toThrow(
-      "Could not reach http://100.88.12.4:3773/.well-known/t3/environment. Native error: Network request failed",
-    );
+    ).rejects.toThrow("This request failed before the pairing token was exchanged.");
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });

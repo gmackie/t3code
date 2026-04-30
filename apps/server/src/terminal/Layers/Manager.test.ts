@@ -986,6 +986,28 @@ it.layer(NodeServices.layer, { excludeTestServices: true })("TerminalManager", (
     }),
   );
 
+  it.effect("expands ZDOTDIR home paths before spawning terminals", () =>
+    Effect.gen(function* () {
+      const { manager, ptyAdapter } = yield* createManager(5, {
+        env: {
+          HOME: "/Users/tester",
+        },
+      });
+      yield* manager.open(
+        openInput({
+          env: {
+            ZDOTDIR: "~/t3code-shell",
+          },
+        }),
+      );
+      const spawnInput = ptyAdapter.spawnInputs[0];
+      expect(spawnInput).toBeDefined();
+      if (!spawnInput) return;
+
+      assert.equal(spawnInput.env.ZDOTDIR, "/Users/tester/t3code-shell");
+    }),
+  );
+
   it.effect("starts zsh with prompt spacer disabled to avoid `%` end markers", () =>
     Effect.gen(function* () {
       if (process.platform === "win32") return;

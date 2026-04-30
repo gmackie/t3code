@@ -138,6 +138,24 @@ describe("resolveDesktopServerExposure", () => {
     });
   });
 
+  it("uses the HTTPS Tailnet endpoint when the advertised host is a Tailscale DNS name", () => {
+    expect(
+      resolveDesktopServerExposure({
+        mode: "tailnet-accessible",
+        port: 3773,
+        networkInterfaces: {},
+        advertisedHostOverride: "mackbook.tail1e1a32.ts.net",
+      }),
+    ).toEqual({
+      mode: "tailnet-accessible",
+      bindHost: "0.0.0.0",
+      localHttpUrl: "http://127.0.0.1:3773",
+      localWsUrl: "ws://127.0.0.1:3773",
+      endpointUrl: "https://mackbook.tail1e1a32.ts.net",
+      advertisedHost: "mackbook.tail1e1a32.ts.net",
+    });
+  });
+
   it("stays tailnet-accessible even when no tailnet host is currently detectable", () => {
     expect(
       resolveDesktopServerExposure({

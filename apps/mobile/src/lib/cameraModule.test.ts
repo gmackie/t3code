@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { loadExpoCameraModule } from "./cameraModule";
+import {
+  getEmbeddedBarcodeScannerCameraProps,
+  getModernBarcodeScannerControls,
+  loadExpoCameraModule,
+} from "./cameraModule";
 
 describe("loadExpoCameraModule", () => {
   it("reports unavailable when the native camera module is missing", () => {
@@ -66,6 +70,43 @@ describe("loadExpoCameraModule", () => {
       available: false,
       errorMessage:
         "Camera scanning requires the latest T3 Code development build with expo-camera included.",
+    });
+  });
+});
+
+describe("getModernBarcodeScannerControls", () => {
+  it("returns controls when the native modern scanner API is available", () => {
+    const controls = getModernBarcodeScannerControls({
+      CameraView: Object.assign(() => null, {
+        isModernBarcodeScannerAvailable: true,
+        launchScanner: async () => undefined,
+        dismissScanner: async () => undefined,
+        onModernBarcodeScanned: () => ({ remove: () => undefined }),
+      }),
+      useCameraPermissions: () => [null, async () => null],
+    });
+
+    expect(controls).not.toBeNull();
+  });
+
+  it("returns null when the modern scanner API is unavailable", () => {
+    const controls = getModernBarcodeScannerControls({
+      CameraView: Object.assign(() => null, {
+        isModernBarcodeScannerAvailable: false,
+      }),
+      useCameraPermissions: () => [null, async () => null],
+    });
+
+    expect(controls).toBeNull();
+  });
+});
+
+describe("getEmbeddedBarcodeScannerCameraProps", () => {
+  it("keeps the embedded QR scanner on continuous focus", () => {
+    expect(getEmbeddedBarcodeScannerCameraProps()).toEqual({
+      autofocus: "off",
+      barcodeScannerSettings: { barcodeTypes: ["qr"] },
+      facing: "back",
     });
   });
 });

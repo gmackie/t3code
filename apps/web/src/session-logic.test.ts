@@ -1,6 +1,7 @@
 import {
   EventId,
   MessageId,
+  ProviderDriverKind,
   ThreadId,
   TurnId,
   type OrchestrationThreadActivity,
@@ -1576,7 +1577,7 @@ describe("derivePhase", () => {
   it("treats a running session without an active turn as ready", () => {
     expect(
       derivePhase({
-        provider: "codex",
+        provider: ProviderDriverKind.make("codex"),
         status: "running",
         orchestrationStatus: "running",
         activeTurnId: undefined,

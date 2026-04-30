@@ -463,13 +463,27 @@ describe("GeneralSettingsPanel observability", () => {
       .toBeInTheDocument();
   });
 
-  it("creates and shows a pairing link when network access is enabled", async () => {
-    window.desktopBridge = createDesktopBridgeStub({
-      serverExposureState: {
-        mode: "network-accessible",
-        endpointUrl: "http://192.168.1.44:3773",
-        advertisedHost: "192.168.1.44",
-      },
+  it("refreshes desktop exposure before creating a pairing link", async () => {
+    const staleExposureState = {
+      mode: "tailnet-accessible" as const,
+      endpointUrl: "http://100.76.132.28:3773",
+      advertisedHost: "100.76.132.28",
+    };
+    const freshExposureState = {
+      mode: "tailnet-accessible" as const,
+      endpointUrl: "https://grahams-macbook-pro.tail1e1a32.ts.net",
+      advertisedHost: "grahams-macbook-pro.tail1e1a32.ts.net",
+    };
+    const desktopBridge = createDesktopBridgeStub({
+      serverExposureState: staleExposureState,
+    });
+    vi.mocked(desktopBridge.getServerExposureState)
+      .mockResolvedValueOnce(staleExposureState)
+      .mockResolvedValue(freshExposureState);
+    window.desktopBridge = desktopBridge;
+    Object.defineProperty(window, "isSecureContext", {
+      configurable: true,
+      value: false,
     });
     let pairingLinks: Array<AuthAccessSnapshot["pairingLinks"][number]> = [];
     let clientSessions: Array<AuthAccessSnapshot["clientSessions"][number]> = [
@@ -568,6 +582,9 @@ describe("GeneralSettingsPanel observability", () => {
     await page.getByRole("button", { name: "Create link", exact: true }).click();
     await expect.element(page.getByText("Create pairing link")).toBeInTheDocument();
     await page.getByRole("button", { name: "Create link", exact: true }).click();
+    await vi.waitFor(() => {
+      expect(desktopBridge.getServerExposureState).toHaveBeenCalledTimes(2);
+    });
     authAccessHarness.emitPairingLinkUpserted(pairingLinks[0]!);
     authAccessHarness.emitClientUpserted(clientSessions[1]!);
     await expect
@@ -576,6 +593,11 @@ describe("GeneralSettingsPanel observability", () => {
     await expect
       .element(page.getByRole("button", { name: /^(Copy|Show link)$/ }))
       .toBeInTheDocument();
+    await page.getByRole("button", { name: "Show link", exact: true }).click();
+    await expect
+      .element(page.getByRole("textbox"))
+      .toHaveValue("https://grahams-macbook-pro.tail1e1a32.ts.net/pair#token=pairing-token");
+    await page.getByRole("button", { name: "Done", exact: true }).click();
     await page.getByLabelText("Show QR code").hover();
     await expect
       .element(page.getByLabelText("Pairing link — scan to open on another device"))

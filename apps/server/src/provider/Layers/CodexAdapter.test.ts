@@ -1137,7 +1137,15 @@ it.effect("flushes managed native logs when the adapter layer shuts down", () =>
 it.effect("passes in-app browser dynamic tools to Codex runtime sessions", () =>
   Effect.gen(function* () {
     const runtimeFactory = makeRuntimeFactory();
-    const layer = makeCodexAdapterLive({ makeRuntime: runtimeFactory.factory }).pipe(
+    const layer = Layer.effect(
+      CodexAdapter,
+      Effect.gen(function* () {
+        const codexConfig = Schema.decodeSync(CodexSettings)({});
+        return yield* makeCodexAdapter(codexConfig, {
+          makeRuntime: runtimeFactory.factory,
+        });
+      }),
+    ).pipe(
       Layer.provideMerge(ServerConfig.layerTest(process.cwd(), process.cwd())),
       Layer.provideMerge(ServerSettingsService.layerTest()),
       Layer.provideMerge(providerSessionDirectoryTestLayer),
@@ -1146,7 +1154,7 @@ it.effect("passes in-app browser dynamic tools to Codex runtime sessions", () =>
     const adapter = yield* Effect.service(CodexAdapter).pipe(Effect.provide(layer));
 
     yield* adapter.startSession({
-      provider: "codex",
+      provider: ProviderDriverKind.make("codex"),
       threadId: asThreadId("thread-browser-tools"),
       runtimeMode: "full-access",
     });

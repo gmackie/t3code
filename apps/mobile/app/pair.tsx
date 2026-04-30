@@ -1,9 +1,10 @@
 import { Link, useRouter } from "expo-router";
 import { useState } from "react";
-import { Alert, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { pairEnvironmentFromUrl } from "../src/lib/pairing";
+import { showPairingFailureAlert } from "../src/lib/pairingErrorAlert";
 import { savePairedEnvironment } from "../src/state/environmentStore";
 import { mobileTheme } from "../src/theme";
 
@@ -28,7 +29,7 @@ export default function PairScreen() {
       });
       router.replace("/settings");
     } catch (error) {
-      Alert.alert("Pairing failed", error instanceof Error ? error.message : String(error));
+      showPairingFailureAlert(error);
     } finally {
       setIsPairing(false);
     }

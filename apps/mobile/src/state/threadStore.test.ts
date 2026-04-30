@@ -24,7 +24,7 @@ describe("threadStore", () => {
               projectId: "project-1" as never,
               title: "Fix auth issue",
               modelSelection: {
-                provider: "codex",
+                instanceId: "codex" as never,
                 model: "gpt-5.4",
               },
               runtimeMode: "approval-required",
@@ -95,7 +95,7 @@ describe("threadStore", () => {
                 projectId: "project-1" as never,
                 title: "Fix auth issue",
                 modelSelection: {
-                  provider: "codex",
+                  instanceId: "codex" as never,
                   model: "gpt-5.4",
                 },
                 runtimeMode: "approval-required",
@@ -200,7 +200,7 @@ describe("threadStore", () => {
               projectId: "project-1" as never,
               title: "Fix mobile controls",
               modelSelection: {
-                provider: "codex",
+                instanceId: "codex" as never,
                 model: "gpt-5.4",
               },
               runtimeMode: "approval-required",

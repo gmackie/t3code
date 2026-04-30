@@ -5644,7 +5644,7 @@ describe("ChatView timeline estimator parity (full app)", () => {
             id: tertiaryThreadId,
             projectId: PROJECT_ID,
             title: "Primary replacement",
-            modelSelection: { provider: "codex", model: "gpt-5" },
+            modelSelection: { instanceId: ProviderInstanceId.make("codex"), model: "gpt-5" },
             interactionMode: "default",
             runtimeMode: "full-access",
             branch: "main",
@@ -5723,7 +5723,7 @@ describe("ChatView timeline estimator parity (full app)", () => {
             id: secondaryReplacementThreadId,
             projectId: SECOND_PROJECT_ID,
             title: "Secondary replacement",
-            modelSelection: { provider: "codex", model: "gpt-5" },
+            modelSelection: { instanceId: ProviderInstanceId.make("codex"), model: "gpt-5" },
             interactionMode: "default",
             runtimeMode: "full-access",
             branch: "main",
@@ -5806,7 +5806,7 @@ describe("ChatView timeline estimator parity (full app)", () => {
             id: tertiaryThreadId,
             projectId: PROJECT_ID,
             title: "Primary replacement secondary focused",
-            modelSelection: { provider: "codex", model: "gpt-5" },
+            modelSelection: { instanceId: ProviderInstanceId.make("codex"), model: "gpt-5" },
             interactionMode: "default",
             runtimeMode: "full-access",
             branch: "main",
@@ -5893,7 +5893,7 @@ describe("ChatView timeline estimator parity (full app)", () => {
             id: secondaryReplacementThreadId,
             projectId: SECOND_PROJECT_ID,
             title: "Secondary drop replacement",
-            modelSelection: { provider: "codex", model: "gpt-5" },
+            modelSelection: { instanceId: ProviderInstanceId.make("codex"), model: "gpt-5" },
             interactionMode: "default",
             runtimeMode: "full-access",
             branch: "main",
@@ -6004,7 +6004,7 @@ describe("ChatView timeline estimator parity (full app)", () => {
             id: secondarySameProjectThreadId,
             projectId: PROJECT_ID,
             title: "Secondary same project",
-            modelSelection: { provider: "codex", model: "gpt-5" },
+            modelSelection: { instanceId: ProviderInstanceId.make("codex"), model: "gpt-5" },
             interactionMode: "default",
             runtimeMode: "full-access",
             branch: "main",
@@ -6281,7 +6281,7 @@ describe("ChatView timeline estimator parity (full app)", () => {
             id: secondarySameProjectThreadId,
             projectId: PROJECT_ID,
             title: "Secondary browser same project",
-            modelSelection: { provider: "codex", model: "gpt-5" },
+            modelSelection: { instanceId: ProviderInstanceId.make("codex"), model: "gpt-5" },
             interactionMode: "default",
             runtimeMode: "full-access",
             branch: "main",
@@ -6440,7 +6440,7 @@ describe("ChatView timeline estimator parity (full app)", () => {
             id: secondarySameProjectThreadId,
             projectId: PROJECT_ID,
             title: "Secondary resize same project",
-            modelSelection: { provider: "codex", model: "gpt-5" },
+            modelSelection: { instanceId: ProviderInstanceId.make("codex"), model: "gpt-5" },
             interactionMode: "default",
             runtimeMode: "full-access",
             branch: "main",
@@ -6554,7 +6554,7 @@ describe("ChatView timeline estimator parity (full app)", () => {
             ? {
                 ...thread,
                 modelSelection: {
-                  provider: "cursor",
+                  instanceId: ProviderInstanceId.make("cursor"),
                   model: "claude-sonnet-4-6",
                 },
               }
@@ -6567,7 +6567,8 @@ describe("ChatView timeline estimator parity (full app)", () => {
           providers: [
             ...nextFixture.serverConfig.providers,
             {
-              provider: "cursor",
+              driver: ProviderDriverKind.make("cursor"),
+              instanceId: ProviderInstanceId.make("cursor"),
               enabled: true,
               installed: true,
               version: "0.1.0",
@@ -6616,7 +6617,7 @@ describe("ChatView timeline estimator parity (full app)", () => {
                 ...thread,
                 messages: [],
                 modelSelection: {
-                  provider: "cursor",
+                  instanceId: ProviderInstanceId.make("cursor"),
                   model: "claude-sonnet-4-6",
                 },
               }
@@ -6629,7 +6630,8 @@ describe("ChatView timeline estimator parity (full app)", () => {
           providers: [
             ...nextFixture.serverConfig.providers,
             {
-              provider: "cursor",
+              driver: ProviderDriverKind.make("cursor"),
+              instanceId: ProviderInstanceId.make("cursor"),
               enabled: true,
               installed: true,
               version: "0.1.0",
@@ -6679,7 +6681,7 @@ describe("ChatView timeline estimator parity (full app)", () => {
             | {
                 _tag: string;
                 type?: string;
-                modelSelection?: { provider?: string; model?: string };
+                modelSelection?: { instanceId?: string; model?: string };
               }
             | undefined;
           expect(turnStartRequest).toMatchObject({

@@ -10,6 +10,17 @@
       "expo-router",
       "expo-secure-store",
       [
+        "expo-build-properties",
+        {
+          "android": {
+            "networkInspector": false
+          },
+          "ios": {
+            "networkInspector": false
+          }
+        }
+      ],
+      [
         "expo-camera",
         {
           "cameraPermission": "Allow T3 Code to scan pairing QR codes from your desktop."

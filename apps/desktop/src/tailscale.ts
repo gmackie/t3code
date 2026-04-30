@@ -1,1 +1,1 @@
-export { resolveTailnetAdvertisedHost } from "@t3tools/shared/tailscale";
+export { ensureTailnetServeProxy, resolveTailnetAdvertisedHost } from "@t3tools/shared/tailscale";

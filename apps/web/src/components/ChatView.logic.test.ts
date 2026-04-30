@@ -95,12 +95,12 @@ describe("buildSearchableModelOptions", () => {
   it("falls back to the model slug when the provider model name is missing", () => {
     expect(
       buildSearchableModelOptions({
-        availableProviderOptions: [{ value: "codex", label: "Codex" }],
+        availableProviderOptions: [{ value: ProviderDriverKind.make("codex"), label: "Codex" }],
         modelOptionsByProvider: {
-          codex: [{ slug: "gpt-5" } as never],
-          claudeAgent: [],
-          cursor: [],
-          opencode: [],
+          [ProviderDriverKind.make("codex")]: [{ slug: "gpt-5" } as never],
+          [ProviderDriverKind.make("claudeAgent")]: [],
+          [ProviderDriverKind.make("cursor")]: [],
+          [ProviderDriverKind.make("opencode")]: [],
         },
         lockedProvider: null,
       }),

@@ -54,6 +54,7 @@ function stepStatusIcon(status: string): React.ReactNode {
 interface PlanSidebarProps {
   activePlan: ActivePlanState | null;
   activeProposedPlan: LatestProposedPlanState | null;
+  label?: string;
   environmentId: EnvironmentId;
   markdownCwd: string | undefined;
   workspaceRoot: string | undefined;
@@ -68,19 +69,20 @@ interface PlanSidebarProps {
     | undefined;
   timestampFormat: TimestampFormat;
   onClose: () => void;
-  layout?: "sidebar" | "tab";
+  mode?: "sidebar" | "sheet";
 }
 
 const PlanSidebar = memo(function PlanSidebar({
   activePlan,
   activeProposedPlan,
+  label = "Plan",
   environmentId,
   markdownCwd,
   workspaceRoot,
   onOpenWorkspaceFile,
   timestampFormat,
   onClose,
-  layout = "sidebar",
+  mode = "sidebar",
 }: PlanSidebarProps) {
   const [proposedPlanExpanded, setProposedPlanExpanded] = useState(false);
   const [isSavingToWorkspace, setIsSavingToWorkspace] = useState(false);
@@ -138,7 +140,7 @@ const PlanSidebar = memo(function PlanSidebar({
     <div
       className={cn(
         "flex h-full min-h-0 flex-col bg-card/50",
-        layout === "sidebar" ? "w-[340px] shrink-0 border-l border-border/70" : "min-w-0 flex-1",
+        mode === "sidebar" ? "w-[340px] shrink-0 border-l border-border/70" : "min-w-0 flex-1",
       )}
     >
       {/* Header */}
@@ -148,7 +150,7 @@ const PlanSidebar = memo(function PlanSidebar({
             variant="secondary"
             className="rounded-md bg-blue-500/10 px-1.5 py-0 text-[10px] font-semibold tracking-wide text-blue-400 uppercase"
           >
-            Plan
+            {label}
           </Badge>
           {activePlan ? (
             <span className="text-[11px] text-muted-foreground/60">
@@ -189,7 +191,7 @@ const PlanSidebar = memo(function PlanSidebar({
             size="icon-xs"
             variant="ghost"
             onClick={onClose}
-            aria-label={layout === "sidebar" ? "Close plan sidebar" : "Close plan tab"}
+            aria-label={mode === "sidebar" ? "Close plan sidebar" : "Close plan tab"}
             className="text-muted-foreground/50 hover:text-foreground/70"
           >
             <PanelRightCloseIcon className="size-3.5" />

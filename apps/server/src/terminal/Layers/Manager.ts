@@ -662,6 +662,13 @@ function shouldExcludeTerminalEnvKey(key: string): boolean {
   return TERMINAL_ENV_BLOCKLIST.has(normalizedKey);
 }
 
+function expandHomePath(value: string, home: string | undefined): string {
+  if (!home || home.length === 0) return value;
+  if (value === "~") return home;
+  if (value.startsWith("~/")) return path.join(home, value.slice(2));
+  return value;
+}
+
 function createTerminalSpawnEnv(
   baseEnv: NodeJS.ProcessEnv,
   runtimeEnv?: Record<string, string> | null,
@@ -676,6 +683,9 @@ function createTerminalSpawnEnv(
     for (const [key, value] of Object.entries(runtimeEnv)) {
       spawnEnv[key] = value;
     }
+  }
+  if (spawnEnv.ZDOTDIR !== undefined) {
+    spawnEnv.ZDOTDIR = expandHomePath(spawnEnv.ZDOTDIR, spawnEnv.HOME);
   }
   return spawnEnv;
 }

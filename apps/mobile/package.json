@@ -13,7 +13,8 @@
     "@t3tools/client-runtime": "workspace:*",
     "@t3tools/contracts": "workspace:*",
     "@tanstack/react-query": "^5.90.0",
-    "expo": "~55.0.0",
+    "expo": "~55.0.18",
+    "expo-build-properties": "~55.0.13",
     "expo-camera": "~55.0.16",
     "expo-constants": "~55.0.15",
     "expo-dev-client": "~55.0.28",
@@ -22,7 +23,7 @@
     "expo-secure-store": "~55.0.13",
     "expo-status-bar": "~55.0.5",
     "react": "19.2.0",
-    "react-native": "0.83.0",
+    "react-native": "0.83.6",
     "react-native-safe-area-context": "~5.6.2",
     "react-native-screens": "~4.23.0",
     "zustand": "^5.0.11"

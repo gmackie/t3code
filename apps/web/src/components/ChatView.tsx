@@ -133,7 +133,7 @@ import { getProviderModelCapabilities, resolveSelectableProvider } from "../prov
 import { useSettings } from "../hooks/useSettings";
 import { resolveAppModelSelectionForInstance } from "../modelSelection";
 import { isTerminalFocused } from "../lib/terminalFocus";
-import { deriveLogicalProjectKeyFromSettings } from "../logicalProject";
+import { deriveLogicalProjectKey, deriveLogicalProjectKeyFromSettings } from "../logicalProject";
 import {
   useSavedEnvironmentRegistryStore,
   useSavedEnvironmentRuntimeStore,
@@ -876,6 +876,7 @@ export default function ChatView(props: ChatViewProps) {
   // Compute the list of environments this logical project spans, used to
   // drive the environment picker in BranchToolbar.
   const allProjects = useStore(useShallow(selectProjectsAcrossEnvironments));
+  const allThreads = useStore(useShallow(selectThreadsAcrossEnvironments));
   const primaryEnvironmentId = usePrimaryEnvironmentId();
   const savedEnvironmentRegistry = useSavedEnvironmentRegistryStore((s) => s.byId);
   const savedEnvironmentRuntimeById = useSavedEnvironmentRuntimeStore((s) => s.byId);
@@ -1164,13 +1165,13 @@ export default function ChatView(props: ChatViewProps) {
     () =>
       selectPanelThreadView(
         {
-          projects,
-          threads,
+          projects: allProjects,
+          threads: allThreads,
           threadsHydrated: true,
         },
         activeThread?.id ?? null,
       ),
-    [activeThread?.id, projects, threads],
+    [activeThread?.id, allProjects, allThreads],
   );
   const panelContext = useMemo<PanelContext>(
     () => ({
@@ -1186,8 +1187,7 @@ export default function ChatView(props: ChatViewProps) {
     [activeThread?.id, panelThreadView],
   );
   const availableSidePanels = useMemo(
-    () =>
-      getAvailablePanelsForSurface(BUILTIN_PANELS, "thread.sidePanel", panelContext),
+    () => getAvailablePanelsForSurface(BUILTIN_PANELS, "thread.sidePanel", panelContext),
     [panelContext],
   );
   const showPlanFollowUpPrompt =
@@ -1987,7 +1987,7 @@ export default function ChatView(props: ChatViewProps) {
   const togglePlanSidebar = useCallback(() => {
     setPlanSidebarOpen((open) => {
       if (!open) {
-        setExtensionPanelOpen(false);
+        setPanelHostOpen(false);
       }
       if (open) {
         planSidebarDismissedForTurnRef.current =

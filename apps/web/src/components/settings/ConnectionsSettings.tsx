@@ -592,12 +592,14 @@ const ConnectedClientListRow = memo(function ConnectedClientListRow({
 type AuthorizedClientsHeaderActionProps = {
   clientSessions: ReadonlyArray<ServerClientSessionRecord>;
   isRevokingOtherClients: boolean;
+  onBeforeCreatePairingLink?: () => Promise<void>;
   onRevokeOtherClients: () => void;
 };
 
 const AuthorizedClientsHeaderAction = memo(function AuthorizedClientsHeaderAction({
   clientSessions,
   isRevokingOtherClients,
+  onBeforeCreatePairingLink,
   onRevokeOtherClients,
 }: AuthorizedClientsHeaderActionProps) {
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -607,6 +609,7 @@ const AuthorizedClientsHeaderAction = memo(function AuthorizedClientsHeaderActio
   const handleCreatePairingLink = useCallback(async () => {
     setIsCreatingPairingLink(true);
     try {
+      await onBeforeCreatePairingLink?.();
       await createServerPairingCredential(pairingLabel);
       setPairingLabel("");
       setDialogOpen(false);
@@ -622,7 +625,7 @@ const AuthorizedClientsHeaderAction = memo(function AuthorizedClientsHeaderActio
     } finally {
       setIsCreatingPairingLink(false);
     }
-  }, [pairingLabel]);
+  }, [onBeforeCreatePairingLink, pairingLabel]);
 
   return (
     <div className="flex items-center gap-2">
@@ -919,6 +922,12 @@ export function ConnectionsSettings() {
     },
     [desktopBridge],
   );
+
+  const refreshDesktopServerExposureState = useCallback(async () => {
+    if (!desktopBridge) return;
+    const nextState = await desktopBridge.getServerExposureState();
+    setDesktopServerExposureState(nextState);
+  }, [desktopBridge]);
 
   const handleConfirmDesktopServerExposureChange = useCallback(() => {
     if (pendingDesktopServerExposureMode === null) return;
@@ -1370,6 +1379,7 @@ export function ConnectionsSettings() {
                 <AuthorizedClientsHeaderAction
                   clientSessions={desktopClientSessions}
                   isRevokingOtherClients={isRevokingOtherDesktopClients}
+                  onBeforeCreatePairingLink={refreshDesktopServerExposureState}
                   onRevokeOtherClients={handleRevokeOtherDesktopClients}
                 />
               }

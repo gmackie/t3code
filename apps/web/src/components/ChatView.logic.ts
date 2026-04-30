@@ -177,6 +177,13 @@ export function buildTemporaryWorktreeBranchName(): string {
   return `${WORKTREE_BRANCH_PREFIX}/${token}`;
 }
 
+export function resolveSendEnvMode(input: {
+  requestedEnvMode: "local" | "worktree";
+  isGitRepo: boolean;
+}): "local" | "worktree" {
+  return input.requestedEnvMode === "worktree" && input.isGitRepo ? "worktree" : "local";
+}
+
 export function cloneComposerImageForRetry(
   image: ComposerImageAttachment,
 ): ComposerImageAttachment {

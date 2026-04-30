@@ -278,9 +278,7 @@ describe("getServerModelOptionsByProvider", () => {
     ];
 
     expect(getServerModelOptionsByProvider(providerStatuses)).toEqual({
-      codex: [
-        { slug: "gpt-5", name: "gpt-5", isCustom: false, capabilities: {} },
-      ],
+      codex: [{ slug: "gpt-5", name: "gpt-5", isCustom: false, capabilities: {} }],
       claudeAgent: [
         {
           slug: "claude-sonnet-4-5",

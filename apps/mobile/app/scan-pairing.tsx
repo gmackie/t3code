@@ -1,14 +1,17 @@
 import { Link, useRouter } from "expo-router";
-import { useCallback, useEffect, useState } from "react";
-import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import {
   type BarcodeScanningResultLike,
   type ExpoCameraModule,
+  getEmbeddedBarcodeScannerCameraProps,
+  getModernBarcodeScannerControls,
   loadExpoCameraModule,
 } from "../src/lib/cameraModule";
 import { pairEnvironmentFromUrl } from "../src/lib/pairing";
+import { showPairingFailureAlert } from "../src/lib/pairingErrorAlert";
 import { normalizeScannedPairingUrl } from "../src/lib/scannedPairing";
 import { savePairedEnvironment } from "../src/state/environmentStore";
 import { mobileTheme } from "../src/theme";
@@ -26,8 +29,12 @@ export default function ScanPairingScreen() {
 function CameraScanner({ cameraModule }: { readonly cameraModule: ExpoCameraModule }) {
   const router = useRouter();
   const { CameraView, useCameraPermissions } = cameraModule;
+  const [modernScanner] = useState(() => getModernBarcodeScannerControls(cameraModule));
   const [permission, requestPermission] = useCameraPermissions();
   const [isPairing, setIsPairing] = useState(false);
+  const [cameraStatus, setCameraStatus] = useState("Starting camera...");
+  const scanningRef = useRef(false);
+  const hasLaunchedModernScannerRef = useRef(false);
 
   useEffect(() => {
     if (!permission) {
@@ -37,13 +44,18 @@ function CameraScanner({ cameraModule }: { readonly cameraModule: ExpoCameraModu
 
   const handleScan = useCallback(
     async (result: BarcodeScanningResultLike) => {
-      if (isPairing) {
+      if (scanningRef.current) {
         return;
       }
 
+      scanningRef.current = true;
       setIsPairing(true);
+      setCameraStatus("QR code scanned. Connecting...");
       try {
         const pairingUrl = normalizeScannedPairingUrl(result.data);
+        if (modernScanner) {
+          void modernScanner.dismissScanner().catch(() => undefined);
+        }
         const paired = await pairEnvironmentFromUrl({ pairingUrl });
         await savePairedEnvironment({
           record: paired.record,
@@ -51,14 +63,63 @@ function CameraScanner({ cameraModule }: { readonly cameraModule: ExpoCameraModu
         });
         router.replace("/settings");
       } catch (error) {
-        Alert.alert("Pairing failed", error instanceof Error ? error.message : String(error));
+        showPairingFailureAlert(error);
+        scanningRef.current = false;
         setIsPairing(false);
       }
     },
-    [isPairing, router],
+    [modernScanner, router],
   );
 
+  useEffect(() => {
+    if (!modernScanner) {
+      return;
+    }
+
+    const subscription = modernScanner.onModernBarcodeScanned(handleScan);
+    return () => {
+      subscription.remove();
+      void modernScanner.dismissScanner().catch(() => undefined);
+    };
+  }, [handleScan, modernScanner]);
+
+  const launchModernScanner = useCallback(async () => {
+    if (!modernScanner || scanningRef.current) {
+      return;
+    }
+
+    try {
+      setCameraStatus("Opening native QR scanner...");
+      await modernScanner.launchScanner({
+        barcodeTypes: ["qr"],
+        isGuidanceEnabled: true,
+        isHighlightingEnabled: true,
+      });
+      setCameraStatus("Native scanner open. Point it at the desktop QR code.");
+    } catch {
+      setCameraStatus("Native scanner could not open. Use the camera frame below.");
+      hasLaunchedModernScannerRef.current = false;
+    }
+  }, [modernScanner]);
+
+  const handleCameraReady = useCallback(() => {
+    setCameraStatus(
+      modernScanner
+        ? "Camera ready. Use the native scanner or hold the QR code inside the frame."
+        : "Camera ready. Hold the QR code inside the frame.",
+    );
+  }, [modernScanner]);
+
   const permissionGranted = permission?.granted === true;
+
+  useEffect(() => {
+    if (!permissionGranted || !modernScanner || hasLaunchedModernScannerRef.current) {
+      return;
+    }
+
+    hasLaunchedModernScannerRef.current = true;
+    void launchModernScanner();
+  }, [launchModernScanner, modernScanner, permissionGranted]);
 
   return (
     <SafeAreaView style={styles.screen}>
@@ -73,14 +134,11 @@ function CameraScanner({ cameraModule }: { readonly cameraModule: ExpoCameraModu
       <View style={styles.scannerFrame}>
         {permissionGranted ? (
           <CameraView
-            active={!isPairing}
-            barcodeScannerSettings={{ barcodeTypes: ["qr"] }}
-            facing="back"
-            onBarcodeScanned={isPairing ? undefined : handleScan}
+            {...getEmbeddedBarcodeScannerCameraProps()}
+            onCameraReady={handleCameraReady}
+            onBarcodeScanned={handleScan}
             style={styles.camera}
-          >
-            <View style={styles.reticle} />
-          </CameraView>
+          />
         ) : (
           <View style={styles.permissionState}>
             <Text style={styles.permissionTitle}>
@@ -94,9 +152,20 @@ function CameraScanner({ cameraModule }: { readonly cameraModule: ExpoCameraModu
             </Pressable>
           </View>
         )}
+        {permissionGranted ? (
+          <View pointerEvents="none" style={styles.cameraOverlay}>
+            <View style={styles.reticle} />
+            <Text style={styles.cameraStatus}>{isPairing ? "Pairing..." : cameraStatus}</Text>
+          </View>
+        ) : null}
       </View>
 
       <View style={styles.actions}>
+        {permissionGranted && modernScanner ? (
+          <Pressable onPress={launchModernScanner} style={styles.secondaryButton}>
+            <Text style={styles.secondaryButtonLabel}>Open Native Scanner</Text>
+          </Pressable>
+        ) : null}
         <Link asChild href="/pair">
           <Pressable style={styles.secondaryButton}>
             <Text style={styles.secondaryButtonLabel}>Enter URL Manually</Text>
@@ -174,9 +243,14 @@ const styles = StyleSheet.create({
     borderRadius: 32,
     flex: 1,
     overflow: "hidden",
+    position: "relative",
   },
   camera: {
-    flex: 1,
+    ...StyleSheet.absoluteFillObject,
+  },
+  cameraOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: "center",
     justifyContent: "center",
     padding: mobileTheme.spacing.xl,
   },
@@ -188,6 +262,18 @@ const styles = StyleSheet.create({
     height: 230,
     opacity: 0.9,
     width: 230,
+  },
+  cameraStatus: {
+    bottom: mobileTheme.spacing.xl,
+    color: "#fffaf2",
+    fontSize: 13,
+    fontWeight: "700",
+    left: mobileTheme.spacing.lg,
+    lineHeight: 18,
+    opacity: 0.9,
+    position: "absolute",
+    right: mobileTheme.spacing.lg,
+    textAlign: "center",
   },
   permissionState: {
     alignItems: "center",

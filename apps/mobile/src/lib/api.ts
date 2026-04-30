@@ -10,6 +10,46 @@ function buildEndpointUrl(httpBaseUrl: string, pathname: string): string {
   return url.toString();
 }
 
+function isPrivateOrTailnetHttpUrl(rawUrl: string): boolean {
+  let url: URL;
+  try {
+    url = new URL(rawUrl);
+  } catch {
+    return false;
+  }
+
+  if (url.protocol !== "http:") {
+    return false;
+  }
+
+  const hostname = url.hostname;
+  const parts = hostname.split(".").map((part) => Number.parseInt(part, 10));
+  if (
+    parts.length === 4 &&
+    parts.every((part) => Number.isInteger(part) && part >= 0 && part <= 255)
+  ) {
+    const [first = 0, second = 0] = parts;
+    return (
+      first === 10 ||
+      first === 127 ||
+      (first === 172 && second >= 16 && second <= 31) ||
+      (first === 192 && second === 168) ||
+      (first === 100 && second >= 64 && second <= 127)
+    );
+  }
+
+  return hostname.endsWith(".local") || hostname.endsWith(".ts.net");
+}
+
+function formatNetworkFailureMessage(endpointUrl: string, nativeMessage: string): string {
+  const baseMessage = `Could not reach ${endpointUrl}. Native error: ${nativeMessage}`;
+  if (!isPrivateOrTailnetHttpUrl(endpointUrl)) {
+    return baseMessage;
+  }
+
+  return `${baseMessage}\n\nThis request failed before the pairing token was exchanged. On iOS, verify Tailscale is connected and enable Local Network access for T3 Code Mobile in Settings. Safari can still reach private addresses even when app-level local network access is blocked.`;
+}
+
 async function readErrorMessage(response: Response, fallback: string): Promise<string> {
   const text = await response.text();
   if (!text) {
@@ -49,7 +89,7 @@ async function fetchJson<T>(input: {
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    throw new Error(`Could not reach ${endpointUrl}. Native error: ${message}`, { cause: error });
+    throw new Error(formatNetworkFailureMessage(endpointUrl, message), { cause: error });
   }
 
   if (!response.ok) {

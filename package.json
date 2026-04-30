@@ -74,6 +74,8 @@
     "@effect/sql-sqlite-bun": "catalog:",
     "@effect/vitest": "catalog:",
     "effect": "catalog:",
+    "react": "19.2.0",
+    "react-dom": "19.2.0",
     "vite": "^8.0.0"
   },
   "engines": {

@@ -223,10 +223,22 @@ export function getServerModelOptionsByProvider(
   providers: ReadonlyArray<ServerProvider>,
 ): Record<ProviderDriverKind, ReadonlyArray<ServerProviderModel>> {
   return {
-    codex: getProviderModels(providers, "codex"),
-    claudeAgent: getProviderModels(providers, "claudeAgent"),
-    cursor: getProviderModels(providers, "cursor"),
-    opencode: getProviderModels(providers, "opencode"),
+    [ProviderDriverKind.make("codex")]: getProviderModels(
+      providers,
+      ProviderDriverKind.make("codex"),
+    ),
+    [ProviderDriverKind.make("claudeAgent")]: getProviderModels(
+      providers,
+      ProviderDriverKind.make("claudeAgent"),
+    ),
+    [ProviderDriverKind.make("cursor")]: getProviderModels(
+      providers,
+      ProviderDriverKind.make("cursor"),
+    ),
+    [ProviderDriverKind.make("opencode")]: getProviderModels(
+      providers,
+      ProviderDriverKind.make("opencode"),
+    ),
   };
 }
 

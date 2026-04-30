@@ -93,7 +93,7 @@ import {
 import { isArm64HostRunningIntelBuild, resolveDesktopRuntimeInfo } from "./runtimeArch.ts";
 import { resolveDesktopAppBranding } from "./appBranding.ts";
 import { bindFirstRevealTrigger, type RevealSubscription } from "./windowReveal.ts";
-import { resolveTailnetAdvertisedHost } from "./tailscale.ts";
+import { ensureTailnetServeProxy, resolveTailnetAdvertisedHost } from "./tailscale.ts";
 
 syncShellEnvironment();
 
@@ -366,16 +366,24 @@ function resolveConfiguredHostEnvValue(value: string | undefined): string | unde
 export function resolveDesktopAdvertisedHostOverride(
   mode: DesktopServerExposureMode,
   networkInterfaces?: NodeJS.Dict<OS.NetworkInterfaceInfo[]>,
+  serveProxyPort?: number,
 ): string | undefined {
   if (mode === "tailnet-accessible") {
     const configuredTailnetHost = resolveConfiguredHostEnvValue(
       process.env.T3CODE_DESKTOP_TAILNET_HOST,
     );
     const configuredTsCertDomain = resolveConfiguredHostEnvValue(process.env.TS_CERT_DOMAIN);
+    if (serveProxyPort) {
+      const servedHost = ensureTailnetServeProxy({ port: serveProxyPort });
+      if (servedHost) {
+        return servedHost;
+      }
+    }
     return (
       resolveTailnetAdvertisedHost({
         ...(configuredTailnetHost ? { tailnetHost: configuredTailnetHost } : {}),
         ...(configuredTsCertDomain ? { tsCertDomain: configuredTsCertDomain } : {}),
+        ...(serveProxyPort ? { serveProxyPort } : {}),
         ...(networkInterfaces ? { networkInterfaces } : {}),
       }) ?? undefined
     );
@@ -444,7 +452,11 @@ async function applyDesktopServerExposureMode(
 ): Promise<DesktopServerExposureState> {
   const requestedMode = mode;
   const networkInterfaces = OS.networkInterfaces();
-  const advertisedHostOverride = resolveDesktopAdvertisedHostOverride(mode, networkInterfaces);
+  const advertisedHostOverride = resolveDesktopAdvertisedHostOverride(
+    mode,
+    networkInterfaces,
+    backendPort,
+  );
   const exposure = resolveDesktopServerExposureForMainProcess({
     mode,
     port: backendPort,
@@ -468,6 +480,23 @@ async function applyDesktopServerExposureMode(
   }
 
   return getDesktopServerExposureState();
+}
+
+async function refreshDesktopServerExposureState(): Promise<DesktopServerExposureState> {
+  if (desktopServerExposureMode === "local-only" || backendPort <= 0) {
+    return getDesktopServerExposureState();
+  }
+
+  const previousEndpointUrl = backendEndpointUrl;
+  const nextState = await applyDesktopServerExposureMode(desktopServerExposureMode, {
+    persist: false,
+  });
+  if (nextState.endpointUrl !== previousEndpointUrl) {
+    writeDesktopLogHeader(
+      `refreshed network access endpointUrl=${nextState.endpointUrl ?? "null"}`,
+    );
+  }
+  return nextState;
 }
 
 function relaunchDesktopApp(reason: string): void {
@@ -1897,7 +1926,9 @@ function registerIpcHandlers(): void {
   );
 
   ipcMain.removeHandler(GET_SERVER_EXPOSURE_STATE_CHANNEL);
-  ipcMain.handle(GET_SERVER_EXPOSURE_STATE_CHANNEL, async () => getDesktopServerExposureState());
+  ipcMain.handle(GET_SERVER_EXPOSURE_STATE_CHANNEL, async () =>
+    refreshDesktopServerExposureState(),
+  );
 
   ipcMain.removeHandler(SET_SERVER_EXPOSURE_MODE_CHANNEL);
   ipcMain.handle(SET_SERVER_EXPOSURE_MODE_CHANNEL, async (_event, rawMode: unknown) => {
@@ -1911,7 +1942,7 @@ function registerIpcHandlers(): void {
 
     const nextMode = rawMode as DesktopServerExposureMode;
     if (nextMode === desktopServerExposureMode) {
-      return getDesktopServerExposureState();
+      return refreshDesktopServerExposureState();
     }
 
     const nextState = await applyDesktopServerExposureMode(nextMode, {

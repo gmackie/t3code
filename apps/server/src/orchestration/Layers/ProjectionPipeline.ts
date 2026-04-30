@@ -1060,16 +1060,8 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
             yield* projectionTurnRepository.upsertByTurnId({
               ...existingTurn.value,
               assistantMessageId: event.payload.messageId,
-              state: event.payload.streaming
-                ? existingTurn.value.state
-                : existingTurn.value.state === "interrupted"
-                  ? "interrupted"
-                  : existingTurn.value.state === "error"
-                    ? "error"
-                    : "completed",
-              completedAt: event.payload.streaming
-                ? existingTurn.value.completedAt
-                : (existingTurn.value.completedAt ?? event.payload.updatedAt),
+              state: existingTurn.value.state,
+              completedAt: existingTurn.value.completedAt,
               startedAt: existingTurn.value.startedAt ?? event.payload.createdAt,
               requestedAt: existingTurn.value.requestedAt ?? event.payload.createdAt,
             });
@@ -1082,10 +1074,10 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
             sourceProposedPlanThreadId: null,
             sourceProposedPlanId: null,
             assistantMessageId: event.payload.messageId,
-            state: event.payload.streaming ? "running" : "completed",
+            state: "running",
             requestedAt: event.payload.createdAt,
             startedAt: event.payload.createdAt,
-            completedAt: event.payload.streaming ? null : event.payload.updatedAt,
+            completedAt: null,
             checkpointTurnCount: null,
             checkpointRef: null,
             checkpointStatus: null,
