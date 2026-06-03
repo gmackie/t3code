@@ -2,13 +2,13 @@ import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 
 import { ServerSettingsService } from "../serverSettings.ts";
-import * as TaskProvider from "./TaskProvider.ts";
-import * as TaskProviderRegistry from "./TaskProviderRegistry.ts";
+import * as IssueProvider from "./IssueProvider.ts";
+import * as IssueProviderRegistry from "./IssueProviderRegistry.ts";
 
-const linearProvider = TaskProvider.TaskProvider.of({
+const linearProvider = IssueProvider.IssueProvider.of({
   kind: "linear",
-  listTasks: () => Effect.succeed([]),
-  getTask: () =>
+  listIssues: () => Effect.succeed([]),
+  getIssue: () =>
     Effect.succeed({
       provider: "linear",
       id: "issue-id",
@@ -19,9 +19,9 @@ const linearProvider = TaskProvider.TaskProvider.of({
       labels: [],
       comments: [],
     }),
-  prepareTaskThread: () =>
+  prepareIssueThread: () =>
     Effect.succeed({
-      task: {
+      issue: {
         provider: "linear",
         id: "issue-id",
         key: "ENG-123",
@@ -33,12 +33,12 @@ const linearProvider = TaskProvider.TaskProvider.of({
       },
       branch: "linear/eng-123-fix-startup",
       worktreePath: null,
-      initialPrompt: "Task context",
+      initialPrompt: "Issue context",
     }),
 });
 
 function makeRegistry(settingsLayer = ServerSettingsService.layerTest()) {
-  return TaskProviderRegistry.makeWithProviders([
+  return IssueProviderRegistry.makeWithProviders([
     {
       kind: "linear",
       provider: linearProvider,
@@ -46,7 +46,7 @@ function makeRegistry(settingsLayer = ServerSettingsService.layerTest()) {
   ]).pipe(Effect.provide(settingsLayer));
 }
 
-it.effect("routes directly by task provider kind", () =>
+it.effect("routes directly by issue provider kind", () =>
   Effect.gen(function* () {
     const registry = yield* makeRegistry();
 
@@ -56,12 +56,12 @@ it.effect("routes directly by task provider kind", () =>
   }),
 );
 
-it.effect("returns an unsupported provider for unregistered task kinds", () =>
+it.effect("returns an unsupported provider for unregistered issue kinds", () =>
   Effect.gen(function* () {
     const registry = yield* makeRegistry();
 
     const provider = yield* registry.get("jira");
-    const exit = yield* provider.listTasks({}).pipe(Effect.exit);
+    const exit = yield* provider.listIssues({}).pipe(Effect.exit);
 
     assert.strictEqual(provider.kind, "jira");
     assert.isTrue(exit._tag === "Failure");
@@ -79,7 +79,7 @@ it.effect("discovers Linear as disabled by default", () =>
         kind: "linear",
         label: "Linear",
         status: "disabled",
-        detail: "Enable Linear task integration in settings.",
+        detail: "Enable Linear issue integration in settings.",
       },
     ]);
   }),
@@ -89,7 +89,7 @@ it.effect("discovers Linear as missing-token when enabled without an API token",
   Effect.gen(function* () {
     const registry = yield* makeRegistry(
       ServerSettingsService.layerTest({
-        tasks: {
+        issues: {
           linear: {
             enabled: true,
             apiToken: "",
@@ -106,7 +106,7 @@ it.effect("discovers Linear as missing-token when enabled without an API token",
         kind: "linear",
         label: "Linear",
         status: "missing-token",
-        detail: "Set a Linear API token to use Linear tasks.",
+        detail: "Set a Linear API token to use Linear issues.",
       },
     ]);
   }),
@@ -116,7 +116,7 @@ it.effect("discovers Linear as available when enabled with an API token", () =>
   Effect.gen(function* () {
     const registry = yield* makeRegistry(
       ServerSettingsService.layerTest({
-        tasks: {
+        issues: {
           linear: {
             enabled: true,
             apiToken: "lin_api_test",

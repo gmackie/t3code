@@ -1,10 +1,10 @@
-# Linear Task Provider Implementation Plan
+# Linear Issue Provider Implementation Plan
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
-**Goal:** Add a provider-neutral task integration layer, with Linear as the first provider, so users can start a thread/worktree from a Linear issue.
+**Goal:** Add a provider-neutral issue integration layer, with Linear as the first provider, so users can start a thread/worktree from a Linear issue.
 
-**Architecture:** Build `TaskProvider` as a sibling to `SourceControlProvider`, not as a source-control subtype. Contracts stay schema-only in `packages/contracts`; server runtime owns provider implementations, settings, auth, and task preparation; web consumes provider-neutral task RPCs and renders Linear-first UI. V1 uses a server-side Linear API token and delegates branch/worktree creation to existing VCS/Git worktree paths.
+**Architecture:** Build `IssueProvider` as a sibling to `SourceControlProvider`, not as a source-control subtype. Contracts stay schema-only in `packages/contracts`; server runtime owns provider implementations, settings, auth, and issue preparation; web consumes provider-neutral issue RPCs and renders Linear-first UI. V1 uses a server-side Linear API token and delegates branch/worktree creation to existing VCS/Git worktree paths.
 
 **Tech Stack:** TypeScript, Effect services/layers, Effect Schema, WebSocket RPC via `packages/contracts/src/rpc.ts`, Bun/Vitest, Linear GraphQL API over fetch.
 
@@ -20,31 +20,31 @@
 - Pull request prepare flow: `apps/server/src/git/GitManager.ts`, `apps/web/src/components/PullRequestThreadDialog.tsx`
 - Existing VCS worktree operations: `packages/contracts/src/git.ts`, `apps/server/src/git/GitManager.ts`
 
-## Task 1: Add Task Contracts
+## Task 1: Add Issue Contracts
 
 **Files:**
 
-- Create: `packages/contracts/src/task.ts`
+- Create: `packages/contracts/src/issue.ts`
 - Modify: `packages/contracts/src/index.ts`
-- Test: `packages/contracts/src/task.test.ts`
+- Test: `packages/contracts/src/issue.test.ts`
 
 **Step 1: Write failing schema tests**
 
-Create `packages/contracts/src/task.test.ts`:
+Create `packages/contracts/src/issue.test.ts`:
 
 ```ts
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import * as Schema from "effect/Schema";
-import { TaskItem, TaskPrepareThreadResult, TaskProviderKind, TaskReference } from "./task.ts";
+import { IssueItem, IssuePrepareThreadResult, IssueProviderKind, IssueReference } from "./issue.ts";
 
-describe("task contracts", () => {
+describe("issue contracts", () => {
   it("decodes provider kinds", () => {
-    assert.equal(Schema.decodeSync(TaskProviderKind)("linear"), "linear");
+    assert.equal(Schema.decodeSync(IssueProviderKind)("linear"), "linear");
   });
 
-  it("decodes a minimal task item", () => {
-    const task = Schema.decodeSync(TaskItem)({
+  it("decodes a minimal issue item", () => {
+    const issue = Schema.decodeSync(IssueItem)({
       provider: "linear",
       id: "issue-id",
       key: "ENG-123",
@@ -55,14 +55,14 @@ describe("task contracts", () => {
       comments: [],
     });
 
-    assert.equal(task.key, "ENG-123");
-    assert.equal(task.comments.length, 0);
+    assert.equal(issue.key, "ENG-123");
+    assert.equal(issue.comments.length, 0);
   });
 
-  it("decodes task references and prepare results", () => {
-    assert.equal(Schema.decodeSync(TaskReference)("ENG-123"), "ENG-123");
-    const result = Schema.decodeSync(TaskPrepareThreadResult)({
-      task: {
+  it("decodes issue references and prepare results", () => {
+    assert.equal(Schema.decodeSync(IssueReference)("ENG-123"), "ENG-123");
+    const result = Schema.decodeSync(IssuePrepareThreadResult)({
+      issue: {
         provider: "linear",
         id: "issue-id",
         key: "ENG-123",
@@ -74,7 +74,7 @@ describe("task contracts", () => {
       },
       branch: "linear/eng-123-fix-startup",
       worktreePath: null,
-      initialPrompt: "Task context...",
+      initialPrompt: "Issue context...",
     });
 
     assert.equal(result.branch, "linear/eng-123-fix-startup");
@@ -87,121 +87,121 @@ describe("task contracts", () => {
 Run:
 
 ```bash
-cd packages/contracts && bun run test src/task.test.ts
+cd packages/contracts && bun run test src/issue.test.ts
 ```
 
-Expected: FAIL because `task.ts` does not exist.
+Expected: FAIL because `issue.ts` does not exist.
 
 **Step 3: Add contracts**
 
-Create `packages/contracts/src/task.ts`:
+Create `packages/contracts/src/issue.ts`:
 
 ```ts
 import * as Schema from "effect/Schema";
 import { TrimmedNonEmptyString, PositiveInt } from "./baseSchemas.ts";
 import { ThreadId } from "./orchestration.ts";
 
-export const TaskProviderKind = Schema.Literals(["linear", "github-issues", "jira", "unknown"]);
-export type TaskProviderKind = typeof TaskProviderKind.Type;
+export const IssueProviderKind = Schema.Literals(["linear", "github-issues", "jira", "unknown"]);
+export type IssueProviderKind = typeof IssueProviderKind.Type;
 
-export const TaskState = Schema.Literals(["open", "in_progress", "done", "canceled", "unknown"]);
-export type TaskState = typeof TaskState.Type;
+export const IssueState = Schema.Literals(["open", "in_progress", "done", "canceled", "unknown"]);
+export type IssueState = typeof IssueState.Type;
 
-export const TaskComment = Schema.Struct({
+export const IssueComment = Schema.Struct({
   id: TrimmedNonEmptyString,
   authorName: Schema.Option(TrimmedNonEmptyString),
   bodyMarkdown: TrimmedNonEmptyString,
   createdAt: Schema.Option(Schema.DateTimeUtc),
   updatedAt: Schema.Option(Schema.DateTimeUtc),
 });
-export type TaskComment = typeof TaskComment.Type;
+export type IssueComment = typeof IssueComment.Type;
 
-export const TaskItem = Schema.Struct({
-  provider: TaskProviderKind,
+export const IssueItem = Schema.Struct({
+  provider: IssueProviderKind,
   id: TrimmedNonEmptyString,
   key: TrimmedNonEmptyString,
   title: TrimmedNonEmptyString,
   url: TrimmedNonEmptyString,
-  state: TaskState,
+  state: IssueState,
   statusName: Schema.optional(TrimmedNonEmptyString),
   assigneeName: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
   labels: Schema.Array(TrimmedNonEmptyString),
-  comments: Schema.Array(TaskComment),
+  comments: Schema.Array(IssueComment),
   descriptionMarkdown: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
   suggestedBranchName: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
   updatedAt: Schema.optional(Schema.DateTimeUtc),
 });
-export type TaskItem = typeof TaskItem.Type;
+export type IssueItem = typeof IssueItem.Type;
 
-export const TaskReference = TrimmedNonEmptyString;
-export type TaskReference = typeof TaskReference.Type;
+export const IssueReference = TrimmedNonEmptyString;
+export type IssueReference = typeof IssueReference.Type;
 
-export const TaskLookupInput = Schema.Struct({
-  provider: TaskProviderKind,
-  reference: TaskReference,
+export const IssueLookupInput = Schema.Struct({
+  provider: IssueProviderKind,
+  reference: IssueReference,
   cwd: Schema.optional(TrimmedNonEmptyString),
 });
-export type TaskLookupInput = typeof TaskLookupInput.Type;
+export type IssueLookupInput = typeof IssueLookupInput.Type;
 
-export const TaskListInput = Schema.Struct({
-  provider: TaskProviderKind,
+export const IssueListInput = Schema.Struct({
+  provider: IssueProviderKind,
   query: Schema.optional(Schema.String),
   cwd: Schema.optional(TrimmedNonEmptyString),
   limit: Schema.optional(PositiveInt),
 });
-export type TaskListInput = typeof TaskListInput.Type;
+export type IssueListInput = typeof IssueListInput.Type;
 
-export const TaskListResult = Schema.Struct({
-  tasks: Schema.Array(TaskItem),
+export const IssueListResult = Schema.Struct({
+  issues: Schema.Array(IssueItem),
 });
-export type TaskListResult = typeof TaskListResult.Type;
+export type IssueListResult = typeof IssueListResult.Type;
 
-export const TaskPrepareMode = Schema.Literals(["local", "worktree"]);
-export type TaskPrepareMode = typeof TaskPrepareMode.Type;
+export const IssuePrepareMode = Schema.Literals(["local", "worktree"]);
+export type IssuePrepareMode = typeof IssuePrepareMode.Type;
 
-export const TaskPrepareThreadInput = Schema.Struct({
-  provider: TaskProviderKind,
-  reference: TaskReference,
+export const IssuePrepareThreadInput = Schema.Struct({
+  provider: IssueProviderKind,
+  reference: IssueReference,
   cwd: TrimmedNonEmptyString,
-  mode: TaskPrepareMode,
+  mode: IssuePrepareMode,
   threadId: Schema.optional(ThreadId),
 });
-export type TaskPrepareThreadInput = typeof TaskPrepareThreadInput.Type;
+export type IssuePrepareThreadInput = typeof IssuePrepareThreadInput.Type;
 
-export const TaskPrepareThreadResult = Schema.Struct({
-  task: TaskItem,
+export const IssuePrepareThreadResult = Schema.Struct({
+  issue: IssueItem,
   branch: TrimmedNonEmptyString,
   worktreePath: Schema.NullOr(TrimmedNonEmptyString),
   initialPrompt: TrimmedNonEmptyString,
 });
-export type TaskPrepareThreadResult = typeof TaskPrepareThreadResult.Type;
+export type IssuePrepareThreadResult = typeof IssuePrepareThreadResult.Type;
 
-export const TaskProviderDiscoveryStatus = Schema.Literals([
+export const IssueProviderDiscoveryStatus = Schema.Literals([
   "available",
   "missing-token",
   "disabled",
 ]);
-export type TaskProviderDiscoveryStatus = typeof TaskProviderDiscoveryStatus.Type;
+export type IssueProviderDiscoveryStatus = typeof IssueProviderDiscoveryStatus.Type;
 
-export const TaskProviderDiscoveryItem = Schema.Struct({
-  kind: TaskProviderKind,
+export const IssueProviderDiscoveryItem = Schema.Struct({
+  kind: IssueProviderKind,
   label: TrimmedNonEmptyString,
-  status: TaskProviderDiscoveryStatus,
+  status: IssueProviderDiscoveryStatus,
   detail: Schema.Option(TrimmedNonEmptyString),
 });
-export type TaskProviderDiscoveryItem = typeof TaskProviderDiscoveryItem.Type;
+export type IssueProviderDiscoveryItem = typeof IssueProviderDiscoveryItem.Type;
 
-export class TaskProviderError extends Schema.TaggedErrorClass<TaskProviderError>()(
-  "TaskProviderError",
+export class IssueProviderError extends Schema.TaggedErrorClass<IssueProviderError>()(
+  "IssueProviderError",
   {
-    provider: TaskProviderKind,
+    provider: IssueProviderKind,
     operation: Schema.String,
     detail: Schema.String,
     cause: Schema.optional(Schema.Defect),
   },
 ) {
   override get message(): string {
-    return `Task provider ${this.provider} failed in ${this.operation}: ${this.detail}`;
+    return `Issue provider ${this.provider} failed in ${this.operation}: ${this.detail}`;
   }
 }
 ```
@@ -209,7 +209,7 @@ export class TaskProviderError extends Schema.TaggedErrorClass<TaskProviderError
 Modify `packages/contracts/src/index.ts`:
 
 ```ts
-export * from "./task.ts";
+export * from "./issue.ts";
 ```
 
 **Step 4: Verify tests pass**
@@ -217,7 +217,7 @@ export * from "./task.ts";
 Run:
 
 ```bash
-cd packages/contracts && bun run test src/task.test.ts
+cd packages/contracts && bun run test src/issue.test.ts
 ```
 
 Expected: PASS.
@@ -225,8 +225,8 @@ Expected: PASS.
 **Step 5: Commit**
 
 ```bash
-git add packages/contracts/src/task.ts packages/contracts/src/task.test.ts packages/contracts/src/index.ts
-git commit -m "feat: add task provider contracts"
+git add packages/contracts/src/issue.ts packages/contracts/src/issue.test.ts packages/contracts/src/index.ts
+git commit -m "feat: add issue provider contracts"
 ```
 
 ## Task 2: Add Linear Settings
@@ -242,15 +242,15 @@ git commit -m "feat: add task provider contracts"
 In `packages/contracts/src/settings.test.ts`, add tests that decode defaults and patches:
 
 ```ts
-it("defaults Linear task settings to disabled with no API token", () => {
+it("defaults Linear issue settings to disabled with no API token", () => {
   const settings = Schema.decodeSync(ServerSettings)({});
-  assert.equal(settings.tasks.linear.enabled, false);
-  assert.equal(settings.tasks.linear.apiToken, "");
+  assert.equal(settings.issues.linear.enabled, false);
+  assert.equal(settings.issues.linear.apiToken, "");
 });
 
-it("accepts Linear task settings patches", () => {
+it("accepts Linear issue settings patches", () => {
   const patch = Schema.decodeSync(ServerSettingsPatch)({
-    tasks: {
+    issues: {
       linear: {
         enabled: true,
         apiToken: "lin_api_test",
@@ -258,7 +258,7 @@ it("accepts Linear task settings patches", () => {
       },
     },
   });
-  assert.equal(patch.tasks?.linear?.enabled, true);
+  assert.equal(patch.issues?.linear?.enabled, true);
 });
 ```
 
@@ -270,33 +270,33 @@ Run:
 cd packages/contracts && bun run test src/settings.test.ts
 ```
 
-Expected: FAIL because `tasks` does not exist.
+Expected: FAIL because `issues` does not exist.
 
 **Step 3: Add settings schema**
 
 In `packages/contracts/src/settings.ts`, near provider settings:
 
 ```ts
-export const LinearTaskSettings = Schema.Struct({
+export const LinearIssueSettings = Schema.Struct({
   enabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   apiToken: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
   defaultTeamKey: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
 });
-export type LinearTaskSettings = typeof LinearTaskSettings.Type;
+export type LinearIssueSettings = typeof LinearIssueSettings.Type;
 ```
 
 Add to `ServerSettings`:
 
 ```ts
-tasks: Schema.Struct({
-  linear: LinearTaskSettings.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
+issues: Schema.Struct({
+  linear: LinearIssueSettings.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
 }).pipe(Schema.withDecodingDefault(Effect.succeed({}))),
 ```
 
 Add patch schema:
 
 ```ts
-const LinearTaskSettingsPatch = Schema.Struct({
+const LinearIssueSettingsPatch = Schema.Struct({
   enabled: Schema.optionalKey(Schema.Boolean),
   apiToken: Schema.optionalKey(TrimmedString),
   defaultTeamKey: Schema.optionalKey(TrimmedString),
@@ -306,9 +306,9 @@ const LinearTaskSettingsPatch = Schema.Struct({
 Add to `ServerSettingsPatch`:
 
 ```ts
-tasks: Schema.optionalKey(
+issues: Schema.optionalKey(
   Schema.Struct({
-    linear: Schema.optionalKey(LinearTaskSettingsPatch),
+    linear: Schema.optionalKey(LinearIssueSettingsPatch),
   }),
 ),
 ```
@@ -321,18 +321,18 @@ In `apps/server/src/serverSettings.ts`, update `redactServerSettingsForClient`:
 return {
   ...settings,
   providerInstances,
-  tasks: {
-    ...settings.tasks,
+  issues: {
+    ...settings.issues,
     linear: {
-      ...settings.tasks.linear,
-      apiToken: settings.tasks.linear.apiToken.length > 0 ? "" : "",
-      ...(settings.tasks.linear.apiToken.length > 0 ? { apiTokenRedacted: true } : {}),
+      ...settings.issues.linear,
+      apiToken: settings.issues.linear.apiToken.length > 0 ? "" : "",
+      ...(settings.issues.linear.apiToken.length > 0 ? { apiTokenRedacted: true } : {}),
     },
   },
 };
 ```
 
-If this introduces a contract mismatch, add `apiTokenRedacted` to `LinearTaskSettings`; otherwise store redaction state only in UI by treating empty returned token plus enabled as configured. Prefer adding `apiTokenRedacted` if tests need it.
+If this introduces a contract mismatch, add `apiTokenRedacted` to `LinearIssueSettings`; otherwise store redaction state only in UI by treating empty returned token plus enabled as configured. Prefer adding `apiTokenRedacted` if tests need it.
 
 **Step 5: Verify**
 
@@ -349,20 +349,20 @@ Expected: PASS.
 
 ```bash
 git add packages/contracts/src/settings.ts packages/contracts/src/settings.test.ts apps/server/src/serverSettings.ts
-git commit -m "feat: add linear task settings"
+git commit -m "feat: add linear issue settings"
 ```
 
-## Task 3: Add TaskProvider Service and Registry
+## Task 3: Add IssueProvider Service and Registry
 
 **Files:**
 
-- Create: `apps/server/src/task/TaskProvider.ts`
-- Create: `apps/server/src/task/TaskProviderRegistry.ts`
-- Test: `apps/server/src/task/TaskProviderRegistry.test.ts`
+- Create: `apps/server/src/issue/IssueProvider.ts`
+- Create: `apps/server/src/issue/IssueProviderRegistry.ts`
+- Test: `apps/server/src/issue/IssueProviderRegistry.test.ts`
 
 **Step 1: Write registry tests**
 
-Create `apps/server/src/task/TaskProviderRegistry.test.ts`:
+Create `apps/server/src/issue/IssueProviderRegistry.test.ts`:
 
 ```ts
 import assert from "node:assert/strict";
@@ -370,36 +370,36 @@ import { describe, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
-import { TaskProviderError } from "@t3tools/contracts";
+import { IssueProviderError } from "@t3tools/contracts";
 import { ServerSettingsService } from "../serverSettings.ts";
-import { TaskProviderRegistry, makeWithProviders } from "./TaskProviderRegistry.ts";
-import { TaskProvider } from "./TaskProvider.ts";
+import { IssueProviderRegistry, makeWithProviders } from "./IssueProviderRegistry.ts";
+import { IssueProvider } from "./IssueProvider.ts";
 
-const fakeLinear = TaskProvider.of({
+const fakeLinear = IssueProvider.of({
   kind: "linear",
-  listTasks: () => Effect.succeed([]),
-  getTask: () =>
+  listIssues: () => Effect.succeed([]),
+  getIssue: () =>
     Effect.fail(
-      new TaskProviderError({
+      new IssueProviderError({
         provider: "linear",
-        operation: "getTask",
+        operation: "getIssue",
         detail: "not implemented",
       }),
     ),
-  prepareTaskThread: () =>
+  prepareIssueThread: () =>
     Effect.fail(
-      new TaskProviderError({
+      new IssueProviderError({
         provider: "linear",
-        operation: "prepareTaskThread",
+        operation: "prepareIssueThread",
         detail: "not implemented",
       }),
     ),
 });
 
-describe("TaskProviderRegistry", () => {
+describe("IssueProviderRegistry", () => {
   it.effect("returns configured providers and discovery status", () =>
     Effect.gen(function* () {
-      const registry = yield* TaskProviderRegistry;
+      const registry = yield* IssueProviderRegistry;
       const provider = yield* registry.get("linear");
       assert.equal(provider.kind, "linear");
       const discovery = yield* registry.discover;
@@ -410,7 +410,7 @@ describe("TaskProviderRegistry", () => {
         makeWithProviders([{ kind: "linear", provider: fakeLinear }]).pipe(
           Layer.provide(
             ServerSettingsService.layerTest({
-              tasks: { linear: { enabled: true, apiToken: "lin_api_test", defaultTeamKey: "" } },
+              issues: { linear: { enabled: true, apiToken: "lin_api_test", defaultTeamKey: "" } },
             }),
           ),
         ),
@@ -420,7 +420,7 @@ describe("TaskProviderRegistry", () => {
 
   it.effect("fails unknown providers", () =>
     Effect.gen(function* () {
-      const registry = yield* TaskProviderRegistry;
+      const registry = yield* IssueProviderRegistry;
       const exit = yield* Effect.exit(registry.get("jira"));
       assert.equal(exit._tag, "Failure");
     }).pipe(
@@ -435,50 +435,50 @@ describe("TaskProviderRegistry", () => {
 Run:
 
 ```bash
-cd apps/server && bun run test src/task/TaskProviderRegistry.test.ts
+cd apps/server && bun run test src/issue/IssueProviderRegistry.test.ts
 ```
 
-Expected: FAIL because task service files do not exist.
+Expected: FAIL because issue service files do not exist.
 
 **Step 3: Implement provider interface**
 
-Create `apps/server/src/task/TaskProvider.ts`:
+Create `apps/server/src/issue/IssueProvider.ts`:
 
 ```ts
 import * as Context from "effect/Context";
 import type * as Effect from "effect/Effect";
 import type {
-  TaskItem,
-  TaskListInput,
-  TaskPrepareThreadInput,
-  TaskPrepareThreadResult,
-  TaskProviderError,
-  TaskProviderKind,
-  TaskReference,
+  IssueItem,
+  IssueListInput,
+  IssuePrepareThreadInput,
+  IssuePrepareThreadResult,
+  IssueProviderError,
+  IssueProviderKind,
+  IssueReference,
 } from "@t3tools/contracts";
 
-export interface TaskProviderShape {
-  readonly kind: TaskProviderKind;
-  readonly listTasks: (
-    input: Omit<TaskListInput, "provider">,
-  ) => Effect.Effect<ReadonlyArray<TaskItem>, TaskProviderError>;
-  readonly getTask: (input: {
-    readonly reference: TaskReference;
+export interface IssueProviderShape {
+  readonly kind: IssueProviderKind;
+  readonly listIssues: (
+    input: Omit<IssueListInput, "provider">,
+  ) => Effect.Effect<ReadonlyArray<IssueItem>, IssueProviderError>;
+  readonly getIssue: (input: {
+    readonly reference: IssueReference;
     readonly cwd?: string;
-  }) => Effect.Effect<TaskItem, TaskProviderError>;
-  readonly prepareTaskThread: (
-    input: Omit<TaskPrepareThreadInput, "provider">,
-  ) => Effect.Effect<TaskPrepareThreadResult, TaskProviderError>;
+  }) => Effect.Effect<IssueItem, IssueProviderError>;
+  readonly prepareIssueThread: (
+    input: Omit<IssuePrepareThreadInput, "provider">,
+  ) => Effect.Effect<IssuePrepareThreadResult, IssueProviderError>;
 }
 
-export class TaskProvider extends Context.Service<TaskProvider, TaskProviderShape>()(
-  "t3/task/TaskProvider",
+export class IssueProvider extends Context.Service<IssueProvider, IssueProviderShape>()(
+  "t3/issue/IssueProvider",
 ) {}
 ```
 
 **Step 4: Implement registry**
 
-Create `apps/server/src/task/TaskProviderRegistry.ts`:
+Create `apps/server/src/issue/IssueProviderRegistry.ts`:
 
 ```ts
 import * as Context from "effect/Context";
@@ -486,66 +486,66 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import {
-  TaskProviderError,
-  type TaskProviderDiscoveryItem,
-  type TaskProviderKind,
+  IssueProviderError,
+  type IssueProviderDiscoveryItem,
+  type IssueProviderKind,
 } from "@t3tools/contracts";
 import { ServerSettingsService } from "../serverSettings.ts";
-import * as TaskProvider from "./TaskProvider.ts";
+import * as IssueProvider from "./IssueProvider.ts";
 
-export interface TaskProviderRegistration {
-  readonly kind: TaskProviderKind;
-  readonly provider: TaskProvider.TaskProviderShape;
+export interface IssueProviderRegistration {
+  readonly kind: IssueProviderKind;
+  readonly provider: IssueProvider.IssueProviderShape;
 }
 
-export interface TaskProviderRegistryShape {
+export interface IssueProviderRegistryShape {
   readonly get: (
-    kind: TaskProviderKind,
-  ) => Effect.Effect<TaskProvider.TaskProviderShape, TaskProviderError>;
-  readonly discover: Effect.Effect<ReadonlyArray<TaskProviderDiscoveryItem>>;
+    kind: IssueProviderKind,
+  ) => Effect.Effect<IssueProvider.IssueProviderShape, IssueProviderError>;
+  readonly discover: Effect.Effect<ReadonlyArray<IssueProviderDiscoveryItem>>;
 }
 
-export class TaskProviderRegistry extends Context.Service<
-  TaskProviderRegistry,
-  TaskProviderRegistryShape
->()("t3/task/TaskProviderRegistry") {}
+export class IssueProviderRegistry extends Context.Service<
+  IssueProviderRegistry,
+  IssueProviderRegistryShape
+>()("t3/issue/IssueProviderRegistry") {}
 
-function unsupportedProvider(kind: TaskProviderKind): TaskProvider.TaskProviderShape {
+function unsupportedProvider(kind: IssueProviderKind): IssueProvider.IssueProviderShape {
   const unsupported = (operation: string) =>
     Effect.fail(
-      new TaskProviderError({
+      new IssueProviderError({
         provider: kind,
         operation,
-        detail: `No ${kind} task provider is registered.`,
+        detail: `No ${kind} issue provider is registered.`,
       }),
     );
-  return TaskProvider.TaskProvider.of({
+  return IssueProvider.IssueProvider.of({
     kind,
-    listTasks: () => unsupported("listTasks"),
-    getTask: () => unsupported("getTask"),
-    prepareTaskThread: () => unsupported("prepareTaskThread"),
+    listIssues: () => unsupported("listIssues"),
+    getIssue: () => unsupported("getIssue"),
+    prepareIssueThread: () => unsupported("prepareIssueThread"),
   });
 }
 
-export const makeWithProviders = (registrations: ReadonlyArray<TaskProviderRegistration>) =>
+export const makeWithProviders = (registrations: ReadonlyArray<IssueProviderRegistration>) =>
   Layer.effect(
-    TaskProviderRegistry,
+    IssueProviderRegistry,
     Effect.gen(function* () {
       const settings = yield* ServerSettingsService;
-      const providers = new Map<TaskProviderKind, TaskProvider.TaskProviderShape>(
+      const providers = new Map<IssueProviderKind, IssueProvider.IssueProviderShape>(
         registrations.map((registration) => [registration.kind, registration.provider]),
       );
 
-      return TaskProviderRegistry.of({
+      return IssueProviderRegistry.of({
         get: (kind) => {
           const provider = providers.get(kind);
           return provider
             ? Effect.succeed(provider)
             : Effect.fail(
-                new TaskProviderError({
+                new IssueProviderError({
                   provider: kind,
                   operation: "get",
-                  detail: `No ${kind} task provider is registered.`,
+                  detail: `No ${kind} issue provider is registered.`,
                 }),
               );
         },
@@ -554,9 +554,9 @@ export const makeWithProviders = (registrations: ReadonlyArray<TaskProviderRegis
             {
               kind: "linear" as const,
               label: "Linear",
-              status: !current.tasks.linear.enabled
+              status: !current.issues.linear.enabled
                 ? ("disabled" as const)
-                : current.tasks.linear.apiToken.trim().length === 0
+                : current.issues.linear.apiToken.trim().length === 0
                   ? ("missing-token" as const)
                   : providers.has("linear")
                     ? ("available" as const)
@@ -575,7 +575,7 @@ export const makeWithProviders = (registrations: ReadonlyArray<TaskProviderRegis
 Run:
 
 ```bash
-cd apps/server && bun run test src/task/TaskProviderRegistry.test.ts
+cd apps/server && bun run test src/issue/IssueProviderRegistry.test.ts
 ```
 
 Expected: PASS.
@@ -583,20 +583,20 @@ Expected: PASS.
 **Step 6: Commit**
 
 ```bash
-git add apps/server/src/task/TaskProvider.ts apps/server/src/task/TaskProviderRegistry.ts apps/server/src/task/TaskProviderRegistry.test.ts
-git commit -m "feat: add task provider registry"
+git add apps/server/src/issue/IssueProvider.ts apps/server/src/issue/IssueProviderRegistry.ts apps/server/src/issue/IssueProviderRegistry.test.ts
+git commit -m "feat: add issue provider registry"
 ```
 
 ## Task 4: Implement Linear GraphQL Client and Provider Lookup
 
 **Files:**
 
-- Create: `apps/server/src/task/LinearTaskProvider.ts`
-- Test: `apps/server/src/task/LinearTaskProvider.test.ts`
+- Create: `apps/server/src/issue/LinearIssueProvider.ts`
+- Test: `apps/server/src/issue/LinearIssueProvider.test.ts`
 
 **Step 1: Write provider tests with mocked fetch**
 
-Create `apps/server/src/task/LinearTaskProvider.test.ts` with a fake `fetch` injected into `makeTest`:
+Create `apps/server/src/issue/LinearIssueProvider.test.ts` with a fake `fetch` injected into `makeTest`:
 
 ```ts
 import assert from "node:assert/strict";
@@ -604,17 +604,17 @@ import { describe, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import { ServerSettingsService } from "../serverSettings.ts";
-import { makeTest, LinearTaskProvider } from "./LinearTaskProvider.ts";
+import { makeTest, LinearIssueProvider } from "./LinearIssueProvider.ts";
 
-describe("LinearTaskProvider", () => {
-  it.effect("resolves ENG-123 into a provider-neutral task", () =>
+describe("LinearIssueProvider", () => {
+  it.effect("resolves ENG-123 into a provider-neutral issue", () =>
     Effect.gen(function* () {
-      const provider = yield* LinearTaskProvider;
-      const task = yield* provider.getTask({ reference: "ENG-123" });
-      assert.equal(task.provider, "linear");
-      assert.equal(task.key, "ENG-123");
-      assert.equal(task.title, "Fix startup");
-      assert.equal(task.comments[0]?.bodyMarkdown, "Please fix this.");
+      const provider = yield* LinearIssueProvider;
+      const issue = yield* provider.getIssue({ reference: "ENG-123" });
+      assert.equal(issue.provider, "linear");
+      assert.equal(issue.key, "ENG-123");
+      assert.equal(issue.title, "Fix startup");
+      assert.equal(issue.comments[0]?.bodyMarkdown, "Please fix this.");
     }).pipe(
       Effect.provide(
         makeTest({
@@ -652,7 +652,7 @@ describe("LinearTaskProvider", () => {
         }).pipe(
           Layer.provide(
             ServerSettingsService.layerTest({
-              tasks: { linear: { enabled: true, apiToken: "lin_api_test", defaultTeamKey: "" } },
+              issues: { linear: { enabled: true, apiToken: "lin_api_test", defaultTeamKey: "" } },
             }),
           ),
         ),
@@ -667,18 +667,18 @@ describe("LinearTaskProvider", () => {
 Run:
 
 ```bash
-cd apps/server && bun run test src/task/LinearTaskProvider.test.ts
+cd apps/server && bun run test src/issue/LinearIssueProvider.test.ts
 ```
 
 Expected: FAIL because provider does not exist.
 
 **Step 3: Implement minimal Linear provider**
 
-Create `apps/server/src/task/LinearTaskProvider.ts`. Implement:
+Create `apps/server/src/issue/LinearIssueProvider.ts`. Implement:
 
 - `parseLinearReference(reference)` for `ENG-123`, URLs ending in `/issue/ENG-123/...`, and UUIDs.
 - `linearGraphql(fetch, apiToken, query, variables)`.
-- `toTaskItem(linearIssue)`.
+- `toIssueItem(linearIssue)`.
 - `makeWithFetch(fetchImpl)`.
 - `makeTest({ fetch })`.
 
@@ -724,7 +724,7 @@ query T3CodeIssue($id: String!) {
 Map Linear states:
 
 ```ts
-function mapLinearState(type: string | null | undefined): TaskState {
+function mapLinearState(type: string | null | undefined): IssueState {
   switch (type) {
     case "started":
       return "in_progress";
@@ -741,14 +741,14 @@ function mapLinearState(type: string | null | undefined): TaskState {
 }
 ```
 
-For missing token, fail with `TaskProviderError({ provider: "linear", operation: "...", detail: "Linear API token is not configured." })`.
+For missing token, fail with `IssueProviderError({ provider: "linear", operation: "...", detail: "Linear API token is not configured." })`.
 
 **Step 4: Verify**
 
 Run:
 
 ```bash
-cd apps/server && bun run test src/task/LinearTaskProvider.test.ts
+cd apps/server && bun run test src/issue/LinearIssueProvider.test.ts
 ```
 
 Expected: PASS.
@@ -756,17 +756,17 @@ Expected: PASS.
 **Step 5: Commit**
 
 ```bash
-git add apps/server/src/task/LinearTaskProvider.ts apps/server/src/task/LinearTaskProvider.test.ts
-git commit -m "feat: resolve linear tasks"
+git add apps/server/src/issue/LinearIssueProvider.ts apps/server/src/issue/LinearIssueProvider.test.ts
+git commit -m "feat: resolve linear issues"
 ```
 
-## Task 5: Prepare Linear Task Threads with Branch/Worktree
+## Task 5: Prepare Linear Issue Threads with Branch/Worktree
 
 **Files:**
 
-- Modify: `apps/server/src/task/LinearTaskProvider.ts`
-- Test: `apps/server/src/task/LinearTaskProvider.test.ts`
-- Potential helper extraction: `apps/server/src/git/taskBranch.ts`
+- Modify: `apps/server/src/issue/LinearIssueProvider.ts`
+- Test: `apps/server/src/issue/LinearIssueProvider.test.ts`
+- Potential helper extraction: `apps/server/src/git/issueBranch.ts`
 
 **Step 1: Write failing branch/worktree tests**
 
@@ -775,8 +775,8 @@ Add tests:
 ```ts
 it.effect("builds deterministic branch fallback when Linear has no branch name", () =>
   Effect.gen(function* () {
-    const provider = yield* LinearTaskProvider;
-    const result = yield* provider.prepareTaskThread({
+    const provider = yield* LinearIssueProvider;
+    const result = yield* provider.prepareIssueThread({
       reference: "ENG-123",
       cwd: repoPath,
       mode: "local",
@@ -789,8 +789,8 @@ it.effect("builds deterministic branch fallback when Linear has no branch name",
 
 it.effect("creates a worktree in worktree mode", () =>
   Effect.gen(function* () {
-    const provider = yield* LinearTaskProvider;
-    const result = yield* provider.prepareTaskThread({
+    const provider = yield* LinearIssueProvider;
+    const result = yield* provider.prepareIssueThread({
       reference: "ENG-123",
       cwd: repoPath,
       mode: "worktree",
@@ -808,17 +808,17 @@ Use an actual temporary git repository like `GitManager.test.ts` does. Reuse exi
 Run:
 
 ```bash
-cd apps/server && bun run test src/task/LinearTaskProvider.test.ts
+cd apps/server && bun run test src/issue/LinearIssueProvider.test.ts
 ```
 
-Expected: FAIL because `prepareTaskThread` is not implemented.
+Expected: FAIL because `prepareIssueThread` is not implemented.
 
-**Step 3: Implement task preparation**
+**Step 3: Implement issue preparation**
 
 Implement:
 
 - Branch name:
-  - Use `task.suggestedBranchName` if present.
+  - Use `issue.suggestedBranchName` if present.
   - Else `linear/${key.toLowerCase()}-${slug(title)}`.
   - Keep characters `[a-z0-9._/-]`; collapse duplicate separators; max 80 chars.
 - Local mode:
@@ -831,7 +831,7 @@ Implement:
 - Prompt:
 
 ```md
-Use this task as source context. Verify against the repository before changing code.
+Use this issue as source context. Verify against the repository before changing code.
 
 # ENG-123: Fix startup
 
@@ -856,7 +856,7 @@ Please fix this.
 Run:
 
 ```bash
-cd apps/server && bun run test src/task/LinearTaskProvider.test.ts
+cd apps/server && bun run test src/issue/LinearIssueProvider.test.ts
 ```
 
 Expected: PASS.
@@ -864,11 +864,11 @@ Expected: PASS.
 **Step 5: Commit**
 
 ```bash
-git add apps/server/src/task/LinearTaskProvider.ts apps/server/src/task/LinearTaskProvider.test.ts
-git commit -m "feat: prepare linear task threads"
+git add apps/server/src/issue/LinearIssueProvider.ts apps/server/src/issue/LinearIssueProvider.test.ts
+git commit -m "feat: prepare linear issue threads"
 ```
 
-## Task 6: Wire Task RPC Endpoints
+## Task 6: Wire Issue RPC Endpoints
 
 **Files:**
 
@@ -885,36 +885,36 @@ git commit -m "feat: prepare linear task threads"
 In `apps/server/src/server.test.ts`, mirror existing `git.preparePullRequestThread` coverage and assert:
 
 ```ts
-const result = await client[WS_METHODS.taskGetTask]({
+const result = await client[WS_METHODS.issueGetIssue]({
   provider: "linear",
   reference: "ENG-123",
 });
-expect(result.task.key).toBe("ENG-123");
+expect(result.issue.key).toBe("ENG-123");
 ```
 
-Use test layers to provide a fake `TaskProviderRegistry`.
+Use test layers to provide a fake `IssueProviderRegistry`.
 
 **Step 2: Add RPC contracts**
 
 In `packages/contracts/src/rpc.ts`:
 
 ```ts
-taskListTasks: "task.listTasks",
-taskGetTask: "task.getTask",
-taskPrepareThread: "task.prepareThread",
+issueListIssues: "issue.listIssues",
+issueGetIssue: "issue.getIssue",
+issuePrepareThread: "issue.prepareThread",
 ```
 
-Add `Rpc.make(...)` definitions using `TaskListInput`, `TaskListResult`, `TaskLookupInput`, `TaskPrepareThreadInput`, `TaskPrepareThreadResult`, and `TaskProviderError`.
+Add `Rpc.make(...)` definitions using `IssueListInput`, `IssueListResult`, `IssueLookupInput`, `IssuePrepareThreadInput`, `IssuePrepareThreadResult`, and `IssueProviderError`.
 
 Add all three to `WsRpcGroup`.
 
 In `packages/contracts/src/ipc.ts`, add to `EnvironmentApi`:
 
 ```ts
-task: {
-  listTasks: (input: TaskListInput) => Promise<TaskListResult>;
-  getTask: (input: TaskLookupInput) => Promise<{ task: TaskItem }>;
-  prepareThread: (input: TaskPrepareThreadInput) => Promise<TaskPrepareThreadResult>;
+issue: {
+  listIssues: (input: IssueListInput) => Promise<IssueListResult>;
+  getIssue: (input: IssueLookupInput) => Promise<{ issue: IssueItem }>;
+  prepareThread: (input: IssuePrepareThreadInput) => Promise<IssuePrepareThreadResult>;
 }
 ```
 
@@ -923,48 +923,48 @@ task: {
 In `packages/client-runtime/src/wsRpcClient.ts`, add:
 
 ```ts
-readonly task: {
-  readonly listTasks: RpcUnaryMethod<typeof WS_METHODS.taskListTasks>;
-  readonly getTask: RpcUnaryMethod<typeof WS_METHODS.taskGetTask>;
-  readonly prepareThread: RpcUnaryMethod<typeof WS_METHODS.taskPrepareThread>;
+readonly issue: {
+  readonly listIssues: RpcUnaryMethod<typeof WS_METHODS.issueListIssues>;
+  readonly getIssue: RpcUnaryMethod<typeof WS_METHODS.issueGetIssue>;
+  readonly prepareThread: RpcUnaryMethod<typeof WS_METHODS.issuePrepareThread>;
 };
 ```
 
 And implementation:
 
 ```ts
-task: {
-  listTasks: (input) => transport.request((client) => client[WS_METHODS.taskListTasks](input)),
-  getTask: (input) => transport.request((client) => client[WS_METHODS.taskGetTask](input)),
-  prepareThread: (input) => transport.request((client) => client[WS_METHODS.taskPrepareThread](input)),
+issue: {
+  listIssues: (input) => transport.request((client) => client[WS_METHODS.issueListIssues](input)),
+  getIssue: (input) => transport.request((client) => client[WS_METHODS.issueGetIssue](input)),
+  prepareThread: (input) => transport.request((client) => client[WS_METHODS.issuePrepareThread](input)),
 },
 ```
 
-In `apps/web/src/environmentApi.ts`, expose `task`.
+In `apps/web/src/environmentApi.ts`, expose `issue`.
 
 **Step 4: Wire server RPC**
 
-In `apps/server/src/ws.ts`, require `TaskProviderRegistry`, route methods through auth scopes equivalent to PR prepare:
+In `apps/server/src/ws.ts`, require `IssueProviderRegistry`, route methods through auth scopes equivalent to PR prepare:
 
-- `task.listTasks`: read scope
-- `task.getTask`: read scope
-- `task.prepareThread`: operate scope
+- `issue.listIssues`: read scope
+- `issue.getIssue`: read scope
+- `issue.prepareThread`: operate scope
 
 Handlers:
 
 ```ts
-[WS_METHODS.taskGetTask]: (input) =>
+[WS_METHODS.issueGetIssue]: (input) =>
   runAuthenticatedRpc(
-    WS_METHODS.taskGetTask,
-    TaskProviderRegistry.pipe(
+    WS_METHODS.issueGetIssue,
+    IssueProviderRegistry.pipe(
       Effect.flatMap((registry) => registry.get(input.provider)),
-      Effect.flatMap((provider) => provider.getTask(input)),
-      Effect.map((task) => ({ task })),
+      Effect.flatMap((provider) => provider.getIssue(input)),
+      Effect.map((issue) => ({ issue })),
     ),
   )
 ```
 
-Wire `TaskProviderRegistry.layer` in `apps/server/src/server.ts`, providing `LinearTaskProvider.layer`, `GitVcsDriver.layer`, and settings.
+Wire `IssueProviderRegistry.layer` in `apps/server/src/server.ts`, providing `LinearIssueProvider.layer`, `GitVcsDriver.layer`, and settings.
 
 **Step 5: Verify**
 
@@ -981,14 +981,14 @@ Expected: PASS.
 
 ```bash
 git add packages/contracts/src/rpc.ts packages/contracts/src/ipc.ts packages/client-runtime/src/wsRpcClient.ts apps/web/src/environmentApi.ts apps/server/src/ws.ts apps/server/src/server.ts apps/server/src/server.test.ts
-git commit -m "feat: expose task provider rpc"
+git commit -m "feat: expose issue provider rpc"
 ```
 
 ## Task 7: Add Linear Settings UI
 
 **Files:**
 
-- Modify: `apps/web/src/components/settings/SourceControlSettings.tsx` or create `apps/web/src/components/settings/TaskProviderSettings.tsx`
+- Modify: `apps/web/src/components/settings/SourceControlSettings.tsx` or create `apps/web/src/components/settings/IssueProviderSettings.tsx`
 - Modify: `apps/web/src/components/settings/SettingsPanels.tsx`
 - Test: `apps/web/src/components/settings/SettingsPanels.logic.test.ts` or new focused test
 
@@ -998,7 +998,7 @@ Test that settings patch for Linear token preserves redacted token unless change
 
 **Step 2: Implement minimal UI**
 
-Add a “Task providers” section under Source Control settings:
+Add a “Issue providers” section under Source Control settings:
 
 - Linear row.
 - Enable switch.
@@ -1024,15 +1024,15 @@ Expected: PASS.
 
 ```bash
 git add apps/web/src/components/settings/SourceControlSettings.tsx apps/web/src/components/settings/SettingsPanels.tsx
-git commit -m "feat: add linear task settings ui"
+git commit -m "feat: add linear issue settings ui"
 ```
 
-## Task 8: Add Linear Task Dialog
+## Task 8: Add Linear Issue Dialog
 
 **Files:**
 
-- Create: `apps/web/src/components/TaskThreadDialog.tsx`
-- Create: `apps/web/src/lib/taskActions.ts`
+- Create: `apps/web/src/components/IssueThreadDialog.tsx`
+- Create: `apps/web/src/lib/issueActions.ts`
 - Modify: `apps/web/src/components/CommandPalette.tsx`
 - Test: `apps/web/src/components/ChatView.browser.tsx` or a new browser test if there is a smaller harness
 
@@ -1045,27 +1045,27 @@ Add a test that:
 3. Enters `ENG-123`.
 4. Sees resolved title.
 5. Clicks “Worktree”.
-6. Asserts `task.prepareThread` RPC was called.
+6. Asserts `issue.prepareThread` RPC was called.
 7. Asserts draft prompt contains `ENG-123`.
 
-**Step 2: Implement task actions**
+**Step 2: Implement issue actions**
 
-Create `apps/web/src/lib/taskActions.ts` mirroring the PR resolution hook shape:
+Create `apps/web/src/lib/issueActions.ts` mirroring the PR resolution hook shape:
 
-- `useTaskResolution({ environmentId, cwd, provider, reference })`
-- `readCachedTaskResolution`
-- `usePrepareTaskThreadAction(scope)`
+- `useIssueResolution({ environmentId, cwd, provider, reference })`
+- `readCachedIssueResolution`
+- `usePrepareIssueThreadAction(scope)`
 
 **Step 3: Implement dialog**
 
-Create `TaskThreadDialog.tsx` by adapting `PullRequestThreadDialog.tsx`:
+Create `IssueThreadDialog.tsx` by adapting `PullRequestThreadDialog.tsx`:
 
 - Title: `Checkout Linear issue`.
 - Input accepts `ENG-123` or Linear URL.
-- Resolves via `task.getTask`.
+- Resolves via `issue.getIssue`.
 - Shows key/title/status.
 - Footer buttons: `Local`, `Worktree`.
-- On prepare, calls `task.prepareThread`.
+- On prepare, calls `issue.prepareThread`.
 - Calls `onPrepared({ branch, worktreePath, initialPrompt })`.
 
 **Step 4: Hook into CommandPalette**
@@ -1076,10 +1076,10 @@ Add root command item:
 {
   kind: "action",
   value: "action:checkout-linear-issue",
-  searchTerms: ["linear", "issue", "task", "worktree"],
+  searchTerms: ["linear", "issue", "issue", "worktree"],
   title: "Checkout Linear issue",
   icon: <TicketIcon className={ITEM_ICON_CLASS} />,
-  run: async () => setLinearTaskDialogOpen(true),
+  run: async () => setLinearIssueDialogOpen(true),
 }
 ```
 
@@ -1106,7 +1106,7 @@ Expected: PASS.
 **Step 6: Commit**
 
 ```bash
-git add apps/web/src/components/TaskThreadDialog.tsx apps/web/src/lib/taskActions.ts apps/web/src/components/CommandPalette.tsx apps/web/src/components/ChatView.browser.tsx
+git add apps/web/src/components/IssueThreadDialog.tsx apps/web/src/lib/issueActions.ts apps/web/src/components/CommandPalette.tsx apps/web/src/components/ChatView.browser.tsx
 git commit -m "feat: start threads from linear issues"
 ```
 
@@ -1114,7 +1114,7 @@ git commit -m "feat: start threads from linear issues"
 
 **Files:**
 
-- Update docs if needed: `docs/source-control-providers.md` or new `docs/task-providers.md`
+- Update docs if needed: `docs/source-control-providers.md` or new `docs/issue-providers.md`
 
 **Step 1: Run required checks**
 
@@ -1133,8 +1133,8 @@ Expected: all pass. `bun lint` may print existing warnings, but must exit 0.
 Run:
 
 ```bash
-cd packages/contracts && bun run test src/task.test.ts src/settings.test.ts
-cd apps/server && bun run test src/task/TaskProviderRegistry.test.ts src/task/LinearTaskProvider.test.ts
+cd packages/contracts && bun run test src/issue.test.ts src/settings.test.ts
+cd apps/server && bun run test src/issue/IssueProviderRegistry.test.ts src/issue/LinearIssueProvider.test.ts
 cd apps/web && bun run test:browser -- src/components/ChatView.browser.tsx
 ```
 

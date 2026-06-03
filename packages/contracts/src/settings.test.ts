@@ -9,11 +9,11 @@ const decodeServerSettingsPatch = Schema.decodeUnknownSync(ServerSettingsPatch);
 const encodeServerSettings = Schema.encodeSync(ServerSettings);
 
 describe("ServerSettings.providerInstances (slice-2 invariant)", () => {
-  it("defaults Linear task settings to disabled with no API token", () => {
+  it("defaults Linear issue settings to disabled with no API token", () => {
     const settings = decodeServerSettings({});
-    expect(settings.tasks.linear.enabled).toBe(false);
-    expect(settings.tasks.linear.apiToken).toBe("");
-    expect(settings.tasks.linear.defaultTeamKey).toBe("");
+    expect(settings.issues.linear.enabled).toBe(false);
+    expect(settings.issues.linear.apiToken).toBe("");
+    expect(settings.issues.linear.defaultTeamKey).toBe("");
   });
 
   it("defaults to an empty record so legacy configs without the key still decode", () => {
@@ -72,9 +72,9 @@ describe("ServerSettings.providerInstances (slice-2 invariant)", () => {
 });
 
 describe("ServerSettingsPatch.providerInstances", () => {
-  it("accepts Linear task settings patches", () => {
+  it("accepts Linear issue settings patches", () => {
     const patch = decodeServerSettingsPatch({
-      tasks: {
+      issues: {
         linear: {
           enabled: true,
           apiToken: "  lin_api_test  ",
@@ -83,9 +83,9 @@ describe("ServerSettingsPatch.providerInstances", () => {
       },
     });
 
-    expect(patch.tasks?.linear?.enabled).toBe(true);
-    expect(patch.tasks?.linear?.apiToken).toBe("lin_api_test");
-    expect(patch.tasks?.linear?.defaultTeamKey).toBe("ENG");
+    expect(patch.issues?.linear?.enabled).toBe(true);
+    expect(patch.issues?.linear?.apiToken).toBe("lin_api_test");
+    expect(patch.issues?.linear?.defaultTeamKey).toBe("ENG");
   });
 
   it("treats providerInstances as an optional whole-map replacement", () => {
