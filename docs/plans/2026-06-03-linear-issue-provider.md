@@ -949,7 +949,55 @@ git add apps/server/src/issue/LinearIssueProvider.ts apps/server/src/issue/Linea
 git commit -m "feat: prepare linear issue threads"
 ```
 
-## Task 6: Wire Issue RPC Endpoints
+## Task 6: Add Issue Lifecycle Coordinator
+
+**Files:**
+
+- Create: `apps/server/src/issue/IssueLifecycle.ts`
+- Test: `apps/server/src/issue/IssueLifecycle.test.ts`
+
+**Step 1: Write failing lifecycle tests**
+
+Create tests that provide a fake Linear `IssueProvider`, record every `updateIssueLifecycle` input, and assert T3 Code emits:
+
+- `thread_started` when an issue thread is started.
+- `change_request_opened` when `git.runStackedAction` creates or reuses a PR.
+- `change_request_merged` when a webhook or polling path observes the associated PR as merged.
+
+The merged test should be named around the detection mechanism, for example:
+
+```ts
+it.effect("updates the Linear issue when webhook or polling observes a merged change request", ...)
+```
+
+**Step 2: Implement coordinator**
+
+Create `IssueLifecycle` with:
+
+- `recordThreadStarted({ provider, reference, cwd })`
+- `recordChangeRequestOpened({ provider, reference, cwd, changeRequest })`
+- `recordChangeRequestMerged({ provider, reference, cwd, changeRequest })`
+
+Each method resolves the provider from `IssueProviderRegistry` and calls `provider.updateIssueLifecycle(...)`. Keep this service provider-neutral; Linear-specific state names belong in `LinearIssueProvider`.
+
+**Step 3: Verify**
+
+Run:
+
+```bash
+cd apps/server && bun run test src/issue/IssueLifecycle.test.ts
+```
+
+Expected: PASS.
+
+**Step 4: Commit**
+
+```bash
+git add apps/server/src/issue/IssueLifecycle.ts apps/server/src/issue/IssueLifecycle.test.ts
+git commit -m "feat: add issue lifecycle coordinator"
+```
+
+## Task 7: Wire Issue RPC Endpoints
 
 **Files:**
 
@@ -988,7 +1036,7 @@ issueUpdateLifecycle: "issue.updateLifecycle",
 
 Add `Rpc.make(...)` definitions using `IssueListInput`, `IssueListResult`, `IssueLookupInput`, `IssuePrepareThreadInput`, `IssuePrepareThreadResult`, `IssueLifecycleUpdateInput`, `IssueLifecycleUpdateResult`, and `IssueProviderError`.
 
-Add all three to `WsRpcGroup`.
+Add all four to `WsRpcGroup`.
 
 In `packages/contracts/src/ipc.ts`, add to `EnvironmentApi`:
 
@@ -1010,6 +1058,7 @@ readonly issue: {
   readonly listIssues: RpcUnaryMethod<typeof WS_METHODS.issueListIssues>;
   readonly getIssue: RpcUnaryMethod<typeof WS_METHODS.issueGetIssue>;
   readonly prepareThread: RpcUnaryMethod<typeof WS_METHODS.issuePrepareThread>;
+  readonly updateLifecycle: RpcUnaryMethod<typeof WS_METHODS.issueUpdateLifecycle>;
 };
 ```
 
@@ -1071,7 +1120,7 @@ git add packages/contracts/src/rpc.ts packages/contracts/src/ipc.ts packages/cli
 git commit -m "feat: expose issue provider rpc"
 ```
 
-## Task 7: Add Linear Settings UI
+## Task 8: Add Linear Settings UI
 
 **Files:**
 
@@ -1114,7 +1163,7 @@ git add apps/web/src/components/settings/SourceControlSettings.tsx apps/web/src/
 git commit -m "feat: add linear issue settings ui"
 ```
 
-## Task 8: Add Linear Issue Dialog
+## Task 9: Add Linear Issue Dialog
 
 **Files:**
 
@@ -1197,7 +1246,7 @@ git add apps/web/src/components/IssueThreadDialog.tsx apps/web/src/lib/issueActi
 git commit -m "feat: start threads from linear issues"
 ```
 
-## Task 9: Final Verification
+## Task 10: Final Verification
 
 **Files:**
 
@@ -1221,7 +1270,7 @@ Run:
 
 ```bash
 cd packages/contracts && bun run test src/issue.test.ts src/settings.test.ts
-cd apps/server && bun run test src/issue/IssueProviderRegistry.test.ts src/issue/LinearIssueProvider.test.ts
+cd apps/server && bun run test src/issue/IssueProviderRegistry.test.ts src/issue/IssueLifecycle.test.ts src/issue/LinearIssueProvider.test.ts
 cd apps/web && bun run test:browser -- src/components/ChatView.browser.tsx
 ```
 
