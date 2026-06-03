@@ -3,13 +3,18 @@ import { describe, expect, it } from "vitest";
 
 import { TaskItem, TaskPrepareThreadResult, TaskProviderKind, TaskReference } from "./task.ts";
 
+const decodeTaskProviderKind = Schema.decodeSync(TaskProviderKind);
+const decodeTaskItem = Schema.decodeSync(TaskItem);
+const decodeTaskReference = Schema.decodeSync(TaskReference);
+const decodeTaskPrepareThreadResult = Schema.decodeSync(TaskPrepareThreadResult);
+
 describe("task contracts", () => {
   it("decodes provider kinds", () => {
-    expect(Schema.decodeSync(TaskProviderKind)("linear")).toBe("linear");
+    expect(decodeTaskProviderKind("linear")).toBe("linear");
   });
 
   it("decodes a minimal task item", () => {
-    const task = Schema.decodeSync(TaskItem)({
+    const task = decodeTaskItem({
       provider: "linear",
       id: "issue-id",
       key: "ENG-123",
@@ -25,8 +30,8 @@ describe("task contracts", () => {
   });
 
   it("decodes task references and prepare results", () => {
-    expect(Schema.decodeSync(TaskReference)("ENG-123")).toBe("ENG-123");
-    const result = Schema.decodeSync(TaskPrepareThreadResult)({
+    expect(decodeTaskReference("ENG-123")).toBe("ENG-123");
+    const result = decodeTaskPrepareThreadResult({
       task: {
         provider: "linear",
         id: "issue-id",
