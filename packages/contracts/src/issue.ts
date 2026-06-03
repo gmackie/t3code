@@ -1,5 +1,6 @@
 import * as Schema from "effect/Schema";
-import { PositiveInt, ThreadId, TrimmedNonEmptyString } from "./baseSchemas.ts";
+import { PositiveInt, ProjectId, ThreadId, TrimmedNonEmptyString } from "./baseSchemas.ts";
+import { ChangeRequestState, SourceControlProviderKind } from "./sourceControl.ts";
 
 export const IssueProviderKind = Schema.Literals(["linear", "github-issues", "jira", "unknown"]);
 export type IssueProviderKind = typeof IssueProviderKind.Type;
@@ -56,6 +57,27 @@ export const IssueListResult = Schema.Struct({
 });
 export type IssueListResult = typeof IssueListResult.Type;
 
+export const LinearIssueProjectAssociation = Schema.Struct({
+  projectId: TrimmedNonEmptyString,
+  projectName: Schema.optional(TrimmedNonEmptyString),
+  teamKey: Schema.optional(TrimmedNonEmptyString),
+});
+export type LinearIssueProjectAssociation = typeof LinearIssueProjectAssociation.Type;
+
+export const GitHubIssueProjectAssociation = Schema.Struct({
+  repository: TrimmedNonEmptyString,
+});
+export type GitHubIssueProjectAssociation = typeof GitHubIssueProjectAssociation.Type;
+
+export const IssueProjectAssociation = Schema.Struct({
+  provider: IssueProviderKind,
+  projectId: ProjectId,
+  repositoryKey: TrimmedNonEmptyString,
+  linear: Schema.optional(LinearIssueProjectAssociation),
+  github: Schema.optional(GitHubIssueProjectAssociation),
+});
+export type IssueProjectAssociation = typeof IssueProjectAssociation.Type;
+
 export const IssuePrepareMode = Schema.Literals(["local", "worktree"]);
 export type IssuePrepareMode = typeof IssuePrepareMode.Type;
 
@@ -70,11 +92,45 @@ export type IssuePrepareThreadInput = typeof IssuePrepareThreadInput.Type;
 
 export const IssuePrepareThreadResult = Schema.Struct({
   issue: IssueItem,
+  association: Schema.optional(IssueProjectAssociation),
   branch: TrimmedNonEmptyString,
   worktreePath: Schema.NullOr(TrimmedNonEmptyString),
   initialPrompt: TrimmedNonEmptyString,
 });
 export type IssuePrepareThreadResult = typeof IssuePrepareThreadResult.Type;
+
+export const IssueLifecycleEvent = Schema.Literals([
+  "thread_started",
+  "change_request_opened",
+  "change_request_merged",
+]);
+export type IssueLifecycleEvent = typeof IssueLifecycleEvent.Type;
+
+export const IssueLifecycleChangeRequest = Schema.Struct({
+  provider: SourceControlProviderKind,
+  number: PositiveInt,
+  title: TrimmedNonEmptyString,
+  url: Schema.String,
+  state: ChangeRequestState,
+});
+export type IssueLifecycleChangeRequest = typeof IssueLifecycleChangeRequest.Type;
+
+export const IssueLifecycleUpdateInput = Schema.Struct({
+  provider: IssueProviderKind,
+  reference: IssueReference,
+  cwd: TrimmedNonEmptyString,
+  event: IssueLifecycleEvent,
+  changeRequest: Schema.optional(IssueLifecycleChangeRequest),
+});
+export type IssueLifecycleUpdateInput = typeof IssueLifecycleUpdateInput.Type;
+
+export const IssueLifecycleUpdateResult = Schema.Struct({
+  issue: Schema.optional(IssueItem),
+  statusChanged: Schema.Boolean,
+  previousStatusName: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
+  nextStatusName: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
+});
+export type IssueLifecycleUpdateResult = typeof IssueLifecycleUpdateResult.Type;
 
 export const IssueProviderDiscoveryStatus = Schema.Literals([
   "available",

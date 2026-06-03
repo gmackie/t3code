@@ -2,7 +2,7 @@ import * as Effect from "effect/Effect";
 import * as Duration from "effect/Duration";
 import * as Schema from "effect/Schema";
 import * as SchemaTransformation from "effect/SchemaTransformation";
-import { TrimmedNonEmptyString, TrimmedString } from "./baseSchemas.ts";
+import { ProjectId, TrimmedNonEmptyString, TrimmedString } from "./baseSchemas.ts";
 import { DEFAULT_GIT_TEXT_GENERATION_MODEL, ProviderOptionSelections } from "./model.ts";
 import { ModelSelection } from "./orchestration.ts";
 import { ProviderInstanceConfig, ProviderInstanceId } from "./providerInstance.ts";
@@ -341,6 +341,14 @@ export const LinearIssueSettings = Schema.Struct({
   enabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   apiToken: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
   defaultTeamKey: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
+  projectMappings: Schema.Record(
+    ProjectId,
+    Schema.Struct({
+      linearProjectId: TrimmedString,
+      linearProjectName: TrimmedString,
+      teamKey: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
+    }),
+  ).pipe(Schema.withDecodingDefault(Effect.succeed({}))),
 });
 export type LinearIssueSettings = typeof LinearIssueSettings.Type;
 
@@ -489,6 +497,16 @@ const LinearIssueSettingsPatch = Schema.Struct({
   enabled: Schema.optionalKey(Schema.Boolean),
   apiToken: Schema.optionalKey(TrimmedString),
   defaultTeamKey: Schema.optionalKey(TrimmedString),
+  projectMappings: Schema.optionalKey(
+    Schema.Record(
+      ProjectId,
+      Schema.Struct({
+        linearProjectId: TrimmedString,
+        linearProjectName: TrimmedString,
+        teamKey: Schema.optionalKey(TrimmedString),
+      }),
+    ),
+  ),
 });
 
 export const ServerSettingsPatch = Schema.Struct({

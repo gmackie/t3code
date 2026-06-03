@@ -1,5 +1,7 @@
 import type {
   IssueItem,
+  IssueLifecycleUpdateInput,
+  IssueLifecycleUpdateResult,
   IssueListInput,
   IssuePrepareThreadInput,
   IssuePrepareThreadResult,
@@ -22,6 +24,9 @@ export interface IssueProviderShape {
   readonly prepareIssueThread: (
     input: Omit<IssuePrepareThreadInput, "provider">,
   ) => Effect.Effect<IssuePrepareThreadResult, IssueProviderError>;
+  readonly updateIssueLifecycle: (
+    input: Omit<IssueLifecycleUpdateInput, "provider">,
+  ) => Effect.Effect<IssueLifecycleUpdateResult, IssueProviderError>;
 }
 
 export class IssueProvider extends Context.Service<IssueProvider, IssueProviderShape>()(

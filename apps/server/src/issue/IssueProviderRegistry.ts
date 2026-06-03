@@ -42,6 +42,7 @@ function unsupportedProvider(kind: IssueProviderKind): IssueProvider.IssueProvid
     listIssues: () => unsupported("listIssues"),
     getIssue: () => unsupported("getIssue"),
     prepareIssueThread: () => unsupported("prepareIssueThread"),
+    updateIssueLifecycle: () => unsupported("updateIssueLifecycle"),
   });
 }
 

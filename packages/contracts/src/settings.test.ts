@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 import * as Schema from "effect/Schema";
 
+import { ProjectId } from "./baseSchemas.ts";
 import { ProviderInstanceId } from "./providerInstance.ts";
 import { DEFAULT_SERVER_SETTINGS, ServerSettings, ServerSettingsPatch } from "./settings.ts";
 
@@ -14,6 +15,7 @@ describe("ServerSettings.providerInstances (slice-2 invariant)", () => {
     expect(settings.issues.linear.enabled).toBe(false);
     expect(settings.issues.linear.apiToken).toBe("");
     expect(settings.issues.linear.defaultTeamKey).toBe("");
+    expect(settings.issues.linear.projectMappings).toEqual({});
   });
 
   it("defaults to an empty record so legacy configs without the key still decode", () => {
@@ -73,12 +75,20 @@ describe("ServerSettings.providerInstances (slice-2 invariant)", () => {
 
 describe("ServerSettingsPatch.providerInstances", () => {
   it("accepts Linear issue settings patches", () => {
+    const projectId = ProjectId.make("project-1");
     const patch = decodeServerSettingsPatch({
       issues: {
         linear: {
           enabled: true,
           apiToken: "  lin_api_test  ",
           defaultTeamKey: "  ENG  ",
+          projectMappings: {
+            "project-1": {
+              linearProjectId: "  lin-project-id  ",
+              linearProjectName: "  T3 Code  ",
+              teamKey: "  ENG  ",
+            },
+          },
         },
       },
     });
@@ -86,6 +96,10 @@ describe("ServerSettingsPatch.providerInstances", () => {
     expect(patch.issues?.linear?.enabled).toBe(true);
     expect(patch.issues?.linear?.apiToken).toBe("lin_api_test");
     expect(patch.issues?.linear?.defaultTeamKey).toBe("ENG");
+    expect(patch.issues?.linear?.projectMappings?.[projectId]?.linearProjectId).toBe(
+      "lin-project-id",
+    );
+    expect(patch.issues?.linear?.projectMappings?.[projectId]?.linearProjectName).toBe("T3 Code");
   });
 
   it("treats providerInstances as an optional whole-map replacement", () => {

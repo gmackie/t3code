@@ -2,9 +2,13 @@
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
-**Goal:** Add a provider-neutral issue integration layer, with Linear as the first provider, so users can start a thread/worktree from a Linear issue.
+**Goal:** Add a provider-neutral issue integration layer, with Linear as the first provider, so users can associate issues with T3 Code projects, start a thread/worktree from an issue, and update the issue lifecycle when a PR is opened or merged.
 
-**Architecture:** Build `IssueProvider` as a sibling to `SourceControlProvider`, not as a source-control subtype. Contracts stay schema-only in `packages/contracts`; server runtime owns provider implementations, settings, auth, and issue preparation; web consumes provider-neutral issue RPCs and renders Linear-first UI. V1 uses a server-side Linear API token and delegates branch/worktree creation to existing VCS/Git worktree paths.
+**Architecture:** Build `IssueProvider` as a sibling to `SourceControlProvider`, not as a source-control subtype. Contracts stay schema-only in `packages/contracts`; server runtime owns provider implementations, settings, auth, issue-to-project association, issue preparation, and issue lifecycle updates; web consumes provider-neutral issue RPCs and renders Linear-first UI. V1 uses a server-side Linear API token and delegates branch/worktree creation to existing VCS/Git worktree paths.
+
+**Association model:** Every issue lookup/list is scoped to the active T3 Code project via `cwd` and, where available, `repositoryIdentity`. GitHub Issues derives its issue source from the GitHub repository attached to that project. Linear cannot derive this from git, so settings store a `issues.linear.projectMappings` map keyed by T3 `ProjectId`; each entry points at a Linear project plus optional team key. `IssuePrepareThreadResult` can return the resolved association so the UI and future status-sync code have the same source of truth.
+
+**Lifecycle model:** Issue providers expose `updateIssueLifecycle`. T3 calls it when an issue thread starts, when a change request is opened, and when a change request is merged. Linear maps those events to configured workflow states and/or linked PR metadata; GitHub Issues can derive the association from the repo and close/update the issue in the same repository. The first implementation can no-op unsupported transitions, but the provider contract must preserve the event and change-request metadata.
 
 **Tech Stack:** TypeScript, Effect services/layers, Effect Schema, WebSocket RPC via `packages/contracts/src/rpc.ts`, Bun/Vitest, Linear GraphQL API over fetch.
 
@@ -156,6 +160,24 @@ export const IssueListResult = Schema.Struct({
 });
 export type IssueListResult = typeof IssueListResult.Type;
 
+export const LinearIssueProjectAssociation = Schema.Struct({
+  projectId: TrimmedNonEmptyString,
+  projectName: Schema.optional(TrimmedNonEmptyString),
+  teamKey: Schema.optional(TrimmedNonEmptyString),
+});
+
+export const GitHubIssueProjectAssociation = Schema.Struct({
+  repository: TrimmedNonEmptyString,
+});
+
+export const IssueProjectAssociation = Schema.Struct({
+  provider: IssueProviderKind,
+  projectId: ProjectId,
+  repositoryKey: TrimmedNonEmptyString,
+  linear: Schema.optional(LinearIssueProjectAssociation),
+  github: Schema.optional(GitHubIssueProjectAssociation),
+});
+
 export const IssuePrepareMode = Schema.Literals(["local", "worktree"]);
 export type IssuePrepareMode = typeof IssuePrepareMode.Type;
 
@@ -170,11 +192,41 @@ export type IssuePrepareThreadInput = typeof IssuePrepareThreadInput.Type;
 
 export const IssuePrepareThreadResult = Schema.Struct({
   issue: IssueItem,
+  association: Schema.optional(IssueProjectAssociation),
   branch: TrimmedNonEmptyString,
   worktreePath: Schema.NullOr(TrimmedNonEmptyString),
   initialPrompt: TrimmedNonEmptyString,
 });
 export type IssuePrepareThreadResult = typeof IssuePrepareThreadResult.Type;
+
+export const IssueLifecycleEvent = Schema.Literals([
+  "thread_started",
+  "change_request_opened",
+  "change_request_merged",
+]);
+
+export const IssueLifecycleChangeRequest = Schema.Struct({
+  provider: SourceControlProviderKind,
+  number: PositiveInt,
+  title: TrimmedNonEmptyString,
+  url: Schema.String,
+  state: ChangeRequestState,
+});
+
+export const IssueLifecycleUpdateInput = Schema.Struct({
+  provider: IssueProviderKind,
+  reference: IssueReference,
+  cwd: TrimmedNonEmptyString,
+  event: IssueLifecycleEvent,
+  changeRequest: Schema.optional(IssueLifecycleChangeRequest),
+});
+
+export const IssueLifecycleUpdateResult = Schema.Struct({
+  issue: Schema.optional(IssueItem),
+  statusChanged: Schema.Boolean,
+  previousStatusName: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
+  nextStatusName: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
+});
 
 export const IssueProviderDiscoveryStatus = Schema.Literals([
   "available",
@@ -281,6 +333,14 @@ export const LinearIssueSettings = Schema.Struct({
   enabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   apiToken: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
   defaultTeamKey: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
+  projectMappings: Schema.Record(
+    ProjectId,
+    Schema.Struct({
+      linearProjectId: TrimmedString,
+      linearProjectName: TrimmedString,
+      teamKey: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
+    }),
+  ).pipe(Schema.withDecodingDefault(Effect.succeed({}))),
 });
 export type LinearIssueSettings = typeof LinearIssueSettings.Type;
 ```
@@ -300,6 +360,16 @@ const LinearIssueSettingsPatch = Schema.Struct({
   enabled: Schema.optionalKey(Schema.Boolean),
   apiToken: Schema.optionalKey(TrimmedString),
   defaultTeamKey: Schema.optionalKey(TrimmedString),
+  projectMappings: Schema.optionalKey(
+    Schema.Record(
+      ProjectId,
+      Schema.Struct({
+        linearProjectId: TrimmedString,
+        linearProjectName: TrimmedString,
+        teamKey: Schema.optionalKey(TrimmedString),
+      }),
+    ),
+  ),
 });
 ```
 
@@ -469,6 +539,9 @@ export interface IssueProviderShape {
   readonly prepareIssueThread: (
     input: Omit<IssuePrepareThreadInput, "provider">,
   ) => Effect.Effect<IssuePrepareThreadResult, IssueProviderError>;
+  readonly updateIssueLifecycle: (
+    input: Omit<IssueLifecycleUpdateInput, "provider">,
+  ) => Effect.Effect<IssueLifecycleUpdateResult, IssueProviderError>;
 }
 
 export class IssueProvider extends Context.Service<IssueProvider, IssueProviderShape>()(
@@ -524,6 +597,7 @@ function unsupportedProvider(kind: IssueProviderKind): IssueProvider.IssueProvid
     listIssues: () => unsupported("listIssues"),
     getIssue: () => unsupported("getIssue"),
     prepareIssueThread: () => unsupported("prepareIssueThread"),
+    updateIssueLifecycle: () => unsupported("updateIssueLifecycle"),
   });
 }
 
@@ -679,6 +753,10 @@ Create `apps/server/src/issue/LinearIssueProvider.ts`. Implement:
 - `parseLinearReference(reference)` for `ENG-123`, URLs ending in `/issue/ENG-123/...`, and UUIDs.
 - `linearGraphql(fetch, apiToken, query, variables)`.
 - `toIssueItem(linearIssue)`.
+- `resolveLinearAssociation({ projectId, cwd })`:
+  - Prefer `settings.issues.linear.projectMappings[projectId]` when a project id is available.
+  - Fall back to `defaultTeamKey` only for direct lookup by issue key.
+  - Return an `IssueProjectAssociation` in prepare/list responses when a mapping is found.
 - `makeWithFetch(fetchImpl)`.
 - `makeTest({ fetch })`.
 
@@ -742,6 +820,8 @@ function mapLinearState(type: string | null | undefined): IssueState {
 ```
 
 For missing token, fail with `IssueProviderError({ provider: "linear", operation: "...", detail: "Linear API token is not configured." })`.
+
+When listing issues for a T3 project, include a Linear `project(id: ...)` filter if the project has a mapping. Do not show unrelated workspace-wide Linear issues in project-scoped flows.
 
 **Step 4: Verify**
 
@@ -817,6 +897,7 @@ Expected: FAIL because `prepareIssueThread` is not implemented.
 
 Implement:
 
+- Resolve the T3 project association first. For Linear, attach the mapped Linear project/team metadata to `IssuePrepareThreadResult.association`.
 - Branch name:
   - Use `issue.suggestedBranchName` if present.
   - Else `linear/${key.toLowerCase()}-${slug(title)}`.
@@ -902,9 +983,10 @@ In `packages/contracts/src/rpc.ts`:
 issueListIssues: "issue.listIssues",
 issueGetIssue: "issue.getIssue",
 issuePrepareThread: "issue.prepareThread",
+issueUpdateLifecycle: "issue.updateLifecycle",
 ```
 
-Add `Rpc.make(...)` definitions using `IssueListInput`, `IssueListResult`, `IssueLookupInput`, `IssuePrepareThreadInput`, `IssuePrepareThreadResult`, and `IssueProviderError`.
+Add `Rpc.make(...)` definitions using `IssueListInput`, `IssueListResult`, `IssueLookupInput`, `IssuePrepareThreadInput`, `IssuePrepareThreadResult`, `IssueLifecycleUpdateInput`, `IssueLifecycleUpdateResult`, and `IssueProviderError`.
 
 Add all three to `WsRpcGroup`.
 
@@ -915,6 +997,7 @@ issue: {
   listIssues: (input: IssueListInput) => Promise<IssueListResult>;
   getIssue: (input: IssueLookupInput) => Promise<{ issue: IssueItem }>;
   prepareThread: (input: IssuePrepareThreadInput) => Promise<IssuePrepareThreadResult>;
+  updateLifecycle: (input: IssueLifecycleUpdateInput) => Promise<IssueLifecycleUpdateResult>;
 }
 ```
 
@@ -937,6 +1020,7 @@ issue: {
   listIssues: (input) => transport.request((client) => client[WS_METHODS.issueListIssues](input)),
   getIssue: (input) => transport.request((client) => client[WS_METHODS.issueGetIssue](input)),
   prepareThread: (input) => transport.request((client) => client[WS_METHODS.issuePrepareThread](input)),
+  updateLifecycle: (input) => transport.request((client) => client[WS_METHODS.issueUpdateLifecycle](input)),
 },
 ```
 
@@ -949,6 +1033,7 @@ In `apps/server/src/ws.ts`, require `IssueProviderRegistry`, route methods throu
 - `issue.listIssues`: read scope
 - `issue.getIssue`: read scope
 - `issue.prepareThread`: operate scope
+- `issue.updateLifecycle`: operate scope
 
 Handlers:
 
@@ -965,6 +1050,8 @@ Handlers:
 ```
 
 Wire `IssueProviderRegistry.layer` in `apps/server/src/server.ts`, providing `LinearIssueProvider.layer`, `GitVcsDriver.layer`, and settings.
+
+After `git.runStackedAction` returns a PR with status `created` or `opened_existing`, call `issue.updateLifecycle` with `event: "change_request_opened"` when the active thread was created from an issue. When source-control status later reports the associated PR as merged, call `issue.updateLifecycle` with `event: "change_request_merged"`. Persisting the thread-to-issue association can be a lightweight thread metadata field or a projection table, but it must key by provider/reference plus project association.
 
 **Step 5: Verify**
 

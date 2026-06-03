@@ -35,6 +35,7 @@ const linearProvider = IssueProvider.IssueProvider.of({
       worktreePath: null,
       initialPrompt: "Issue context",
     }),
+  updateIssueLifecycle: () => Effect.succeed({ statusChanged: false }),
 });
 
 function makeRegistry(settingsLayer = ServerSettingsService.layerTest()) {
@@ -62,9 +63,17 @@ it.effect("returns an unsupported provider for unregistered issue kinds", () =>
 
     const provider = yield* registry.get("jira");
     const exit = yield* provider.listIssues({}).pipe(Effect.exit);
+    const updateExit = yield* provider
+      .updateIssueLifecycle({
+        reference: "JIRA-123",
+        cwd: "/repo",
+        event: "change_request_opened",
+      })
+      .pipe(Effect.exit);
 
     assert.strictEqual(provider.kind, "jira");
     assert.isTrue(exit._tag === "Failure");
+    assert.isTrue(updateExit._tag === "Failure");
   }),
 );
 
