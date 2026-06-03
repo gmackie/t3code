@@ -19,6 +19,7 @@ import {
 } from "../providerSnapshot.ts";
 import { buildCursorDiscoveredModelsFromConfigOptions } from "./CursorProvider.ts";
 import { makeGrokAcpRuntime } from "../acp/GrokAcpSupport.ts";
+import type * as EffectAcpSchema from "effect-acp/schema";
 
 const PROVIDER = ProviderDriverKind.make("grokBuild");
 const GROK_BUILD_PRESENTATION = {
@@ -52,6 +53,42 @@ function looksLikeAuthFailure(message: string | undefined): boolean {
     lower.includes("unauthorized") ||
     lower.includes("forbidden")
   );
+}
+
+function buildGrokDiscoveredModelsFromSessionModels(
+  models: EffectAcpSchema.SessionModelState | null | undefined,
+): ReadonlyArray<ServerProviderModel> {
+  if (!models || models.availableModels.length === 0) {
+    return [];
+  }
+  const seen = new Set<string>();
+  return models.availableModels.flatMap((model) => {
+    const slug = model.modelId.trim();
+    if (!slug || seen.has(slug)) {
+      return [];
+    }
+    seen.add(slug);
+    return [
+      {
+        slug,
+        name: model.name.trim() || slug,
+        isCustom: false,
+        capabilities: EMPTY_CAPABILITIES,
+      } satisfies ServerProviderModel,
+    ];
+  });
+}
+
+function buildGrokDiscoveredModelsFromSessionSetup(
+  setup:
+    | EffectAcpSchema.LoadSessionResponse
+    | EffectAcpSchema.NewSessionResponse
+    | EffectAcpSchema.ResumeSessionResponse,
+): ReadonlyArray<ServerProviderModel> {
+  const modelsFromSessionState = buildGrokDiscoveredModelsFromSessionModels(setup.models);
+  return modelsFromSessionState.length > 0
+    ? modelsFromSessionState
+    : buildCursorDiscoveredModelsFromConfigOptions(setup.configOptions);
 }
 
 const runGrokBuildCommand = (
@@ -184,7 +221,7 @@ export const checkGrokBuildProviderStatus = Effect.fn("checkGrokBuildProviderSta
         clientInfo: { name: "t3-code-provider-probe", version: "0.0.0" },
       });
       const started = yield* runtime.start();
-      return buildCursorDiscoveredModelsFromConfigOptions(started.sessionSetupResult.configOptions);
+      return buildGrokDiscoveredModelsFromSessionSetup(started.sessionSetupResult);
     }).pipe(Effect.timeoutOption(GROK_BUILD_ACP_TIMEOUT_MS), Effect.scoped),
   );
 

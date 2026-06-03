@@ -494,6 +494,26 @@ export function makeAcpProviderAdapter<Settings>(
       return Effect.succeed(ctx);
     };
 
+    const emitCancelledTerminalTurn = (input: {
+      readonly threadId: ThreadId;
+      readonly turnId: TurnId;
+    }) =>
+      makeEventStamp().pipe(
+        Effect.flatMap((stamp) =>
+          offerRuntimeEvent({
+            type: "turn.completed",
+            ...stamp,
+            provider: config.provider,
+            threadId: input.threadId,
+            turnId: input.turnId,
+            payload: {
+              state: "cancelled",
+              stopReason: "cancelled",
+            },
+          }),
+        ),
+      );
+
     const stopSessionInternal = (ctx: AcpProviderSessionContext) =>
       Effect.gen(function* () {
         if (ctx.stopped) return;
@@ -1052,7 +1072,11 @@ export function makeAcpProviderAdapter<Settings>(
           input.threadId,
           Effect.gen(function* () {
             const ctx = sessions.get(input.threadId);
-            if (!ctx || ctx.stopped) {
+            if (!ctx || ctx.stopped || ctx.inFlightTurnId !== prepared.turnId) {
+              yield* emitCancelledTerminalTurn({
+                threadId: input.threadId,
+                turnId: prepared.turnId,
+              });
               if (Exit.isFailure(promptExit)) {
                 return yield* Effect.failCause(promptExit.cause);
               }
