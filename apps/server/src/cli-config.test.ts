@@ -5,8 +5,8 @@ import { ConfigProvider, Effect, FileSystem, Layer, Option, Path } from "effect"
 
 import { NetService } from "@t3tools/shared/Net";
 import * as NodeServices from "@effect/platform-node/NodeServices";
-import { deriveServerPaths } from "./config";
-import { resolveServerConfig } from "./cli";
+import { deriveServerPaths } from "./config.ts";
+import { resolveServerConfig } from "./cli.ts";
 
 it.layer(NodeServices.layer)("cli config resolution", (it) => {
   const defaultObservabilityConfig = {
@@ -364,6 +364,95 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
         logWebSocketEvents: true,
       });
       assert.equal(join(baseDir, "dev"), resolved.stateDir);
+    }),
+  );
+
+  it.effect("uses bootstrap stateDirName when deriving runtime paths", () =>
+    Effect.gen(function* () {
+      const { join } = yield* Path.Path;
+      const baseDir = "/tmp/t3-bootstrap-gmacko-home";
+      const fd = yield* openBootstrapFd({
+        mode: "desktop",
+        t3Home: baseDir,
+        stateDirName: "userdata-gmacko",
+        noBrowser: true,
+      });
+
+      const resolved = yield* resolveServerConfig(
+        {
+          mode: Option.none(),
+          port: Option.none(),
+          host: Option.none(),
+          baseDir: Option.none(),
+          cwd: Option.none(),
+          devUrl: Option.none(),
+          noBrowser: Option.none(),
+          bootstrapFd: Option.none(),
+          autoBootstrapProjectFromCwd: Option.none(),
+          logWebSocketEvents: Option.none(),
+        },
+        Option.none(),
+      ).pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            ConfigProvider.layer(
+              ConfigProvider.fromEnv({
+                env: {
+                  T3CODE_BOOTSTRAP_FD: String(fd),
+                },
+              }),
+            ),
+            NetService.layer,
+          ),
+        ),
+      );
+
+      expect(resolved.stateDir).toBe(join(baseDir, "userdata-gmacko"));
+      expect(resolved.dbPath).toBe(join(baseDir, "userdata-gmacko", "state.sqlite"));
+      expect(resolved.settingsPath).toBe(join(baseDir, "userdata-gmacko", "settings.json"));
+    }),
+  );
+
+  it.effect("rejects bootstrap stateDirName values that escape the base directory", () =>
+    Effect.gen(function* () {
+      const fd = yield* openBootstrapFd({
+        mode: "desktop",
+        t3Home: "/tmp/t3-bootstrap-invalid-state-name",
+        stateDirName: "../escape",
+      });
+
+      const failure = yield* Effect.flip(
+        resolveServerConfig(
+          {
+            mode: Option.none(),
+            port: Option.none(),
+            host: Option.none(),
+            baseDir: Option.none(),
+            cwd: Option.none(),
+            devUrl: Option.none(),
+            noBrowser: Option.none(),
+            bootstrapFd: Option.none(),
+            autoBootstrapProjectFromCwd: Option.none(),
+            logWebSocketEvents: Option.none(),
+          },
+          Option.none(),
+        ).pipe(
+          Effect.provide(
+            Layer.mergeAll(
+              ConfigProvider.layer(
+                ConfigProvider.fromEnv({
+                  env: {
+                    T3CODE_BOOTSTRAP_FD: String(fd),
+                  },
+                }),
+              ),
+              NetService.layer,
+            ),
+          ),
+        ),
+      );
+
+      expect(String(failure)).toContain("Invalid state directory name");
     }),
   );
 

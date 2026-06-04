@@ -38,7 +38,8 @@ import {
   type GitManagerShape,
   type GitRunStackedActionOptions,
 } from "../Services/GitManager.ts";
-import { GitCore, GitStatusDetails } from "../Services/GitCore.ts";
+import { GitCore } from "../Services/GitCore.ts";
+import type { GitStatusDetails } from "../Services/GitCore.ts";
 import { GitHubCli, type GitHubPullRequestSummary } from "../Services/GitHubCli.ts";
 import { TextGeneration } from "../Services/TextGeneration.ts";
 import { ProjectSetupScriptRunner } from "../../project/Services/ProjectSetupScriptRunner.ts";
@@ -687,7 +688,13 @@ export const makeGitManager = Effect.fn("makeGitManager")(function* () {
             branch: details.branch,
             upstreamRef: details.upstreamRef,
           }).pipe(
-            Effect.map((latest) => (latest ? toStatusPr(latest) : null)),
+            Effect.map((latest) => {
+              if (!latest) return null;
+              // On the default branch, only surface open PRs.
+              // Merged/closed matches are usually reverse-merge history, not the thread's PR context.
+              if (details.isDefaultBranch && latest.state !== "open") return null;
+              return toStatusPr(latest);
+            }),
             Effect.catch(() => Effect.succeed(null)),
           )
         : null;

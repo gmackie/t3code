@@ -16,6 +16,9 @@ import ProjectScriptsControl, { type NewProjectScriptInput } from "../ProjectScr
 import { Toggle } from "../ui/toggle";
 import { SidebarTrigger } from "../ui/sidebar";
 import { OpenInPicker } from "./OpenInPicker";
+import { resolveProjectColorForegroundValue, resolveProjectColorValue } from "../../projectColors";
+import type { ProjectColor } from "../../uiStateStore";
+import { cn } from "../../lib/utils";
 
 interface ChatHeaderProps {
   activeThreadEnvironmentId: EnvironmentId;
@@ -23,6 +26,7 @@ interface ChatHeaderProps {
   draftId?: DraftId;
   activeThreadTitle: string;
   activeProjectName: string | undefined;
+  activeProjectColor?: ProjectColor | null;
   isGitRepo: boolean;
   openInCwd: string | null;
   activeProjectScripts: ProjectScript[] | undefined;
@@ -49,6 +53,7 @@ export const ChatHeader = memo(function ChatHeader({
   draftId,
   activeThreadTitle,
   activeProjectName,
+  activeProjectColor,
   isGitRepo,
   openInCwd,
   activeProjectScripts,
@@ -79,9 +84,7 @@ export const ChatHeader = memo(function ChatHeader({
           {activeThreadTitle}
         </h2>
         {activeProjectName && (
-          <Badge variant="outline" className="min-w-0 shrink overflow-hidden">
-            <span className="min-w-0 truncate">{activeProjectName}</span>
-          </Badge>
+          <ProjectNameBadge projectName={activeProjectName} projectColor={activeProjectColor} />
         )}
         {activeProjectName && !isGitRepo && (
           <Badge variant="outline" className="shrink-0 text-[10px] text-amber-700">
@@ -149,14 +152,14 @@ export const ChatHeader = memo(function ChatHeader({
                 aria-label="Toggle diff panel"
                 variant="outline"
                 size="xs"
-                disabled={!isGitRepo}
+                disabled={!isGitRepo && !diffOpen}
               >
                 <DiffIcon className="size-3" />
               </Toggle>
             }
           />
           <TooltipPopup side="bottom">
-            {!isGitRepo
+            {!isGitRepo && !diffOpen
               ? "Diff panel is unavailable because this project is not a git repository."
               : diffToggleShortcutLabel
                 ? `Toggle diff panel (${diffToggleShortcutLabel})`
@@ -167,3 +170,29 @@ export const ChatHeader = memo(function ChatHeader({
     </div>
   );
 });
+
+export function ProjectNameBadge({
+  projectName,
+  projectColor,
+}: {
+  projectName: string;
+  projectColor?: ProjectColor | null | undefined;
+}) {
+  return (
+    <Badge
+      variant="outline"
+      data-project-name-badge=""
+      className={cn("min-w-0 shrink overflow-hidden", projectColor ? "border-transparent" : "")}
+      style={
+        projectColor
+          ? {
+              backgroundColor: resolveProjectColorValue(projectColor),
+              color: resolveProjectColorForegroundValue(projectColor),
+            }
+          : undefined
+      }
+    >
+      <span className="min-w-0 truncate">{projectName}</span>
+    </Badge>
+  );
+}

@@ -26,6 +26,8 @@ import {
   OrchestrationGetTurnDiffError,
   ORCHESTRATION_WS_METHODS,
   ProjectSearchEntriesError,
+  ProjectListEntriesError,
+  ProjectReadFileError,
   ProjectWriteFileError,
   OrchestrationReplayEventsError,
   FilesystemBrowseError,
@@ -38,43 +40,42 @@ import { clamp } from "effect/Number";
 import { HttpRouter, HttpServerRequest } from "effect/unstable/http";
 import { RpcSerialization, RpcServer } from "effect/unstable/rpc";
 
-import { CheckpointDiffQuery } from "./checkpointing/Services/CheckpointDiffQuery";
-import { ServerConfig } from "./config";
-import { GitCore } from "./git/Services/GitCore";
-import { GitManager } from "./git/Services/GitManager";
-import { GitStatusBroadcaster } from "./git/Services/GitStatusBroadcaster";
-import { Keybindings } from "./keybindings";
-import { Open, resolveAvailableEditors } from "./open";
-import { normalizeDispatchCommand } from "./orchestration/Normalizer";
-import { OrchestrationEngineService } from "./orchestration/Services/OrchestrationEngine";
-import { ProjectionSnapshotQuery } from "./orchestration/Services/ProjectionSnapshotQuery";
+import { CheckpointDiffQuery } from "./checkpointing/Services/CheckpointDiffQuery.ts";
+import { ServerConfig } from "./config.ts";
+import { GitCore } from "./git/Services/GitCore.ts";
+import { GitManager } from "./git/Services/GitManager.ts";
+import { GitStatusBroadcaster } from "./git/Services/GitStatusBroadcaster.ts";
+import { Keybindings } from "./keybindings.ts";
+import { Open, resolveAvailableEditors } from "./open.ts";
+import { normalizeDispatchCommand } from "./orchestration/Normalizer.ts";
+import { OrchestrationEngineService } from "./orchestration/Services/OrchestrationEngine.ts";
+import { ProjectionSnapshotQuery } from "./orchestration/Services/ProjectionSnapshotQuery.ts";
 import {
   observeRpcEffect,
   observeRpcStream,
   observeRpcStreamEffect,
-} from "./observability/RpcInstrumentation";
-import { ProviderRegistry } from "./provider/Services/ProviderRegistry";
-import { ServerLifecycleEvents } from "./serverLifecycleEvents";
-import { ServerRuntimeStartup } from "./serverRuntimeStartup";
-import { ServerSettingsService } from "./serverSettings";
-import { TerminalManager } from "./terminal/Services/Manager";
-import { discoverTerminalShells } from "./terminal/terminalProfile";
-import { WorkspaceEntries } from "./workspace/Services/WorkspaceEntries";
-import { WorkspaceFileSystem } from "./workspace/Services/WorkspaceFileSystem";
-import { WorkspacePathOutsideRootError } from "./workspace/Services/WorkspacePaths";
-import { ProjectSetupScriptRunner } from "./project/Services/ProjectSetupScriptRunner";
-import { RepositoryIdentityResolver } from "./project/Services/RepositoryIdentityResolver";
-import { ServerEnvironment } from "./environment/Services/ServerEnvironment";
-import { ServerAuth } from "./auth/Services/ServerAuth";
+} from "./observability/RpcInstrumentation.ts";
+import { ProviderRegistry } from "./provider/Services/ProviderRegistry.ts";
+import { ServerLifecycleEvents } from "./serverLifecycleEvents.ts";
+import { ServerRuntimeStartup } from "./serverRuntimeStartup.ts";
+import { redactServerSettingsForClient, ServerSettingsService } from "./serverSettings.ts";
+import { TerminalManager } from "./terminal/Services/Manager.ts";
+import { WorkspaceEntries } from "./workspace/Services/WorkspaceEntries.ts";
+import { WorkspaceFileSystem } from "./workspace/Services/WorkspaceFileSystem.ts";
+import { WorkspacePathOutsideRootError } from "./workspace/Services/WorkspacePaths.ts";
+import { ProjectSetupScriptRunner } from "./project/Services/ProjectSetupScriptRunner.ts";
+import { RepositoryIdentityResolver } from "./project/Services/RepositoryIdentityResolver.ts";
+import { ServerEnvironment } from "./environment/Services/ServerEnvironment.ts";
+import { ServerAuth } from "./auth/Services/ServerAuth.ts";
 import {
   BootstrapCredentialService,
   type BootstrapCredentialChange,
-} from "./auth/Services/BootstrapCredentialService";
+} from "./auth/Services/BootstrapCredentialService.ts";
 import {
   SessionCredentialService,
   type SessionCredentialChange,
-} from "./auth/Services/SessionCredentialService";
-import { respondToAuthError } from "./auth/http";
+} from "./auth/Services/SessionCredentialService.ts";
+import { respondToAuthError } from "./auth/http.ts";
 
 function isThreadDetailEvent(event: OrchestrationEvent): event is Extract<
   OrchestrationEvent,
@@ -525,7 +526,7 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId) =>
       const loadServerConfig = Effect.gen(function* () {
         const keybindingsConfig = yield* keybindings.loadConfigState;
         const providers = yield* providerRegistry.getProviders;
-        const settings = yield* serverSettings.getSettings;
+        const settings = redactServerSettingsForClient(yield* serverSettings.getSettings);
         const environment = yield* serverEnvironment.getDescriptor;
         const auth = yield* serverAuth.getDescriptor();
         const terminal = yield* Effect.promise(() =>
@@ -571,8 +572,45 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId) =>
             ORCHESTRATION_WS_METHODS.dispatchCommand,
             Effect.gen(function* () {
               const normalizedCommand = yield* normalizeDispatchCommand(command);
+              const shouldStopSessionAfterArchive =
+                normalizedCommand.type === "thread.archive"
+                  ? yield* projectionSnapshotQuery
+                      .getThreadShellById(normalizedCommand.threadId)
+                      .pipe(
+                        Effect.map(
+                          Option.match({
+                            onNone: () => false,
+                            onSome: (thread) =>
+                              thread.session !== null && thread.session.status !== "stopped",
+                          }),
+                        ),
+                        Effect.catch(() => Effect.succeed(false)),
+                      )
+                  : false;
               const result = yield* dispatchNormalizedCommand(normalizedCommand);
               if (normalizedCommand.type === "thread.archive") {
+                if (shouldStopSessionAfterArchive) {
+                  yield* Effect.gen(function* () {
+                    const stopCommand = yield* normalizeDispatchCommand({
+                      type: "thread.session.stop",
+                      commandId: CommandId.make(
+                        `session-stop-for-archive:${normalizedCommand.commandId}`,
+                      ),
+                      threadId: normalizedCommand.threadId,
+                      createdAt: new Date().toISOString(),
+                    });
+
+                    yield* dispatchNormalizedCommand(stopCommand);
+                  }).pipe(
+                    Effect.catchCause((cause) =>
+                      Effect.logWarning("failed to stop provider session during archive", {
+                        threadId: normalizedCommand.threadId,
+                        cause,
+                      }),
+                    ),
+                  );
+                }
+
                 yield* terminalManager.close({ threadId: normalizedCommand.threadId }).pipe(
                   Effect.catch((error) =>
                     Effect.logWarning("failed to close thread terminals after archive", {
@@ -733,10 +771,13 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId) =>
           observeRpcEffect(WS_METHODS.serverGetConfig, loadServerConfig, {
             "rpc.aggregate": "server",
           }),
-        [WS_METHODS.serverRefreshProviders]: (_input) =>
+        [WS_METHODS.serverRefreshProviders]: (input) =>
           observeRpcEffect(
             WS_METHODS.serverRefreshProviders,
-            providerRegistry.refresh().pipe(Effect.map((providers) => ({ providers }))),
+            (input.instanceId !== undefined
+              ? providerRegistry.refreshInstance(input.instanceId)
+              : providerRegistry.refresh()
+            ).pipe(Effect.map((providers) => ({ providers }))),
             { "rpc.aggregate": "server" },
           ),
         [WS_METHODS.serverUpsertKeybinding]: (rule) =>
@@ -749,13 +790,21 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId) =>
             { "rpc.aggregate": "server" },
           ),
         [WS_METHODS.serverGetSettings]: (_input) =>
-          observeRpcEffect(WS_METHODS.serverGetSettings, serverSettings.getSettings, {
-            "rpc.aggregate": "server",
-          }),
+          observeRpcEffect(
+            WS_METHODS.serverGetSettings,
+            serverSettings.getSettings.pipe(Effect.map(redactServerSettingsForClient)),
+            {
+              "rpc.aggregate": "server",
+            },
+          ),
         [WS_METHODS.serverUpdateSettings]: ({ patch }) =>
-          observeRpcEffect(WS_METHODS.serverUpdateSettings, serverSettings.updateSettings(patch), {
-            "rpc.aggregate": "server",
-          }),
+          observeRpcEffect(
+            WS_METHODS.serverUpdateSettings,
+            serverSettings.updateSettings(patch).pipe(Effect.map(redactServerSettingsForClient)),
+            {
+              "rpc.aggregate": "server",
+            },
+          ),
         [WS_METHODS.projectsSearchEntries]: (input) =>
           observeRpcEffect(
             WS_METHODS.projectsSearchEntries,
@@ -767,6 +816,36 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId) =>
                     cause,
                   }),
               ),
+            ),
+            { "rpc.aggregate": "workspace" },
+          ),
+        [WS_METHODS.projectsListEntries]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.projectsListEntries,
+            workspaceEntries.list(input).pipe(
+              Effect.mapError(
+                (cause) =>
+                  new ProjectListEntriesError({
+                    message: `Failed to list workspace entries: ${cause.detail}`,
+                    cause,
+                  }),
+              ),
+            ),
+            { "rpc.aggregate": "workspace" },
+          ),
+        [WS_METHODS.projectsReadFile]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.projectsReadFile,
+            workspaceFileSystem.readFile(input).pipe(
+              Effect.mapError((cause) => {
+                const message = Schema.is(WorkspacePathOutsideRootError)(cause)
+                  ? "Workspace file path must stay within the project root."
+                  : "Failed to read workspace file";
+                return new ProjectReadFileError({
+                  message,
+                  cause,
+                });
+              }),
             ),
             { "rpc.aggregate": "workspace" },
           ),
@@ -960,6 +1039,7 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId) =>
                 Stream.debounce(Duration.millis(PROVIDER_STATUS_DEBOUNCE_MS)),
               );
               const settingsUpdates = serverSettings.streamChanges.pipe(
+                Stream.map((settings) => redactServerSettingsForClient(settings)),
                 Stream.map((settings) => ({
                   version: 1 as const,
                   type: "settingsUpdated" as const,
@@ -967,13 +1047,9 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId) =>
                 })),
               );
 
-              yield* Effect.all(
-                [providerRegistry.refresh("codex"), providerRegistry.refresh("claudeAgent")],
-                {
-                  concurrency: "unbounded",
-                  discard: true,
-                },
-              ).pipe(Effect.ignoreCause({ log: true }), Effect.forkScoped);
+              yield* providerRegistry
+                .refresh()
+                .pipe(Effect.ignoreCause({ log: true }), Effect.forkScoped);
 
               const liveUpdates = Stream.merge(
                 keybindingsUpdates,

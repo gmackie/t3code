@@ -1,5 +1,5 @@
 import { createFileRoute, retainSearchParams, useNavigate } from "@tanstack/react-router";
-import { Suspense, lazy, type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
+import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import ChatView from "../components/ChatView";
 import { threadHasStarted } from "../components/ChatView.logic";
@@ -17,44 +17,24 @@ import {
   stripDiffSearchParams,
 } from "../diffRouteSearch";
 import { useMediaQuery } from "../hooks/useMediaQuery";
+import { RIGHT_PANEL_INLINE_LAYOUT_MEDIA_QUERY } from "../rightPanelLayout";
 import { selectEnvironmentState, selectThreadExistsByRef, useStore } from "../store";
 import { createThreadSelectorByRef } from "../storeSelectors";
 import { resolveThreadRouteRef, buildThreadRouteParams } from "../threadRoutes";
-import { Sheet, SheetPopup } from "../components/ui/sheet";
+import { RightPanelSheet } from "../components/RightPanelSheet";
 import { Sidebar, SidebarInset, SidebarProvider, SidebarRail } from "~/components/ui/sidebar";
+import { useBrowserStateStore } from "../browserStateStore";
+import { BROWSER_TAB_DRAG_MIME_TYPE, parseBrowserTabDragData } from "../browserTabDrag";
+import { isSameThreadRef, useSplitPaneStore } from "../splitPaneStore";
+import { parseThreadDragData, THREAD_DRAG_MIME_TYPE } from "../threadDrag";
+import { useWorkspaceViewStore, WORKSPACE_PREVIEW_TAB_ID } from "../workspaceViewStore";
+import { parseWorkspaceTabDragData, WORKSPACE_TAB_DRAG_MIME_TYPE } from "../workspaceTabDrag";
 
 const DiffPanel = lazy(() => import("../components/DiffPanel"));
-const DIFF_INLINE_LAYOUT_MEDIA_QUERY = "(max-width: 1180px)";
 const DIFF_INLINE_SIDEBAR_WIDTH_STORAGE_KEY = "chat_diff_sidebar_width";
 const DIFF_INLINE_DEFAULT_WIDTH = "clamp(28rem,48vw,44rem)";
 const DIFF_INLINE_SIDEBAR_MIN_WIDTH = 26 * 16;
 const COMPOSER_COMPACT_MIN_LEFT_CONTROLS_WIDTH_PX = 208;
-
-const DiffPanelSheet = (props: {
-  children: ReactNode;
-  diffOpen: boolean;
-  onCloseDiff: () => void;
-}) => {
-  return (
-    <Sheet
-      open={props.diffOpen}
-      onOpenChange={(open) => {
-        if (!open) {
-          props.onCloseDiff();
-        }
-      }}
-    >
-      <SheetPopup
-        side="right"
-        showCloseButton={false}
-        keepMounted
-        className="w-[min(88vw,820px)] max-w-[820px] p-0"
-      >
-        {props.children}
-      </SheetPopup>
-    </Sheet>
-  );
-};
 
 const DiffLoadingFallback = (props: { mode: DiffPanelMode }) => {
   return (
@@ -192,12 +172,29 @@ function ChatThreadRouteView() {
   const serverThreadStarted = threadHasStarted(serverThread);
   const environmentHasAnyThreads = environmentHasServerThreads || environmentHasDraftThreads;
   const diffOpen = search.diff === "1";
-  const shouldUseDiffSheet = useMediaQuery(DIFF_INLINE_LAYOUT_MEDIA_QUERY);
+  const shouldUseDiffSheet = useMediaQuery(RIGHT_PANEL_INLINE_LAYOUT_MEDIA_QUERY);
   const currentThreadKey = threadRef ? `${threadRef.environmentId}:${threadRef.threadId}` : null;
+  const secondaryThreadRef = useSplitPaneStore((state) => state.secondaryThreadRef);
+  const clearSecondaryThreadRef = useSplitPaneStore((state) => state.clearSecondaryThreadRef);
+  const focusPane = useSplitPaneStore((state) => state.focusPane);
+  const splitRatio = useSplitPaneStore((state) => state.splitRatio);
+  const setSplitRatio = useSplitPaneStore((state) => state.setSplitRatio);
+  const moveWorkspaceTab = useWorkspaceViewStore((state) => state.moveWorkspaceTab);
+  const setWorkspaceActiveTab = useWorkspaceViewStore((state) => state.setActiveTab);
+  const moveBrowserTab = useBrowserStateStore((state) => state.moveBrowserTab);
+  const splitContainerRef = useRef<HTMLDivElement | null>(null);
   const [diffPanelMountState, setDiffPanelMountState] = useState(() => ({
     threadKey: currentThreadKey,
     hasOpenedDiff: diffOpen,
   }));
+  const showSecondaryPane = Boolean(
+    threadRef &&
+    secondaryThreadRef &&
+    !isSameThreadRef(secondaryThreadRef, {
+      environmentId: threadRef.environmentId,
+      threadId: threadRef.threadId,
+    }),
+  );
   const hasOpenedDiff =
     diffPanelMountState.threadKey === currentThreadKey
       ? diffPanelMountState.hasOpenedDiff
@@ -237,6 +234,119 @@ function ChatThreadRouteView() {
       },
     });
   }, [markDiffOpened, navigate, threadRef]);
+  const handlePaneDragOver = useCallback((event: React.DragEvent<HTMLDivElement>) => {
+    if (
+      !event.dataTransfer.types.includes(THREAD_DRAG_MIME_TYPE) &&
+      !event.dataTransfer.types.includes(BROWSER_TAB_DRAG_MIME_TYPE) &&
+      !event.dataTransfer.types.includes(WORKSPACE_TAB_DRAG_MIME_TYPE)
+    ) {
+      return;
+    }
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+  }, []);
+  const handlePrimaryPaneDrop = useCallback(
+    (event: React.DragEvent<HTMLDivElement>) => {
+      const droppedBrowserTab = parseBrowserTabDragData(
+        event.dataTransfer.getData(BROWSER_TAB_DRAG_MIME_TYPE),
+      );
+      if (droppedBrowserTab && threadRef) {
+        event.preventDefault();
+        moveBrowserTab(
+          droppedBrowserTab.sourceThreadRef.threadId,
+          threadRef.threadId,
+          droppedBrowserTab.tabId,
+        );
+        setWorkspaceActiveTab(droppedBrowserTab.sourceThreadRef.threadId, null);
+        setWorkspaceActiveTab(threadRef.threadId, WORKSPACE_PREVIEW_TAB_ID);
+        focusPane("primary");
+        return;
+      }
+      const droppedWorkspaceTab = parseWorkspaceTabDragData(
+        event.dataTransfer.getData(WORKSPACE_TAB_DRAG_MIME_TYPE),
+      );
+      if (droppedWorkspaceTab && threadRef) {
+        event.preventDefault();
+        moveWorkspaceTab(
+          droppedWorkspaceTab.sourceThreadRef.threadId,
+          threadRef.threadId,
+          droppedWorkspaceTab.tabId,
+        );
+        focusPane("primary");
+        return;
+      }
+      const droppedThreadRef = parseThreadDragData(
+        event.dataTransfer.getData(THREAD_DRAG_MIME_TYPE),
+      );
+      if (!droppedThreadRef) {
+        return;
+      }
+      event.preventDefault();
+      focusPane("primary");
+      void navigate({
+        to: "/$environmentId/$threadId",
+        params: buildThreadRouteParams(droppedThreadRef),
+      });
+    },
+    [focusPane, moveBrowserTab, moveWorkspaceTab, navigate, setWorkspaceActiveTab, threadRef],
+  );
+  const handleSecondaryPaneDrop = useCallback(
+    (event: React.DragEvent<HTMLDivElement>) => {
+      const droppedBrowserTab = parseBrowserTabDragData(
+        event.dataTransfer.getData(BROWSER_TAB_DRAG_MIME_TYPE),
+      );
+      if (droppedBrowserTab && secondaryThreadRef) {
+        event.preventDefault();
+        moveBrowserTab(
+          droppedBrowserTab.sourceThreadRef.threadId,
+          secondaryThreadRef.threadId,
+          droppedBrowserTab.tabId,
+        );
+        setWorkspaceActiveTab(droppedBrowserTab.sourceThreadRef.threadId, null);
+        setWorkspaceActiveTab(secondaryThreadRef.threadId, WORKSPACE_PREVIEW_TAB_ID);
+        focusPane("secondary");
+        return;
+      }
+      const droppedWorkspaceTab = parseWorkspaceTabDragData(
+        event.dataTransfer.getData(WORKSPACE_TAB_DRAG_MIME_TYPE),
+      );
+      if (droppedWorkspaceTab && secondaryThreadRef) {
+        event.preventDefault();
+        moveWorkspaceTab(
+          droppedWorkspaceTab.sourceThreadRef.threadId,
+          secondaryThreadRef.threadId,
+          droppedWorkspaceTab.tabId,
+        );
+        focusPane("secondary");
+        return;
+      }
+      const droppedThreadRef = parseThreadDragData(
+        event.dataTransfer.getData(THREAD_DRAG_MIME_TYPE),
+      );
+      if (!droppedThreadRef) {
+        return;
+      }
+      event.preventDefault();
+      if (
+        threadRef &&
+        droppedThreadRef.environmentId === threadRef.environmentId &&
+        droppedThreadRef.threadId === threadRef.threadId
+      ) {
+        focusPane("secondary");
+        return;
+      }
+      useSplitPaneStore.getState().setSecondaryThreadRef(droppedThreadRef);
+      focusPane("secondary");
+    },
+    [
+      focusPane,
+      moveBrowserTab,
+      moveWorkspaceTab,
+      secondaryThreadRef,
+      setWorkspaceActiveTab,
+      threadRef,
+    ],
+  );
 
   useEffect(() => {
     if (!threadRef || !bootstrapComplete) {
@@ -255,24 +365,100 @@ function ChatThreadRouteView() {
     finalizePromotedDraftThreadByRef(threadRef);
   }, [draftThread?.promotedTo, serverThreadStarted, threadRef]);
 
+  useEffect(() => {
+    if (threadRef && secondaryThreadRef && isSameThreadRef(secondaryThreadRef, threadRef)) {
+      clearSecondaryThreadRef();
+    }
+  }, [clearSecondaryThreadRef, secondaryThreadRef, threadRef]);
+
+  const handleSplitDividerMouseDown = useCallback(
+    (event: React.MouseEvent<HTMLButtonElement>) => {
+      event.preventDefault();
+
+      const handleMouseMove = (moveEvent: MouseEvent) => {
+        const container = splitContainerRef.current;
+        if (!container) {
+          return;
+        }
+        const rect = container.getBoundingClientRect();
+        if (rect.width <= 0) {
+          return;
+        }
+        setSplitRatio((moveEvent.clientX - rect.left) / rect.width);
+      };
+
+      const handleMouseUp = () => {
+        window.removeEventListener("mousemove", handleMouseMove);
+        window.removeEventListener("mouseup", handleMouseUp);
+      };
+
+      window.addEventListener("mousemove", handleMouseMove);
+      window.addEventListener("mouseup", handleMouseUp);
+    },
+    [setSplitRatio],
+  );
+
   if (!threadRef || !bootstrapComplete || !routeThreadExists) {
     return null;
   }
 
   const shouldRenderDiffContent = diffOpen || hasOpenedDiff;
+  const chatContent = (
+    <div ref={splitContainerRef} className="flex min-h-0 flex-1">
+      <SidebarInset
+        className="h-dvh min-h-0 overflow-hidden overscroll-y-none bg-background text-foreground"
+        style={showSecondaryPane ? { flex: `0 0 ${splitRatio * 100}%` } : undefined}
+      >
+        <div
+          className="flex h-full min-h-0 flex-1"
+          data-testid="chat-pane-primary"
+          onMouseDown={() => focusPane("primary")}
+          onDragOver={handlePaneDragOver}
+          onDrop={handlePrimaryPaneDrop}
+        >
+          <ChatView
+            environmentId={threadRef.environmentId}
+            threadId={threadRef.threadId}
+            routeKind="server"
+          />
+        </div>
+      </SidebarInset>
+      {showSecondaryPane && secondaryThreadRef ? (
+        <button
+          type="button"
+          aria-label="Resize split panes"
+          data-testid="chat-split-divider"
+          className="h-dvh min-h-0 w-1 shrink-0 cursor-col-resize bg-border/80 transition-colors hover:bg-border"
+          onMouseDown={handleSplitDividerMouseDown}
+        />
+      ) : null}
+      {showSecondaryPane && secondaryThreadRef ? (
+        <SidebarInset
+          className="h-dvh min-h-0 overflow-hidden overscroll-y-none bg-background text-foreground"
+          style={showSecondaryPane ? { flex: `1 1 ${100 - splitRatio * 100}%` } : undefined}
+        >
+          <div
+            className="flex h-full min-h-0 flex-1"
+            data-testid="chat-pane-secondary"
+            onMouseDown={() => focusPane("secondary")}
+            onDragOver={handlePaneDragOver}
+            onDrop={handleSecondaryPaneDrop}
+          >
+            <ChatView
+              environmentId={secondaryThreadRef.environmentId}
+              threadId={secondaryThreadRef.threadId}
+              routeKind="server"
+            />
+          </div>
+        </SidebarInset>
+      ) : null}
+    </div>
+  );
 
   if (!shouldUseDiffSheet) {
     return (
       <>
-        <SidebarInset className="h-dvh  min-h-0 overflow-hidden overscroll-y-none bg-background text-foreground">
-          <ChatView
-            environmentId={threadRef.environmentId}
-            threadId={threadRef.threadId}
-            onDiffPanelOpen={markDiffOpened}
-            reserveTitleBarControlInset={!diffOpen}
-            routeKind="server"
-          />
-        </SidebarInset>
+        {chatContent}
         <DiffPanelInlineSidebar
           diffOpen={diffOpen}
           onCloseDiff={closeDiff}
@@ -285,17 +471,10 @@ function ChatThreadRouteView() {
 
   return (
     <>
-      <SidebarInset className="h-dvh min-h-0 overflow-hidden overscroll-y-none bg-background text-foreground">
-        <ChatView
-          environmentId={threadRef.environmentId}
-          threadId={threadRef.threadId}
-          onDiffPanelOpen={markDiffOpened}
-          routeKind="server"
-        />
-      </SidebarInset>
-      <DiffPanelSheet diffOpen={diffOpen} onCloseDiff={closeDiff}>
+      {chatContent}
+      <RightPanelSheet open={diffOpen} onClose={closeDiff}>
         {shouldRenderDiffContent ? <LazyDiffPanel mode="sheet" /> : null}
-      </DiffPanelSheet>
+      </RightPanelSheet>
     </>
   );
 }

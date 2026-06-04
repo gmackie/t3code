@@ -2,7 +2,7 @@ import type { NetworkInterfaceInfo } from "node:os";
 import type { DesktopServerExposureMode } from "@t3tools/contracts";
 
 const DESKTOP_LOOPBACK_HOST = "127.0.0.1";
-const DESKTOP_LAN_BIND_HOST = "0.0.0.0";
+const DESKTOP_BIND_ALL_HOST = "0.0.0.0";
 
 export interface DesktopServerExposure {
   readonly mode: DesktopServerExposureMode;
@@ -20,6 +20,20 @@ const normalizeOptionalHost = (value: string | undefined): string | undefined =>
 
 const isUsableLanIpv4Address = (address: string): boolean =>
   !address.startsWith("127.") && !address.startsWith("169.254.");
+
+const isTailscaleDnsName = (host: string): boolean => host.toLowerCase().endsWith(".ts.net");
+
+function resolveEndpointUrl(input: {
+  readonly mode: DesktopServerExposureMode;
+  readonly advertisedHost: string;
+  readonly port: number;
+}): string {
+  if (input.mode === "tailnet-accessible" && isTailscaleDnsName(input.advertisedHost)) {
+    return `https://${input.advertisedHost}`;
+  }
+
+  return `http://${input.advertisedHost}:${input.port}`;
+}
 
 export function resolveLanAdvertisedHost(
   networkInterfaces: NodeJS.Dict<NetworkInterfaceInfo[]>,
@@ -71,10 +85,12 @@ export function resolveDesktopServerExposure(input: {
 
   return {
     mode: input.mode,
-    bindHost: DESKTOP_LAN_BIND_HOST,
+    bindHost: DESKTOP_BIND_ALL_HOST,
     localHttpUrl,
     localWsUrl,
-    endpointUrl: advertisedHost ? `http://${advertisedHost}:${input.port}` : null,
+    endpointUrl: advertisedHost
+      ? resolveEndpointUrl({ mode: input.mode, advertisedHost, port: input.port })
+      : null,
     advertisedHost,
   };
 }

@@ -5,6 +5,7 @@ import {
   HttpBody,
   HttpClient,
   HttpClientResponse,
+  HttpMiddleware,
   HttpRouter,
   HttpServerResponse,
   HttpServerRequest,
@@ -15,12 +16,12 @@ import {
   ATTACHMENTS_ROUTE_PREFIX,
   normalizeAttachmentRelativePath,
   resolveAttachmentRelativePath,
-} from "./attachmentPaths";
-import { resolveAttachmentPathById } from "./attachmentStore";
-import { resolveStaticDir, ServerConfig } from "./config";
+} from "./attachmentPaths.ts";
+import { resolveAttachmentPathById } from "./attachmentStore.ts";
+import { resolveStaticDir, ServerConfig } from "./config.ts";
 import { decodeOtlpTraceRecords } from "./observability/TraceRecord.ts";
 import { BrowserTraceCollector } from "./observability/Services/BrowserTraceCollector.ts";
-import { ProjectFaviconResolver } from "./project/Services/ProjectFaviconResolver";
+import { ProjectFaviconResolver } from "./project/Services/ProjectFaviconResolver.ts";
 import { ServerAuth } from "./auth/Services/ServerAuth.ts";
 import { respondToAuthError } from "./auth/http.ts";
 import { ServerEnvironment } from "./environment/Services/ServerEnvironment.ts";
@@ -29,12 +30,13 @@ const PROJECT_FAVICON_CACHE_CONTROL = "public, max-age=3600";
 const FALLBACK_PROJECT_FAVICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="#6b728080" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-fallback="project-favicon"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-8l-2-2H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2Z"/></svg>`;
 const OTLP_TRACES_PROXY_PATH = "/api/observability/v1/traces";
 const LOOPBACK_HOSTNAMES = new Set(["127.0.0.1", "::1", "localhost"]);
-
-export const browserApiCorsLayer = HttpRouter.cors({
-  allowedMethods: ["GET", "POST", "OPTIONS"],
-  allowedHeaders: ["authorization", "b3", "traceparent", "content-type"],
-  maxAge: 600,
-});
+const DESKTOP_APP_ORIGIN = "t3://app";
+const ALLOWED_APP_ORIGIN_PROTOCOLS = new Set([
+  "exp:",
+  "exps:",
+  "exp+t3-code-mobile:",
+  "t3code-mobile:",
+]);
 
 export function isLoopbackHostname(hostname: string): boolean {
   const normalizedHostname = hostname
@@ -43,6 +45,39 @@ export function isLoopbackHostname(hostname: string): boolean {
     .replace(/^\[(.*)\]$/, "$1");
   return LOOPBACK_HOSTNAMES.has(normalizedHostname);
 }
+
+export function isAllowedBrowserApiOrigin(origin: string | undefined): boolean {
+  const normalizedOrigin = origin?.trim();
+  if (!normalizedOrigin) {
+    return false;
+  }
+
+  if (normalizedOrigin === DESKTOP_APP_ORIGIN) {
+    return true;
+  }
+
+  try {
+    const url = new URL(normalizedOrigin);
+    return (
+      url.protocol === "http:" ||
+      url.protocol === "https:" ||
+      ALLOWED_APP_ORIGIN_PROTOCOLS.has(url.protocol)
+    );
+  } catch {
+    return false;
+  }
+}
+
+export const browserApiCorsLayer = HttpRouter.middleware(
+  HttpMiddleware.cors({
+    allowedOrigins: isAllowedBrowserApiOrigin,
+    allowedMethods: ["GET", "POST", "OPTIONS"],
+    allowedHeaders: ["authorization", "b3", "traceparent", "content-type"],
+    credentials: true,
+    maxAge: 600,
+  }),
+  { global: true },
+);
 
 export function resolveDevRedirectUrl(devUrl: URL, requestUrl: URL): string {
   const redirectUrl = new URL(devUrl.toString());

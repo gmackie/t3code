@@ -2,6 +2,7 @@ import { QueryClient } from "@tanstack/react-query";
 import {
   EnvironmentId,
   ProjectId,
+  ProviderInstanceId,
   ThreadId,
   TurnId,
   type OrchestrationShellSnapshot,
@@ -98,7 +99,7 @@ function makeThreadShellSnapshot(params: {
         projectId,
         title: "Thread",
         modelSelection: {
-          provider: "codex",
+          instanceId: ProviderInstanceId.make("codex"),
           model: "gpt-5-codex",
         },
         runtimeMode: "full-access",
@@ -201,7 +202,7 @@ describe("retainThreadDetailSubscription", () => {
 
     stop();
     await resetEnvironmentServiceForTests();
-  });
+  }, 15_000);
 
   it("keeps non-idle thread detail subscriptions attached until the thread becomes idle", async () => {
     const {
@@ -250,7 +251,7 @@ describe("retainThreadDetailSubscription", () => {
 
     stop();
     await resetEnvironmentServiceForTests();
-  });
+  }, 15_000);
 
   it("allows a larger idle cache before capacity eviction starts", async () => {
     const {

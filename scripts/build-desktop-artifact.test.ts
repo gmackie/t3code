@@ -45,6 +45,10 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
     });
   });
 
+  it("uses the white production mac icon asset", () => {
+    assert.equal(BRAND_ASSET_PATHS.productionMacIconPng, "assets/prod/white-macos-1024.png");
+  });
+
   it("falls back to the default mock update port when the configured port is blank", () => {
     assert.equal(resolveMockUpdateServerUrl(undefined), "http://localhost:3000");
     assert.equal(resolveMockUpdateServerUrl(4123), "http://localhost:4123");

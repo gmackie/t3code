@@ -1068,6 +1068,11 @@ it.layer(GitManagerTestLayer)("GitManager", (it) => {
           "git@github.com:pingdotgg/codething-mvp.git",
         ]);
         yield* runGit(repoDir, ["config", "remote.my-org/upstream.pushurl", upstreamDir]);
+        yield* runGit(repoDir, [
+          "config",
+          `url.${upstreamDir}.insteadOf`,
+          "git@github.com:pingdotgg/codething-mvp.git",
+        ]);
         yield* runGit(repoDir, ["checkout", "main"]);
         yield* runGit(repoDir, ["branch", "-D", "effect-atom"]);
         yield* runGit(repoDir, ["checkout", "--track", "my-org/upstream/effect-atom"]);
@@ -1185,6 +1190,36 @@ it.layer(GitManagerTestLayer)("GitManager", (it) => {
         headBranch: "feature/status-merged-pr",
         state: "merged",
       });
+    }),
+  );
+
+  it.effect("status hides merged PRs on the default branch", () =>
+    Effect.gen(function* () {
+      const repoDir = yield* makeTempDir("t3code-git-manager-");
+      yield* initRepo(repoDir);
+
+      const { manager } = yield* makeManager({
+        ghScenario: {
+          prListSequence: [
+            JSON.stringify([
+              {
+                number: 23,
+                title: "Merged PR",
+                url: "https://github.com/pingdotgg/codething-mvp/pull/23",
+                baseRefName: "feature/status-default-branch-target",
+                headRefName: "main",
+                state: "MERGED",
+                mergedAt: "2026-01-30T10:00:00Z",
+                updatedAt: "2026-01-30T10:00:00Z",
+              },
+            ]),
+          ],
+        },
+      });
+
+      const status = yield* manager.status({ cwd: repoDir });
+      expect(status.branch).toBe("main");
+      expect(status.pr).toBeNull();
     }),
   );
 
@@ -1807,6 +1842,11 @@ it.layer(GitManagerTestLayer)("GitManager", (it) => {
           "git@github.com:pingdotgg/codething-mvp.git",
         ]);
         yield* runGit(repoDir, ["config", "remote.my-org/upstream.pushurl", upstreamDir]);
+        yield* runGit(repoDir, [
+          "config",
+          `url.${upstreamDir}.insteadOf`,
+          "git@github.com:pingdotgg/codething-mvp.git",
+        ]);
         yield* runGit(repoDir, ["checkout", "main"]);
         yield* runGit(repoDir, ["branch", "-D", "effect-atom"]);
         yield* runGit(repoDir, ["checkout", "--track", "my-org/upstream/effect-atom"]);

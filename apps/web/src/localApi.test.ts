@@ -6,6 +6,8 @@ import {
   type GitStatusResult,
   ProjectId,
   type OrchestrationShellStreamItem,
+  ProviderDriverKind,
+  ProviderInstanceId,
   type ServerConfig,
   type ServerProvider,
   type TerminalEvent,
@@ -48,6 +50,8 @@ const rpcClientMock = {
     ),
   },
   projects: {
+    listEntries: vi.fn(),
+    readFile: vi.fn(),
     searchEntries: vi.fn(),
     writeFile: vi.fn(),
   },
@@ -207,7 +211,8 @@ function makeDesktopBridge(overrides: Partial<DesktopBridge> = {}): DesktopBridg
 
 const defaultProviders: ReadonlyArray<ServerProvider> = [
   {
-    provider: "codex",
+    instanceId: ProviderInstanceId.make("codex"),
+    driver: ProviderDriverKind.make("codex"),
     enabled: true,
     installed: true,
     version: "0.116.0",
@@ -333,7 +338,7 @@ describe("wsApi", () => {
         title: "Project",
         workspaceRoot: "/tmp/workspace",
         defaultModelSelection: {
-          provider: "codex",
+          instanceId: ProviderInstanceId.make("codex"),
           model: "gpt-5-codex",
         },
         scripts: [],
@@ -399,7 +404,7 @@ describe("wsApi", () => {
       title: "Project",
       workspaceRoot: "/tmp/project",
       defaultModelSelection: {
-        provider: "codex",
+        instanceId: ProviderInstanceId.make("codex"),
         model: "gpt-5-codex",
       },
       createdAt: "2026-02-24T00:00:00.000Z",
@@ -424,6 +429,42 @@ describe("wsApi", () => {
       cwd: "/tmp/project",
       relativePath: "plan.md",
       contents: "# Plan\n",
+    });
+  });
+
+  it("forwards workspace entry listing to the project RPC", async () => {
+    rpcClientMock.projects.listEntries.mockResolvedValue({
+      entries: [{ path: "src", kind: "directory" }],
+      truncated: false,
+    });
+    const { createEnvironmentApi } = await import("./environmentApi");
+
+    const api = createEnvironmentApi(rpcClientMock as never);
+    await api.projects.listEntries({
+      cwd: "/tmp/project",
+    });
+
+    expect(rpcClientMock.projects.listEntries).toHaveBeenCalledWith({
+      cwd: "/tmp/project",
+    });
+  });
+
+  it("forwards workspace file reads to the project RPC", async () => {
+    rpcClientMock.projects.readFile.mockResolvedValue({
+      relativePath: "src/plan.md",
+      contents: "# Plan\n",
+    });
+    const { createEnvironmentApi } = await import("./environmentApi");
+
+    const api = createEnvironmentApi(rpcClientMock as never);
+    await api.projects.readFile({
+      cwd: "/tmp/project",
+      relativePath: "src/plan.md",
+    });
+
+    expect(rpcClientMock.projects.readFile).toHaveBeenCalledWith({
+      cwd: "/tmp/project",
+      relativePath: "src/plan.md",
     });
   });
 
@@ -533,13 +574,23 @@ describe("wsApi", () => {
   });
 
   it("reads and writes persistence through the desktop bridge when available", async () => {
-    const getClientSettings = vi.fn().mockResolvedValue({
+    const clientSettings = {
+      autoOpenPlanSidebar: false,
       confirmThreadArchive: true,
       confirmThreadDelete: false,
       diffWordWrap: true,
-      sidebarProjectSortOrder: "manual",
-      sidebarThreadSortOrder: "created_at",
-      timestampFormat: "24-hour",
+      favorites: [],
+      providerModelPreferences: {},
+      sidebarProjectGroupingMode: "repository_path" as const,
+      sidebarProjectGroupingOverrides: {
+        "environment-local:/tmp/project": "separate" as const,
+      },
+      sidebarProjectSortOrder: "manual" as const,
+      sidebarThreadSortOrder: "created_at" as const,
+      timestampFormat: "24-hour" as const,
+    };
+    const getClientSettings = vi.fn().mockResolvedValue({
+      ...clientSettings,
     });
     const setClientSettings = vi.fn().mockResolvedValue(undefined);
     const getSavedEnvironmentRegistry = vi.fn().mockResolvedValue([]);
@@ -561,14 +612,7 @@ describe("wsApi", () => {
     const api = createLocalApi(rpcClientMock as never);
 
     await api.persistence.getClientSettings();
-    await api.persistence.setClientSettings({
-      confirmThreadArchive: true,
-      confirmThreadDelete: false,
-      diffWordWrap: true,
-      sidebarProjectSortOrder: "manual",
-      sidebarThreadSortOrder: "created_at",
-      timestampFormat: "24-hour",
-    });
+    await api.persistence.setClientSettings(clientSettings);
     await api.persistence.getSavedEnvironmentRegistry();
     await api.persistence.setSavedEnvironmentRegistry([]);
     await api.persistence.getSavedEnvironmentSecret(EnvironmentId.make("environment-local"));
@@ -579,14 +623,7 @@ describe("wsApi", () => {
     await api.persistence.removeSavedEnvironmentSecret(EnvironmentId.make("environment-local"));
 
     expect(getClientSettings).toHaveBeenCalledWith();
-    expect(setClientSettings).toHaveBeenCalledWith({
-      confirmThreadArchive: true,
-      confirmThreadDelete: false,
-      diffWordWrap: true,
-      sidebarProjectSortOrder: "manual",
-      sidebarThreadSortOrder: "created_at",
-      timestampFormat: "24-hour",
-    });
+    expect(setClientSettings).toHaveBeenCalledWith(clientSettings);
     expect(getSavedEnvironmentRegistry).toHaveBeenCalledWith();
     expect(setSavedEnvironmentRegistry).toHaveBeenCalledWith([]);
     expect(getSavedEnvironmentSecret).toHaveBeenCalledWith("environment-local");
@@ -597,15 +634,23 @@ describe("wsApi", () => {
   it("falls back to browser storage for persistence when the desktop bridge is missing", async () => {
     const { createLocalApi } = await import("./localApi");
     const api = createLocalApi(rpcClientMock as never);
-
-    await api.persistence.setClientSettings({
+    const clientSettings = {
+      autoOpenPlanSidebar: false,
       confirmThreadArchive: true,
       confirmThreadDelete: false,
       diffWordWrap: true,
-      sidebarProjectSortOrder: "manual",
-      sidebarThreadSortOrder: "created_at",
-      timestampFormat: "24-hour",
-    });
+      favorites: [],
+      providerModelPreferences: {},
+      sidebarProjectGroupingMode: "repository_path" as const,
+      sidebarProjectGroupingOverrides: {
+        "environment-local:/tmp/project": "separate" as const,
+      },
+      sidebarProjectSortOrder: "manual" as const,
+      sidebarThreadSortOrder: "created_at" as const,
+      timestampFormat: "24-hour" as const,
+    };
+
+    await api.persistence.setClientSettings(clientSettings);
     await api.persistence.setSavedEnvironmentRegistry([
       {
         environmentId: EnvironmentId.make("environment-local"),
@@ -621,14 +666,7 @@ describe("wsApi", () => {
       "bearer-token",
     );
 
-    await expect(api.persistence.getClientSettings()).resolves.toEqual({
-      confirmThreadArchive: true,
-      confirmThreadDelete: false,
-      diffWordWrap: true,
-      sidebarProjectSortOrder: "manual",
-      sidebarThreadSortOrder: "created_at",
-      timestampFormat: "24-hour",
-    });
+    await expect(api.persistence.getClientSettings()).resolves.toEqual(clientSettings);
     await expect(api.persistence.getSavedEnvironmentRegistry()).resolves.toEqual([
       {
         environmentId: EnvironmentId.make("environment-local"),

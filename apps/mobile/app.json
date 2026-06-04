@@ -1,0 +1,53 @@
+{
+  "expo": {
+    "name": "T3 Code Mobile",
+    "owner": "gmacko",
+    "slug": "t3-code-mobile",
+    "scheme": "t3code-mobile",
+    "version": "0.0.0",
+    "orientation": "portrait",
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "networkInspector": false
+          },
+          "ios": {
+            "networkInspector": false
+          }
+        }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow T3 Code to scan pairing QR codes from your desktop."
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": false
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.gmacko.t3code.dev",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Allow T3 Code to scan pairing QR codes from your desktop.",
+        "NSLocalNetworkUsageDescription": "Allow T3 Code to connect to your Mac on your local network or Tailnet.",
+        "NSAppTransportSecurity": {
+          "NSAllowsArbitraryLoads": true,
+          "NSAllowsLocalNetworking": true
+        },
+        "ITSAppUsesNonExemptEncryption": false
+      }
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "7c2e766b-c51e-42b5-86b1-0ba0f2c277c7"
+      }
+    }
+  }
+}

@@ -2,14 +2,28 @@ import type { EnvironmentId } from "@t3tools/contracts";
 import { FolderIcon } from "lucide-react";
 import { useState } from "react";
 import { resolveEnvironmentHttpUrl } from "../environments/runtime";
+import { resolveProjectColorValue } from "../projectColors";
+import type { ProjectColor } from "../uiStateStore";
 
 const loadedProjectFaviconSrcs = new Set<string>();
 
 export function ProjectFavicon(input: {
   environmentId: EnvironmentId;
   cwd: string;
+  projectColor?: ProjectColor | null;
   className?: string;
 }) {
+  if (input.projectColor) {
+    return (
+      <FolderIcon
+        aria-hidden="true"
+        data-project-favicon="folder"
+        className={`size-3.5 shrink-0 ${input.className ?? ""}`}
+        style={{ color: resolveProjectColorValue(input.projectColor) }}
+      />
+    );
+  }
+
   const src = resolveEnvironmentHttpUrl({
     environmentId: input.environmentId,
     pathname: "/api/project-favicon",

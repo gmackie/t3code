@@ -1,7 +1,7 @@
 import { Debouncer } from "@tanstack/react-pacer";
 import { create } from "zustand";
 
-const PERSISTED_STATE_KEY = "t3code:ui-state:v1";
+export const PERSISTED_STATE_KEY = "t3code:ui-state:v1";
 const LEGACY_PERSISTED_STATE_KEYS = [
   "t3code:renderer-state:v8",
   "t3code:renderer-state:v7",
@@ -15,14 +15,46 @@ const LEGACY_PERSISTED_STATE_KEYS = [
   "codething:renderer-state:v1",
 ] as const;
 
-interface PersistedUiState {
+export interface PersistedUiState {
+  collapsedProjectCwds?: string[];
   expandedProjectCwds?: string[];
   projectOrderCwds?: string[];
+  projectColorCwds?: Record<string, ProjectColor>;
   threadChangedFilesExpandedById?: Record<string, Record<string, boolean>>;
+}
+
+export const PROJECT_COLOR_PRESETS = [
+  "red",
+  "orange",
+  "yellow",
+  "green",
+  "blue",
+  "purple",
+  "pink",
+] as const;
+export const PROJECT_COLORS = PROJECT_COLOR_PRESETS;
+export type ProjectColorPreset = (typeof PROJECT_COLOR_PRESETS)[number];
+export type ProjectColor = ProjectColorPreset | `#${string}`;
+
+const HEX_PROJECT_COLOR_PATTERN = /^#[0-9a-f]{6}$/;
+
+export function normalizeProjectHexColor(value: string): `#${string}` | null {
+  const trimmed = value.trim().toLowerCase();
+  const withHash = trimmed.startsWith("#") ? trimmed : `#${trimmed}`;
+  const expanded = /^#[0-9a-f]{3}$/.test(withHash)
+    ? (`#${withHash[1]}${withHash[1]}${withHash[2]}${withHash[2]}${withHash[3]}${withHash[3]}` as const)
+    : withHash;
+
+  return HEX_PROJECT_COLOR_PATTERN.test(expanded) ? (expanded as `#${string}`) : null;
+}
+
+function isProjectColor(value: string): value is ProjectColor {
+  return projectColorSet.has(value) || normalizeProjectHexColor(value) === value;
 }
 
 export interface UiProjectState {
   projectExpandedById: Record<string, boolean>;
+  projectColorById: Record<string, ProjectColor>;
   projectOrder: string[];
 }
 
@@ -34,7 +66,10 @@ export interface UiThreadState {
 export interface UiState extends UiProjectState, UiThreadState {}
 
 export interface SyncProjectInput {
+  /** Physical project key (env + cwd). Used for manual sort order. */
   key: string;
+  /** Logical group key. Used for expand/collapse state. */
+  logicalKey: string;
   cwd: string;
 }
 
@@ -45,14 +80,25 @@ export interface SyncThreadInput {
 
 const initialState: UiState = {
   projectExpandedById: {},
+  projectColorById: {},
   projectOrder: [],
   threadLastVisitedAtById: {},
   threadChangedFilesExpandedById: {},
 };
 
+const projectColorSet = new Set<string>(PROJECT_COLOR_PRESETS);
+const persistedCollapsedProjectCwds = new Set<string>();
 const persistedExpandedProjectCwds = new Set<string>();
 const persistedProjectOrderCwds: string[] = [];
+const persistedProjectColorByCwd = new Map<string, ProjectColor>();
+// Pre-fix persisted shape only listed expanded cwds, so anything not listed
+// was treated as collapsed. Track whether the loaded blob carried the new
+// `collapsedProjectCwds` field so we can preserve that legacy semantic for
+// one session after upgrade, until persistState rewrites in the new shape.
+let persistedProjectStateUsesLegacyShape = false;
 const currentProjectCwdById = new Map<string, string>();
+const currentProjectCwdsByLogicalKey = new Map<string, string[]>();
+const currentLogicalKeyByPhysicalKey = new Map<string, string>();
 let legacyKeysCleanedUp = false;
 
 function readPersistedState(): UiState {
@@ -113,9 +159,17 @@ function sanitizePersistedThreadChangedFilesExpanded(
   return nextState;
 }
 
-function hydratePersistedProjectState(parsed: PersistedUiState): void {
+export function hydratePersistedProjectState(parsed: PersistedUiState): void {
+  persistedCollapsedProjectCwds.clear();
   persistedExpandedProjectCwds.clear();
   persistedProjectOrderCwds.length = 0;
+  persistedProjectColorByCwd.clear();
+  persistedProjectStateUsesLegacyShape = !Array.isArray(parsed.collapsedProjectCwds);
+  for (const cwd of parsed.collapsedProjectCwds ?? []) {
+    if (typeof cwd === "string" && cwd.length > 0) {
+      persistedCollapsedProjectCwds.add(cwd);
+    }
+  }
   for (const cwd of parsed.expandedProjectCwds ?? []) {
     if (typeof cwd === "string" && cwd.length > 0) {
       persistedExpandedProjectCwds.add(cwd);
@@ -126,23 +180,37 @@ function hydratePersistedProjectState(parsed: PersistedUiState): void {
       persistedProjectOrderCwds.push(cwd);
     }
   }
+  for (const [cwd, color] of Object.entries(parsed.projectColorCwds ?? {})) {
+    if (cwd.length > 0 && isProjectColor(color)) {
+      persistedProjectColorByCwd.set(cwd, color);
+    }
+  }
 }
 
-function persistState(state: UiState): void {
+export function persistState(state: UiState): void {
   if (typeof window === "undefined") {
     return;
   }
   try {
+    // Persist collapsed cwds explicitly so an empty/missing field unambiguously
+    // means "first install" rather than "user collapsed everything"; without
+    // this, the syncProjects fallback would re-expand all rows on next launch.
+    const collapsedProjectCwds = Object.entries(state.projectExpandedById)
+      .filter(([, expanded]) => !expanded)
+      .flatMap(([logicalKey]) => currentProjectCwdsByLogicalKey.get(logicalKey) ?? []);
     const expandedProjectCwds = Object.entries(state.projectExpandedById)
       .filter(([, expanded]) => expanded)
-      .flatMap(([projectId]) => {
-        const cwd = currentProjectCwdById.get(projectId);
-        return cwd ? [cwd] : [];
-      });
+      .flatMap(([logicalKey]) => currentProjectCwdsByLogicalKey.get(logicalKey) ?? []);
     const projectOrderCwds = state.projectOrder.flatMap((projectId) => {
       const cwd = currentProjectCwdById.get(projectId);
       return cwd ? [cwd] : [];
     });
+    const projectColorCwds = Object.fromEntries(
+      Object.entries(state.projectColorById).flatMap(([logicalKey, color]) => {
+        const cwds = currentProjectCwdsByLogicalKey.get(logicalKey) ?? [];
+        return cwds.map((cwd) => [cwd, color] as const);
+      }),
+    );
     const threadChangedFilesExpandedById = Object.fromEntries(
       Object.entries(state.threadChangedFilesExpandedById).flatMap(([threadId, turns]) => {
         const nextTurns = Object.fromEntries(
@@ -154,8 +222,10 @@ function persistState(state: UiState): void {
     window.localStorage.setItem(
       PERSISTED_STATE_KEY,
       JSON.stringify({
+        collapsedProjectCwds,
         expandedProjectCwds,
         projectOrderCwds,
+        projectColorCwds,
         threadChangedFilesExpandedById,
       } satisfies PersistedUiState),
     );
@@ -211,31 +281,117 @@ function nestedBooleanRecordsEqual(
 
 export function syncProjects(state: UiState, projects: readonly SyncProjectInput[]): UiState {
   const previousProjectCwdById = new Map(currentProjectCwdById);
-  const previousProjectIdByCwd = new Map(
-    [...previousProjectCwdById.entries()].map(([projectId, cwd]) => [cwd, projectId] as const),
-  );
+  const previousLogicalKeyByPhysicalKey = new Map(currentLogicalKeyByPhysicalKey);
   currentProjectCwdById.clear();
+  currentLogicalKeyByPhysicalKey.clear();
   for (const project of projects) {
     currentProjectCwdById.set(project.key, project.cwd);
+    currentLogicalKeyByPhysicalKey.set(project.key, project.logicalKey);
+  }
+  currentProjectCwdsByLogicalKey.clear();
+  for (const project of projects) {
+    const cwds = currentProjectCwdsByLogicalKey.get(project.logicalKey);
+    if (cwds) {
+      if (!cwds.includes(project.cwd)) {
+        cwds.push(project.cwd);
+      }
+    } else {
+      currentProjectCwdsByLogicalKey.set(project.logicalKey, [project.cwd]);
+    }
+  }
+  // Build reverse map: for each new logical key, which previous logical keys
+  // did its member projects live under? Lets us preserve expand state when a
+  // project's logical key changes (e.g. late-arriving repo metadata flips the
+  // group identity).
+  const previousLogicalKeysByNewLogicalKey = new Map<string, Set<string>>();
+  for (const project of projects) {
+    const previousLogicalKey = previousLogicalKeyByPhysicalKey.get(project.key);
+    if (!previousLogicalKey || previousLogicalKey === project.logicalKey) {
+      continue;
+    }
+    const set = previousLogicalKeysByNewLogicalKey.get(project.logicalKey);
+    if (set) {
+      set.add(previousLogicalKey);
+    } else {
+      previousLogicalKeysByNewLogicalKey.set(project.logicalKey, new Set([previousLogicalKey]));
+    }
   }
   const cwdMappingChanged =
     previousProjectCwdById.size !== currentProjectCwdById.size ||
     projects.some((project) => previousProjectCwdById.get(project.key) !== project.cwd);
 
   const nextExpandedById: Record<string, boolean> = {};
+  const nextProjectColorById: Record<string, ProjectColor> = {};
   const previousExpandedById = state.projectExpandedById;
+  const previousProjectColorById = state.projectColorById;
   const persistedOrderByCwd = new Map(
     persistedProjectOrderCwds.map((cwd, index) => [cwd, index] as const),
   );
   const mappedProjects = projects.map((project, index) => {
-    const previousProjectIdForCwd = previousProjectIdByCwd.get(project.cwd);
-    const expanded =
-      previousExpandedById[project.key] ??
-      (previousProjectIdForCwd ? previousExpandedById[previousProjectIdForCwd] : undefined) ??
-      (persistedExpandedProjectCwds.size > 0
-        ? persistedExpandedProjectCwds.has(project.cwd)
-        : true);
-    nextExpandedById[project.key] = expanded;
+    if (!(project.logicalKey in nextExpandedById)) {
+      const groupCwds = currentProjectCwdsByLogicalKey.get(project.logicalKey) ?? [project.cwd];
+      const fallbackFromPreviousLogicalKey = (() => {
+        const previousKeys = previousLogicalKeysByNewLogicalKey.get(project.logicalKey);
+        if (!previousKeys) {
+          return undefined;
+        }
+        for (const previousKey of previousKeys) {
+          if (previousKey in previousExpandedById) {
+            return previousExpandedById[previousKey];
+          }
+        }
+        return undefined;
+      })();
+      const fallbackFromPersistedShape = (() => {
+        if (groupCwds.some((cwd) => persistedExpandedProjectCwds.has(cwd))) {
+          return true;
+        }
+        if (groupCwds.some((cwd) => persistedCollapsedProjectCwds.has(cwd))) {
+          return false;
+        }
+        if (persistedProjectStateUsesLegacyShape && persistedExpandedProjectCwds.size > 0) {
+          return false;
+        }
+        return true;
+      })();
+      const expanded =
+        previousExpandedById[project.logicalKey] ??
+        fallbackFromPreviousLogicalKey ??
+        fallbackFromPersistedShape;
+      nextExpandedById[project.logicalKey] = expanded;
+    }
+    if (!(project.logicalKey in nextProjectColorById)) {
+      const groupCwds = currentProjectCwdsByLogicalKey.get(project.logicalKey) ?? [project.cwd];
+      const fallbackFromPreviousLogicalKey = (() => {
+        const previousKeys = previousLogicalKeysByNewLogicalKey.get(project.logicalKey);
+        if (!previousKeys) {
+          return undefined;
+        }
+        for (const previousKey of previousKeys) {
+          const color = previousProjectColorById[previousKey];
+          if (color !== undefined) {
+            return color;
+          }
+        }
+        return undefined;
+      })();
+      const fallbackFromPersistedShape = (() => {
+        for (const cwd of groupCwds) {
+          const color = persistedProjectColorByCwd.get(cwd);
+          if (color !== undefined) {
+            return color;
+          }
+        }
+        return undefined;
+      })();
+      const color =
+        previousProjectColorById[project.logicalKey] ??
+        fallbackFromPreviousLogicalKey ??
+        fallbackFromPersistedShape;
+      if (color !== undefined) {
+        nextProjectColorById[project.logicalKey] = color;
+      }
+    }
     return {
       id: project.key,
       cwd: project.cwd,
@@ -246,6 +402,7 @@ export function syncProjects(state: UiState, projects: readonly SyncProjectInput
   const nextProjectOrder =
     state.projectOrder.length > 0
       ? (() => {
+          const currentProjectIds = new Set(mappedProjects.map((project) => project.id));
           const nextProjectIdByCwd = new Map(
             mappedProjects.map((project) => [project.cwd, project.id] as const),
           );
@@ -254,7 +411,7 @@ export function syncProjects(state: UiState, projects: readonly SyncProjectInput
 
           for (const projectId of state.projectOrder) {
             const matchedProjectId =
-              (projectId in nextExpandedById ? projectId : undefined) ??
+              (currentProjectIds.has(projectId) ? projectId : undefined) ??
               (() => {
                 const previousCwd = previousProjectCwdById.get(projectId);
                 return previousCwd ? nextProjectIdByCwd.get(previousCwd) : undefined;
@@ -294,6 +451,7 @@ export function syncProjects(state: UiState, projects: readonly SyncProjectInput
 
   if (
     recordsEqual(state.projectExpandedById, nextExpandedById) &&
+    recordsEqual(state.projectColorById, nextProjectColorById) &&
     projectOrdersEqual(state.projectOrder, nextProjectOrder) &&
     !cwdMappingChanged
   ) {
@@ -303,6 +461,7 @@ export function syncProjects(state: UiState, projects: readonly SyncProjectInput
   return {
     ...state,
     projectExpandedById: nextExpandedById,
+    projectColorById: nextProjectColorById,
     projectOrder: nextProjectOrder,
   };
 }
@@ -480,6 +639,35 @@ export function setProjectExpanded(state: UiState, projectId: string, expanded: 
   };
 }
 
+export function setProjectColor(
+  state: UiState,
+  projectId: string,
+  color: ProjectColor | null,
+): UiState {
+  if (color === null) {
+    if (!(projectId in state.projectColorById)) {
+      return state;
+    }
+    const nextProjectColorById = { ...state.projectColorById };
+    delete nextProjectColorById[projectId];
+    return {
+      ...state,
+      projectColorById: nextProjectColorById,
+    };
+  }
+
+  if (state.projectColorById[projectId] === color) {
+    return state;
+  }
+  return {
+    ...state,
+    projectColorById: {
+      ...state.projectColorById,
+      [projectId]: color,
+    },
+  };
+}
+
 export function reorderProjects(
   state: UiState,
   draggedProjectIds: readonly string[],
@@ -532,6 +720,7 @@ interface UiStateStore extends UiState {
   setThreadChangedFilesExpanded: (threadId: string, turnId: string, expanded: boolean) => void;
   toggleProject: (projectId: string) => void;
   setProjectExpanded: (projectId: string, expanded: boolean) => void;
+  setProjectColor: (projectId: string, color: ProjectColor | null) => void;
   reorderProjects: (
     draggedProjectIds: readonly string[],
     targetProjectIds: readonly string[],
@@ -552,6 +741,7 @@ export const useUiStateStore = create<UiStateStore>((set) => ({
   toggleProject: (projectId) => set((state) => toggleProject(state, projectId)),
   setProjectExpanded: (projectId, expanded) =>
     set((state) => setProjectExpanded(state, projectId, expanded)),
+  setProjectColor: (projectId, color) => set((state) => setProjectColor(state, projectId, color)),
   reorderProjects: (draggedProjectIds, targetProjectIds) =>
     set((state) => reorderProjects(state, draggedProjectIds, targetProjectIds)),
 }));

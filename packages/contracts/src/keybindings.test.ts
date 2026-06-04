@@ -7,7 +7,7 @@ import {
   KeybindingRule,
   ResolvedKeybindingRule,
   ResolvedKeybindingsConfig,
-} from "./keybindings";
+} from "./keybindings.ts";
 
 const decode = <S extends Schema.Top>(
   schema: S,
@@ -47,17 +47,59 @@ it.effect("parses keybinding rules", () =>
     });
     assert.strictEqual(parsedCommandPalette.command, "commandPalette.toggle");
 
+    const parsedBrowserToggle = yield* decode(KeybindingRule, {
+      key: "mod+b",
+      command: "browser.toggle",
+    });
+    assert.strictEqual(parsedBrowserToggle.command, "browser.toggle");
+
+    const parsedBrowserNewTab = yield* decode(KeybindingRule, {
+      key: "mod+t",
+      command: "browser.newTab",
+    });
+    assert.strictEqual(parsedBrowserNewTab.command, "browser.newTab");
+
+    const parsedBrowserCloseTab = yield* decode(KeybindingRule, {
+      key: "mod+w",
+      command: "browser.closeTab",
+    });
+    assert.strictEqual(parsedBrowserCloseTab.command, "browser.closeTab");
+
     const parsedLocal = yield* decode(KeybindingRule, {
       key: "mod+shift+n",
       command: "chat.newLocal",
     });
     assert.strictEqual(parsedLocal.command, "chat.newLocal");
 
+    const parsedModelPickerToggle = yield* decode(KeybindingRule, {
+      key: "mod+shift+m",
+      command: "modelPicker.toggle",
+    });
+    assert.strictEqual(parsedModelPickerToggle.command, "modelPicker.toggle");
+
+    const parsedModelPickerJump = yield* decode(KeybindingRule, {
+      key: "mod+1",
+      command: "modelPicker.jump.1",
+    });
+    assert.strictEqual(parsedModelPickerJump.command, "modelPicker.jump.1");
+
     const parsedThreadPrevious = yield* decode(KeybindingRule, {
       key: "mod+shift+[",
       command: "thread.previous",
     });
     assert.strictEqual(parsedThreadPrevious.command, "thread.previous");
+
+    const parsedSidebarProjects = yield* decode(KeybindingRule, {
+      key: "mod+shift+p",
+      command: "sidebar.projects",
+    });
+    assert.strictEqual(parsedSidebarProjects.command, "sidebar.projects");
+
+    const parsedSidebarFiles = yield* decode(KeybindingRule, {
+      key: "mod+shift+f",
+      command: "sidebar.files",
+    });
+    assert.strictEqual(parsedSidebarFiles.command, "sidebar.files");
   }),
 );
 

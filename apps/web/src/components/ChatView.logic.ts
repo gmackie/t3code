@@ -1,13 +1,16 @@
 import {
   type EnvironmentId,
+  isProviderDriverKind,
   ProjectId,
   type ModelSelection,
-  type ProviderKind,
+  type ProviderDriverKind,
   type ScopedThreadRef,
+  type ServerProviderModel,
   type ThreadId,
   type TurnId,
 } from "@t3tools/contracts";
 import { type ChatMessage, type SessionPhase, type Thread, type ThreadSession } from "../types";
+import { randomUUID } from "~/lib/utils";
 import { type ComposerImageAttachment, type DraftThreadState } from "../composerDraftStore";
 import { Schema } from "effect";
 import { selectThreadByRef, useStore } from "../store";
@@ -16,10 +19,10 @@ import {
   stripInlineTerminalContextPlaceholders,
   type TerminalContextDraft,
 } from "../lib/terminalContext";
-import type { DraftThreadEnvMode } from "../composerDraftStore";
 
 export const LAST_INVOKED_SCRIPT_BY_PROJECT_KEY = "t3code:last-invoked-script-by-project";
 export const MAX_HIDDEN_MOUNTED_TERMINAL_THREADS = 10;
+const WORKTREE_BRANCH_PREFIX = "t3code";
 
 export const LastInvokedScriptByProjectSchema = Schema.Record(ProjectId, Schema.String);
 
@@ -102,6 +105,18 @@ export function reconcileMountedTerminalThreadIds(input: {
   return nextThreadIds;
 }
 
+export function resolvePlanSidebarDismissedTurnKeyOnWorkspaceTabSelect(input: {
+  selectedTabId: string | null;
+  planTabOpen: boolean;
+  activePlanTurnId: TurnId | null | undefined;
+  sidebarProposedPlanTurnId: TurnId | null | undefined;
+}): TurnId | null {
+  if (input.selectedTabId !== null || !input.planTabOpen) {
+    return null;
+  }
+  return input.activePlanTurnId ?? input.sidebarProposedPlanTurnId ?? null;
+}
+
 export function revokeBlobPreviewUrl(previewUrl: string | undefined): void {
   if (!previewUrl || typeof URL === "undefined" || !previewUrl.startsWith("blob:")) {
     return;
@@ -156,11 +171,17 @@ export function readFileAsDataUrl(file: File): Promise<string> {
   });
 }
 
+export function buildTemporaryWorktreeBranchName(): string {
+  // Keep the 8-hex suffix shape for backend temporary-branch detection.
+  const token = randomUUID().slice(0, 8).toLowerCase();
+  return `${WORKTREE_BRANCH_PREFIX}/${token}`;
+}
+
 export function resolveSendEnvMode(input: {
-  requestedEnvMode: DraftThreadEnvMode;
+  requestedEnvMode: "local" | "worktree";
   isGitRepo: boolean;
-}): DraftThreadEnvMode {
-  return input.isGitRepo ? input.requestedEnvMode : "local";
+}): "local" | "worktree" {
+  return input.requestedEnvMode === "worktree" && input.isGitRepo ? "worktree" : "local";
 }
 
 export function cloneComposerImageForRetry(
@@ -220,21 +241,80 @@ export function buildExpiredTerminalContextToastCopy(
   };
 }
 
+export function buildSearchableModelOptions(input: {
+  availableProviderOptions: ReadonlyArray<{
+    value: ProviderDriverKind;
+    label: string;
+  }>;
+  modelOptionsByProvider: Record<ProviderDriverKind, ReadonlyArray<ServerProviderModel>>;
+  lockedProvider: ProviderDriverKind | null;
+}): Array<{
+  provider: ProviderDriverKind;
+  providerLabel: string;
+  slug: string;
+  name: string;
+  searchSlug: string;
+  searchName: string;
+  searchProvider: string;
+}> {
+  return input.availableProviderOptions
+    .filter((option) => input.lockedProvider === null || option.value === input.lockedProvider)
+    .flatMap((option) =>
+      (input.modelOptionsByProvider[option.value] ?? []).map((model) => {
+        const safeName =
+          typeof model.name === "string" && model.name.trim().length > 0 ? model.name : model.slug;
+        return {
+          provider: option.value,
+          providerLabel: option.label,
+          slug: model.slug,
+          name: safeName,
+          searchSlug: model.slug.toLowerCase(),
+          searchName: safeName.toLowerCase(),
+          searchProvider: option.label.toLowerCase(),
+        };
+      }),
+    );
+}
+
 export function threadHasStarted(thread: Thread | null | undefined): boolean {
   return Boolean(
     thread && (thread.latestTurn !== null || thread.messages.length > 0 || thread.session !== null),
   );
 }
 
+// `threadProvider` is the open branded driver kind carried by the session.
+// Unknown driver kinds degrade to `null` (i.e. "unlocked"), which is the safe
+// rollback / fork behavior — the routing layer is the right place to surface
+// "driver not installed" errors, not the lock state.
+//
+// `selectedProvider` takes the same open-string shape because the composer
+// now tracks the picker selection as a `ProviderInstanceId` (e.g.
+// `codex_personal`). Custom instance ids that don't directly match a
+// registered driver resolve to `null` here, which matches the existing
+// "unknown driver -> unlocked" semantics. Callers that want the lock to track
+// a custom instance's underlying driver kind should resolve the instance id
+// upstream and pass the correlated kind.
 export function deriveLockedProvider(input: {
   thread: Thread | null | undefined;
-  selectedProvider: ProviderKind | null;
-  threadProvider: ProviderKind | null;
-}): ProviderKind | null {
+  selectedProvider: string | null;
+  threadProvider: string | null;
+}): ProviderDriverKind | null {
   if (!threadHasStarted(input.thread)) {
     return null;
   }
-  return input.thread?.session?.provider ?? input.threadProvider ?? input.selectedProvider ?? null;
+  const sessionProvider = input.thread?.session?.provider ?? null;
+  if (sessionProvider) {
+    return sessionProvider;
+  }
+  const narrowedThreadProvider =
+    input.threadProvider && isProviderDriverKind(input.threadProvider)
+      ? input.threadProvider
+      : null;
+  const narrowedSelectedProvider =
+    input.selectedProvider && isProviderDriverKind(input.selectedProvider)
+      ? input.selectedProvider
+      : null;
+  return narrowedThreadProvider ?? narrowedSelectedProvider ?? null;
 }
 
 export async function waitForStartedServerThread(
@@ -322,37 +402,23 @@ export function hasServerAcknowledgedLocalDispatch(input: {
   if (!input.localDispatch) {
     return false;
   }
-  if (input.hasPendingApproval || input.hasPendingUserInput || Boolean(input.threadError)) {
+  if (
+    input.phase === "running" ||
+    input.hasPendingApproval ||
+    input.hasPendingUserInput ||
+    Boolean(input.threadError)
+  ) {
     return true;
   }
 
   const latestTurn = input.latestTurn ?? null;
   const session = input.session ?? null;
-  const latestTurnChanged =
+
+  return (
     input.localDispatch.latestTurnTurnId !== (latestTurn?.turnId ?? null) ||
     input.localDispatch.latestTurnRequestedAt !== (latestTurn?.requestedAt ?? null) ||
     input.localDispatch.latestTurnStartedAt !== (latestTurn?.startedAt ?? null) ||
-    input.localDispatch.latestTurnCompletedAt !== (latestTurn?.completedAt ?? null);
-
-  if (input.phase === "running") {
-    if (!latestTurnChanged) {
-      return false;
-    }
-    if (latestTurn?.startedAt === null || latestTurn === null) {
-      return false;
-    }
-    if (
-      session?.activeTurnId !== undefined &&
-      session.activeTurnId !== null &&
-      latestTurn?.turnId !== session.activeTurnId
-    ) {
-      return false;
-    }
-    return true;
-  }
-
-  return (
-    latestTurnChanged ||
+    input.localDispatch.latestTurnCompletedAt !== (latestTurn?.completedAt ?? null) ||
     input.localDispatch.sessionOrchestrationStatus !== (session?.orchestrationStatus ?? null) ||
     input.localDispatch.sessionUpdatedAt !== (session?.updatedAt ?? null)
   );

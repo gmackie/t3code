@@ -23,14 +23,13 @@ import {
   SynchronizedRef,
 } from "effect";
 
-import { ServerConfig } from "../../config";
+import { ServerConfig } from "../../config.ts";
 import {
   increment,
   terminalRestartsTotal,
   terminalSessionsTotal,
-} from "../../observability/Metrics";
-import { runProcess } from "../../processRunner";
-import { ServerSettingsService } from "../../serverSettings";
+} from "../../observability/Metrics.ts";
+import { runProcess } from "../../processRunner.ts";
 import {
   TerminalCwdError,
   TerminalHistoryError,
@@ -39,15 +38,14 @@ import {
   type ShellCandidate,
   TerminalSessionLookupError,
   type TerminalManagerShape,
-} from "../Services/Manager";
+} from "../Services/Manager.ts";
 import {
   PtyAdapter,
   PtySpawnError,
   type PtyAdapterShape,
   type PtyExitEvent,
   type PtyProcess,
-} from "../Services/PTY";
-import { resolveCurrentShell, resolveTerminalShellSpawnConfig } from "../terminalProfile";
+} from "../Services/PTY.ts";
 
 const DEFAULT_HISTORY_LINE_LIMIT = 5_000;
 const DEFAULT_PERSIST_DEBOUNCE_MS = 40;
@@ -185,13 +183,119 @@ function enqueueProcessEvent(
   return true;
 }
 
-function defaultShellResolver(): string {
-  return resolveCurrentShell(process.platform, process.env);
+function defaultShellResolver(
+  platform: NodeJS.Platform = process.platform,
+  env: NodeJS.ProcessEnv = process.env,
+): string {
+  if (platform === "win32") {
+    return "pwsh.exe";
+  }
+  return env.SHELL ?? "bash";
+}
+
+function normalizeShellCommand(
+  value: string | undefined,
+  platform: NodeJS.Platform = process.platform,
+): string | null {
+  if (!value) return null;
+  const trimmed = value.trim();
+  if (trimmed.length === 0) return null;
+
+  if (platform === "win32") {
+    return trimmed;
+  }
+
+  const firstToken = trimmed.split(/\s+/g)[0]?.trim();
+  if (!firstToken) return null;
+  return firstToken.replace(/^['"]|['"]$/g, "");
+}
+
+function shellCandidateFromCommand(
+  command: string | null,
+  platform: NodeJS.Platform = process.platform,
+): ShellCandidate | null {
+  if (!command || command.length === 0) return null;
+  const shellName =
+    platform === "win32"
+      ? path.win32.basename(command).toLowerCase()
+      : path.basename(command).toLowerCase();
+  if (platform === "win32" && (shellName === "pwsh.exe" || shellName === "powershell.exe")) {
+    return { shell: command, args: ["-NoLogo"] };
+  }
+  if (platform !== "win32" && shellName === "zsh") {
+    return { shell: command, args: ["-o", "nopromptsp"] };
+  }
+  return { shell: command };
+}
+
+function windowsSystemRoot(env: NodeJS.ProcessEnv): string {
+  return env.SystemRoot?.trim() || env.windir?.trim() || "C:\\Windows";
+}
+
+function windowsPowerShellPath(env: NodeJS.ProcessEnv): string {
+  return path.win32.join(
+    windowsSystemRoot(env),
+    "System32",
+    "WindowsPowerShell",
+    "v1.0",
+    "powershell.exe",
+  );
+}
+
+function windowsCmdPath(env: NodeJS.ProcessEnv): string {
+  return path.win32.join(windowsSystemRoot(env), "System32", "cmd.exe");
 }
 
 function formatShellCandidate(candidate: ShellCandidate): string {
   if (!candidate.args || candidate.args.length === 0) return candidate.shell;
   return `${candidate.shell} ${candidate.args.join(" ")}`;
+}
+
+function uniqueShellCandidates(candidates: Array<ShellCandidate | null>): ShellCandidate[] {
+  const seen = new Set<string>();
+  const ordered: ShellCandidate[] = [];
+  for (const candidate of candidates) {
+    if (!candidate) continue;
+    const key = formatShellCandidate(candidate);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    ordered.push(candidate);
+  }
+  return ordered;
+}
+
+function resolveShellCandidates(
+  shellResolver: () => string,
+  platform: NodeJS.Platform = process.platform,
+  env: NodeJS.ProcessEnv = process.env,
+): ShellCandidate[] {
+  const requested = shellCandidateFromCommand(
+    normalizeShellCommand(shellResolver(), platform),
+    platform,
+  );
+
+  if (platform === "win32") {
+    return uniqueShellCandidates([
+      requested,
+      shellCandidateFromCommand("pwsh.exe", platform),
+      shellCandidateFromCommand(windowsPowerShellPath(env), platform),
+      shellCandidateFromCommand("powershell.exe", platform),
+      shellCandidateFromCommand(env.ComSpec ?? null, platform),
+      shellCandidateFromCommand(windowsCmdPath(env), platform),
+      shellCandidateFromCommand("cmd.exe", platform),
+    ]);
+  }
+
+  return uniqueShellCandidates([
+    requested,
+    shellCandidateFromCommand(normalizeShellCommand(env.SHELL, platform), platform),
+    shellCandidateFromCommand("/bin/zsh", platform),
+    shellCandidateFromCommand("/bin/bash", platform),
+    shellCandidateFromCommand("/bin/sh", platform),
+    shellCandidateFromCommand("zsh", platform),
+    shellCandidateFromCommand("bash", platform),
+    shellCandidateFromCommand("sh", platform),
+  ]);
 }
 
 function isRetryableShellSpawnError(error: PtySpawnError): boolean {
@@ -555,6 +659,13 @@ function shouldExcludeTerminalEnvKey(key: string): boolean {
   return TERMINAL_ENV_BLOCKLIST.has(normalizedKey);
 }
 
+function expandHomePath(value: string, home: string | undefined): string {
+  if (!home || home.length === 0) return value;
+  if (value === "~") return home;
+  if (value.startsWith("~/")) return path.join(home, value.slice(2));
+  return value;
+}
+
 function createTerminalSpawnEnv(
   baseEnv: NodeJS.ProcessEnv,
   profileEnv?: Record<string, string> | null,
@@ -576,6 +687,9 @@ function createTerminalSpawnEnv(
       spawnEnv[key] = value;
     }
   }
+  if (spawnEnv.ZDOTDIR !== undefined) {
+    spawnEnv.ZDOTDIR = expandHomePath(spawnEnv.ZDOTDIR, spawnEnv.HOME);
+  }
   return spawnEnv;
 }
 
@@ -593,7 +707,8 @@ interface TerminalManagerOptions {
   historyLineLimit?: number;
   ptyAdapter: PtyAdapterShape;
   shellResolver?: () => string;
-  terminalProfileResolver?: Effect.Effect<TerminalProfileSettings>;
+  platform?: NodeJS.Platform;
+  env?: NodeJS.ProcessEnv;
   subprocessChecker?: TerminalSubprocessChecker;
   subprocessPollIntervalMs?: number;
   processKillGraceMs?: number;
@@ -638,14 +753,9 @@ export const makeTerminalManagerWithOptions = Effect.fn("makeTerminalManagerWith
 
     const logsDir = options.logsDir;
     const historyLineLimit = options.historyLineLimit ?? DEFAULT_HISTORY_LINE_LIMIT;
-    const shellResolver = options.shellResolver ?? defaultShellResolver;
-    const terminalProfileResolver =
-      options.terminalProfileResolver ??
-      Effect.succeed({
-        shellPath: "",
-        shellArgs: [],
-        env: {},
-      } satisfies TerminalProfileSettings);
+    const platform = options.platform ?? process.platform;
+    const baseEnv = options.env ?? process.env;
+    const shellResolver = options.shellResolver ?? (() => defaultShellResolver(platform, baseEnv));
     const subprocessChecker = options.subprocessChecker ?? defaultSubprocessChecker;
     const subprocessPollIntervalMs =
       options.subprocessPollIntervalMs ?? DEFAULT_SUBPROCESS_POLL_INTERVAL_MS;
@@ -1308,19 +1418,8 @@ export const makeTerminalManagerWithOptions = Effect.fn("makeTerminalManagerWith
         increment(terminalSessionsTotal, { lifecycle: eventType }).pipe(
           Effect.andThen(
             Effect.gen(function* () {
-              const terminalProfile = yield* terminalProfileResolver;
-              const resolvedSpawnConfig = resolveTerminalShellSpawnConfig({
-                platform: process.platform,
-                processEnv: process.env,
-                shellResolver,
-                profile: terminalProfile,
-              });
-              const shellCandidates = resolvedSpawnConfig.shellCandidates;
-              const terminalEnv = createTerminalSpawnEnv(
-                process.env,
-                resolvedSpawnConfig.profileEnv,
-                session.runtimeEnv,
-              );
+              const shellCandidates = resolveShellCandidates(shellResolver, platform, baseEnv);
+              const terminalEnv = createTerminalSpawnEnv(baseEnv, session.runtimeEnv);
               const spawnResult = yield* trySpawn(shellCandidates, terminalEnv, session);
               ptyProcess = spawnResult.process;
               startedShell = spawnResult.shellLabel;

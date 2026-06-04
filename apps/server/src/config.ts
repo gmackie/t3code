@@ -16,7 +16,10 @@ export type RuntimeMode = typeof RuntimeMode.Type;
 export const StartupPresentation = Schema.Literals(["browser", "headless"]);
 export type StartupPresentation = typeof StartupPresentation.Type;
 
-function normalizeStateDirName(value: string | undefined, devUrl: URL | undefined): string {
+const normalizeStateDirName = Effect.fn(function* (
+  value: string | undefined,
+  devUrl: URL | undefined,
+) {
   const fallback = devUrl !== undefined ? "dev" : "userdata";
   const stateDirName = value?.trim() || fallback;
   if (
@@ -25,10 +28,10 @@ function normalizeStateDirName(value: string | undefined, devUrl: URL | undefine
     stateDirName.includes("/") ||
     stateDirName.includes("\\")
   ) {
-    throw new Error(`Invalid state directory name: ${stateDirName}`);
+    return yield* Effect.fail(new Error(`Invalid state directory name: ${stateDirName}`));
   }
   return stateDirName;
-}
+});
 
 /**
  * ServerDerivedPaths - Derived paths from the base directory.
@@ -85,9 +88,9 @@ export const deriveServerPaths = Effect.fn(function* (
   baseDir: ServerConfigShape["baseDir"],
   devUrl: ServerConfigShape["devUrl"],
   stateDirName?: string | undefined,
-): Effect.fn.Return<ServerDerivedPaths, never, Path.Path> {
+): Effect.fn.Return<ServerDerivedPaths, Error, Path.Path> {
   const { join } = yield* Path.Path;
-  const stateDir = join(baseDir, normalizeStateDirName(stateDirName, devUrl));
+  const stateDir = join(baseDir, yield* normalizeStateDirName(stateDirName, devUrl));
   const dbPath = join(stateDir, "state.sqlite");
   const attachmentsDir = join(stateDir, "attachments");
   const logsDir = join(stateDir, "logs");

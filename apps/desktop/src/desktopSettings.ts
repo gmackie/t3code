@@ -2,16 +2,18 @@ import * as FS from "node:fs";
 import * as Path from "node:path";
 import type { DesktopServerExposureMode, DesktopUpdateChannel } from "@t3tools/contracts";
 
-import { resolveDefaultDesktopUpdateChannel } from "./updateChannels";
+import { resolveDefaultDesktopUpdateChannel } from "./updateChannels.ts";
 
 export interface DesktopSettings {
   readonly serverExposureMode: DesktopServerExposureMode;
   readonly updateChannel: DesktopUpdateChannel;
+  readonly updateChannelConfiguredByUser: boolean;
 }
 
 export const DEFAULT_DESKTOP_SETTINGS: DesktopSettings = {
   serverExposureMode: "local-only",
   updateChannel: "latest",
+  updateChannelConfiguredByUser: false,
 };
 
 export function resolveDefaultDesktopSettings(appVersion: string): DesktopSettings {
@@ -37,16 +39,16 @@ export function setDesktopUpdateChannelPreference(
   settings: DesktopSettings,
   requestedChannel: DesktopUpdateChannel,
 ): DesktopSettings {
-  return settings.updateChannel === requestedChannel
-    ? settings
-    : {
-        ...settings,
-        updateChannel: requestedChannel,
-      };
+  return {
+    ...settings,
+    updateChannel: requestedChannel,
+    updateChannelConfiguredByUser: true,
+  };
 }
 
-export function readDesktopSettings(settingsPath: string, appVersion = "0.0.0"): DesktopSettings {
+export function readDesktopSettings(settingsPath: string, appVersion: string): DesktopSettings {
   const defaultSettings = resolveDefaultDesktopSettings(appVersion);
+
   try {
     if (!FS.existsSync(settingsPath)) {
       return defaultSettings;
@@ -56,15 +58,31 @@ export function readDesktopSettings(settingsPath: string, appVersion = "0.0.0"):
     const parsed = JSON.parse(raw) as {
       readonly serverExposureMode?: unknown;
       readonly updateChannel?: unknown;
+      readonly updateChannelConfiguredByUser?: unknown;
     };
+    const parsedUpdateChannel =
+      parsed.updateChannel === "nightly" ||
+      parsed.updateChannel === "latest" ||
+      parsed.updateChannel === "gmacko"
+        ? parsed.updateChannel
+        : null;
+    const parsedServerExposureMode =
+      parsed.serverExposureMode === "tailnet-accessible" ||
+      parsed.serverExposureMode === "network-accessible"
+        ? parsed.serverExposureMode
+        : "local-only";
+    const isLegacySettings = parsed.updateChannelConfiguredByUser === undefined;
+    const updateChannelConfiguredByUser =
+      parsed.updateChannelConfiguredByUser === true ||
+      (isLegacySettings && parsedUpdateChannel !== null && parsedUpdateChannel !== "latest");
 
     return {
-      serverExposureMode:
-        parsed.serverExposureMode === "network-accessible" ? "network-accessible" : "local-only",
+      serverExposureMode: parsedServerExposureMode,
       updateChannel:
-        parsed.updateChannel === "nightly" || parsed.updateChannel === "gmacko"
-          ? parsed.updateChannel
+        updateChannelConfiguredByUser && parsedUpdateChannel !== null
+          ? parsedUpdateChannel
           : defaultSettings.updateChannel,
+      updateChannelConfiguredByUser,
     };
   } catch {
     return defaultSettings;

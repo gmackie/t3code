@@ -4,7 +4,7 @@ import {
   BackendReadinessAbortedError,
   isBackendReadinessAborted,
   waitForHttpReady,
-} from "./backendReadiness";
+} from "./backendReadiness.ts";
 
 describe("waitForHttpReady", () => {
   it("returns once the backend serves the requested readiness path", async () => {
@@ -22,9 +22,26 @@ describe("waitForHttpReady", () => {
     expect(fetchImpl).toHaveBeenCalledTimes(2);
     expect(fetchImpl).toHaveBeenNthCalledWith(
       1,
-      "http://127.0.0.1:3773/",
+      "http://127.0.0.1:3773/api/auth/session",
       expect.objectContaining({ redirect: "manual" }),
     );
+  });
+
+  it("preserves query parameters when probing readiness", async () => {
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(new Response(null, { status: 200 }));
+
+    await waitForHttpReady("http://127.0.0.1:3773/?token=abc123", {
+      fetchImpl,
+      timeoutMs: 1_000,
+      intervalMs: 0,
+    });
+
+    expect(fetchImpl).toHaveBeenCalledWith("http://127.0.0.1:3773/api/auth/session?token=abc123", {
+      redirect: "manual",
+      signal: expect.any(AbortSignal),
+    });
   });
 
   it("retries after a readiness request stalls past the per-request timeout", async () => {

@@ -15,12 +15,12 @@ import type {
   OrchestrationThreadShell,
   OrchestrationThreadActivity,
   ProjectId,
-  ProviderKind,
   ScopedProjectRef,
   ScopedThreadRef,
-  ThreadId,
-  TurnId,
 } from "@t3tools/contracts";
+import { isProviderDriverKind, ProviderDriverKind } from "@t3tools/contracts";
+import type { ThreadId, TurnId } from "@t3tools/contracts";
+import { Schema } from "effect";
 import { resolveModelSlugForProvider } from "@t3tools/shared/model";
 import { create } from "zustand";
 import {
@@ -129,12 +129,16 @@ function arraysEqual<T>(left: readonly T[], right: readonly T[]): boolean {
   return left.length === right.length && left.every((value, index) => value === right[index]);
 }
 
-function normalizeModelSelection<T extends { provider: "codex" | "claudeAgent"; model: string }>(
-  selection: T,
-): T {
+// Accepts the open `instanceId` string carried on `ModelSelection`; malformed
+// values pass through unchanged, while valid slugs use any registered alias
+// table for model normalization.
+function normalizeModelSelection<T extends { instanceId: string; model: string }>(selection: T): T {
+  if (!isProviderDriverKind(selection.instanceId)) {
+    return selection;
+  }
   return {
     ...selection,
-    model: resolveModelSlugForProvider(selection.provider, selection.model),
+    model: resolveModelSlugForProvider(selection.instanceId, selection.model),
   };
 }
 
@@ -145,6 +149,7 @@ function mapProjectScripts(scripts: ReadonlyArray<Project["scripts"][number]>): 
 function mapSession(session: OrchestrationSession): ThreadSession {
   return {
     provider: toLegacyProvider(session.providerName),
+    providerInstanceId: session.providerInstanceId ?? undefined,
     status: toLegacySessionStatus(session.status),
     orchestrationStatus: session.status,
     activeTurnId: session.activeTurnId ?? undefined,
@@ -1000,11 +1005,11 @@ function toLegacySessionStatus(
   }
 }
 
-function toLegacyProvider(providerName: string | null): ProviderKind {
-  if (providerName === "codex" || providerName === "claudeAgent") {
+function toLegacyProvider(providerName: string | null): ProviderDriverKind {
+  if (Schema.is(ProviderDriverKind)(providerName)) {
     return providerName;
   }
-  return "codex";
+  return ProviderDriverKind.make("codex");
 }
 
 function attachmentPreviewRoutePath(attachmentId: string): string {

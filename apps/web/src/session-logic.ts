@@ -1,10 +1,12 @@
+import * as Option from "effect/Option";
+import * as Arr from "effect/Array";
 import {
   ApprovalRequestId,
   isToolLifecycleItemType,
   type OrchestrationLatestTurn,
   type OrchestrationThreadActivity,
   type OrchestrationProposedPlanId,
-  type ProviderKind,
+  ProviderDriverKind,
   type ToolLifecycleItemType,
   type UserInputQuestion,
   type ThreadId,
@@ -20,16 +22,29 @@ import type {
   TurnDiffSummary,
 } from "./types";
 
-export type ProviderPickerKind = ProviderKind | "cursor";
+export type ProviderPickerKind = ProviderDriverKind;
 
 export const PROVIDER_OPTIONS: Array<{
   value: ProviderPickerKind;
   label: string;
   available: boolean;
+  /** Shown on the model picker sidebar when relevant */
+  pickerSidebarBadge?: "new" | "soon";
 }> = [
-  { value: "codex", label: "Codex", available: true },
-  { value: "claudeAgent", label: "Claude", available: true },
-  { value: "cursor", label: "Cursor", available: false },
+  { value: ProviderDriverKind.make("codex"), label: "Codex", available: true },
+  { value: ProviderDriverKind.make("claudeAgent"), label: "Claude", available: true },
+  {
+    value: ProviderDriverKind.make("opencode"),
+    label: "OpenCode",
+    available: true,
+    pickerSidebarBadge: "new",
+  },
+  {
+    value: ProviderDriverKind.make("cursor"),
+    label: "Cursor",
+    available: true,
+    pickerSidebarBadge: "new",
+  },
 ];
 
 export interface WorkLogEntry {
@@ -44,11 +59,13 @@ export interface WorkLogEntry {
   toolTitle?: string;
   itemType?: ToolLifecycleItemType;
   requestKind?: PendingApproval["requestKind"];
+  browserEvidence?: BrowserToolEvidence;
 }
 
 interface DerivedWorkLogEntry extends WorkLogEntry {
   activityKind: OrchestrationThreadActivity["kind"];
   collapseKey?: string;
+  toolCallId?: string;
 }
 
 export interface PendingApproval {
@@ -104,6 +121,27 @@ export type TimelineEntry =
       entry: WorkLogEntry;
     };
 
+export interface BrowserToolEvidence {
+  toolName: string;
+  capturedAt: string;
+  message?: string;
+  error?: string;
+  url?: string;
+  title?: string | null;
+  text?: string;
+  loadingState?: "loading" | "interactive" | "complete";
+  lastError?: string | null;
+  elements?: Array<{
+    role: string;
+    name: string;
+    text?: string;
+    disabled?: boolean;
+  }>;
+  screenshotDataUrl?: string;
+  consoleMessages?: string[];
+  networkErrors?: string[];
+}
+
 export function formatDuration(durationMs: number): string {
   if (!Number.isFinite(durationMs) || durationMs < 0) return "0ms";
   if (durationMs < 1_000) return `${Math.max(1, Math.round(durationMs))}ms`;
@@ -136,6 +174,9 @@ export function isLatestTurnSettled(
   if (!latestTurn?.startedAt) return false;
   if (!latestTurn.completedAt) return false;
   if (!session) return true;
+  if (session.activeTurnId === undefined) {
+    return true;
+  }
   if (session.orchestrationStatus === "running") return false;
   return true;
 }
@@ -145,15 +186,14 @@ export function deriveActiveWorkStartedAt(
   session: SessionActivityState | null,
   sendStartedAt: string | null,
 ): string | null {
-  const runningTurnId =
-    session?.orchestrationStatus === "running" ? (session.activeTurnId ?? null) : null;
-  if (runningTurnId !== null) {
-    if (latestTurn?.turnId === runningTurnId) {
-      return latestTurn.startedAt ?? sendStartedAt;
-    }
-    return sendStartedAt;
+  if (latestTurn?.startedAt && !latestTurn.completedAt) {
+    return latestTurn.startedAt;
   }
-  if (!isLatestTurnSettled(latestTurn, session)) {
+  if (
+    latestTurn?.startedAt &&
+    session?.orchestrationStatus === "running" &&
+    session.activeTurnId === latestTurn.turnId
+  ) {
     return latestTurn?.startedAt ?? sendStartedAt;
   }
   return sendStartedAt;
@@ -163,6 +203,7 @@ function requestKindFromRequestType(requestType: unknown): PendingApproval["requ
   switch (requestType) {
     case "command_execution_approval":
     case "exec_command_approval":
+    case "dynamic_tool_call":
       return "command";
     case "file_read_approval":
       return "file-read";
@@ -351,12 +392,12 @@ export function deriveActivePlanState(
   const allPlanActivities = ordered.filter((activity) => activity.kind === "turn.plan.updated");
   // Prefer plan from the current turn; fall back to the most recent plan from any turn
   // so that TodoWrite tasks persist across follow-up messages.
-  const latest =
-    (latestTurnId
-      ? allPlanActivities.filter((activity) => activity.turnId === latestTurnId).at(-1)
-      : undefined) ??
-    allPlanActivities.at(-1) ??
-    null;
+  const latest = Option.firstSomeOf([
+    ...(latestTurnId
+      ? Arr.findLast(allPlanActivities, (activity) => activity.turnId === latestTurnId)
+      : Option.none()),
+    Arr.last(allPlanActivities),
+  ]).pipe(Option.getOrNull);
   if (!latest) {
     return null;
   }
@@ -498,6 +539,7 @@ function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWo
     activity.payload && typeof activity.payload === "object"
       ? (activity.payload as Record<string, unknown>)
       : null;
+  const payloadSummary = asTrimmedString(payload?.summary);
   const commandPreview = extractToolCommand(payload);
   const changedFiles = extractChangedFiles(payload);
   const title = extractToolTitle(payload);
@@ -514,10 +556,19 @@ function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWo
       ? payload.detail
       : null;
   const taskLabel = taskSummary || taskDetailAsLabel;
+  const detail = isTaskActivity
+    ? !taskDetailAsLabel &&
+      payload &&
+      typeof payload.detail === "string" &&
+      payload.detail.length > 0
+      ? stripTrailingExitCode(payload.detail).output
+      : null
+    : extractToolDetail(payload, title ?? activity.summary);
+  const toolCallId = isTaskActivity ? null : extractToolCallId(payload);
   const entry: DerivedWorkLogEntry = {
     id: activity.id,
     createdAt: activity.createdAt,
-    label: taskLabel || activity.summary,
+    label: taskLabel || payloadSummary || activity.summary,
     tone:
       activity.kind === "task.progress"
         ? "thinking"
@@ -528,16 +579,18 @@ function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWo
   };
   const itemType = extractWorkLogItemType(payload);
   const requestKind = extractWorkLogRequestKind(payload);
-  if (
-    !taskDetailAsLabel &&
-    payload &&
-    typeof payload.detail === "string" &&
-    payload.detail.length > 0
-  ) {
-    const detail = stripTrailingExitCode(payload.detail).output;
-    if (detail) {
-      entry.detail = detail;
-    }
+  if (detail) {
+    entry.detail = detail;
+  }
+  const browserEvidence = readBrowserToolEvidence(payload);
+  const browserEvidenceSummary = browserEvidence
+    ? summarizeBrowserToolEvidence(browserEvidence)
+    : null;
+  if (browserEvidenceSummary) {
+    entry.detail = browserEvidenceSummary;
+  }
+  if (browserEvidence) {
+    entry.browserEvidence = browserEvidence;
   }
   if (commandPreview.command) {
     entry.command = commandPreview.command;
@@ -557,11 +610,41 @@ function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWo
   if (requestKind) {
     entry.requestKind = requestKind;
   }
+  if (toolCallId) {
+    entry.toolCallId = toolCallId;
+  }
   const collapseKey = deriveToolLifecycleCollapseKey(entry);
   if (collapseKey) {
     entry.collapseKey = collapseKey;
   }
   return entry;
+}
+
+export function deriveLatestBrowserToolEvidence(
+  activities: ReadonlyArray<OrchestrationThreadActivity>,
+  latestTurnId: TurnId | undefined,
+): BrowserToolEvidence | null {
+  const ordered = [...activities]
+    .filter((activity) => (latestTurnId ? activity.turnId === latestTurnId : true))
+    .toSorted(compareActivitiesByOrder)
+    .toReversed();
+
+  for (const activity of ordered) {
+    const payload =
+      activity.payload && typeof activity.payload === "object"
+        ? (activity.payload as Record<string, unknown>)
+        : null;
+    const evidence = readBrowserToolEvidence(payload);
+    if (!evidence) {
+      continue;
+    }
+    return {
+      ...evidence,
+      capturedAt: activity.createdAt,
+    };
+  }
+
+  return null;
 }
 
 function collapseDerivedWorkLogEntries(
@@ -592,7 +675,16 @@ function shouldCollapseToolLifecycleEntries(
   if (previous.activityKind === "tool.completed") {
     return false;
   }
-  return previous.collapseKey !== undefined && previous.collapseKey === next.collapseKey;
+  if (previous.collapseKey !== undefined && previous.collapseKey === next.collapseKey) {
+    return true;
+  }
+  return (
+    previous.toolCallId !== undefined &&
+    next.toolCallId === undefined &&
+    previous.itemType === next.itemType &&
+    normalizeCompactToolLabel(previous.toolTitle ?? previous.label) ===
+      normalizeCompactToolLabel(next.toolTitle ?? next.label)
+  );
 }
 
 function mergeDerivedWorkLogEntries(
@@ -607,6 +699,7 @@ function mergeDerivedWorkLogEntries(
   const itemType = next.itemType ?? previous.itemType;
   const requestKind = next.requestKind ?? previous.requestKind;
   const collapseKey = next.collapseKey ?? previous.collapseKey;
+  const toolCallId = next.toolCallId ?? previous.toolCallId;
   return {
     ...previous,
     ...next,
@@ -618,6 +711,7 @@ function mergeDerivedWorkLogEntries(
     ...(itemType ? { itemType } : {}),
     ...(requestKind ? { requestKind } : {}),
     ...(collapseKey ? { collapseKey } : {}),
+    ...(toolCallId ? { toolCallId } : {}),
   };
 }
 
@@ -635,6 +729,9 @@ function mergeChangedFiles(
 function deriveToolLifecycleCollapseKey(entry: DerivedWorkLogEntry): string | undefined {
   if (entry.activityKind !== "tool.updated" && entry.activityKind !== "tool.completed") {
     return undefined;
+  }
+  if (entry.toolCallId) {
+    return `tool:${entry.toolCallId}`;
   }
   const normalizedLabel = normalizeCompactToolLabel(entry.toolTitle ?? entry.label);
   const detail = entry.detail?.trim() ?? "";
@@ -671,6 +768,128 @@ function asTrimmedString(value: unknown): string | null {
   }
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : null;
+}
+
+function asNumber(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function asStringList(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+  const items = value
+    .map((entry) => asTrimmedString(entry))
+    .filter((entry): entry is string => entry !== null);
+  return items.length > 0 ? items : undefined;
+}
+
+function asLoadingState(value: unknown): BrowserToolEvidence["loadingState"] | undefined {
+  return value === "loading" || value === "interactive" || value === "complete" ? value : undefined;
+}
+
+function readBrowserToolName(payload: Record<string, unknown> | null): string | null {
+  const data = asRecord(payload?.data);
+  const item = asRecord(data?.item);
+  return (
+    asTrimmedString(data?.toolName) ??
+    asTrimmedString(item?.toolName) ??
+    asTrimmedString(item?.name) ??
+    asTrimmedString(payload?.toolName)
+  );
+}
+
+function readBrowserToolEvidence(
+  payload: Record<string, unknown> | null,
+): BrowserToolEvidence | null {
+  if (payload?.itemType !== "dynamic_tool_call") {
+    return null;
+  }
+  const toolName = readBrowserToolName(payload);
+  if (!toolName || !toolName.startsWith("browser.")) {
+    return null;
+  }
+  const data = asRecord(payload.data);
+  const item = asRecord(data?.item);
+  const result = asRecord(item?.result);
+  if (!result) {
+    return null;
+  }
+
+  const elements = Array.isArray(result.elements)
+    ? result.elements
+        .map((entry) => {
+          const record = asRecord(entry);
+          const role = asTrimmedString(record?.role);
+          const name = asTrimmedString(record?.name);
+          if (!role || !name) {
+            return null;
+          }
+          return {
+            role,
+            name,
+            ...(asTrimmedString(record?.text) ? { text: asTrimmedString(record?.text)! } : {}),
+            ...(typeof record?.disabled === "boolean" ? { disabled: record.disabled } : {}),
+          };
+        })
+        .filter(
+          (entry): entry is NonNullable<BrowserToolEvidence["elements"]>[number] => entry !== null,
+        )
+    : undefined;
+  const message = asTrimmedString(result.message);
+  const error = asTrimmedString(result.error);
+  const url = asTrimmedString(result.url);
+  const text = asTrimmedString(result.text);
+  const loadingState = asLoadingState(result.loadingState);
+  const screenshotDataUrl = asTrimmedString(result.screenshotDataUrl);
+  const consoleMessages = asStringList(result.consoleMessages);
+  const networkErrors = asStringList(result.networkErrors);
+
+  return {
+    toolName,
+    capturedAt: "",
+    ...(message ? { message } : {}),
+    ...(error ? { error } : {}),
+    ...(url ? { url } : {}),
+    ...(result.title === null || typeof result.title === "string"
+      ? { title: result.title as string | null }
+      : {}),
+    ...(text ? { text } : {}),
+    ...(loadingState ? { loadingState } : {}),
+    ...(result.lastError === null || typeof result.lastError === "string"
+      ? { lastError: result.lastError as string | null }
+      : {}),
+    ...(elements && elements.length > 0 ? { elements } : {}),
+    ...(screenshotDataUrl ? { screenshotDataUrl } : {}),
+    ...(consoleMessages ? { consoleMessages } : {}),
+    ...(networkErrors ? { networkErrors } : {}),
+  };
+}
+
+function summarizeBrowserToolEvidence(evidence: BrowserToolEvidence): string | null {
+  const parts: string[] = [];
+  const title = evidence.title?.trim();
+  if (title) {
+    parts.push(title);
+  } else if (evidence.url) {
+    parts.push(evidence.url);
+  }
+  if (evidence.loadingState) {
+    parts.push(evidence.loadingState);
+  }
+  if (evidence.lastError) {
+    parts.push(`error: ${evidence.lastError}`);
+  }
+  if ((evidence.elements?.length ?? 0) > 0) {
+    parts.push(`elements ${evidence.elements?.length ?? 0}`);
+  }
+  if ((evidence.consoleMessages?.length ?? 0) > 0) {
+    parts.push(`console ${evidence.consoleMessages?.length ?? 0}`);
+  }
+  if ((evidence.networkErrors?.length ?? 0) > 0) {
+    parts.push(`network ${evidence.networkErrors?.length ?? 0}`);
+  }
+  return parts.length > 0 ? parts.join(" - ") : null;
 }
 
 function trimMatchingOuterQuotes(value: string): string {
@@ -852,8 +1071,144 @@ function extractToolCommand(payload: Record<string, unknown> | null): {
   };
 }
 
+function humanizeDynamicToolName(value: string): string {
+  const normalized = value.trim();
+  if (normalized.length === 0) {
+    return normalized;
+  }
+  return normalized
+    .split(/[.:/_-]+/)
+    .filter((part) => part.length > 0)
+    .map((part) => `${part.charAt(0).toUpperCase()}${part.slice(1)}`)
+    .join(" ");
+}
+
 function extractToolTitle(payload: Record<string, unknown> | null): string | null {
-  return asTrimmedString(payload?.title);
+  const title = asTrimmedString(payload?.title);
+  if (title && title !== "Tool call") {
+    return title;
+  }
+
+  if (payload?.itemType !== "dynamic_tool_call") {
+    return title;
+  }
+
+  const data = asRecord(payload.data);
+  const item = asRecord(data?.item);
+  const toolName =
+    asTrimmedString(data?.toolName) ??
+    asTrimmedString(item?.toolName) ??
+    asTrimmedString(item?.name) ??
+    asTrimmedString(payload.toolName);
+  if (!toolName) {
+    return title;
+  }
+  return humanizeDynamicToolName(toolName);
+}
+
+function extractToolCallId(payload: Record<string, unknown> | null): string | null {
+  const data = asRecord(payload?.data);
+  return asTrimmedString(data?.toolCallId);
+}
+
+function normalizeInlinePreview(value: string): string {
+  return value.replace(/\s+/g, " ").trim();
+}
+
+function truncateInlinePreview(value: string, maxLength = 84): string {
+  if (value.length <= maxLength) {
+    return value;
+  }
+  return `${value.slice(0, maxLength - 1).trimEnd()}…`;
+}
+
+function normalizePreviewForComparison(value: string | null | undefined): string | null {
+  const normalized = asTrimmedString(value);
+  if (!normalized) {
+    return null;
+  }
+  return normalizeCompactToolLabel(normalizeInlinePreview(normalized)).toLowerCase();
+}
+
+function summarizeToolTextOutput(value: string): string | null {
+  const lines = value
+    .split(/\r?\n/u)
+    .map((line) => normalizeInlinePreview(line))
+    .filter((line) => line.length > 0);
+  const firstLine = lines.find((line) => line !== "```");
+  if (firstLine) {
+    return truncateInlinePreview(firstLine);
+  }
+  if (lines.length > 1) {
+    return `${lines.length.toLocaleString()} lines`;
+  }
+  return null;
+}
+
+function summarizeToolRawOutput(payload: Record<string, unknown> | null): string | null {
+  const data = asRecord(payload?.data);
+  const rawOutput = asRecord(data?.rawOutput);
+  if (!rawOutput) {
+    return null;
+  }
+
+  const totalFiles = asNumber(rawOutput.totalFiles);
+  if (totalFiles !== null) {
+    const suffix = rawOutput.truncated === true ? "+" : "";
+    return `${totalFiles.toLocaleString()} file${totalFiles === 1 ? "" : "s"}${suffix}`;
+  }
+
+  const content = asTrimmedString(rawOutput.content);
+  if (content) {
+    return summarizeToolTextOutput(content);
+  }
+
+  const stdout = asTrimmedString(rawOutput.stdout);
+  if (stdout) {
+    return summarizeToolTextOutput(stdout);
+  }
+
+  return null;
+}
+
+function isCommandToolDetail(payload: Record<string, unknown> | null, heading: string): boolean {
+  const data = asRecord(payload?.data);
+  const kind = asTrimmedString(data?.kind)?.toLowerCase();
+  const title = asTrimmedString(payload?.title ?? heading)?.toLowerCase();
+  return (
+    extractWorkLogItemType(payload) === "command_execution" ||
+    kind === "execute" ||
+    title === "terminal" ||
+    title === "ran command"
+  );
+}
+
+function extractToolDetail(
+  payload: Record<string, unknown> | null,
+  heading: string,
+): string | null {
+  const rawDetail = asTrimmedString(payload?.detail);
+  const detail = rawDetail ? stripTrailingExitCode(rawDetail).output : null;
+  const normalizedHeading = normalizePreviewForComparison(heading);
+  const normalizedDetail = normalizePreviewForComparison(detail);
+
+  if (detail && normalizedHeading !== normalizedDetail) {
+    return detail;
+  }
+
+  if (isCommandToolDetail(payload, heading)) {
+    return null;
+  }
+
+  const rawOutputSummary = summarizeToolRawOutput(payload);
+  if (rawOutputSummary) {
+    const normalizedRawOutputSummary = normalizePreviewForComparison(rawOutputSummary);
+    if (normalizedRawOutputSummary !== normalizedHeading) {
+      return rawOutputSummary;
+    }
+  }
+
+  return null;
 }
 
 function stripTrailingExitCode(value: string): {
@@ -1103,6 +1458,7 @@ export function inferCheckpointTurnCountByTurnId(
 export function derivePhase(session: ThreadSession | null): SessionPhase {
   if (!session || session.status === "closed") return "disconnected";
   if (session.status === "connecting") return "connecting";
+  if (session.status === "running" && session.activeTurnId === undefined) return "ready";
   if (session.status === "running") return "running";
   return "ready";
 }

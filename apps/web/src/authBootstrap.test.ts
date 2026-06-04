@@ -42,6 +42,7 @@ function sessionResponse(body: unknown, init?: ResponseInit) {
 describe("resolveInitialServerAuthGateState", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
     vi.useRealTimers();
     installTestBrowser("http://localhost/");
   });
@@ -49,6 +50,7 @@ describe("resolveInitialServerAuthGateState", () => {
   afterEach(async () => {
     const { __resetServerAuthBootstrapForTests } = await import("./environments/primary");
     __resetServerAuthBootstrapForTests();
+    vi.unstubAllGlobals();
     vi.unstubAllEnvs();
     vi.useRealTimers();
     vi.restoreAllMocks();
@@ -71,7 +73,8 @@ describe("resolveInitialServerAuthGateState", () => {
       .mockResolvedValueOnce(
         jsonResponse({
           authenticated: true,
-          sessionMethod: "browser-session-cookie",
+          sessionMethod: "bearer-session-token",
+          sessionToken: "desktop-bearer-token",
           expiresAt: "2026-04-05T00:00:00.000Z",
         }),
       )
@@ -84,7 +87,7 @@ describe("resolveInitialServerAuthGateState", () => {
             sessionMethods: ["browser-session-cookie"],
             sessionCookieName: "t3_session",
           },
-          sessionMethod: "browser-session-cookie",
+          sessionMethod: "bearer-session-token",
           expiresAt: "2026-04-05T00:00:00.000Z",
         }),
       );
@@ -104,10 +107,9 @@ describe("resolveInitialServerAuthGateState", () => {
 
     await Promise.all([resolveInitialServerAuthGateState(), resolveInitialServerAuthGateState()]);
 
-    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(fetchMock.mock.calls[0]?.[0]).toBe("http://localhost:3773/api/auth/session");
-    expect(fetchMock.mock.calls[1]?.[0]).toBe("http://localhost:3773/api/auth/bootstrap");
-    expect(fetchMock.mock.calls[2]?.[0]).toBe("http://localhost:3773/api/auth/session");
+    expect(fetchMock.mock.calls[1]?.[0]).toBe("http://localhost:3773/api/auth/bootstrap/bearer");
   });
 
   it("uses https fetch urls when the primary environment uses wss", async () => {
@@ -314,7 +316,8 @@ describe("resolveInitialServerAuthGateState", () => {
       .mockResolvedValueOnce(
         jsonResponse({
           authenticated: true,
-          sessionMethod: "browser-session-cookie",
+          sessionMethod: "bearer-session-token",
+          sessionToken: "desktop-bearer-token",
           expiresAt: "2026-04-05T00:00:00.000Z",
         }),
       )
@@ -353,7 +356,7 @@ describe("resolveInitialServerAuthGateState", () => {
     expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
-  it("waits for the authenticated session to become observable after silent desktop bootstrap", async () => {
+  it("treats desktop bearer bootstrap as immediately authenticated", async () => {
     vi.useFakeTimers();
     const fetchMock = vi
       .fn<typeof fetch>()
@@ -371,31 +374,8 @@ describe("resolveInitialServerAuthGateState", () => {
       .mockResolvedValueOnce(
         jsonResponse({
           authenticated: true,
-          sessionMethod: "browser-session-cookie",
-          expiresAt: "2026-04-05T00:00:00.000Z",
-        }),
-      )
-      .mockResolvedValueOnce(
-        sessionResponse({
-          authenticated: false,
-          auth: {
-            policy: "desktop-managed-local",
-            bootstrapMethods: ["desktop-bootstrap"],
-            sessionMethods: ["browser-session-cookie"],
-            sessionCookieName: "t3_session",
-          },
-        }),
-      )
-      .mockResolvedValueOnce(
-        sessionResponse({
-          authenticated: true,
-          auth: {
-            policy: "desktop-managed-local",
-            bootstrapMethods: ["desktop-bootstrap"],
-            sessionMethods: ["browser-session-cookie"],
-            sessionCookieName: "t3_session",
-          },
-          sessionMethod: "browser-session-cookie",
+          sessionMethod: "bearer-session-token",
+          sessionToken: "desktop-bearer-token",
           expiresAt: "2026-04-05T00:00:00.000Z",
         }),
       );
@@ -419,9 +399,90 @@ describe("resolveInitialServerAuthGateState", () => {
     await expect(gateStatePromise).resolves.toEqual({
       status: "authenticated",
     });
-    expect(fetchMock).toHaveBeenCalledTimes(4);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls[1]?.[0]).toBe("http://localhost:3773/api/auth/bootstrap/bearer");
+  });
+
+  it("reuses the desktop bearer session token after a renderer reload instead of reusing the bootstrap token", async () => {
+    const storage = new Map<string, string>();
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        sessionResponse({
+          authenticated: false,
+          auth: {
+            policy: "desktop-managed-local",
+            bootstrapMethods: ["desktop-bootstrap"],
+            sessionMethods: ["browser-session-cookie", "bearer-session-token"],
+            sessionCookieName: "t3_session",
+          },
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          authenticated: true,
+          sessionMethod: "bearer-session-token",
+          sessionToken: "desktop-bearer-token",
+          expiresAt: "2026-04-05T00:00:00.000Z",
+        }),
+      )
+      .mockResolvedValueOnce(
+        sessionResponse({
+          authenticated: true,
+          auth: {
+            policy: "desktop-managed-local",
+            bootstrapMethods: ["desktop-bootstrap"],
+            sessionMethods: ["browser-session-cookie", "bearer-session-token"],
+            sessionCookieName: "t3_session",
+          },
+          sessionMethod: "bearer-session-token",
+          expiresAt: "2026-04-05T00:00:00.000Z",
+        }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const testWindow = installTestBrowser("http://localhost/");
+    vi.stubGlobal("sessionStorage", {
+      getItem: (key: string) => storage.get(key) ?? null,
+      setItem: (key: string, value: string) => {
+        storage.set(key, value);
+      },
+      removeItem: (key: string) => {
+        storage.delete(key);
+      },
+    });
+    testWindow.desktopBridge = {
+      getLocalEnvironmentBootstrap: () => ({
+        label: "Local environment",
+        httpBaseUrl: "http://localhost:3773",
+        wsBaseUrl: "ws://localhost:3773",
+        bootstrapToken: "desktop-bootstrap-token",
+      }),
+    } as DesktopBridge;
+
+    const { __resetServerAuthBootstrapForTests, resolveInitialServerAuthGateState } =
+      await import("./environments/primary");
+
+    await expect(resolveInitialServerAuthGateState()).resolves.toEqual({
+      status: "authenticated",
+    });
+    expect(fetchMock.mock.calls[0]?.[0]).toBe("http://localhost:3773/api/auth/session");
+    expect(fetchMock.mock.calls[1]?.[0]).toBe("http://localhost:3773/api/auth/bootstrap/bearer");
+
+    __resetServerAuthBootstrapForTests();
+
+    await expect(resolveInitialServerAuthGateState()).resolves.toEqual({
+      status: "authenticated",
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(3);
     expect(fetchMock.mock.calls[2]?.[0]).toBe("http://localhost:3773/api/auth/session");
-    expect(fetchMock.mock.calls[3]?.[0]).toBe("http://localhost:3773/api/auth/session");
+    expect(fetchMock.mock.calls[2]?.[1]).toMatchObject({
+      credentials: "include",
+      headers: {
+        authorization: "Bearer desktop-bearer-token",
+      },
+    });
   });
 
   it("memoizes the authenticated gate state after the first successful read", async () => {
@@ -488,6 +549,131 @@ describe("resolveInitialServerAuthGateState", () => {
       credentials: "include",
       headers: {
         "content-type": "application/json",
+      },
+      method: "POST",
+    });
+  });
+
+  it("uses the desktop bearer session for authenticated control-plane requests", async () => {
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        sessionResponse({
+          authenticated: false,
+          auth: {
+            policy: "desktop-managed-local",
+            bootstrapMethods: ["desktop-bootstrap"],
+            sessionMethods: ["browser-session-cookie", "bearer-session-token"],
+            sessionCookieName: "t3_session",
+          },
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          authenticated: true,
+          sessionMethod: "bearer-session-token",
+          sessionToken: "desktop-bearer-token",
+          expiresAt: "2026-04-05T00:00:00.000Z",
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          id: "pairing-link-1",
+          credential: "pairing-token",
+          expiresAt: "2026-04-05T00:00:00.000Z",
+        }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const testWindow = installTestBrowser("http://localhost/");
+    testWindow.desktopBridge = {
+      getLocalEnvironmentBootstrap: () => ({
+        label: "Local environment",
+        httpBaseUrl: "http://localhost:3773",
+        wsBaseUrl: "ws://localhost:3773",
+        bootstrapToken: "desktop-bootstrap-token",
+      }),
+    } as DesktopBridge;
+
+    const { createServerPairingCredential, resolveInitialServerAuthGateState } =
+      await import("./environments/primary");
+
+    await expect(resolveInitialServerAuthGateState()).resolves.toEqual({
+      status: "authenticated",
+    });
+    await expect(createServerPairingCredential()).resolves.toEqual({
+      id: "pairing-link-1",
+      credential: "pairing-token",
+      expiresAt: "2026-04-05T00:00:00.000Z",
+    });
+
+    expect(fetchMock.mock.calls[2]?.[0]).toBe("http://localhost:3773/api/auth/pairing-token");
+    expect(fetchMock.mock.calls[2]?.[1]).toMatchObject({
+      body: JSON.stringify({}),
+      credentials: "include",
+      headers: {
+        authorization: "Bearer desktop-bearer-token",
+        "content-type": "application/json",
+      },
+      method: "POST",
+    });
+  });
+
+  it("issues a websocket token for desktop bearer-backed primary connections", async () => {
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        sessionResponse({
+          authenticated: false,
+          auth: {
+            policy: "desktop-managed-local",
+            bootstrapMethods: ["desktop-bootstrap"],
+            sessionMethods: ["browser-session-cookie", "bearer-session-token"],
+            sessionCookieName: "t3_session",
+          },
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          authenticated: true,
+          sessionMethod: "bearer-session-token",
+          sessionToken: "desktop-bearer-token",
+          expiresAt: "2026-04-05T00:00:00.000Z",
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          token: "ws-token",
+          expiresAt: "2026-04-05T00:00:00.000Z",
+        }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const testWindow = installTestBrowser("http://localhost/");
+    testWindow.desktopBridge = {
+      getLocalEnvironmentBootstrap: () => ({
+        label: "Local environment",
+        httpBaseUrl: "http://localhost:3773",
+        wsBaseUrl: "ws://localhost:3773",
+        bootstrapToken: "desktop-bootstrap-token",
+      }),
+    } as DesktopBridge;
+
+    const { resolveInitialServerAuthGateState, resolvePrimaryWebSocketConnectionUrl } =
+      await import("./environments/primary");
+
+    await expect(resolveInitialServerAuthGateState()).resolves.toEqual({
+      status: "authenticated",
+    });
+    await expect(
+      resolvePrimaryWebSocketConnectionUrl("ws://localhost:3773/ws?token=backend-token"),
+    ).resolves.toBe("ws://localhost:3773/ws?token=backend-token&wsToken=ws-token");
+
+    expect(fetchMock.mock.calls[2]?.[0]).toBe("http://localhost:3773/api/auth/ws-token");
+    expect(fetchMock.mock.calls[2]?.[1]).toMatchObject({
+      credentials: "include",
+      headers: {
+        authorization: "Bearer desktop-bearer-token",
       },
       method: "POST",
     });

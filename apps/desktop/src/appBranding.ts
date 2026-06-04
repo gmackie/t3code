@@ -1,6 +1,6 @@
 import type { DesktopAppBranding, DesktopAppStageLabel } from "@t3tools/contracts";
 
-import { isGmackoDesktopVersion, isNightlyDesktopVersion } from "./updateChannels";
+import { isGmackoDesktopVersion, isNightlyDesktopVersion } from "./updateChannels.ts";
 
 const APP_BASE_NAME = "T3 Code";
 

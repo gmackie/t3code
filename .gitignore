@@ -18,7 +18,11 @@ release-mock/
 apps/web/.playwright
 apps/web/playwright-report
 apps/web/src/components/__screenshots__
+apps/mobile/.expo/
+apps/mobile/ios/
 .vitest-*
 __screenshots__/
 .tanstack
 squashfs-root/
+.tmp-build/
+release-gmacko-*/

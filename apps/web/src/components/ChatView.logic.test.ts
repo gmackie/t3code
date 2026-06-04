@@ -1,17 +1,25 @@
 import { scopeThreadRef } from "@t3tools/client-runtime";
-import { EnvironmentId, ProjectId, ThreadId, TurnId } from "@t3tools/contracts";
+import {
+  EnvironmentId,
+  ProjectId,
+  ProviderDriverKind,
+  ProviderInstanceId,
+  ThreadId,
+  TurnId,
+} from "@t3tools/contracts";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { type EnvironmentState, useStore } from "../store";
 import { type Thread } from "../types";
 
 import {
   MAX_HIDDEN_MOUNTED_TERMINAL_THREADS,
+  buildSearchableModelOptions,
   buildExpiredTerminalContextToastCopy,
   createLocalDispatchSnapshot,
   deriveComposerSendState,
   hasServerAcknowledgedLocalDispatch,
   reconcileMountedTerminalThreadIds,
-  resolveSendEnvMode,
+  resolvePlanSidebarDismissedTurnKeyOnWorkspaceTabSelect,
   shouldWriteThreadErrorToCurrentServerThread,
   waitForStartedServerThread,
 } from "./ChatView.logic";
@@ -83,14 +91,30 @@ describe("buildExpiredTerminalContextToastCopy", () => {
   });
 });
 
-describe("resolveSendEnvMode", () => {
-  it("keeps worktree mode for git repositories", () => {
-    expect(resolveSendEnvMode({ requestedEnvMode: "worktree", isGitRepo: true })).toBe("worktree");
-  });
-
-  it("forces local mode for non-git repositories", () => {
-    expect(resolveSendEnvMode({ requestedEnvMode: "worktree", isGitRepo: false })).toBe("local");
-    expect(resolveSendEnvMode({ requestedEnvMode: "local", isGitRepo: false })).toBe("local");
+describe("buildSearchableModelOptions", () => {
+  it("falls back to the model slug when the provider model name is missing", () => {
+    expect(
+      buildSearchableModelOptions({
+        availableProviderOptions: [{ value: ProviderDriverKind.make("codex"), label: "Codex" }],
+        modelOptionsByProvider: {
+          [ProviderDriverKind.make("codex")]: [{ slug: "gpt-5" } as never],
+          [ProviderDriverKind.make("claudeAgent")]: [],
+          [ProviderDriverKind.make("cursor")]: [],
+          [ProviderDriverKind.make("opencode")]: [],
+        },
+        lockedProvider: null,
+      }),
+    ).toEqual([
+      {
+        provider: "codex",
+        providerLabel: "Codex",
+        slug: "gpt-5",
+        name: "gpt-5",
+        searchSlug: "gpt-5",
+        searchName: "gpt-5",
+        searchProvider: "codex",
+      },
+    ]);
   });
 });
 
@@ -175,6 +199,30 @@ describe("reconcileMountedTerminalThreadIds", () => {
   });
 });
 
+describe("resolvePlanSidebarDismissedTurnKeyOnWorkspaceTabSelect", () => {
+  it("dismisses the active plan turn when selecting chat from the plan tab", () => {
+    expect(
+      resolvePlanSidebarDismissedTurnKeyOnWorkspaceTabSelect({
+        selectedTabId: null,
+        planTabOpen: true,
+        activePlanTurnId: TurnId.make("turn-active-plan"),
+        sidebarProposedPlanTurnId: null,
+      }),
+    ).toBe("turn-active-plan");
+  });
+
+  it("does not dismiss the plan when selecting another workspace tab", () => {
+    expect(
+      resolvePlanSidebarDismissedTurnKeyOnWorkspaceTabSelect({
+        selectedTabId: "/repo/project:src/index.ts",
+        planTabOpen: true,
+        activePlanTurnId: TurnId.make("turn-active-plan"),
+        sidebarProposedPlanTurnId: null,
+      }),
+    ).toBeNull();
+  });
+});
+
 describe("shouldWriteThreadErrorToCurrentServerThread", () => {
   it("routes errors to the active server thread when route and target match", () => {
     const threadId = ThreadId.make("thread-1");
@@ -220,7 +268,7 @@ const makeThread = (input?: {
   codexThreadId: null,
   projectId: ProjectId.make("project-1"),
   title: "Thread",
-  modelSelection: { provider: "codex" as const, model: "gpt-5.4" },
+  modelSelection: { instanceId: ProviderInstanceId.make("codex"), model: "gpt-5.4" },
   runtimeMode: "full-access" as const,
   interactionMode: "default" as const,
   session: null,
@@ -253,7 +301,7 @@ function setStoreThreads(threads: ReadonlyArray<ReturnType<typeof makeThread>>) 
         name: "Project",
         cwd: "/tmp/project",
         defaultModelSelection: {
-          provider: "codex",
+          instanceId: ProviderInstanceId.make("codex"),
           model: "gpt-5.4",
         },
         createdAt: "2026-03-29T00:00:00.000Z",
@@ -452,7 +500,7 @@ describe("hasServerAcknowledgedLocalDispatch", () => {
   };
 
   const previousSession = {
-    provider: "codex" as const,
+    provider: ProviderDriverKind.make("codex"),
     status: "ready" as const,
     createdAt: "2026-03-29T00:00:00.000Z",
     updatedAt: "2026-03-29T00:00:10.000Z",
@@ -466,7 +514,7 @@ describe("hasServerAcknowledgedLocalDispatch", () => {
       codexThreadId: null,
       projectId,
       title: "Thread",
-      modelSelection: { provider: "codex", model: "gpt-5.4" },
+      modelSelection: { instanceId: ProviderInstanceId.make("codex"), model: "gpt-5.4" },
       runtimeMode: "full-access",
       interactionMode: "default",
       session: previousSession,
@@ -503,7 +551,7 @@ describe("hasServerAcknowledgedLocalDispatch", () => {
       codexThreadId: null,
       projectId,
       title: "Thread",
-      modelSelection: { provider: "codex", model: "gpt-5.4" },
+      modelSelection: { instanceId: ProviderInstanceId.make("codex"), model: "gpt-5.4" },
       runtimeMode: "full-access",
       interactionMode: "default",
       session: previousSession,
@@ -542,14 +590,14 @@ describe("hasServerAcknowledgedLocalDispatch", () => {
     ).toBe(true);
   });
 
-  it("does not clear local dispatch while the session is running a newer turn than latestTurn", () => {
+  it("clears local dispatch once the session enters running for a newer turn", () => {
     const localDispatch = createLocalDispatchSnapshot({
       id: ThreadId.make("thread-1"),
       environmentId: localEnvironmentId,
       codexThreadId: null,
       projectId,
       title: "Thread",
-      modelSelection: { provider: "codex", model: "gpt-5.4" },
+      modelSelection: { instanceId: ProviderInstanceId.make("codex"), model: "gpt-5.4" },
       runtimeMode: "full-access",
       interactionMode: "default",
       session: previousSession,
@@ -582,17 +630,17 @@ describe("hasServerAcknowledgedLocalDispatch", () => {
         hasPendingUserInput: false,
         threadError: null,
       }),
-    ).toBe(false);
+    ).toBe(true);
   });
 
-  it("does not clear local dispatch while the session is running but latestTurn has not advanced yet", () => {
+  it("clears local dispatch once the session enters running before latestTurn advances", () => {
     const localDispatch = createLocalDispatchSnapshot({
       id: ThreadId.make("thread-1"),
       environmentId: localEnvironmentId,
       codexThreadId: null,
       projectId,
       title: "Thread",
-      modelSelection: { provider: "codex", model: "gpt-5.4" },
+      modelSelection: { instanceId: ProviderInstanceId.make("codex"), model: "gpt-5.4" },
       runtimeMode: "full-access",
       interactionMode: "default",
       session: previousSession,
@@ -625,7 +673,7 @@ describe("hasServerAcknowledgedLocalDispatch", () => {
         hasPendingUserInput: false,
         threadError: null,
       }),
-    ).toBe(false);
+    ).toBe(true);
   });
 
   it("clears local dispatch once the running latestTurn matches the active session turn", () => {
@@ -635,7 +683,7 @@ describe("hasServerAcknowledgedLocalDispatch", () => {
       codexThreadId: null,
       projectId,
       title: "Thread",
-      modelSelection: { provider: "codex", model: "gpt-5.4" },
+      modelSelection: { instanceId: ProviderInstanceId.make("codex"), model: "gpt-5.4" },
       runtimeMode: "full-access",
       interactionMode: "default",
       session: previousSession,
@@ -685,7 +733,7 @@ describe("hasServerAcknowledgedLocalDispatch", () => {
       codexThreadId: null,
       projectId,
       title: "Thread",
-      modelSelection: { provider: "codex", model: "gpt-5.4" },
+      modelSelection: { instanceId: ProviderInstanceId.make("codex"), model: "gpt-5.4" },
       runtimeMode: "full-access",
       interactionMode: "default",
       session: previousSession,

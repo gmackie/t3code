@@ -1,5 +1,6 @@
 import type {
   GitCheckoutInput,
+  GitActionProgressEvent,
   GitCheckoutResult,
   GitCreateBranchInput,
   GitPreparePullRequestThreadInput,
@@ -14,22 +15,35 @@ import type {
   GitPullResult,
   GitRemoveWorktreeInput,
   GitResolvePullRequestResult,
+  GitRunStackedActionInput,
+  GitRunStackedActionResult,
   GitStatusInput,
   GitStatusResult,
   GitCreateBranchResult,
-} from "./git";
-import type { FilesystemBrowseInput, FilesystemBrowseResult } from "./filesystem";
+} from "./git.ts";
+import type { FilesystemBrowseInput, FilesystemBrowseResult } from "./filesystem.ts";
 import type {
+  ProjectCodeDefinitionsInput,
+  ProjectCodeDefinitionsResult,
+  ProjectCodeDocumentSymbolsInput,
+  ProjectCodeDocumentSymbolsResult,
+  ProjectCodeHoverInput,
+  ProjectCodeHoverResult,
+  ProjectListEntriesInput,
+  ProjectListEntriesResult,
+  ProjectReadFileInput,
+  ProjectReadFileResult,
   ProjectSearchEntriesInput,
   ProjectSearchEntriesResult,
   ProjectWriteFileInput,
   ProjectWriteFileResult,
-} from "./project";
+} from "./project.ts";
+import type { ProviderInstanceId } from "./providerInstance.ts";
 import type {
   ServerConfig,
   ServerProviderUpdatedPayload,
   ServerUpsertKeybindingResult,
-} from "./server";
+} from "./server.ts";
 import type {
   TerminalClearInput,
   TerminalCloseInput,
@@ -39,8 +53,8 @@ import type {
   TerminalRestartInput,
   TerminalSessionSnapshot,
   TerminalWriteInput,
-} from "./terminal";
-import type { ServerUpsertKeybindingInput } from "./server";
+} from "./terminal.ts";
+import type { ServerUpsertKeybindingInput } from "./server.ts";
 import type {
   ClientOrchestrationCommand,
   OrchestrationGetFullThreadDiffInput,
@@ -50,16 +64,17 @@ import type {
   OrchestrationShellStreamItem,
   OrchestrationSubscribeThreadInput,
   OrchestrationThreadStreamItem,
-} from "./orchestration";
-import type { EnvironmentId } from "./baseSchemas";
-import { EditorId } from "./editor";
-import { ClientSettings, ServerSettings, ServerSettingsPatch } from "./settings";
+} from "./orchestration.ts";
+import type { EnvironmentId, ThreadId } from "./baseSchemas.ts";
+import { EditorId } from "./editor.ts";
+import { ServerSettings, type ClientSettings, type ServerSettingsPatch } from "./settings.ts";
 
 export interface ContextMenuItem<T extends string = string> {
   id: T;
   label: string;
   destructive?: boolean;
   disabled?: boolean;
+  children?: readonly ContextMenuItem<T>[];
 }
 
 export type DesktopUpdateStatus =
@@ -75,7 +90,7 @@ export type DesktopUpdateStatus =
 export type DesktopRuntimeArch = "arm64" | "x64" | "other";
 export type DesktopTheme = "light" | "dark" | "system";
 export type DesktopUpdateChannel = "latest" | "nightly" | "gmacko";
-export type DesktopAppStageLabel = "Alpha" | "Dev" | "Gmacko" | "Nightly";
+export type DesktopAppStageLabel = "Alpha" | "Dev" | "Nightly" | "Gmacko";
 
 export interface DesktopAppBranding {
   baseName: string;
@@ -133,7 +148,7 @@ export interface PersistedSavedEnvironmentRecord {
   lastConnectedAt: string | null;
 }
 
-export type DesktopServerExposureMode = "local-only" | "network-accessible";
+export type DesktopServerExposureMode = "local-only" | "tailnet-accessible" | "network-accessible";
 
 export interface DesktopServerExposureState {
   mode: DesktopServerExposureMode;
@@ -144,7 +159,183 @@ export interface DesktopServerExposureState {
 export interface PickFolderOptions {
   initialPath?: string | null;
 }
+export interface BrowserBounds {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
 
+export interface BrowserCookieSource {
+  id: string;
+  label: string;
+}
+
+export interface BrowserCookieProfile {
+  id: string;
+  label: string;
+}
+
+export interface BrowserCookieDomain {
+  domain: string;
+  count: number;
+}
+
+export interface BrowserSessionCookie {
+  domain: string;
+  name: string;
+  value: string;
+  path: string;
+  secure: boolean;
+  httpOnly: boolean;
+  expirationDate?: number;
+  expirationLabel?: string;
+  sameSite?: string;
+  removalUrl?: string;
+}
+
+export interface BrowserImportCookiesInput {
+  sourceId: string;
+  profileId: string;
+  domains: readonly string[];
+}
+
+export interface BrowserImportCookiesResult {
+  importedCount: number;
+}
+
+export interface BrowserRemoveCookieDomainResult {
+  removedCount: number;
+}
+
+export interface BrowserTabRuntimeState {
+  url: string;
+  title: string | null;
+  faviconUrl: string | null;
+  isLoading: boolean;
+  canGoBack: boolean;
+  canGoForward: boolean;
+  lastError: string | null;
+}
+
+export interface BrowserEnsureTabInput {
+  threadId: ThreadId;
+  tabId: string;
+  url?: string;
+}
+
+export interface BrowserNavigateInput {
+  threadId: ThreadId;
+  tabId: string;
+  url: string;
+}
+
+export interface BrowserTabTargetInput {
+  threadId: ThreadId;
+  tabId: string;
+}
+
+export interface BrowserSyncHostInput {
+  threadId: ThreadId;
+  tabId: string | null;
+  visible: boolean;
+  bounds: BrowserBounds | null;
+}
+
+export interface BrowserClearThreadInput {
+  threadId: ThreadId;
+}
+
+export interface BrowserTabStateEvent {
+  type: "tab-state";
+  threadId: ThreadId;
+  tabId: string;
+  state: BrowserTabRuntimeState;
+}
+
+export interface BrowserAutomationState {
+  status: "idle" | "running" | "error";
+  tabId: string | null;
+  message: string | null;
+}
+
+export interface BrowserAutomationTarget {
+  selector?: string;
+  text?: string;
+  role?: string;
+  name?: string;
+  index?: number;
+}
+
+export interface BrowserAutomationElement {
+  role: string;
+  name: string;
+}
+
+export interface BrowserAutomationResult {
+  message: string;
+  error?: string;
+  url?: string;
+  title?: string;
+  text?: string;
+  loadingState?: string;
+  lastError?: string;
+  consoleMessages?: string[];
+  networkErrors?: string[];
+  elements?: BrowserAutomationElement[];
+  screenshotDataUrl?: string;
+}
+
+export type BrowserAutomationRequest =
+  | {
+      type: "navigate";
+      threadId: string;
+      url: string;
+    }
+  | {
+      type: "click";
+      threadId: string;
+      target: BrowserAutomationTarget;
+    }
+  | {
+      type: "type";
+      threadId: string;
+      target: BrowserAutomationTarget;
+      text: string;
+      submit?: boolean;
+      clear?: boolean;
+    }
+  | {
+      type: "wait";
+      threadId: string;
+      target?: BrowserAutomationTarget;
+      selector?: string;
+      text?: string;
+      urlIncludes?: string;
+      titleIncludes?: string;
+      timeoutMs?: number;
+    }
+  | {
+      type: "inspect";
+      threadId: string;
+      target?: BrowserAutomationTarget;
+    }
+  | {
+      type: "screenshot";
+      threadId: string;
+    }
+  | {
+      type: "diagnostics";
+      threadId: string;
+    };
+
+export interface BrowserAutomationStateEvent {
+  type: "automation-state";
+  threadId: ThreadId;
+  state: BrowserAutomationState;
+}
+
+export type BrowserEvent = BrowserTabStateEvent | BrowserAutomationStateEvent;
 export interface DesktopBridge {
   getAppBranding: () => DesktopAppBranding | null;
   getLocalEnvironmentBootstrap: () => DesktopEnvironmentBootstrap | null;
@@ -167,6 +358,25 @@ export interface DesktopBridge {
     position?: { x: number; y: number },
   ) => Promise<T | null>;
   openExternal: (url: string) => Promise<boolean>;
+  browserEnsureTab?: (input: BrowserEnsureTabInput) => Promise<void>;
+  browserNavigate?: (input: BrowserNavigateInput) => Promise<void>;
+  browserGoBack?: (input: BrowserTabTargetInput) => Promise<void>;
+  browserGoForward?: (input: BrowserTabTargetInput) => Promise<void>;
+  browserReload?: (input: BrowserTabTargetInput) => Promise<void>;
+  browserCloseTab?: (input: BrowserTabTargetInput) => Promise<void>;
+  browserSyncHost?: (input: BrowserSyncHostInput) => Promise<void>;
+  browserClearThread?: (input: BrowserClearThreadInput) => Promise<void>;
+  onBrowserEvent?: (listener: (event: BrowserEvent) => void) => () => void;
+  browserListCookieSources?: () => Promise<BrowserCookieSource[]>;
+  browserListCookieProfiles?: (sourceId: string) => Promise<BrowserCookieProfile[]>;
+  browserListCookieDomains?: (input: {
+    sourceId: string;
+    profileId: string;
+    search?: string;
+  }) => Promise<BrowserCookieDomain[]>;
+  browserImportCookies?: (input: BrowserImportCookiesInput) => Promise<BrowserImportCookiesResult>;
+  browserListSessionCookies?: () => Promise<BrowserSessionCookie[]>;
+  browserRemoveCookieDomain?: (domain: string) => Promise<BrowserRemoveCookieDomainResult>;
   onMenuAction: (listener: (action: string) => void) => () => void;
   getUpdateState: () => Promise<DesktopUpdateState>;
   setUpdateChannel: (channel: DesktopUpdateChannel) => Promise<DesktopUpdateState>;
@@ -214,7 +424,14 @@ export interface LocalApi {
   };
   server: {
     getConfig: () => Promise<ServerConfig>;
-    refreshProviders: () => Promise<ServerProviderUpdatedPayload>;
+    /**
+     * Refresh provider snapshots. When `input.instanceId` is supplied only that
+     * configured instance is probed; otherwise every configured instance is
+     * refreshed (legacy untargeted refresh).
+     */
+    refreshProviders: (input?: {
+      readonly instanceId?: ProviderInstanceId;
+    }) => Promise<ServerProviderUpdatedPayload>;
     upsertKeybinding: (input: ServerUpsertKeybindingInput) => Promise<ServerUpsertKeybindingResult>;
     getSettings: () => Promise<ServerSettings>;
     updateSettings: (patch: ServerSettingsPatch) => Promise<ServerSettings>;
@@ -241,7 +458,14 @@ export interface EnvironmentApi {
     onEvent: (callback: (event: TerminalEvent) => void) => () => void;
   };
   projects: {
+    listEntries: (input: ProjectListEntriesInput) => Promise<ProjectListEntriesResult>;
+    readFile: (input: ProjectReadFileInput) => Promise<ProjectReadFileResult>;
     searchEntries: (input: ProjectSearchEntriesInput) => Promise<ProjectSearchEntriesResult>;
+    getDocumentSymbols: (
+      input: ProjectCodeDocumentSymbolsInput,
+    ) => Promise<ProjectCodeDocumentSymbolsResult>;
+    getHover: (input: ProjectCodeHoverInput) => Promise<ProjectCodeHoverResult>;
+    getDefinitions: (input: ProjectCodeDefinitionsInput) => Promise<ProjectCodeDefinitionsResult>;
     writeFile: (input: ProjectWriteFileInput) => Promise<ProjectWriteFileResult>;
   };
   filesystem: {
@@ -289,3 +513,20 @@ export interface EnvironmentApi {
     ) => () => void;
   };
 }
+
+export interface NativeBrowserApi {
+  ensureTab: (input: BrowserEnsureTabInput) => Promise<void>;
+  navigate: (input: BrowserNavigateInput) => Promise<void>;
+  goBack: (input: BrowserTabTargetInput) => Promise<void>;
+  goForward: (input: BrowserTabTargetInput) => Promise<void>;
+  reload: (input: BrowserTabTargetInput) => Promise<void>;
+  closeTab: (input: BrowserTabTargetInput) => Promise<void>;
+  syncHost: (input: BrowserSyncHostInput) => Promise<void>;
+  clearThread: (input: BrowserClearThreadInput) => Promise<void>;
+  onEvent: (listener: (event: BrowserEvent) => void) => () => void;
+}
+
+export type NativeApi = LocalApi &
+  Partial<Pick<EnvironmentApi, "projects" | "filesystem" | "git" | "orchestration">> & {
+    browser?: NativeBrowserApi;
+  };

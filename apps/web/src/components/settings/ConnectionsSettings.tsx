@@ -41,7 +41,7 @@ import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
 import { QRCodeSvg } from "../ui/qr-code";
 import { Spinner } from "../ui/spinner";
 import { Switch } from "../ui/switch";
-import { toastManager } from "../ui/toast";
+import { stackedThreadToast, toastManager } from "../ui/toast";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { Button } from "../ui/button";
 import { Textarea } from "../ui/textarea";
@@ -254,6 +254,81 @@ function resolveCurrentOriginPairingUrl(credential: string): string {
   return setPairingTokenOnUrl(url, credential).toString();
 }
 
+function describeDesktopServerExposureState(
+  state: DesktopServerExposureState | null | undefined,
+): string {
+  if (!state) {
+    return "Loading…";
+  }
+
+  if (state.endpointUrl) {
+    if (state.mode === "tailnet-accessible") {
+      return `Recommended for mobile. Reachable on your Tailnet at ${state.endpointUrl}`;
+    }
+
+    if (state.mode === "network-accessible") {
+      return `LAN mode. Reachable at ${state.endpointUrl}`;
+    }
+  }
+
+  if (state.mode === "network-accessible") {
+    return state.advertisedHost
+      ? `LAN mode. Exposed on all interfaces. Pairing links use ${state.advertisedHost}.`
+      : "LAN mode. Exposed on all interfaces.";
+  }
+
+  return "Limited to this machine. Enable Tailnet access for the recommended remote pairing path.";
+}
+
+function getDesktopServerExposureDialogTitle(
+  mode: DesktopServerExposureState["mode"] | null,
+): string {
+  switch (mode) {
+    case "local-only":
+      return "Disable remote access?";
+    case "network-accessible":
+      return "Switch remote access to LAN mode?";
+    case "tailnet-accessible":
+      return "Enable Tailnet access?";
+    default:
+      return "Update remote access?";
+  }
+}
+
+function getDesktopServerExposureDialogDescription(
+  mode: DesktopServerExposureState["mode"] | null,
+): string {
+  switch (mode) {
+    case "local-only":
+      return "T3 Code will restart and limit this environment back to this machine.";
+    case "network-accessible":
+      return "T3 Code will restart to keep remote access available on your local network instead of your Tailnet.";
+    case "tailnet-accessible":
+      return "T3 Code will restart to expose this environment on your Tailnet.";
+    default:
+      return "T3 Code will restart to update how this environment is exposed.";
+  }
+}
+
+function getDesktopServerExposureActionLabel(
+  mode: DesktopServerExposureState["mode"] | null,
+  isUpdatingDesktopServerExposure: boolean,
+): string {
+  if (isUpdatingDesktopServerExposure) {
+    return "Restarting…";
+  }
+
+  if (mode === "local-only") {
+    return "Restart and disable";
+  }
+
+  if (mode === "network-accessible") {
+    return "Restart and switch";
+  }
+
+  return "Restart and enable";
+}
+
 type PairingLinkListRowProps = {
   pairingLink: ServerPairingLinkRecord;
   endpointUrl: string | null | undefined;
@@ -302,11 +377,13 @@ const PairingLinkListRow = memo(function PairingLinkListRow({
     },
     onError: (error) => {
       setIsRevealDialogOpen(true);
-      toastManager.add({
-        type: "error",
-        title: canCopyToClipboard ? "Could not copy pairing URL" : "Clipboard copy unavailable",
-        description: canCopyToClipboard ? error.message : "Showing the full value instead.",
-      });
+      toastManager.add(
+        stackedThreadToast({
+          type: "error",
+          title: canCopyToClipboard ? "Could not copy pairing URL" : "Clipboard copy unavailable",
+          description: canCopyToClipboard ? error.message : "Showing the full value instead.",
+        }),
+      );
     },
   });
 
@@ -353,9 +430,9 @@ const PairingLinkListRow = memo(function PairingLinkListRow({
                   <PopoverPopup side="top" align="start" tooltipStyle className="w-max">
                     <QRCodeSvg
                       value={shareablePairingUrl}
-                      size={88}
-                      level="M"
-                      marginSize={2}
+                      size={220}
+                      level="Q"
+                      marginSize={3}
                       title="Pairing link — scan to open on another device"
                     />
                   </PopoverPopup>
@@ -405,9 +482,9 @@ const PairingLinkListRow = memo(function PairingLinkListRow({
                   <div className="flex justify-center rounded-xl border border-border/60 bg-muted/30 p-4">
                     <QRCodeSvg
                       value={shareablePairingUrl}
-                      size={132}
-                      level="M"
-                      marginSize={2}
+                      size={260}
+                      level="Q"
+                      marginSize={3}
                       title="Pairing link — scan to open on another device"
                     />
                   </div>
@@ -515,12 +592,14 @@ const ConnectedClientListRow = memo(function ConnectedClientListRow({
 type AuthorizedClientsHeaderActionProps = {
   clientSessions: ReadonlyArray<ServerClientSessionRecord>;
   isRevokingOtherClients: boolean;
+  onBeforeCreatePairingLink?: () => Promise<void>;
   onRevokeOtherClients: () => void;
 };
 
 const AuthorizedClientsHeaderAction = memo(function AuthorizedClientsHeaderAction({
   clientSessions,
   isRevokingOtherClients,
+  onBeforeCreatePairingLink,
   onRevokeOtherClients,
 }: AuthorizedClientsHeaderActionProps) {
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -530,20 +609,23 @@ const AuthorizedClientsHeaderAction = memo(function AuthorizedClientsHeaderActio
   const handleCreatePairingLink = useCallback(async () => {
     setIsCreatingPairingLink(true);
     try {
+      await onBeforeCreatePairingLink?.();
       await createServerPairingCredential(pairingLabel);
       setPairingLabel("");
       setDialogOpen(false);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Failed to create pairing URL.";
-      toastManager.add({
-        type: "error",
-        title: "Could not create pairing URL",
-        description: message,
-      });
+      toastManager.add(
+        stackedThreadToast({
+          type: "error",
+          title: "Could not create pairing URL",
+          description: message,
+        }),
+      );
     } finally {
       setIsCreatingPairingLink(false);
     }
-  }, [pairingLabel]);
+  }, [onBeforeCreatePairingLink, pairingLabel]);
 
   return (
     <div className="flex items-center gap-2">
@@ -807,42 +889,49 @@ export function ConnectionsSettings() {
     DesktopServerExposureState["mode"] | null
   >(null);
   const canManageLocalBackend = currentSessionRole === "owner";
-  const isLocalBackendNetworkAccessible = desktopBridge
-    ? desktopServerExposureState?.mode === "network-accessible"
+  const isDesktopServerExposureEnabled = desktopServerExposureState
+    ? desktopServerExposureState.mode !== "local-only"
+    : false;
+  const isLocalBackendRemoteAccessible = desktopBridge
+    ? isDesktopServerExposureEnabled
     : currentAuthPolicy === "remote-reachable";
 
   const handleDesktopServerExposureChange = useCallback(
-    async (checked: boolean) => {
+    async (mode: DesktopServerExposureState["mode"]) => {
       if (!desktopBridge) return;
       setIsUpdatingDesktopServerExposure(true);
       setDesktopServerExposureError(null);
       try {
-        const nextState = await desktopBridge.setServerExposureMode(
-          checked ? "network-accessible" : "local-only",
-        );
+        const nextState = await desktopBridge.setServerExposureMode(mode);
         setDesktopServerExposureState(nextState);
         setPendingDesktopServerExposureMode(null);
         setIsUpdatingDesktopServerExposure(false);
       } catch (error) {
-        const message =
-          error instanceof Error ? error.message : "Failed to update network exposure.";
+        const message = error instanceof Error ? error.message : "Failed to update remote access.";
         setPendingDesktopServerExposureMode(null);
         setDesktopServerExposureError(message);
-        toastManager.add({
-          type: "error",
-          title: "Could not update network access",
-          description: message,
-        });
+        toastManager.add(
+          stackedThreadToast({
+            type: "error",
+            title: "Could not update remote access",
+            description: message,
+          }),
+        );
         setIsUpdatingDesktopServerExposure(false);
       }
     },
     [desktopBridge],
   );
 
+  const refreshDesktopServerExposureState = useCallback(async () => {
+    if (!desktopBridge) return;
+    const nextState = await desktopBridge.getServerExposureState();
+    setDesktopServerExposureState(nextState);
+  }, [desktopBridge]);
+
   const handleConfirmDesktopServerExposureChange = useCallback(() => {
     if (pendingDesktopServerExposureMode === null) return;
-    const checked = pendingDesktopServerExposureMode === "network-accessible";
-    void handleDesktopServerExposureChange(checked);
+    void handleDesktopServerExposureChange(pendingDesktopServerExposureMode);
   }, [handleDesktopServerExposureChange, pendingDesktopServerExposureMode]);
 
   const handleRevokeDesktopPairingLink = useCallback(async (id: string) => {
@@ -853,11 +942,13 @@ export function ConnectionsSettings() {
     } catch (error) {
       const message = error instanceof Error ? error.message : "Failed to revoke pairing link.";
       setDesktopAccessManagementError(message);
-      toastManager.add({
-        type: "error",
-        title: "Could not revoke pairing link",
-        description: message,
-      });
+      toastManager.add(
+        stackedThreadToast({
+          type: "error",
+          title: "Could not revoke pairing link",
+          description: message,
+        }),
+      );
     } finally {
       setRevokingDesktopPairingLinkId(null);
     }
@@ -872,11 +963,13 @@ export function ConnectionsSettings() {
       } catch (error) {
         const message = error instanceof Error ? error.message : "Failed to revoke client access.";
         setDesktopAccessManagementError(message);
-        toastManager.add({
-          type: "error",
-          title: "Could not revoke client access",
-          description: message,
-        });
+        toastManager.add(
+          stackedThreadToast({
+            type: "error",
+            title: "Could not revoke client access",
+            description: message,
+          }),
+        );
       } finally {
         setRevokingDesktopClientSessionId(null);
       }
@@ -897,11 +990,13 @@ export function ConnectionsSettings() {
     } catch (error) {
       const message = error instanceof Error ? error.message : "Failed to revoke other clients.";
       setDesktopAccessManagementError(message);
-      toastManager.add({
-        type: "error",
-        title: "Could not revoke other clients",
-        description: message,
-      });
+      toastManager.add(
+        stackedThreadToast({
+          type: "error",
+          title: "Could not revoke other clients",
+          description: message,
+        }),
+      );
     } finally {
       setIsRevokingOtherDesktopClients(false);
     }
@@ -933,11 +1028,13 @@ export function ConnectionsSettings() {
     } catch (error) {
       const message = error instanceof Error ? error.message : "Failed to add backend.";
       setSavedBackendError(message);
-      toastManager.add({
-        type: "error",
-        title: "Could not add backend",
-        description: message,
-      });
+      toastManager.add(
+        stackedThreadToast({
+          type: "error",
+          title: "Could not add backend",
+          description: message,
+        }),
+      );
     } finally {
       setIsAddingSavedBackend(false);
     }
@@ -957,11 +1054,13 @@ export function ConnectionsSettings() {
     } catch (error) {
       const message = error instanceof Error ? error.message : "Failed to reconnect backend.";
       setSavedBackendError(message);
-      toastManager.add({
-        type: "error",
-        title: "Could not reconnect backend",
-        description: message,
-      });
+      toastManager.add(
+        stackedThreadToast({
+          type: "error",
+          title: "Could not reconnect backend",
+          description: message,
+        }),
+      );
     } finally {
       setReconnectingSavedEnvironmentId(null);
     }
@@ -975,11 +1074,13 @@ export function ConnectionsSettings() {
     } catch (error) {
       const message = error instanceof Error ? error.message : "Failed to remove backend.";
       setSavedBackendError(message);
-      toastManager.add({
-        type: "error",
-        title: "Could not remove backend",
-        description: message,
-      });
+      toastManager.add(
+        stackedThreadToast({
+          type: "error",
+          title: "Could not remove backend",
+          description: message,
+        }),
+      );
     } finally {
       setRemovingSavedEnvironmentId(null);
     }
@@ -1118,18 +1219,8 @@ export function ConnectionsSettings() {
           <SettingsSection title="Manage local backend">
             {desktopBridge ? (
               <SettingsRow
-                title="Network access"
-                description={
-                  desktopServerExposureState?.endpointUrl
-                    ? `Reachable at ${desktopServerExposureState.endpointUrl}`
-                    : desktopServerExposureState?.mode === "network-accessible"
-                      ? desktopServerExposureState.advertisedHost
-                        ? `Exposed on all interfaces. Pairing links use ${desktopServerExposureState.advertisedHost}.`
-                        : "Exposed on all interfaces."
-                      : desktopServerExposureState
-                        ? "Limited to this machine."
-                        : "Loading…"
-                }
+                title="Remote access"
+                description={describeDesktopServerExposureState(desktopServerExposureState)}
                 status={
                   desktopServerExposureError ? (
                     <span className="block text-destructive">{desktopServerExposureError}</span>
@@ -1144,26 +1235,24 @@ export function ConnectionsSettings() {
                     }}
                   >
                     <Switch
-                      checked={desktopServerExposureState?.mode === "network-accessible"}
+                      checked={isDesktopServerExposureEnabled}
                       disabled={!desktopServerExposureState || isUpdatingDesktopServerExposure}
                       onCheckedChange={(checked) => {
                         setPendingDesktopServerExposureMode(
-                          checked ? "network-accessible" : "local-only",
+                          checked ? "tailnet-accessible" : "local-only",
                         );
                       }}
-                      aria-label="Enable network access"
+                      aria-label="Enable remote access"
                     />
                     <AlertDialogPopup>
                       <AlertDialogHeader>
                         <AlertDialogTitle>
-                          {pendingDesktopServerExposureMode === "network-accessible"
-                            ? "Enable network access?"
-                            : "Disable network access?"}
+                          {getDesktopServerExposureDialogTitle(pendingDesktopServerExposureMode)}
                         </AlertDialogTitle>
                         <AlertDialogDescription>
-                          {pendingDesktopServerExposureMode === "network-accessible"
-                            ? "T3 Code will restart to expose this environment over the network."
-                            : "T3 Code will restart and limit this environment back to this machine."}
+                          {getDesktopServerExposureDialogDescription(
+                            pendingDesktopServerExposureMode,
+                          )}
                         </AlertDialogDescription>
                       </AlertDialogHeader>
                       <AlertDialogFooter>
@@ -1185,26 +1274,80 @@ export function ConnectionsSettings() {
                           {isUpdatingDesktopServerExposure ? (
                             <>
                               <Spinner className="size-3.5" />
-                              Restarting…
+                              {getDesktopServerExposureActionLabel(
+                                pendingDesktopServerExposureMode,
+                                isUpdatingDesktopServerExposure,
+                              )}
                             </>
-                          ) : pendingDesktopServerExposureMode === "network-accessible" ? (
-                            "Restart and enable"
                           ) : (
-                            "Restart and disable"
+                            getDesktopServerExposureActionLabel(
+                              pendingDesktopServerExposureMode,
+                              isUpdatingDesktopServerExposure,
+                            )
                           )}
                         </Button>
                       </AlertDialogFooter>
                     </AlertDialogPopup>
                   </AlertDialog>
                 }
-              />
+              >
+                {desktopServerExposureState ? (
+                  <div className="mt-4 flex flex-col gap-3 border-t border-border/60 py-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="space-y-1">
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-foreground/50">
+                        Remote mode
+                      </p>
+                      <p className="text-xs leading-relaxed text-muted-foreground/80">
+                        Tailnet is recommended. Choose LAN only when you intentionally need generic
+                        private-network reachability instead.
+                      </p>
+                    </div>
+                    <div className="flex flex-col gap-2 sm:flex-row">
+                      <Button
+                        size="xs"
+                        variant={
+                          desktopServerExposureState.mode !== "network-accessible"
+                            ? "secondary"
+                            : "outline"
+                        }
+                        disabled={
+                          isUpdatingDesktopServerExposure ||
+                          desktopServerExposureState.mode === "tailnet-accessible"
+                        }
+                        onClick={() => {
+                          setPendingDesktopServerExposureMode("tailnet-accessible");
+                        }}
+                      >
+                        Use Tailnet
+                      </Button>
+                      <Button
+                        size="xs"
+                        variant={
+                          desktopServerExposureState.mode === "network-accessible"
+                            ? "secondary"
+                            : "outline"
+                        }
+                        disabled={
+                          isUpdatingDesktopServerExposure ||
+                          desktopServerExposureState.mode === "network-accessible"
+                        }
+                        onClick={() => {
+                          setPendingDesktopServerExposureMode("network-accessible");
+                        }}
+                      >
+                        Use LAN instead
+                      </Button>
+                    </div>
+                  </div>
+                ) : null}
+              </SettingsRow>
             ) : (
               <SettingsRow
-                title="Network access"
+                title="Remote access"
                 description={
                   currentAuthPolicy === "remote-reachable"
-                    ? "This backend is already configured for remote access. Network exposure changes must be made where the server is launched."
-                    : "This backend is only reachable on this machine. Restart it with a non-loopback host to enable remote pairing."
+                    ? "This backend is already configured for remote access. Tailnet access is the recommended desktop pairing path, but launch-time exposure changes must be made where the server is started."
+                    : "This backend is only reachable on this machine. Restart it in Tailnet mode for the recommended remote pairing path, or launch it with a non-loopback host manually."
                 }
                 control={
                   <Tooltip>
@@ -1212,15 +1355,15 @@ export function ConnectionsSettings() {
                       render={
                         <span className="inline-flex">
                           <Switch
-                            checked={isLocalBackendNetworkAccessible}
+                            checked={isLocalBackendRemoteAccessible}
                             disabled
-                            aria-label="Enable network access"
+                            aria-label="Enable remote access"
                           />
                         </span>
                       }
                     />
                     <TooltipPopup side="top">
-                      Network exposure changes restart the backend and must be controlled where the
+                      Remote exposure changes restart the backend and must be controlled where the
                       server process is launched.
                     </TooltipPopup>
                   </Tooltip>
@@ -1229,13 +1372,14 @@ export function ConnectionsSettings() {
             )}
           </SettingsSection>
 
-          {isLocalBackendNetworkAccessible ? (
+          {isLocalBackendRemoteAccessible ? (
             <SettingsSection
               title="Authorized clients"
               headerAction={
                 <AuthorizedClientsHeaderAction
                   clientSessions={desktopClientSessions}
                   isRevokingOtherClients={isRevokingOtherDesktopClients}
+                  onBeforeCreatePairingLink={refreshDesktopServerExposureState}
                   onRevokeOtherClients={handleRevokeOtherDesktopClients}
                 />
               }

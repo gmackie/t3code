@@ -26,7 +26,7 @@ import {
 } from "../proposedPlan";
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "./ui/menu";
 import { readEnvironmentApi } from "~/environmentApi";
-import { toastManager } from "./ui/toast";
+import { stackedThreadToast, toastManager } from "./ui/toast";
 import { useCopyToClipboard } from "~/hooks/useCopyToClipboard";
 
 function stepStatusIcon(status: string): React.ReactNode {
@@ -58,8 +58,18 @@ interface PlanSidebarProps {
   environmentId: EnvironmentId;
   markdownCwd: string | undefined;
   workspaceRoot: string | undefined;
+  onOpenWorkspaceFile?:
+    | ((input: {
+        cwd: string;
+        relativePath: string;
+        line: number | null;
+        column: number | null;
+        targetPath: string;
+      }) => void)
+    | undefined;
   timestampFormat: TimestampFormat;
   onClose: () => void;
+  mode?: "sidebar" | "sheet";
 }
 
 const PlanSidebar = memo(function PlanSidebar({
@@ -69,8 +79,10 @@ const PlanSidebar = memo(function PlanSidebar({
   environmentId,
   markdownCwd,
   workspaceRoot,
+  onOpenWorkspaceFile,
   timestampFormat,
   onClose,
+  mode = "sidebar",
 }: PlanSidebarProps) {
   const [proposedPlanExpanded, setProposedPlanExpanded] = useState(false);
   const [isSavingToWorkspace, setIsSavingToWorkspace] = useState(false);
@@ -110,11 +122,13 @@ const PlanSidebar = memo(function PlanSidebar({
         });
       })
       .catch((error) => {
-        toastManager.add({
-          type: "error",
-          title: "Could not save plan",
-          description: error instanceof Error ? error.message : "An error occurred.",
-        });
+        toastManager.add(
+          stackedThreadToast({
+            type: "error",
+            title: "Could not save plan",
+            description: error instanceof Error ? error.message : "An error occurred.",
+          }),
+        );
       })
       .then(
         () => setIsSavingToWorkspace(false),
@@ -123,7 +137,12 @@ const PlanSidebar = memo(function PlanSidebar({
   }, [environmentId, planMarkdown, workspaceRoot]);
 
   return (
-    <div className="flex h-full w-[340px] shrink-0 flex-col border-l border-border/70 bg-card/50">
+    <div
+      className={cn(
+        "flex h-full min-h-0 flex-col bg-card/50",
+        mode === "sidebar" ? "w-[340px] shrink-0 border-l border-border/70" : "min-w-0 flex-1",
+      )}
+    >
       {/* Header */}
       <div className="flex h-12 shrink-0 items-center justify-between border-b border-border/60 px-3">
         <div className="flex items-center gap-2">
@@ -172,7 +191,7 @@ const PlanSidebar = memo(function PlanSidebar({
             size="icon-xs"
             variant="ghost"
             onClick={onClose}
-            aria-label={`Close ${label.toLowerCase()} sidebar`}
+            aria-label={mode === "sidebar" ? "Close plan sidebar" : "Close plan tab"}
             className="text-muted-foreground/50 hover:text-foreground/70"
           >
             <PanelRightCloseIcon className="size-3.5" />
@@ -246,6 +265,8 @@ const PlanSidebar = memo(function PlanSidebar({
                     text={displayedPlanMarkdown ?? ""}
                     cwd={markdownCwd}
                     isStreaming={false}
+                    workspaceRoot={workspaceRoot}
+                    onOpenWorkspaceFile={onOpenWorkspaceFile}
                   />
                 </div>
               ) : null}

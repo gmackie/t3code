@@ -21,7 +21,7 @@ import { __resetLocalApiForTests } from "../../localApi";
 import { AppAtomRegistryProvider } from "../../rpc/atomRegistry";
 import { resetServerStateForTests, setServerConfigSnapshot } from "../../rpc/serverState";
 import { ConnectionsSettings } from "./ConnectionsSettings";
-import { GeneralSettingsPanel } from "./SettingsPanels";
+import { GeneralSettingsPanel, TerminalSettingsPanel } from "./SettingsPanels";
 
 const authAccessHarness = vi.hoisted(() => {
   type Snapshot = AuthAccessSnapshot;
@@ -309,8 +309,18 @@ const createDesktopBridgeStub = (overrides?: {
       overrides?.setServerExposureMode ??
       vi.fn().mockImplementation(async (mode) => ({
         mode,
-        endpointUrl: mode === "network-accessible" ? "http://192.168.1.44:3773" : null,
-        advertisedHost: mode === "network-accessible" ? "192.168.1.44" : null,
+        endpointUrl:
+          mode === "tailnet-accessible"
+            ? "http://mackbook.tailnet.ts.net:3773"
+            : mode === "network-accessible"
+              ? "http://192.168.1.44:3773"
+              : null,
+        advertisedHost:
+          mode === "tailnet-accessible"
+            ? "mackbook.tailnet.ts.net"
+            : mode === "network-accessible"
+              ? "192.168.1.44"
+              : null,
       })),
     pickFolder: vi.fn().mockResolvedValue(null),
     confirm: vi.fn().mockResolvedValue(false),
@@ -419,11 +429,11 @@ describe("GeneralSettingsPanel observability", () => {
     );
 
     await expect.element(page.getByText("Manage local backend")).toBeInTheDocument();
-    await expect.element(page.getByLabelText("Enable network access")).toBeDisabled();
+    await expect.element(page.getByLabelText("Enable remote access")).toBeDisabled();
     await expect
       .element(
         page.getByText(
-          "This backend is only reachable on this machine. Restart it with a non-loopback host to enable remote pairing.",
+          "This backend is only reachable on this machine. Restart it in Tailnet mode for the recommended remote pairing path, or launch it with a non-loopback host manually.",
         ),
       )
       .toBeInTheDocument();
@@ -458,13 +468,27 @@ describe("GeneralSettingsPanel observability", () => {
       .toBeInTheDocument();
   });
 
-  it("creates and shows a pairing link when network access is enabled", async () => {
-    window.desktopBridge = createDesktopBridgeStub({
-      serverExposureState: {
-        mode: "network-accessible",
-        endpointUrl: "http://192.168.1.44:3773",
-        advertisedHost: "192.168.1.44",
-      },
+  it("refreshes desktop exposure before creating a pairing link", async () => {
+    const staleExposureState = {
+      mode: "tailnet-accessible" as const,
+      endpointUrl: "http://100.76.132.28:3773",
+      advertisedHost: "100.76.132.28",
+    };
+    const freshExposureState = {
+      mode: "tailnet-accessible" as const,
+      endpointUrl: "https://grahams-macbook-pro.tail1e1a32.ts.net",
+      advertisedHost: "grahams-macbook-pro.tail1e1a32.ts.net",
+    };
+    const desktopBridge = createDesktopBridgeStub({
+      serverExposureState: staleExposureState,
+    });
+    vi.mocked(desktopBridge.getServerExposureState)
+      .mockResolvedValueOnce(staleExposureState)
+      .mockResolvedValue(freshExposureState);
+    window.desktopBridge = desktopBridge;
+    Object.defineProperty(window, "isSecureContext", {
+      configurable: true,
+      value: false,
     });
     let pairingLinks: Array<AuthAccessSnapshot["pairingLinks"][number]> = [];
     let clientSessions: Array<AuthAccessSnapshot["clientSessions"][number]> = [
@@ -563,6 +587,9 @@ describe("GeneralSettingsPanel observability", () => {
     await page.getByRole("button", { name: "Create link", exact: true }).click();
     await expect.element(page.getByText("Create pairing link")).toBeInTheDocument();
     await page.getByRole("button", { name: "Create link", exact: true }).click();
+    await vi.waitFor(() => {
+      expect(desktopBridge.getServerExposureState).toHaveBeenCalledTimes(2);
+    });
     authAccessHarness.emitPairingLinkUpserted(pairingLinks[0]!);
     authAccessHarness.emitClientUpserted(clientSessions[1]!);
     await expect
@@ -571,6 +598,15 @@ describe("GeneralSettingsPanel observability", () => {
     await expect
       .element(page.getByRole("button", { name: /^(Copy|Show link)$/ }))
       .toBeInTheDocument();
+    await page.getByRole("button", { name: "Show link", exact: true }).click();
+    await expect
+      .element(page.getByRole("textbox"))
+      .toHaveValue("https://grahams-macbook-pro.tail1e1a32.ts.net/pair#token=pairing-token");
+    await page.getByRole("button", { name: "Done", exact: true }).click();
+    await page.getByLabelText("Show QR code").hover();
+    await expect
+      .element(page.getByLabelText("Pairing link — scan to open on another device"))
+      .toHaveAttribute("width", "220");
     await expect.element(page.getByText("Revoke others")).toBeInTheDocument();
   });
 
@@ -657,7 +693,7 @@ describe("GeneralSettingsPanel observability", () => {
     expect(fetchMock).toHaveBeenCalled();
   });
 
-  it("shows a disabled network access toggle with guidance in desktop builds", async () => {
+  it("defaults desktop remote access to Tailnet and keeps a LAN fallback action available", async () => {
     const desktopBridge = createDesktopBridgeStub();
     window.desktopBridge = desktopBridge;
 
@@ -669,20 +705,144 @@ describe("GeneralSettingsPanel observability", () => {
       </AppAtomRegistryProvider>,
     );
 
-    const networkAccessToggle = page.getByLabelText("Enable network access");
-    await expect.element(networkAccessToggle).not.toBeDisabled();
-    await networkAccessToggle.click();
-    await expect.element(page.getByText("Enable network access?")).toBeInTheDocument();
+    const remoteAccessToggle = page.getByLabelText("Enable remote access");
+    await expect.element(remoteAccessToggle).not.toBeDisabled();
+    await remoteAccessToggle.click();
+    await expect.element(page.getByText("Enable Tailnet access?")).toBeInTheDocument();
     await expect
-      .element(page.getByText("T3 Code will restart to expose this environment over the network."))
+      .element(page.getByText("T3 Code will restart to expose this environment on your Tailnet."))
       .toBeInTheDocument();
     await page.getByRole("button", { name: "Restart and enable", exact: true }).click();
+    await vi.waitFor(() => {
+      expect(desktopBridge.setServerExposureMode).toHaveBeenCalledWith("tailnet-accessible");
+    });
+    await expect
+      .element(
+        page.getByText(
+          "Recommended for mobile. Reachable on your Tailnet at http://mackbook.tailnet.ts.net:3773",
+        ),
+      )
+      .toBeInTheDocument();
+    await expect.element(page.getByRole("button", { name: "Use LAN instead" })).toBeInTheDocument();
+  });
+
+  it("keeps a LAN action available after a Tailnet enable attempt fails from local-only", async () => {
+    const desktopBridge = createDesktopBridgeStub({
+      setServerExposureMode: vi.fn().mockImplementation(async (mode) => {
+        if (mode === "tailnet-accessible") {
+          throw new Error("Tailscale is not running.");
+        }
+
+        return {
+          mode,
+          endpointUrl: mode === "network-accessible" ? "http://192.168.1.44:3773" : null,
+          advertisedHost: mode === "network-accessible" ? "192.168.1.44" : null,
+        };
+      }),
+    });
+    window.desktopBridge = desktopBridge;
+
+    setServerConfigSnapshot(createBaseServerConfig());
+
+    mounted = await render(
+      <AppAtomRegistryProvider>
+        <ConnectionsSettings />
+      </AppAtomRegistryProvider>,
+    );
+
+    const remoteAccessToggle = page.getByLabelText("Enable remote access");
+    await remoteAccessToggle.click();
+    await page.getByRole("button", { name: "Restart and enable", exact: true }).click();
+    await expect.element(page.getByText("Tailscale is not running.")).toBeInTheDocument();
+    await expect.element(page.getByRole("button", { name: "Use LAN instead" })).toBeInTheDocument();
+
+    await page.getByRole("button", { name: "Use LAN instead" }).click();
+    await expect.element(page.getByText("Switch remote access to LAN mode?")).toBeInTheDocument();
+    await page.getByRole("button", { name: "Restart and switch", exact: true }).click();
     await vi.waitFor(() => {
       expect(desktopBridge.setServerExposureMode).toHaveBeenCalledWith("network-accessible");
     });
     await expect
-      .element(page.getByText("Reachable at http://192.168.1.44:3773"))
+      .element(page.getByText("LAN mode. Reachable at http://192.168.1.44:3773"))
       .toBeInTheDocument();
+  });
+
+  it("lets desktop users switch the remote access mode from Tailnet to LAN", async () => {
+    const desktopBridge = createDesktopBridgeStub({
+      serverExposureState: {
+        mode: "tailnet-accessible",
+        endpointUrl: "http://mackbook.tailnet.ts.net:3773",
+        advertisedHost: "mackbook.tailnet.ts.net",
+      },
+    });
+    window.desktopBridge = desktopBridge;
+
+    setServerConfigSnapshot(createBaseServerConfig());
+
+    mounted = await render(
+      <AppAtomRegistryProvider>
+        <ConnectionsSettings />
+      </AppAtomRegistryProvider>,
+    );
+
+    await expect
+      .element(
+        page.getByText(
+          "Recommended for mobile. Reachable on your Tailnet at http://mackbook.tailnet.ts.net:3773",
+        ),
+      )
+      .toBeInTheDocument();
+    await page.getByRole("button", { name: "Use LAN instead" }).click();
+    await expect.element(page.getByText("Switch remote access to LAN mode?")).toBeInTheDocument();
+    await expect
+      .element(
+        page.getByText(
+          "T3 Code will restart to keep remote access available on your local network instead of your Tailnet.",
+        ),
+      )
+      .toBeInTheDocument();
+    await page.getByRole("button", { name: "Restart and switch", exact: true }).click();
+    await vi.waitFor(() => {
+      expect(desktopBridge.setServerExposureMode).toHaveBeenCalledWith("network-accessible");
+    });
+    await expect
+      .element(page.getByText("LAN mode. Reachable at http://192.168.1.44:3773"))
+      .toBeInTheDocument();
+  });
+
+  it("treats tailnet-accessible desktop exposure as enabled and disables back to local-only", async () => {
+    const desktopBridge = createDesktopBridgeStub({
+      serverExposureState: {
+        mode: "tailnet-accessible",
+        endpointUrl: "http://100.88.12.4:3773",
+        advertisedHost: "100.88.12.4",
+      },
+    });
+    window.desktopBridge = desktopBridge;
+
+    setServerConfigSnapshot(createBaseServerConfig());
+
+    mounted = await render(
+      <AppAtomRegistryProvider>
+        <ConnectionsSettings />
+      </AppAtomRegistryProvider>,
+    );
+
+    await expect
+      .element(
+        page.getByText(
+          "Recommended for mobile. Reachable on your Tailnet at http://100.88.12.4:3773",
+        ),
+      )
+      .toBeInTheDocument();
+    const remoteAccessToggle = page.getByLabelText("Enable remote access");
+    await expect.element(remoteAccessToggle).toBeChecked();
+    await remoteAccessToggle.click();
+    await expect.element(page.getByText("Disable remote access?")).toBeInTheDocument();
+    await page.getByRole("button", { name: "Restart and disable", exact: true }).click();
+    await vi.waitFor(() => {
+      expect(desktopBridge.setServerExposureMode).toHaveBeenCalledWith("local-only");
+    });
   });
 
   it("opens the logs folder in the preferred editor", async () => {
@@ -705,5 +865,42 @@ describe("GeneralSettingsPanel observability", () => {
     await openLogsButton.click();
 
     expect(openInEditor).toHaveBeenCalledWith("/repo/project/.t3/logs", "cursor");
+  });
+
+  it("shows an OpenCode server URL field in provider settings", async () => {
+    setServerConfigSnapshot(createBaseServerConfig());
+
+    mounted = await render(
+      <AppAtomRegistryProvider>
+        <GeneralSettingsPanel />
+      </AppAtomRegistryProvider>,
+    );
+
+    await page.getByLabelText("Toggle OpenCode details").click();
+
+    // The unified provider-instance card renders field labels without a
+    // driver-name prefix (the driver name is already shown in the card
+    // header), so the labels read "Server URL" / "Server password"
+    // rather than the old "OpenCode server URL" / "OpenCode server password".
+    await expect.element(page.getByText("Server URL")).toBeInTheDocument();
+    await expect.element(page.getByPlaceholder("http://127.0.0.1:4096")).toBeInTheDocument();
+    await expect.element(page.getByText("Server password")).toBeInTheDocument();
+    await expect.element(page.getByPlaceholder("Optional")).toBeInTheDocument();
+  });
+
+  it("shows terminal environment and zsh startup settings", async () => {
+    setServerConfigSnapshot(createBaseServerConfig());
+
+    mounted = await render(
+      <AppAtomRegistryProvider>
+        <TerminalSettingsPanel />
+      </AppAtomRegistryProvider>,
+    );
+
+    await expect
+      .element(page.getByRole("heading", { name: "Terminal", exact: true }))
+      .toBeInTheDocument();
+    await expect.element(page.getByLabelText("Terminal environment variables")).toBeInTheDocument();
+    await expect.element(page.getByLabelText("Zsh startup directory")).toBeInTheDocument();
   });
 });

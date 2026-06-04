@@ -32,6 +32,17 @@ const decodeDesktopPackageJson = Schema.decodeUnknownEffect(
 
 export const resolveNightlyBaseVersion = (version: string) => version.replace(/[-+].*$/, "");
 
+export const resolveNightlyTargetVersion = (version: string) => {
+  const stableCore = resolveNightlyBaseVersion(version);
+  const match = /^(\d+)\.(\d+)\.(\d+)$/.exec(stableCore);
+  if (!match) {
+    throw new Error(`Invalid desktop package version '${version}'.`);
+  }
+
+  const [, major, minor, patch] = match;
+  return `${major}.${minor}.${Number(patch) + 1}`;
+};
+
 export const resolveNightlyReleaseMetadata = (
   baseVersion: string,
   date: string,
@@ -43,7 +54,7 @@ export const resolveNightlyReleaseMetadata = (
   return {
     baseVersion,
     version,
-    tag: `nightly-v${version}`,
+    tag: `v${version}`,
     name: `T3 Code Nightly ${version} (${shortSha})`,
     shortSha,
   };
@@ -59,7 +70,7 @@ const readDesktopBaseVersion = Effect.fn("readDesktopBaseVersion")(function* (
   const packageJson = yield* fs
     .readFileString(packageJsonPath)
     .pipe(Effect.flatMap(decodeDesktopPackageJson));
-  return resolveNightlyBaseVersion(packageJson.version);
+  return resolveNightlyTargetVersion(packageJson.version);
 });
 
 const writeOutput = Effect.fn("writeOutput")(function* (

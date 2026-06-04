@@ -7,11 +7,19 @@ import {
   resolveHeadlessConnectionHost,
   resolveHeadlessConnectionString,
   resolveListeningPort,
-} from "./startupAccess";
+} from "./startupAccess.ts";
 
 it("prefers localhost when no explicit host is configured", () => {
-  expect(resolveHeadlessConnectionHost(undefined)).toBe("localhost");
-  expect(resolveHeadlessConnectionString(undefined, 3773)).toBe("http://localhost:3773");
+  expect(
+    resolveHeadlessConnectionHost(undefined, undefined, {
+      resolveTailnetHost: () => null,
+    }),
+  ).toBe("localhost");
+  expect(
+    resolveHeadlessConnectionString(undefined, 3773, undefined, {
+      resolveTailnetHost: () => null,
+    }),
+  ).toBe("http://localhost:3773");
 });
 
 it("keeps explicit bind hosts in the connection string", () => {
@@ -19,31 +27,132 @@ it("keeps explicit bind hosts in the connection string", () => {
   expect(resolveHeadlessConnectionString("::1", 3773)).toBe("http://[::1]:3773");
 });
 
+it("prefers an explicit tailnet host override before other tailnet detection for wildcard binds", () => {
+  expect(
+    resolveHeadlessConnectionString(
+      "0.0.0.0",
+      3773,
+      {
+        en0: [
+          {
+            address: "192.168.1.42",
+            netmask: "255.255.255.0",
+            family: "IPv4",
+            mac: "00:00:00:00:00:00",
+            internal: false,
+            cidr: "192.168.1.42/24",
+          },
+        ],
+      },
+      {
+        env: {
+          T3CODE_TAILNET_HOST: "custom.tailnet.ts.net",
+          TS_CERT_DOMAIN: "mackbook.tailnet.ts.net",
+        },
+        resolveTailnetHost: (input) => input?.tailnetHost ?? input?.tsCertDomain ?? "100.88.12.4",
+      },
+    ),
+  ).toBe("http://custom.tailnet.ts.net:3773");
+});
+
+it("prefers TS_CERT_DOMAIN when no explicit tailnet host override is configured", () => {
+  expect(
+    resolveHeadlessConnectionString(
+      "0.0.0.0",
+      3773,
+      {
+        en0: [
+          {
+            address: "192.168.1.42",
+            netmask: "255.255.255.0",
+            family: "IPv4",
+            mac: "00:00:00:00:00:00",
+            internal: false,
+            cidr: "192.168.1.42/24",
+          },
+        ],
+      },
+      {
+        env: {
+          TS_CERT_DOMAIN: "mackbook.tailnet.ts.net",
+        },
+        resolveTailnetHost: (input) => input?.tailnetHost ?? input?.tsCertDomain ?? "100.88.12.4",
+      },
+    ),
+  ).toBe("http://mackbook.tailnet.ts.net:3773");
+});
+
+it("falls back to tailscale ip -4 when no explicit tailnet host is configured", () => {
+  expect(
+    resolveHeadlessConnectionString(
+      undefined,
+      3773,
+      {},
+      {
+        env: {},
+        resolveTailnetHost: (input) => input?.tailnetHost ?? input?.tsCertDomain ?? "100.88.12.4",
+      },
+    ),
+  ).toBe("http://100.88.12.4:3773");
+});
+
 it("resolves wildcard hosts to a concrete external interface when one is available", () => {
-  const connectionString = resolveHeadlessConnectionString("0.0.0.0", 3773, {
-    en0: [
-      {
-        address: "192.168.1.42",
-        netmask: "255.255.255.0",
-        family: "IPv4",
-        mac: "00:00:00:00:00:00",
-        internal: false,
-        cidr: "192.168.1.42/24",
-      },
-    ],
-    lo0: [
-      {
-        address: "127.0.0.1",
-        netmask: "255.0.0.0",
-        family: "IPv4",
-        mac: "00:00:00:00:00:00",
-        internal: true,
-        cidr: "127.0.0.1/8",
-      },
-    ],
-  });
+  const connectionString = resolveHeadlessConnectionString(
+    "0.0.0.0",
+    3773,
+    {
+      en0: [
+        {
+          address: "192.168.1.42",
+          netmask: "255.255.255.0",
+          family: "IPv4",
+          mac: "00:00:00:00:00:00",
+          internal: false,
+          cidr: "192.168.1.42/24",
+        },
+      ],
+      lo0: [
+        {
+          address: "127.0.0.1",
+          netmask: "255.0.0.0",
+          family: "IPv4",
+          mac: "00:00:00:00:00:00",
+          internal: true,
+          cidr: "127.0.0.1/8",
+        },
+      ],
+    },
+    {
+      resolveTailnetHost: () => null,
+    },
+  );
 
   expect(connectionString).toBe("http://192.168.1.42:3773");
+});
+
+it("falls back to the wildcard LAN resolution when tailnet detection fails", () => {
+  expect(
+    resolveHeadlessConnectionString(
+      "0.0.0.0",
+      3773,
+      {
+        en0: [
+          {
+            address: "192.168.1.42",
+            netmask: "255.255.255.0",
+            family: "IPv4",
+            mac: "00:00:00:00:00:00",
+            internal: false,
+            cidr: "192.168.1.42/24",
+          },
+        ],
+      },
+      {
+        env: {},
+        resolveTailnetHost: () => null,
+      },
+    ),
+  ).toBe("http://192.168.1.42:3773");
 });
 
 it("prefers the actual bound port when an http server address is available", () => {

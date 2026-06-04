@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { resolveDesktopServerExposure, resolveLanAdvertisedHost } from "./serverExposure";
+import { resolveDesktopServerExposure, resolveLanAdvertisedHost } from "./serverExposure.ts";
 
 describe("resolveLanAdvertisedHost", () => {
   it("prefers an explicit host override", () => {
@@ -117,6 +117,59 @@ describe("resolveDesktopServerExposure", () => {
       localWsUrl: "ws://127.0.0.1:3773",
       endpointUrl: "http://192.168.1.44:3773",
       advertisedHost: "192.168.1.44",
+    });
+  });
+
+  it("prefers an explicit tailnet host in tailnet-accessible mode", () => {
+    expect(
+      resolveDesktopServerExposure({
+        mode: "tailnet-accessible",
+        port: 3773,
+        networkInterfaces: {},
+        advertisedHostOverride: "100.88.12.4",
+      }),
+    ).toEqual({
+      mode: "tailnet-accessible",
+      bindHost: "0.0.0.0",
+      localHttpUrl: "http://127.0.0.1:3773",
+      localWsUrl: "ws://127.0.0.1:3773",
+      endpointUrl: "http://100.88.12.4:3773",
+      advertisedHost: "100.88.12.4",
+    });
+  });
+
+  it("uses the HTTPS Tailnet endpoint when the advertised host is a Tailscale DNS name", () => {
+    expect(
+      resolveDesktopServerExposure({
+        mode: "tailnet-accessible",
+        port: 3773,
+        networkInterfaces: {},
+        advertisedHostOverride: "mackbook.tail1e1a32.ts.net",
+      }),
+    ).toEqual({
+      mode: "tailnet-accessible",
+      bindHost: "0.0.0.0",
+      localHttpUrl: "http://127.0.0.1:3773",
+      localWsUrl: "ws://127.0.0.1:3773",
+      endpointUrl: "https://mackbook.tail1e1a32.ts.net",
+      advertisedHost: "mackbook.tail1e1a32.ts.net",
+    });
+  });
+
+  it("stays tailnet-accessible even when no tailnet host is currently detectable", () => {
+    expect(
+      resolveDesktopServerExposure({
+        mode: "tailnet-accessible",
+        port: 3773,
+        networkInterfaces: {},
+      }),
+    ).toEqual({
+      mode: "tailnet-accessible",
+      bindHost: "0.0.0.0",
+      localHttpUrl: "http://127.0.0.1:3773",
+      localWsUrl: "ws://127.0.0.1:3773",
+      endpointUrl: null,
+      advertisedHost: null,
     });
   });
 

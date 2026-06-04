@@ -1,27 +1,23 @@
 import { describe, expect, it } from "vitest";
 
-import { isLoopbackHostname, resolveDevRedirectUrl } from "./http.ts";
+import { isAllowedBrowserApiOrigin } from "./http.js";
 
-describe("http dev routing", () => {
-  it("treats localhost and loopback addresses as local", () => {
-    expect(isLoopbackHostname("127.0.0.1")).toBe(true);
-    expect(isLoopbackHostname("localhost")).toBe(true);
-    expect(isLoopbackHostname("::1")).toBe(true);
-    expect(isLoopbackHostname("[::1]")).toBe(true);
+describe("isAllowedBrowserApiOrigin", () => {
+  it("returns false instead of throwing when the origin header is missing", () => {
+    expect(isAllowedBrowserApiOrigin(undefined as unknown as string)).toBe(false);
   });
 
-  it("does not treat LAN addresses as local", () => {
-    expect(isLoopbackHostname("192.168.86.35")).toBe(false);
-    expect(isLoopbackHostname("10.0.0.24")).toBe(false);
-    expect(isLoopbackHostname("example.local")).toBe(false);
+  it("allows the desktop app origin", () => {
+    expect(isAllowedBrowserApiOrigin("t3://app")).toBe(true);
   });
 
-  it("preserves path and query when redirecting to the dev server", () => {
-    const devUrl = new URL("http://127.0.0.1:5173/");
-    const requestUrl = new URL("http://127.0.0.1:3774/pair?token=test-token");
+  it("allows Expo development client origins used by mobile builds", () => {
+    expect(isAllowedBrowserApiOrigin("exp://192.168.1.20:8081")).toBe(true);
+    expect(isAllowedBrowserApiOrigin("exps://example.ngrok-free.dev")).toBe(true);
+    expect(isAllowedBrowserApiOrigin("exp+t3-code-mobile://expo-development-client")).toBe(true);
+  });
 
-    expect(resolveDevRedirectUrl(devUrl, requestUrl)).toBe(
-      "http://127.0.0.1:5173/pair?token=test-token",
-    );
+  it("allows the T3 Code mobile app scheme origin", () => {
+    expect(isAllowedBrowserApiOrigin("t3code-mobile://pair")).toBe(true);
   });
 });
