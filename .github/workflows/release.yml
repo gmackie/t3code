@@ -16,8 +16,9 @@ on:
         options:
           - stable
           - nightly
+          - gmacko
       version:
-        description: "Release version (for example 1.2.3 or v1.2.3)"
+        description: "Release version (for example 1.2.3, v1.2.3, or 1.2.3-gmacko.YYYYMMDDHHMM)"
         required: false
         type: string
 
@@ -28,6 +29,7 @@ permissions:
 jobs:
   preflight:
     name: Preflight
+    if: github.event_name != 'schedule' || github.repository == 'pingdotgg/t3code'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     outputs:
@@ -69,8 +71,12 @@ jobs:
           NIGHTLY_DATE: ${{ github.run_started_at }}
           NIGHTLY_SHA: ${{ github.sha }}
           NIGHTLY_RUN_NUMBER: ${{ github.run_number }}
+          GMACKO_DATE: ${{ github.run_started_at }}
+          WORKFLOW_REPOSITORY: ${{ github.repository }}
         run: |
-          if [[ "${GITHUB_EVENT_NAME}" == "schedule" || ( "${GITHUB_EVENT_NAME}" == "workflow_dispatch" && "${DISPATCH_CHANNEL:-stable}" == "nightly" ) ]]; then
+          dispatch_channel="${DISPATCH_CHANNEL:-stable}"
+
+          if [[ "${GITHUB_EVENT_NAME}" == "schedule" || ( "${GITHUB_EVENT_NAME}" == "workflow_dispatch" && "$dispatch_channel" == "nightly" ) ]]; then
             nightly_date="$(date -u -d "$NIGHTLY_DATE" +%Y%m%d)"
 
             node scripts/resolve-nightly-release.ts \
@@ -81,6 +87,48 @@ jobs:
 
             echo "release_channel=nightly" >> "$GITHUB_OUTPUT"
             echo "cli_dist_tag=nightly" >> "$GITHUB_OUTPUT"
+            echo "is_prerelease=true" >> "$GITHUB_OUTPUT"
+            echo "make_latest=false" >> "$GITHUB_OUTPUT"
+          elif [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" && "$dispatch_channel" == "gmacko" ]]; then
+            if [[ "${GITHUB_REF_NAME}" != "custom-local" ]]; then
+              echo "workflow_dispatch gmacko releases must run from custom-local." >&2
+              exit 1
+            fi
+
+            if [[ "$WORKFLOW_REPOSITORY" != "gmackie/t3code" ]]; then
+              echo "workflow_dispatch gmacko releases must run in gmackie/t3code." >&2
+              exit 1
+            fi
+
+            raw="${DISPATCH_VERSION}"
+            if [[ -n "$raw" ]]; then
+              version="${raw#v}"
+              if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+-gmacko\.[0-9]+$ ]]; then
+                echo "Invalid gmacko release version: $raw" >&2
+                exit 1
+              fi
+
+              echo "version=$version" >> "$GITHUB_OUTPUT"
+              echo "tag=v$version" >> "$GITHUB_OUTPUT"
+              echo "name=T3 Code (gmacko) $version" >> "$GITHUB_OUTPUT"
+            else
+              gmacko_stamp="$(date -u -d "$GMACKO_DATE" +%Y%m%d%H%M)"
+              node scripts/resolve-gmacko-release.ts \
+                --stamp "$gmacko_stamp" \
+                --github-output
+            fi
+
+            echo "release_channel=gmacko" >> "$GITHUB_OUTPUT"
+            echo "cli_dist_tag=gmacko" >> "$GITHUB_OUTPUT"
+            echo "is_prerelease=true" >> "$GITHUB_OUTPUT"
+            echo "make_latest=false" >> "$GITHUB_OUTPUT"
+          elif [[ "${GITHUB_EVENT_NAME}" != "workflow_dispatch" && "${GITHUB_REF_NAME#v}" =~ ^[0-9]+\.[0-9]+\.[0-9]+-gmacko\.[0-9]+$ ]]; then
+            version="${GITHUB_REF_NAME#v}"
+            echo "release_channel=gmacko" >> "$GITHUB_OUTPUT"
+            echo "version=$version" >> "$GITHUB_OUTPUT"
+            echo "tag=v$version" >> "$GITHUB_OUTPUT"
+            echo "name=T3 Code (gmacko) $version" >> "$GITHUB_OUTPUT"
+            echo "cli_dist_tag=gmacko" >> "$GITHUB_OUTPUT"
             echo "is_prerelease=true" >> "$GITHUB_OUTPUT"
             echo "make_latest=false" >> "$GITHUB_OUTPUT"
           else
@@ -282,6 +330,7 @@ jobs:
   publish_cli:
     name: Publish CLI to npm
     needs: [preflight, build]
+    if: ${{ !failure() && !cancelled() && needs.preflight.result == 'success' && needs.build.result == 'success' && needs.preflight.outputs.release_channel != 'gmacko' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -316,6 +365,7 @@ jobs:
   release:
     name: Publish GitHub Release
     needs: [preflight, build, publish_cli]
+    if: ${{ !failure() && !cancelled() && needs.preflight.result == 'success' && needs.build.result == 'success' && (needs.publish_cli.result == 'success' || (needs.preflight.outputs.release_channel == 'gmacko' && needs.publish_cli.result == 'skipped')) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:

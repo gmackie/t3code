@@ -16,6 +16,20 @@ export type RuntimeMode = typeof RuntimeMode.Type;
 export const StartupPresentation = Schema.Literals(["browser", "headless"]);
 export type StartupPresentation = typeof StartupPresentation.Type;
 
+function normalizeStateDirName(value: string | undefined, devUrl: URL | undefined): string {
+  const fallback = devUrl !== undefined ? "dev" : "userdata";
+  const stateDirName = value?.trim() || fallback;
+  if (
+    stateDirName === "." ||
+    stateDirName === ".." ||
+    stateDirName.includes("/") ||
+    stateDirName.includes("\\")
+  ) {
+    throw new Error(`Invalid state directory name: ${stateDirName}`);
+  }
+  return stateDirName;
+}
+
 /**
  * ServerDerivedPaths - Derived paths from the base directory.
  */
@@ -70,9 +84,10 @@ export interface ServerConfigShape extends ServerDerivedPaths {
 export const deriveServerPaths = Effect.fn(function* (
   baseDir: ServerConfigShape["baseDir"],
   devUrl: ServerConfigShape["devUrl"],
+  stateDirName?: string | undefined,
 ): Effect.fn.Return<ServerDerivedPaths, never, Path.Path> {
   const { join } = yield* Path.Path;
-  const stateDir = join(baseDir, devUrl !== undefined ? "dev" : "userdata");
+  const stateDir = join(baseDir, normalizeStateDirName(stateDirName, devUrl));
   const dbPath = join(stateDir, "state.sqlite");
   const attachmentsDir = join(stateDir, "attachments");
   const logsDir = join(stateDir, "logs");

@@ -31,6 +31,13 @@ describe("desktopSettings", () => {
     expect(readDesktopSettings(makeSettingsPath())).toEqual(DEFAULT_DESKTOP_SETTINGS);
   });
 
+  it("defaults packaged gmacko builds to the gmacko update channel", () => {
+    expect(readDesktopSettings(makeSettingsPath(), "0.0.20-gmacko.202604170930")).toEqual({
+      serverExposureMode: "local-only",
+      updateChannel: "gmacko",
+    });
+  });
+
   it("persists and reloads the configured server exposure mode", () => {
     const settingsPath = makeSettingsPath();
 
@@ -72,6 +79,21 @@ describe("desktopSettings", () => {
     ).toEqual({
       serverExposureMode: "local-only",
       updateChannel: "nightly",
+    });
+  });
+
+  it("persists the requested gmacko update channel", () => {
+    expect(
+      setDesktopUpdateChannelPreference(
+        {
+          serverExposureMode: "local-only",
+          updateChannel: "latest",
+        },
+        "gmacko",
+      ),
+    ).toEqual({
+      serverExposureMode: "local-only",
+      updateChannel: "gmacko",
     });
   });
 

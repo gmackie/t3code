@@ -452,13 +452,13 @@ function resolveDesktopRuntimeDependencies(
   return resolveCatalogDependencies(runtimeDependencies, catalog, "apps/desktop");
 }
 
-function resolveGitHubPublishConfig(updateChannel: "latest" | "nightly"):
+function resolveGitHubPublishConfig(updateChannel: "latest" | "nightly" | "gmacko"):
   | {
       readonly provider: "github";
       readonly owner: string;
       readonly repo: string;
       readonly releaseType: "release" | "prerelease";
-      readonly channel?: "nightly";
+      readonly channel?: "nightly" | "gmacko";
     }
   | undefined {
   const rawRepo =
@@ -474,21 +474,35 @@ function resolveGitHubPublishConfig(updateChannel: "latest" | "nightly"):
     provider: "github",
     owner,
     repo,
-    releaseType: updateChannel === "nightly" ? "prerelease" : "release",
-    ...(updateChannel === "nightly" ? { channel: "nightly" as const } : {}),
+    releaseType: updateChannel === "latest" ? "release" : "prerelease",
+    ...(updateChannel === "latest" ? {} : { channel: updateChannel }),
   };
 }
 
-export function resolveDesktopUpdateChannel(version: string): "latest" | "nightly" {
-  return /-nightly\.\d{8}\.\d+$/.test(version) ? "nightly" : "latest";
+export function resolveDesktopUpdateChannel(version: string): "latest" | "nightly" | "gmacko" {
+  if (/-nightly\.\d{8}\.\d+$/.test(version)) {
+    return "nightly";
+  }
+  if (/-gmacko\.\d+$/.test(version)) {
+    return "gmacko";
+  }
+  return "latest";
 }
 
 export function resolveDesktopBuildIconAssets(version: string): DesktopBuildIconAssets {
-  if (resolveDesktopUpdateChannel(version) === "nightly") {
+  const updateChannel = resolveDesktopUpdateChannel(version);
+  if (updateChannel === "nightly") {
     return {
       macIconPng: BRAND_ASSET_PATHS.nightlyMacIconPng,
       linuxIconPng: BRAND_ASSET_PATHS.nightlyLinuxIconPng,
       windowsIconIco: BRAND_ASSET_PATHS.nightlyWindowsIconIco,
+    };
+  }
+  if (updateChannel === "gmacko") {
+    return {
+      macIconPng: BRAND_ASSET_PATHS.gmackoMacIconPng,
+      linuxIconPng: BRAND_ASSET_PATHS.gmackoLinuxIconPng,
+      windowsIconIco: BRAND_ASSET_PATHS.gmackoWindowsIconIco,
     };
   }
 
@@ -504,9 +518,14 @@ export function resolveMockUpdateServerUrl(mockUpdateServerPort: number | undefi
 }
 
 export function resolveDesktopProductName(version: string): string {
-  return resolveDesktopUpdateChannel(version) === "nightly"
-    ? "T3 Code (Nightly)"
-    : (desktopPackageJson.productName ?? "T3 Code");
+  const updateChannel = resolveDesktopUpdateChannel(version);
+  if (updateChannel === "nightly") {
+    return "T3 Code (Nightly)";
+  }
+  if (updateChannel === "gmacko") {
+    return "T3 Code (gmacko)";
+  }
+  return desktopPackageJson.productName ?? "T3 Code";
 }
 
 const createBuildConfig = Effect.fn("createBuildConfig")(function* (

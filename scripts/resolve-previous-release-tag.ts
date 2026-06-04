@@ -6,7 +6,7 @@ import { Array, Config, Effect, FileSystem, Schema, Stream, String } from "effec
 import { Command, Flag } from "effect/unstable/cli";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 
-const ReleaseChannel = Schema.Literals(["stable", "nightly"]);
+const ReleaseChannel = Schema.Literals(["stable", "nightly", "gmacko"]);
 type ReleaseChannel = typeof ReleaseChannel.Type;
 
 interface StableVersion {
@@ -22,6 +22,13 @@ interface NightlyVersion {
   readonly patch: number;
   readonly date: number;
   readonly runNumber: number;
+}
+
+interface GmackoVersion {
+  readonly major: number;
+  readonly minor: number;
+  readonly patch: number;
+  readonly stamp: number;
 }
 
 const parseNumericIdentifier = (identifier: string): number | undefined =>
@@ -75,11 +82,16 @@ const parseStableTag = (tag: string): StableVersion | undefined => {
   const [, major, minor, patch, prerelease] = match;
   if (!major || !minor || !patch) return undefined;
 
+  const prereleaseIdentifiers = prerelease ? prerelease.split(".") : [];
+  if (prereleaseIdentifiers[0] === "nightly" || prereleaseIdentifiers[0] === "gmacko") {
+    return undefined;
+  }
+
   return {
     major: Number(major),
     minor: Number(minor),
     patch: Number(patch),
-    prerelease: prerelease ? prerelease.split(".") : [],
+    prerelease: prereleaseIdentifiers,
   };
 };
 
@@ -92,7 +104,7 @@ const compareNightlyVersions = (left: NightlyVersion, right: NightlyVersion): nu
 };
 
 const parseNightlyTag = (tag: string): NightlyVersion | undefined => {
-  const match = /^nightly-v(\d+)\.(\d+)\.(\d+)-nightly\.(\d{8})\.(\d+)$/.exec(tag);
+  const match = /^(?:nightly-)?v(\d+)\.(\d+)\.(\d+)-nightly\.(\d{8})\.(\d+)$/.exec(tag);
   if (!match) return undefined;
 
   const [, major, minor, patch, date, runNumber] = match;
@@ -107,7 +119,29 @@ const parseNightlyTag = (tag: string): NightlyVersion | undefined => {
   };
 };
 
-const resolvePreviousReleaseTag = (
+const compareGmackoVersions = (left: GmackoVersion, right: GmackoVersion): number => {
+  if (left.major !== right.major) return left.major - right.major;
+  if (left.minor !== right.minor) return left.minor - right.minor;
+  if (left.patch !== right.patch) return left.patch - right.patch;
+  return left.stamp - right.stamp;
+};
+
+const parseGmackoTag = (tag: string): GmackoVersion | undefined => {
+  const match = /^v(\d+)\.(\d+)\.(\d+)-gmacko\.(\d+)$/.exec(tag);
+  if (!match) return undefined;
+
+  const [, major, minor, patch, stamp] = match;
+  if (!major || !minor || !patch || !stamp) return undefined;
+
+  return {
+    major: Number(major),
+    minor: Number(minor),
+    patch: Number(patch),
+    stamp: Number(stamp),
+  };
+};
+
+export const resolvePreviousReleaseTag = (
   channel: ReleaseChannel,
   currentTag: string,
   tags: ReadonlyArray<string>,
@@ -129,16 +163,32 @@ const resolvePreviousReleaseTag = (
     return candidates[0]?.tag;
   }
 
-  const current = parseNightlyTag(currentTag);
-  if (!current) {
-    throw new Error(`Invalid nightly release tag '${currentTag}'.`);
+  if (channel === "nightly") {
+    const current = parseNightlyTag(currentTag);
+    if (!current) {
+      throw new Error(`Invalid nightly release tag '${currentTag}'.`);
+    }
+
+    const candidates = tags
+      .map((tag) => ({ tag, parsed: parseNightlyTag(tag) }))
+      .filter(
+        (entry): entry is { tag: string; parsed: NightlyVersion } => entry.parsed !== undefined,
+      )
+      .filter((entry) => compareNightlyVersions(entry.parsed, current) < 0)
+      .toSorted((left, right) => compareNightlyVersions(right.parsed, left.parsed));
+
+    return candidates[0]?.tag;
   }
 
+  const current = parseGmackoTag(currentTag);
+  if (!current) {
+    throw new Error(`Invalid gmacko release tag '${currentTag}'.`);
+  }
   const candidates = tags
-    .map((tag) => ({ tag, parsed: parseNightlyTag(tag) }))
-    .filter((entry): entry is { tag: string; parsed: NightlyVersion } => entry.parsed !== undefined)
-    .filter((entry) => compareNightlyVersions(entry.parsed, current) < 0)
-    .toSorted((left, right) => compareNightlyVersions(right.parsed, left.parsed));
+    .map((tag) => ({ tag, parsed: parseGmackoTag(tag) }))
+    .filter((entry): entry is { tag: string; parsed: GmackoVersion } => entry.parsed !== undefined)
+    .filter((entry) => compareGmackoVersions(entry.parsed, current) < 0)
+    .toSorted((left, right) => compareGmackoVersions(right.parsed, left.parsed));
 
   return candidates[0]?.tag;
 };
@@ -194,10 +244,16 @@ const command = Command.make(
       Effect.map((tags) => resolvePreviousReleaseTag(channel, currentTag, tags)),
       Effect.flatMap((previousTag) => writeOutput(previousTag, githubOutput)),
     ),
-).pipe(Command.withDescription("Resolve the previous release tag for a stable or nightly series."));
-
-Command.run(command, { version: "0.0.0" }).pipe(
-  Effect.scoped,
-  Effect.provide(NodeServices.layer),
-  NodeRuntime.runMain,
+).pipe(
+  Command.withDescription(
+    "Resolve the previous release tag for a stable, nightly, or gmacko series.",
+  ),
 );
+
+if (import.meta.main) {
+  Command.run(command, { version: "0.0.0" }).pipe(
+    Effect.scoped,
+    Effect.provide(NodeServices.layer),
+    NodeRuntime.runMain,
+  );
+}

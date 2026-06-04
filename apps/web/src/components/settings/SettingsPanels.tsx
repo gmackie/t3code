@@ -384,7 +384,7 @@ function AboutVersionSection() {
       />
       <SettingsRow
         title="Update track"
-        description="Stable follows full releases. Nightly follows the nightly desktop channel and can switch back to stable immediately."
+        description="Stable follows full releases. Nightly follows the nightly desktop channel. Gmacko follows the custom gmacko desktop channel and can switch back to stable immediately."
         control={
           <Select
             value={selectedUpdateChannel}
@@ -398,7 +398,11 @@ function AboutVersionSection() {
               disabled={!hasDesktopBridge || isChangingUpdateChannel}
             >
               <SelectValue>
-                {selectedUpdateChannel === "nightly" ? "Nightly" : "Stable"}
+                {selectedUpdateChannel === "nightly"
+                  ? "Nightly"
+                  : selectedUpdateChannel === "gmacko"
+                    ? "Gmacko"
+                    : "Stable"}
               </SelectValue>
             </SelectTrigger>
             <SelectPopup align="end" alignItemWithTrigger={false}>
@@ -407,6 +411,9 @@ function AboutVersionSection() {
               </SelectItem>
               <SelectItem hideIndicator value="nightly">
                 Nightly
+              </SelectItem>
+              <SelectItem hideIndicator value="gmacko">
+                Gmacko
               </SelectItem>
             </SelectPopup>
           </Select>

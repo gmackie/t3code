@@ -71,8 +71,11 @@ import {
   reduceDesktopUpdateStateOnNoUpdate,
   reduceDesktopUpdateStateOnUpdateAvailable,
 } from "./updateMachine";
+import { getAutoUpdaterChannelConfig } from "./updateChannels";
 import { isArm64HostRunningIntelBuild, resolveDesktopRuntimeInfo } from "./runtimeArch";
 import { resolveDesktopAppBranding } from "./appBranding";
+import { resolveDesktopRuntimeIdentity } from "./runtimeIdentity";
+import { maybeSyncNightlyEnvironmentToGmacko } from "./startupStateSync";
 
 syncShellEnvironment();
 
@@ -99,24 +102,32 @@ const SET_SAVED_ENVIRONMENT_SECRET_CHANNEL = "desktop:set-saved-environment-secr
 const REMOVE_SAVED_ENVIRONMENT_SECRET_CHANNEL = "desktop:remove-saved-environment-secret";
 const GET_SERVER_EXPOSURE_STATE_CHANNEL = "desktop:get-server-exposure-state";
 const SET_SERVER_EXPOSURE_MODE_CHANNEL = "desktop:set-server-exposure-mode";
-const BASE_DIR = process.env.T3CODE_HOME?.trim() || Path.join(OS.homedir(), ".t3");
-const STATE_DIR = Path.join(BASE_DIR, "userdata");
+const ROOT_DIR = Path.resolve(__dirname, "../../..");
+const isDevelopment = Boolean(process.env.VITE_DEV_SERVER_URL);
+const desktopRuntimeIdentity = resolveDesktopRuntimeIdentity({
+  isDevelopment,
+  appVersion: app.getVersion(),
+});
+const BASE_DIR =
+  process.env.T3CODE_HOME?.trim() || Path.join(OS.homedir(), desktopRuntimeIdentity.baseDirName);
+const STATE_DIR = Path.join(BASE_DIR, desktopRuntimeIdentity.stateDirName);
 const DESKTOP_SETTINGS_PATH = Path.join(STATE_DIR, "desktop-settings.json");
 const CLIENT_SETTINGS_PATH = Path.join(STATE_DIR, "client-settings.json");
 const SAVED_ENVIRONMENT_REGISTRY_PATH = Path.join(STATE_DIR, "saved-environments.json");
 const DESKTOP_SCHEME = "t3";
-const ROOT_DIR = Path.resolve(__dirname, "../../..");
-const isDevelopment = Boolean(process.env.VITE_DEV_SERVER_URL);
 const desktopAppBranding: DesktopAppBranding = resolveDesktopAppBranding({
   isDevelopment,
   appVersion: app.getVersion(),
 });
 const APP_DISPLAY_NAME = desktopAppBranding.displayName;
-const APP_USER_MODEL_ID = isDevelopment ? "com.t3tools.t3code.dev" : "com.t3tools.t3code";
-const LINUX_DESKTOP_ENTRY_NAME = isDevelopment ? "t3code-dev.desktop" : "t3code.desktop";
-const LINUX_WM_CLASS = isDevelopment ? "t3code-dev" : "t3code";
-const USER_DATA_DIR_NAME = isDevelopment ? "t3code-dev" : "t3code";
-const LEGACY_USER_DATA_DIR_NAME = isDevelopment ? "T3 Code (Dev)" : "T3 Code (Alpha)";
+const APP_USER_MODEL_ID = desktopRuntimeIdentity.appUserModelId;
+const LINUX_DESKTOP_ENTRY_NAME = desktopRuntimeIdentity.linuxDesktopEntryName;
+const LINUX_WM_CLASS = desktopRuntimeIdentity.linuxWmClass;
+const USER_DATA_DIR_NAME = desktopRuntimeIdentity.userDataDirName;
+const LEGACY_USER_DATA_DIR_NAME = desktopRuntimeIdentity.legacyUserDataDirName;
+const NIGHTLY_SYNC_SOURCE_STATE_DIR =
+  process.env.T3CODE_GMACKO_SYNC_NIGHTLY_STATE_DIR?.trim() ||
+  Path.join(OS.homedir(), ".t3", "userdata");
 const COMMIT_HASH_PATTERN = /^[0-9a-f]{7,40}$/i;
 const COMMIT_HASH_DISPLAY_LENGTH = 12;
 const LOG_DIR = Path.join(STATE_DIR, "logs");
@@ -189,8 +200,26 @@ let aboutCommitHashCache: string | null | undefined;
 let desktopLogSink: RotatingFileSink | null = null;
 let backendLogSink: RotatingFileSink | null = null;
 let restoreStdIoCapture: (() => void) | null = null;
+const startupStateSyncResult = maybeSyncNightlyEnvironmentToGmacko({
+  isGmacko: desktopRuntimeIdentity.updateChannel === "gmacko",
+  enabledValue: process.env.T3CODE_GMACKO_SYNC_NIGHTLY_ON_STARTUP,
+  sourceStateDir: NIGHTLY_SYNC_SOURCE_STATE_DIR,
+  targetStateDir: STATE_DIR,
+});
+if (startupStateSyncResult.copied) {
+  console.info(
+    `[desktop] copied nightly environment into gmacko state source=${NIGHTLY_SYNC_SOURCE_STATE_DIR} target=${STATE_DIR}`,
+  );
+} else if (
+  startupStateSyncResult.reason !== "not-gmacko" &&
+  startupStateSyncResult.reason !== "disabled"
+) {
+  console.warn(
+    `[desktop] skipped gmacko nightly environment sync reason=${startupStateSyncResult.reason}`,
+  );
+}
 let backendObservabilitySettings = readPersistedBackendObservabilitySettings();
-let desktopSettings = readDesktopSettings(DESKTOP_SETTINGS_PATH);
+let desktopSettings = readDesktopSettings(DESKTOP_SETTINGS_PATH, app.getVersion());
 let desktopServerExposureMode: DesktopServerExposureMode = desktopSettings.serverExposureMode;
 
 let destructiveMenuIconCache: Electron.NativeImage | null | undefined;
@@ -262,9 +291,13 @@ function backendChildEnv(): NodeJS.ProcessEnv {
   delete env.T3CODE_MODE;
   delete env.T3CODE_NO_BROWSER;
   delete env.T3CODE_HOST;
+  delete env.T3CODE_STATE_DIR_NAME;
   delete env.T3CODE_DESKTOP_WS_URL;
   delete env.T3CODE_DESKTOP_LAN_ACCESS;
   delete env.T3CODE_DESKTOP_LAN_HOST;
+  if (desktopRuntimeIdentity.updateChannel === "gmacko") {
+    env.T3CODE_STATE_DIR_NAME = desktopRuntimeIdentity.stateDirName;
+  }
   return env;
 }
 
@@ -1136,11 +1169,12 @@ function createBaseUpdateState(
 }
 
 function applyAutoUpdaterChannel(channel: DesktopUpdateChannel): void {
+  const { allowPrerelease, allowDowngrade } = getAutoUpdaterChannelConfig(channel);
   autoUpdater.channel = channel;
-  autoUpdater.allowPrerelease = channel === "nightly";
-  autoUpdater.allowDowngrade = channel === "nightly";
+  autoUpdater.allowPrerelease = allowPrerelease;
+  autoUpdater.allowDowngrade = allowDowngrade;
   console.info(
-    `[desktop-updater] Using update channel '${channel}' (allowPrerelease=${channel === "nightly"}).`,
+    `[desktop-updater] Using update channel '${channel}' (allowPrerelease=${allowPrerelease}, allowDowngrade=${allowDowngrade}).`,
   );
 }
 
@@ -1397,6 +1431,9 @@ function startBackend(): void {
         noBrowser: true,
         port: backendPort,
         t3Home: BASE_DIR,
+        ...(desktopRuntimeIdentity.updateChannel === "gmacko"
+          ? { stateDirName: desktopRuntimeIdentity.stateDirName }
+          : {}),
         host: backendBindHost,
         desktopBootstrapToken: backendBootstrapToken,
         ...(backendObservabilitySettings.otlpTracesUrl
@@ -1784,7 +1821,7 @@ function registerIpcHandlers(): void {
 
   ipcMain.removeHandler(UPDATE_SET_CHANNEL_CHANNEL);
   ipcMain.handle(UPDATE_SET_CHANNEL_CHANNEL, async (_event, rawChannel: unknown) => {
-    if (rawChannel !== "latest" && rawChannel !== "nightly") {
+    if (rawChannel !== "latest" && rawChannel !== "nightly" && rawChannel !== "gmacko") {
       throw new Error("Invalid desktop update channel input.");
     }
     if (updateCheckInFlight || updateDownloadInFlight || updateInstallInFlight) {

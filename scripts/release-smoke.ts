@@ -79,6 +79,61 @@ function assertContains(haystack: string, needle: string, message: string): void
 const tempRoot = mkdtempSync(join(tmpdir(), "t3-release-smoke-"));
 
 try {
+  const workflow = readFileSync(resolve(repoRoot, ".github/workflows/release.yml"), "utf8");
+  const gmackoSyncWorkflowPath = resolve(repoRoot, ".github/workflows/gmacko-sync-upstream.yml");
+  const gmackoSyncWorkflow = readFileSync(gmackoSyncWorkflowPath, "utf8");
+  assertContains(workflow, "- gmacko", "Release workflow is missing the gmacko channel option.");
+  assertContains(
+    workflow,
+    "github.event_name != 'schedule' || github.repository == 'pingdotgg/t3code'",
+    "Release workflow does not keep scheduled nightly releases scoped to the upstream repository.",
+  );
+  assertContains(
+    workflow,
+    "workflow_dispatch gmacko releases must run from custom-local.",
+    "Release workflow does not enforce custom-local for manual gmacko releases.",
+  );
+  assertContains(
+    workflow,
+    "workflow_dispatch gmacko releases must run in gmackie/t3code.",
+    "Release workflow does not enforce the gmackie/t3code fork for manual gmacko releases.",
+  );
+  assertContains(
+    workflow,
+    "needs.preflight.outputs.release_channel != 'gmacko'",
+    "Release workflow does not skip CLI publishing for gmacko releases.",
+  );
+  assertContains(
+    workflow,
+    "needs.publish_cli.result == 'skipped'",
+    "Release workflow does not allow GitHub release publishing after gmacko skips CLI publishing.",
+  );
+  assertContains(
+    gmackoSyncWorkflow,
+    "github.repository == 'gmackie/t3code'",
+    "Gmacko sync workflow does not stay scoped to the gmackie/t3code fork.",
+  );
+  assertContains(
+    gmackoSyncWorkflow,
+    "git fetch upstream main",
+    "Gmacko sync workflow does not fetch upstream main.",
+  );
+  assertContains(
+    gmackoSyncWorkflow,
+    "git merge --no-edit upstream/main",
+    "Gmacko sync workflow does not merge upstream main into custom-local.",
+  );
+  assertContains(
+    gmackoSyncWorkflow,
+    "git push origin HEAD:custom-local",
+    "Gmacko sync workflow does not push the merged custom-local branch.",
+  );
+  assertContains(
+    gmackoSyncWorkflow,
+    "gh workflow run release.yml --ref custom-local -f channel=gmacko",
+    "Gmacko sync workflow does not dispatch the gmacko release workflow.",
+  );
+
   copyWorkspaceManifestFixture(tempRoot);
 
   execFileSync(
@@ -139,6 +194,36 @@ try {
     nightlyReleaseMetadata,
     "name=T3 Code Nightly 9.9.9-nightly.20260413.321 (abcdef123456)",
     "Expected nightly metadata to include the short commit SHA in the release name.",
+  );
+
+  const gmackoReleaseMetadata = execFileSync(
+    process.execPath,
+    [
+      resolve(repoRoot, "scripts/resolve-gmacko-release.ts"),
+      "--stamp",
+      "202604300228",
+      "--root",
+      tempRoot,
+    ],
+    {
+      cwd: repoRoot,
+      encoding: "utf8",
+    },
+  );
+  assertContains(
+    gmackoReleaseMetadata,
+    "version=9.9.9-gmacko.202604300228",
+    "Expected gmacko metadata to contain the derived gmacko version.",
+  );
+  assertContains(
+    gmackoReleaseMetadata,
+    "tag=v9.9.9-gmacko.202604300228",
+    "Expected gmacko metadata to contain the derived gmacko tag.",
+  );
+  assertContains(
+    gmackoReleaseMetadata,
+    "name=T3 Code (gmacko) 9.9.9-gmacko.202604300228",
+    "Expected gmacko metadata to contain the derived release name.",
   );
 
   const { arm64Path, x64Path } = writeMacManifestFixtures(tempRoot);

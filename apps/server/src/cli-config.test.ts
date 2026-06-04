@@ -153,6 +153,87 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
     }),
   );
 
+  it.effect("uses a configured state directory name under the selected base directory", () =>
+    Effect.gen(function* () {
+      const { join } = yield* Path.Path;
+      const baseDir = join(os.tmpdir(), "t3-cli-config-state-dir-base");
+      const derivedPaths = yield* deriveServerPaths(baseDir, undefined, "userdata-gmacko");
+      const resolved = yield* resolveServerConfig(
+        {
+          mode: Option.none(),
+          port: Option.none(),
+          host: Option.none(),
+          baseDir: Option.none(),
+          cwd: Option.none(),
+          devUrl: Option.none(),
+          noBrowser: Option.none(),
+          bootstrapFd: Option.none(),
+          autoBootstrapProjectFromCwd: Option.none(),
+          logWebSocketEvents: Option.none(),
+        },
+        Option.none(),
+      ).pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            ConfigProvider.layer(
+              ConfigProvider.fromEnv({
+                env: {
+                  T3CODE_HOME: baseDir,
+                  T3CODE_STATE_DIR_NAME: "userdata-gmacko",
+                  T3CODE_NO_BROWSER: "true",
+                },
+              }),
+            ),
+            NetService.layer,
+          ),
+        ),
+      );
+
+      expect(resolved.stateDir).toBe(derivedPaths.stateDir);
+      expect(resolved.dbPath).toBe(derivedPaths.dbPath);
+      expect(resolved.baseDir).toBe(baseDir);
+    }),
+  );
+
+  it.effect("uses the desktop bootstrap state directory name", () =>
+    Effect.gen(function* () {
+      const { join } = yield* Path.Path;
+      const baseDir = join(os.tmpdir(), "t3-cli-config-bootstrap-state-dir-base");
+      const fd = yield* openBootstrapFd({
+        mode: "desktop",
+        port: 4123,
+        t3Home: baseDir,
+        stateDirName: "userdata-gmacko",
+        noBrowser: true,
+      });
+      const resolved = yield* resolveServerConfig(
+        {
+          mode: Option.none(),
+          port: Option.none(),
+          host: Option.none(),
+          baseDir: Option.none(),
+          cwd: Option.none(),
+          devUrl: Option.none(),
+          noBrowser: Option.none(),
+          bootstrapFd: Option.some(fd),
+          autoBootstrapProjectFromCwd: Option.none(),
+          logWebSocketEvents: Option.none(),
+        },
+        Option.none(),
+      ).pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            ConfigProvider.layer(ConfigProvider.fromEnv({ env: {} })),
+            NetService.layer,
+          ),
+        ),
+      );
+
+      expect(resolved.stateDir).toBe(join(baseDir, "userdata-gmacko"));
+      expect(resolved.dbPath).toBe(join(baseDir, "userdata-gmacko", "state.sqlite"));
+    }),
+  );
+
   it.effect("preserves explicit false CLI boolean flags over env and bootstrap values", () =>
     Effect.gen(function* () {
       const { join } = yield* Path.Path;
