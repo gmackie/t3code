@@ -7,6 +7,9 @@ import appConfig from "../../app.json";
 import easConfig from "../../eas.json";
 import packageJson from "../../package.json";
 
+const easBuildConfig = easConfig.build as Record<string, any>;
+const easSubmitConfig = easConfig.submit as Record<string, any>;
+
 describe("mobile EAS configuration", () => {
   it("uses the gmacko development bundle identifier for iOS builds", () => {
     expect(appConfig.expo?.owner).toBe("gmacko");
@@ -34,16 +37,16 @@ describe("mobile EAS configuration", () => {
   });
 
   it("defines EAS build and submit profiles for iOS", () => {
-    expect(easConfig.build?.development?.developmentClient).toBe(true);
-    expect(easConfig.build?.development?.distribution).toBe("internal");
-    expect(Object.hasOwn(easConfig.build?.development?.ios ?? {}, "simulator")).toBe(false);
+    expect(easBuildConfig.development?.developmentClient).toBe(true);
+    expect(easBuildConfig.development?.distribution).toBe("internal");
+    expect(Object.hasOwn(easBuildConfig.development?.ios ?? {}, "simulator")).toBe(false);
     expect(packageJson.dependencies?.["expo-build-properties"]).toBeDefined();
     expect(packageJson.dependencies?.["expo-dev-client"]).toBeDefined();
-    expect(easConfig.build?.simulator?.developmentClient).toBe(true);
-    expect(easConfig.build?.simulator?.ios?.simulator).toBe(true);
-    expect(easConfig.build?.preview?.ios).toBeDefined();
-    expect(easConfig.build?.production?.ios).toBeDefined();
-    expect(easConfig.submit?.production?.ios).toBeDefined();
+    expect(easBuildConfig.simulator?.developmentClient).toBe(true);
+    expect(easBuildConfig.simulator?.ios?.simulator).toBe(true);
+    expect(easBuildConfig.preview?.ios).toBeDefined();
+    expect(easBuildConfig.production?.ios).toBeDefined();
+    expect(easSubmitConfig.production?.ios).toBeDefined();
   });
 
   it("disables Bun lifecycle scripts during EAS dependency installs", () => {

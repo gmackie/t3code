@@ -1,3 +1,4 @@
+// @effect-diagnostics nodeBuiltinImport:off
 import * as FS from "node:fs";
 import * as OS from "node:os";
 import * as Path from "node:path";

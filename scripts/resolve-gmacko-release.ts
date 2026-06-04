@@ -77,6 +77,7 @@ const writeOutput = Effect.fn("writeOutput")(function* (
     yield* fs.writeFileString(githubOutputPath, serialized, { flag: "a" });
   } else {
     for (const [key, value] of entries) {
+      // @effect-diagnostics-next-line globalConsoleInEffect:off
       console.log(`${key}=${value}`);
     }
   }

@@ -26,12 +26,8 @@ export async function pairEnvironmentFromUrl(input: {
     fetch: fetchImpl,
   });
 
-  if (
-    !bearerSession.authenticated ||
-    bearerSession.sessionMethod !== "bearer-session-token" ||
-    !bearerSession.sessionToken
-  ) {
-    throw new Error("Pairing did not produce a bearer session.");
+  if (!bearerSession.access_token) {
+    throw new Error("Pairing did not produce an access token.");
   }
 
   const timestamp = new Date().toISOString();
@@ -44,7 +40,7 @@ export async function pairEnvironmentFromUrl(input: {
       createdAt: timestamp,
       lastConnectedAt: null,
     },
-    sessionToken: bearerSession.sessionToken,
-    role: bearerSession.role,
+    sessionToken: bearerSession.access_token,
+    role: null,
   };
 }

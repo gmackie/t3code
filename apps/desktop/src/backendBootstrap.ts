@@ -1,3 +1,4 @@
+// @effect-diagnostics nodeBuiltinImport:off
 import type * as ChildProcess from "node:child_process";
 
 export const DESKTOP_BACKEND_BOOTSTRAP_FD = 3;

@@ -1,4 +1,9 @@
-import type { AuthBearerBootstrapResult, ExecutionEnvironmentDescriptor } from "@t3tools/contracts";
+import type { AuthAccessTokenResult, ExecutionEnvironmentDescriptor } from "@t3tools/contracts";
+import {
+  AuthAccessTokenType,
+  AuthEnvironmentBootstrapTokenType,
+  AuthTokenExchangeGrantType,
+} from "@t3tools/contracts";
 
 import { createBearerHeaders } from "@t3tools/client-runtime";
 
@@ -79,13 +84,23 @@ async function fetchJson<T>(input: {
   const endpointUrl = buildEndpointUrl(input.httpBaseUrl, input.pathname);
   let response: Response;
   try {
+    const body =
+      input.body instanceof URLSearchParams
+        ? input.body
+        : input.body !== undefined
+          ? JSON.stringify(input.body)
+          : undefined;
     response = await input.fetch(endpointUrl, {
       method: input.method ?? "GET",
       headers: {
-        ...(input.body !== undefined ? { "content-type": "application/json" } : {}),
+        ...(input.body instanceof URLSearchParams
+          ? { "content-type": "application/x-www-form-urlencoded" }
+          : input.body !== undefined
+            ? { "content-type": "application/json" }
+            : {}),
         ...(input.bearerToken ? createBearerHeaders(input.bearerToken) : {}),
       },
-      ...(input.body !== undefined ? { body: JSON.stringify(input.body) } : {}),
+      ...(body !== undefined ? { body } : {}),
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -116,14 +131,19 @@ export function bootstrapBearerSession(input: {
   readonly httpBaseUrl: string;
   readonly credential: string;
   readonly fetch: typeof globalThis.fetch;
-}): Promise<AuthBearerBootstrapResult> {
-  return fetchJson<AuthBearerBootstrapResult>({
+}): Promise<AuthAccessTokenResult> {
+  return fetchJson<AuthAccessTokenResult>({
     httpBaseUrl: input.httpBaseUrl,
-    pathname: "/api/auth/bootstrap/bearer",
+    pathname: "/oauth/token",
     method: "POST",
     fetch: input.fetch,
-    body: {
-      credential: input.credential,
-    },
+    body: new URLSearchParams({
+      grant_type: AuthTokenExchangeGrantType,
+      subject_token: input.credential,
+      subject_token_type: AuthEnvironmentBootstrapTokenType,
+      requested_token_type: AuthAccessTokenType,
+      client_label: "T3 Code Mobile",
+      client_device_type: "mobile",
+    }),
   });
 }

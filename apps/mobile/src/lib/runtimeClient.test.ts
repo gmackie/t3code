@@ -6,7 +6,7 @@ describe("runtimeClient", () => {
   it("issues websocket tokens with bearer auth", async () => {
     const fetchMock = vi.fn(
       async () =>
-        new Response(JSON.stringify({ token: "ws-token", expiresAt: "2026-04-25T20:00:00Z" })),
+        new Response(JSON.stringify({ ticket: "ws-ticket", expiresAt: "2026-04-25T20:00:00Z" })),
     );
 
     const result = await issueWsToken({
@@ -15,9 +15,9 @@ describe("runtimeClient", () => {
       fetch: fetchMock as typeof globalThis.fetch,
     });
 
-    expect(result.token).toBe("ws-token");
+    expect(result.ticket).toBe("ws-ticket");
     expect(fetchMock).toHaveBeenCalledWith(
-      "http://100.88.12.4:3773/api/auth/ws-token",
+      "http://100.88.12.4:3773/api/auth/websocket-ticket",
       expect.objectContaining({
         method: "POST",
         headers: expect.objectContaining({

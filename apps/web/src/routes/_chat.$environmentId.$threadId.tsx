@@ -32,8 +32,9 @@ import { parseWorkspaceTabDragData, WORKSPACE_TAB_DRAG_MIME_TYPE } from "../work
 
 const DiffPanel = lazy(() => import("../components/DiffPanel"));
 const DIFF_INLINE_SIDEBAR_WIDTH_STORAGE_KEY = "chat_diff_sidebar_width";
-const DIFF_INLINE_DEFAULT_WIDTH = "clamp(28rem,48vw,44rem)";
-const DIFF_INLINE_SIDEBAR_MIN_WIDTH = 26 * 16;
+const DIFF_INLINE_DEFAULT_WIDTH = "clamp(24rem,34vw,36rem)";
+const DIFF_INLINE_SIDEBAR_MIN_WIDTH = 22 * 16;
+const DIFF_INLINE_SIDEBAR_MAX_WIDTH = 256 * 16;
 const COMPOSER_COMPACT_MIN_LEFT_CONTROLS_WIDTH_PX = 208;
 
 const DiffLoadingFallback = (props: { mode: DiffPanelMode }) => {
@@ -130,6 +131,7 @@ const DiffPanelInlineSidebar = (props: {
         collapsible="offcanvas"
         className="border-l border-border bg-card text-foreground"
         resizable={{
+          maxWidth: DIFF_INLINE_SIDEBAR_MAX_WIDTH,
           minWidth: DIFF_INLINE_SIDEBAR_MIN_WIDTH,
           shouldAcceptWidth: shouldAcceptInlineSidebarWidth,
           storageKey: DIFF_INLINE_SIDEBAR_WIDTH_STORAGE_KEY,
@@ -458,7 +460,15 @@ function ChatThreadRouteView() {
   if (!shouldUseDiffSheet) {
     return (
       <>
-        {chatContent}
+        <SidebarInset className="h-svh min-h-0 overflow-hidden overscroll-y-none bg-background text-foreground md:h-dvh">
+          <ChatView
+            environmentId={threadRef.environmentId}
+            threadId={threadRef.threadId}
+            onDiffPanelOpen={markDiffOpened}
+            reserveTitleBarControlInset={!diffOpen}
+            routeKind="server"
+          />
+        </SidebarInset>
         <DiffPanelInlineSidebar
           diffOpen={diffOpen}
           onCloseDiff={closeDiff}
@@ -471,7 +481,14 @@ function ChatThreadRouteView() {
 
   return (
     <>
-      {chatContent}
+      <SidebarInset className="h-svh min-h-0 overflow-hidden overscroll-y-none bg-background text-foreground md:h-dvh">
+        <ChatView
+          environmentId={threadRef.environmentId}
+          threadId={threadRef.threadId}
+          onDiffPanelOpen={markDiffOpened}
+          routeKind="server"
+        />
+      </SidebarInset>
       <RightPanelSheet open={diffOpen} onClose={closeDiff}>
         {shouldRenderDiffContent ? <LazyDiffPanel mode="sheet" /> : null}
       </RightPanelSheet>

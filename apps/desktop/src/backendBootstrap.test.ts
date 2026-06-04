@@ -1,3 +1,4 @@
+// @effect-diagnostics nodeBuiltinImport:off
 import { describe, expect, it } from "vitest";
 
 import type * as ChildProcess from "node:child_process";

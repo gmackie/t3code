@@ -1,18 +1,18 @@
 import * as NodeOS from "node:os";
 
 import * as NodeServices from "@effect/platform-node/NodeServices";
-import { Effect, FileSystem, Path } from "effect";
-import { describe, expect, it } from "vitest";
+import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
+import * as Path from "effect/Path";
+import { describe, expect, it } from "vite-plus/test";
 import type * as EffectAcpSchema from "effect-acp/schema";
-import type { CursorSettings, ServerProviderModel } from "@t3tools/contracts";
+import type { CursorSettings } from "@t3tools/contracts";
 import { createModelCapabilities } from "@t3tools/shared/model";
 
 import {
   buildCursorProviderSnapshot,
   buildCursorCapabilitiesFromConfigOptions,
-  buildCursorDiscoveredModelsFromConfigOptions,
   checkCursorProviderStatus,
-  discoverCursorModelCapabilitiesViaAcp,
   discoverCursorModelsViaAcp,
   getCursorFallbackModels,
   getCursorParameterizedModelPickerUnsupportedMessage,
@@ -68,12 +68,13 @@ const makeMockAgentWrapper = Effect.fn("makeMockAgentWrapper")(function* (
     prefix: "cursor-provider-mock-",
   });
   const wrapperPath = path.join(dir, "fake-agent.sh");
+  const mockAgentCommand = ["node", mockAgentPath].map((arg) => JSON.stringify(arg)).join(" ");
   const envExports = Object.entries(extraEnv ?? {})
     .map(([key, value]) => `export ${key}=${JSON.stringify(value)}`)
     .join("\n");
   const script = `#!/bin/sh
 ${envExports}
-exec ${JSON.stringify("bun")} ${JSON.stringify(mockAgentPath)} "$@"
+exec ${mockAgentCommand} "$@"
 `;
   yield* fileSystem.writeFileString(wrapperPath, script);
   yield* fileSystem.chmod(wrapperPath, 0o755);
@@ -89,13 +90,14 @@ const makeMockAgentWithAboutWrapper = Effect.fn("makeMockAgentWithAboutWrapper")
     prefix: "cursor-provider-about-mock-",
   });
   const wrapperPath = path.join(dir, "fake-agent.sh");
+  const mockAgentCommand = ["node", mockAgentPath].map((arg) => JSON.stringify(arg)).join(" ");
   const script = `#!/bin/sh
 if [ "$1" = "about" ]; then
   printf 'CLI Version         2026.04.09-f2b0fcd\\n'
   printf 'User Email          cursor@example.com\\n'
   exit 0
 fi
-exec ${JSON.stringify("bun")} ${JSON.stringify(mockAgentPath)} "$@"
+exec ${mockAgentCommand} "$@"
 `;
   yield* fileSystem.writeFileString(wrapperPath, script);
   yield* fileSystem.chmod(wrapperPath, 0o755);
@@ -118,7 +120,7 @@ const waitForFileContent = Effect.fn("waitForFileContent")(function* (
     }
     yield* Effect.sleep("50 millis");
   }
-  return yield* Effect.fail(new Error(`Timed out waiting for file content at ${filePath}`));
+  return yield* Effect.die(`Timed out waiting for file content at ${filePath}`);
 });
 
 const makeProviderStatusEnvFixture = Effect.fn("makeProviderStatusEnvFixture")(function* () {
@@ -285,56 +287,12 @@ const parameterizedClaudeModelOptionConfigOptions = [
   },
 ] satisfies ReadonlyArray<EffectAcpSchema.SessionConfigOption>;
 
-const sessionNewCursorConfigOptions = [
-  {
-    type: "select",
-    currentValue: "agent",
-    options: [
-      { name: "Agent", value: "agent", description: "Full agent capabilities with tool access" },
-    ],
-    category: "mode",
-    id: "mode",
-    name: "Mode",
-    description: "Controls how the agent executes tasks",
-  },
-  {
-    type: "select",
-    currentValue: "composer-2",
-    options: [
-      { name: "Auto", value: "default" },
-      { name: "Composer 2", value: "composer-2" },
-      { name: "GPT-5.4", value: "gpt-5.4" },
-      { name: "Sonnet 4.6", value: "claude-sonnet-4-6" },
-      { name: "Opus 4.6", value: "claude-opus-4-6" },
-      { name: "Codex 5.3 Spark", value: "gpt-5.3-codex-spark" },
-    ],
-    category: "model",
-    id: "model",
-    name: "Model",
-    description: "Controls which model is used for responses",
-  },
-  {
-    type: "select",
-    currentValue: "true",
-    options: [
-      { name: "Off", value: "false" },
-      { name: "Fast", value: "true" },
-    ],
-    category: "model_config",
-    id: "fast",
-    name: "Fast",
-    description: "Faster speeds.",
-  },
-] satisfies ReadonlyArray<EffectAcpSchema.SessionConfigOption>;
-
 const baseCursorSettings: CursorSettings = {
   enabled: true,
   binaryPath: "agent",
   apiEndpoint: "",
   customModels: [],
 };
-
-const emptyCapabilities = createModelCapabilities({ optionDescriptors: [] });
 
 describe("getCursorFallbackModels", () => {
   it("does not publish any built-in cursor models before ACP discovery", () => {
@@ -452,51 +410,6 @@ describe("buildCursorCapabilitiesFromConfigOptions", () => {
   });
 });
 
-describe("buildCursorDiscoveredModelsFromConfigOptions", () => {
-  it("publishes ACP model choices immediately from session/new config options", () => {
-    expect(buildCursorDiscoveredModelsFromConfigOptions(sessionNewCursorConfigOptions)).toEqual([
-      {
-        slug: "default",
-        name: "Auto",
-        isCustom: false,
-        capabilities: emptyCapabilities,
-      },
-      {
-        slug: "composer-2",
-        name: "Composer 2",
-        isCustom: false,
-        capabilities: createModelCapabilities({
-          optionDescriptors: [booleanDescriptor("fastMode", "Fast", true)],
-        }),
-      },
-      {
-        slug: "gpt-5.4",
-        name: "GPT-5.4",
-        isCustom: false,
-        capabilities: emptyCapabilities,
-      },
-      {
-        slug: "claude-sonnet-4-6",
-        name: "Sonnet 4.6",
-        isCustom: false,
-        capabilities: emptyCapabilities,
-      },
-      {
-        slug: "claude-opus-4-6",
-        name: "Opus 4.6",
-        isCustom: false,
-        capabilities: emptyCapabilities,
-      },
-      {
-        slug: "gpt-5.3-codex-spark",
-        name: "Codex 5.3 Spark",
-        isCustom: false,
-        capabilities: emptyCapabilities,
-      },
-    ]);
-  });
-});
-
 describe("checkCursorProviderStatus", () => {
   it("does not launch Cursor ACP during provider status refresh", async () => {
     const { requestLogPath, wrapperPath } = await runNode(makeProviderStatusEnvFixture());
@@ -561,47 +474,6 @@ describe("discoverCursorModelsViaAcp", () => {
 
     const exitLog = await runNode(waitForFileContent(exitLogPath));
     expect(exitLog).toContain("SIGTERM");
-  });
-});
-
-describe("discoverCursorModelCapabilitiesViaAcp", () => {
-  it("closes all ACP probe runtimes after capability enrichment completes", async () => {
-    const { exitLogPath, wrapperPath } = await runNode(
-      makeExitLogFixture("cursor-capabilities-exit-log-"),
-    );
-    const existingModels: ReadonlyArray<ServerProviderModel> = [
-      { slug: "default", name: "Auto", isCustom: false, capabilities: emptyCapabilities },
-      { slug: "composer-2", name: "Composer 2", isCustom: false, capabilities: emptyCapabilities },
-      { slug: "gpt-5.4", name: "GPT-5.4", isCustom: false, capabilities: emptyCapabilities },
-      {
-        slug: "claude-opus-4-6",
-        name: "Opus 4.6",
-        isCustom: false,
-        capabilities: emptyCapabilities,
-      },
-    ];
-
-    const models = await Effect.runPromise(
-      discoverCursorModelCapabilitiesViaAcp(
-        {
-          enabled: true,
-          binaryPath: wrapperPath,
-          apiEndpoint: "",
-          customModels: [],
-        },
-        existingModels,
-      ).pipe(Effect.provide(NodeServices.layer)),
-    );
-
-    expect(models.map((model) => model.slug)).toEqual([
-      "default",
-      "composer-2",
-      "gpt-5.4",
-      "claude-opus-4-6",
-    ]);
-
-    const exitLog = await runNode(waitForFileContent(exitLogPath));
-    expect(exitLog.match(/SIGTERM/g)?.length ?? 0).toBe(4);
   });
 });
 

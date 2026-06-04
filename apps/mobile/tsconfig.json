@@ -1,14 +1,7 @@
 {
-  "extends": "../../tsconfig.base.json",
+  "extends": "expo/tsconfig.base",
   "compilerOptions": {
-    "jsx": "react-jsx",
-    "module": "ESNext",
-    "moduleResolution": "Bundler",
-    "lib": ["ES2023", "DOM", "DOM.Iterable"],
-    "types": ["react", "react-native"],
-    "paths": {
-      "~/*": ["./src/*"]
-    }
-  },
-  "include": ["app", "src"]
+    "allowImportingTsExtensions": true,
+    "strict": true
+  }
 }

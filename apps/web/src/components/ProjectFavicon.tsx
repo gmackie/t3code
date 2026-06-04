@@ -13,25 +13,28 @@ export function ProjectFavicon(input: {
   projectColor?: ProjectColor | null;
   className?: string;
 }) {
-  if (input.projectColor) {
+  const src = (() => {
+    try {
+      return resolveEnvironmentHttpUrl({
+        environmentId: input.environmentId,
+        pathname: "/api/project-favicon",
+        searchParams: { cwd: input.cwd },
+      });
+    } catch {
+      return null;
+    }
+  })();
+  const [status, setStatus] = useState<"loading" | "loaded" | "error">(() =>
+    src && loadedProjectFaviconSrcs.has(src) ? "loaded" : "loading",
+  );
+
+  if (!src) {
     return (
       <FolderIcon
-        aria-hidden="true"
-        data-project-favicon="folder"
-        className={`size-3.5 shrink-0 ${input.className ?? ""}`}
-        style={{ color: resolveProjectColorValue(input.projectColor) }}
+        className={`size-3.5 shrink-0 text-muted-foreground/50 ${input.className ?? ""}`}
       />
     );
   }
-
-  const src = resolveEnvironmentHttpUrl({
-    environmentId: input.environmentId,
-    pathname: "/api/project-favicon",
-    searchParams: { cwd: input.cwd },
-  });
-  const [status, setStatus] = useState<"loading" | "loaded" | "error">(() =>
-    loadedProjectFaviconSrcs.has(src) ? "loaded" : "loading",
-  );
 
   return (
     <>

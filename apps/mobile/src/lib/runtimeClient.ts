@@ -1,5 +1,5 @@
 import type {
-  AuthWebSocketTokenResult,
+  AuthWebSocketTicketResult,
   OrchestrationReadModel,
   PersistedSavedEnvironmentRecord,
 } from "@t3tools/contracts";
@@ -36,9 +36,9 @@ export async function issueWsToken(input: {
   readonly httpBaseUrl: string;
   readonly sessionToken: string;
   readonly fetch?: typeof globalThis.fetch;
-}): Promise<AuthWebSocketTokenResult> {
+}): Promise<AuthWebSocketTicketResult> {
   const fetchImpl = input.fetch ?? globalThis.fetch;
-  const response = await fetchImpl(buildUrl(input.httpBaseUrl, "/api/auth/ws-token"), {
+  const response = await fetchImpl(buildUrl(input.httpBaseUrl, "/api/auth/websocket-ticket"), {
     method: "POST",
     headers: {
       "content-type": "application/json",
@@ -50,7 +50,7 @@ export async function issueWsToken(input: {
     throw new Error(await readError(response, "Unable to issue WebSocket token."));
   }
 
-  return (await response.json()) as AuthWebSocketTokenResult;
+  return (await response.json()) as AuthWebSocketTicketResult;
 }
 
 export async function fetchRuntimeSnapshot(input: {

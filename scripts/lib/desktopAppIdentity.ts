@@ -1,3 +1,4 @@
+// @effect-diagnostics nodeBuiltinImport:off
 import { execFileSync } from "node:child_process";
 import { realpathSync } from "node:fs";
 import path from "node:path";

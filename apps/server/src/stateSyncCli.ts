@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+// @effect-diagnostics globalConsole:off
 import { parseT3StateSyncCliArgs, syncT3State } from "./stateSync.ts";
 
 function printUsage(): void {

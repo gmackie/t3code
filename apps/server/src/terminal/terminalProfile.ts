@@ -1,3 +1,4 @@
+// @effect-diagnostics nodeBuiltinImport:off
 import path from "node:path";
 
 import {

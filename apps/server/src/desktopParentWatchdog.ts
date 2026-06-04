@@ -1,3 +1,4 @@
+// @effect-diagnostics globalTimersInEffect:off
 import { Effect, Layer } from "effect";
 
 import { type RuntimeMode, ServerConfig } from "./config.ts";

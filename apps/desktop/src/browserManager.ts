@@ -60,6 +60,7 @@ function readBrowserTitle(view: WebContentsView, fallback: string | null): strin
 }
 
 function now(): number {
+  // @effect-diagnostics-next-line globalDate:off
   return Date.now();
 }
 

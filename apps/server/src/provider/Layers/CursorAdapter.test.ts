@@ -1,3 +1,4 @@
+// @effect-diagnostics nodeBuiltinImport:off
 import * as path from "node:path";
 import * as os from "node:os";
 import { chmod, mkdtemp, readFile, writeFile } from "node:fs/promises";
@@ -5,7 +6,13 @@ import { fileURLToPath } from "node:url";
 
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
-import { Context, Deferred, Effect, Fiber, Layer, Schema, Stream } from "effect";
+import * as Context from "effect/Context";
+import * as Deferred from "effect/Deferred";
+import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
+import * as Layer from "effect/Layer";
+import * as Schema from "effect/Schema";
+import * as Stream from "effect/Stream";
 import { createModelSelection } from "@t3tools/shared/model";
 
 import {
@@ -21,15 +28,17 @@ import { ServerConfig } from "../../config.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
 import type { CursorAdapterShape } from "../Services/CursorAdapter.ts";
 import { makeCursorAdapter } from "./CursorAdapter.ts";
+const decodeCursorSettings = Schema.decodeSync(CursorSettings);
 
 // Test-local service tag so the rest of the file can keep using `yield* CursorAdapter`.
 class CursorAdapter extends Context.Service<CursorAdapter, CursorAdapterShape>()(
-  "test/CursorAdapter",
+  "t3/provider/Layers/CursorAdapter.test/CursorAdapter",
 ) {}
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const mockAgentPath = path.join(__dirname, "../../../scripts/acp-mock-agent.ts");
-const bunExe = "bun";
+const mockAgentCommand = "node";
+const mockAgentArgs = [mockAgentPath] as const;
 
 async function makeMockAgentWrapper(
   extraEnv?: Record<string, string>,
@@ -43,7 +52,7 @@ async function makeMockAgentWrapper(
   const script = `#!/bin/sh
 ${envExports}
 ${options?.initialDelaySeconds ? `sleep ${JSON.stringify(String(options.initialDelaySeconds))}` : ""}
-exec ${JSON.stringify(bunExe)} ${JSON.stringify(mockAgentPath)} "$@"
+exec ${JSON.stringify(mockAgentCommand)} ${mockAgentArgs.map((arg) => JSON.stringify(arg)).join(" ")} "$@"
 `;
   await writeFile(wrapperPath, script, "utf8");
   await chmod(wrapperPath, 0o755);
@@ -65,7 +74,7 @@ printf '%s\t' "$@" >> ${JSON.stringify(argvLogPath)}
 printf '\n' >> ${JSON.stringify(argvLogPath)}
 export T3_ACP_REQUEST_LOG_PATH=${JSON.stringify(requestLogPath)}
 ${envExports}
-exec ${JSON.stringify(bunExe)} ${JSON.stringify(mockAgentPath)} "$@"
+exec ${JSON.stringify(mockAgentCommand)} ${mockAgentArgs.map((arg) => JSON.stringify(arg)).join(" ")} "$@"
 `;
   await writeFile(wrapperPath, script, "utf8");
   await chmod(wrapperPath, 0o755);
@@ -98,7 +107,7 @@ async function waitForFileContent(filePath: string, attempts = 40) {
         return raw;
       }
     } catch {}
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await Effect.runPromise(Effect.yieldNow);
   }
   throw new Error(`Timed out waiting for file content at ${filePath}`);
 }
@@ -113,9 +122,11 @@ async function waitForFileContent(filePath: string, attempts = 40) {
 // tests assumed.
 const makeResolveCursorSettings = Effect.gen(function* () {
   const serverSettings = yield* ServerSettingsService;
-  return serverSettings.getSettings.pipe(
-    Effect.map((snapshot) => snapshot.providers.cursor),
-    Effect.orDie,
+  return yield* Effect.succeed(
+    serverSettings.getSettings.pipe(
+      Effect.map((snapshot) => snapshot.providers.cursor),
+      Effect.orDie,
+    ),
   );
 });
 
@@ -123,7 +134,7 @@ const cursorAdapterTestLayer = it.layer(
   Layer.effect(
     CursorAdapter,
     Effect.gen(function* () {
-      const cursorConfig = Schema.decodeSync(CursorSettings)({});
+      const cursorConfig = decodeCursorSettings({});
       const resolveSettings = yield* makeResolveCursorSettings;
       return yield* makeCursorAdapter(cursorConfig, { resolveSettings });
     }),
@@ -598,7 +609,7 @@ cursorAdapterTestLayer("CursorAdapterLive", (it) => {
           Layer.effect(
             CursorAdapter,
             Effect.gen(function* () {
-              const cursorConfig = Schema.decodeSync(CursorSettings)({});
+              const cursorConfig = decodeCursorSettings({});
               const resolveSettings = yield* makeResolveCursorSettings;
               return yield* makeCursorAdapter(cursorConfig, { resolveSettings });
             }),
@@ -1230,7 +1241,7 @@ cursorAdapterTestLayer("CursorAdapterLive", (it) => {
       const customAdapterLayer = Layer.effect(
         CursorAdapter,
         Effect.gen(function* () {
-          const cursorConfig = Schema.decodeSync(CursorSettings)({});
+          const cursorConfig = decodeCursorSettings({});
           const resolveSettings = yield* makeResolveCursorSettings;
           return yield* makeCursorAdapter(cursorConfig, {
             instanceId: customInstanceId,

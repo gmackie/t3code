@@ -12,7 +12,7 @@ import {
 import { type ChatMessage, type SessionPhase, type Thread, type ThreadSession } from "../types";
 import { randomUUID } from "~/lib/utils";
 import { type ComposerImageAttachment, type DraftThreadState } from "../composerDraftStore";
-import { Schema } from "effect";
+import * as Schema from "effect/Schema";
 import { selectThreadByRef, useStore } from "../store";
 import {
   filterTerminalContextsWithText,
