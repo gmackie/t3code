@@ -4,7 +4,7 @@ import rootPackageJson from "../package.json" with { type: "json" };
 import desktopPackageJson from "../apps/desktop/package.json" with { type: "json" };
 import serverPackageJson from "../apps/server/package.json" with { type: "json" };
 import { getDesktopRuntimeIdentity } from "../apps/desktop/src/appIdentity.js";
-import platformNodeSharedPackageJson from "../node_modules/@effect/platform-node-shared/package.json" with { type: "json" };
+import platformNodeSharedPackageJson from "@effect/platform-node-shared/package.json" with { type: "json" };
 
 import { BRAND_ASSET_PATHS } from "./lib/brand-assets.ts";
 import { getDefaultBuildArch } from "./lib/build-target-arch.ts";

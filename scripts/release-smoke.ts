@@ -172,11 +172,15 @@ function assertMissing(path: string, message: string): void {
 
 function assertWorkflowSupportsGmackoForkReleases(): void {
   const workflow = readFileSync(resolve(repoRoot, ".github/workflows/release.yml"), "utf8");
+  const gmackoSyncWorkflow = readFileSync(
+    resolve(repoRoot, ".github/workflows/gmacko-sync-upstream.yml"),
+    "utf8",
+  );
   assertContains(workflow, "- gmacko", "Release workflow is missing the gmacko channel option.");
   assertContains(
     workflow,
-    "workflow_dispatch gmacko releases must run from main-local.",
-    "Release workflow does not enforce main-local for manual gmacko releases.",
+    "workflow_dispatch gmacko releases must run from custom-local.",
+    "Release workflow does not enforce custom-local for manual gmacko releases.",
   );
   assertContains(
     workflow,
@@ -200,8 +204,33 @@ function assertWorkflowSupportsGmackoForkReleases(): void {
   );
   assertContains(
     workflow,
-    "if: github.event_name == 'schedule'",
-    "Release workflow does not allow scheduled nightly releases to run in the fork.",
+    "if: github.event_name == 'schedule' && github.repository == 'pingdotgg/t3code'",
+    "Release workflow does not keep scheduled nightly releases scoped to the upstream repository.",
+  );
+  assertContains(
+    gmackoSyncWorkflow,
+    "github.repository == 'gmackie/t3code'",
+    "Gmacko sync workflow does not stay scoped to the gmackie/t3code fork.",
+  );
+  assertContains(
+    gmackoSyncWorkflow,
+    "git fetch upstream main",
+    "Gmacko sync workflow does not fetch upstream main.",
+  );
+  assertContains(
+    gmackoSyncWorkflow,
+    "git merge --no-edit upstream/main",
+    "Gmacko sync workflow does not merge upstream main into custom-local.",
+  );
+  assertContains(
+    gmackoSyncWorkflow,
+    "git push origin HEAD:custom-local",
+    "Gmacko sync workflow does not push the merged custom-local branch.",
+  );
+  assertContains(
+    gmackoSyncWorkflow,
+    "gh workflow run release.yml --ref custom-local -f channel=gmacko",
+    "Gmacko sync workflow does not dispatch the gmacko release workflow.",
   );
 }
 

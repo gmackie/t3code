@@ -1,0 +1,57 @@
+name: Gmacko Sync Upstream
+
+on:
+  schedule:
+    - cron: "30 10 * * *"
+  workflow_dispatch:
+    inputs:
+      dispatch_release:
+        description: "Dispatch the gmacko release workflow after syncing"
+        required: false
+        default: "true"
+        type: choice
+        options:
+          - "true"
+          - "false"
+
+permissions:
+  actions: write
+  contents: write
+
+concurrency:
+  group: gmacko-sync-upstream
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    name: Merge upstream main into custom-local
+    # Scheduled workflows only run from the repository default branch. Keep this
+    # workflow on main-local, but make the mutable release branch custom-local.
+    if: github.repository == 'gmackie/t3code'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout custom-local
+        uses: actions/checkout@v6
+        with:
+          ref: custom-local
+          fetch-depth: 0
+          token: ${{ secrets.GMACKO_SYNC_TOKEN || github.token }}
+
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Merge upstream main
+        run: |
+          git remote add upstream https://github.com/pingdotgg/t3code.git
+          git fetch upstream main
+          git merge --no-edit upstream/main
+          git push origin HEAD:custom-local
+
+      - name: Dispatch gmacko release
+        if: github.event_name != 'workflow_dispatch' || github.event.inputs.dispatch_release != 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GMACKO_SYNC_TOKEN || github.token }}
+        run: gh workflow run release.yml --ref custom-local -f channel=gmacko

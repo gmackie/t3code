@@ -30,7 +30,7 @@ permissions:
 jobs:
   check_changes:
     name: Check for changes since last nightly
-    if: github.event_name == 'schedule'
+    if: github.event_name == 'schedule' && github.repository == 'pingdotgg/t3code'
     runs-on: ubuntu-24.04
     outputs:
       has_changes: ${{ steps.check.outputs.has_changes }}
@@ -127,8 +127,8 @@ jobs:
             echo "is_prerelease=true" >> "$GITHUB_OUTPUT"
             echo "make_latest=false" >> "$GITHUB_OUTPUT"
           elif [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" && "$dispatch_channel" == "gmacko" ]]; then
-            if [[ "${GITHUB_REF_NAME}" != "main-local" ]]; then
-              echo "workflow_dispatch gmacko releases must run from main-local." >&2
+            if [[ "${GITHUB_REF_NAME}" != "custom-local" ]]; then
+              echo "workflow_dispatch gmacko releases must run from custom-local." >&2
               exit 1
             fi
 

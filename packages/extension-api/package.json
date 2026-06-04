@@ -17,6 +17,7 @@
     "@t3tools/contracts": "workspace:*"
   },
   "devDependencies": {
+    "@types/react": "^19.0.0",
     "typescript": "catalog:"
   },
   "peerDependencies": {
