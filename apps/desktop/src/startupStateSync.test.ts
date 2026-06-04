@@ -3,7 +3,7 @@ import * as OS from "node:os";
 import * as Path from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { maybeSyncNightlyEnvironmentToGmacko } from "./startupStateSync";
+import { maybeSyncNightlyEnvironmentToGmacko } from "./startupStateSync.ts";
 
 function makeTempDir(prefix: string): string {
   return FS.mkdtempSync(Path.join(OS.tmpdir(), prefix));

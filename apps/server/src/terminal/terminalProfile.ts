@@ -6,7 +6,7 @@ import {
   type TerminalProfileSettings,
 } from "@t3tools/contracts";
 
-import { type ShellCandidate } from "./Services/Manager";
+import { type ShellCandidate } from "./Services/Manager.ts";
 
 export type TerminalPlatform = NodeJS.Platform;
 

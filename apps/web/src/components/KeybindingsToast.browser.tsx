@@ -132,6 +132,7 @@ function createBaseServerConfig(): ServerConfig {
         },
       },
       terminal: {
+        ...DEFAULT_SERVER_SETTINGS.terminal,
         profile: {
           shellPath: "",
           shellArgs: [],

@@ -5,7 +5,7 @@ import {
   discoverWindowsTerminalShells,
   resolveTerminalShellSpawnConfig,
   type TerminalShellPathProbe,
-} from "./terminalProfile";
+} from "./terminalProfile.ts";
 
 const rejectingCmdProbe: TerminalShellPathProbe = async (candidate) => {
   if (candidate === "C:\\Windows\\System32\\cmd.exe") {

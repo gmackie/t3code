@@ -526,7 +526,6 @@ export function useSettingsRestore(onRestored?: () => void) {
         : []),
       ...(isGitWritingModelDirty ? ["Git writing model"] : []),
       ...(areProviderSettingsDirty ? ["Providers"] : []),
-      ...(isTerminalProfileDirty ? ["Terminal profile"] : []),
     ],
     [
       areProviderSettingsDirty,
@@ -569,6 +568,58 @@ export function TerminalSettingsPanel() {
   const settings = useSettings();
   const { updateSettings } = useUpdateSettings();
   const terminalSettings = settings.terminal;
+  const serverConfig = useServerConfig();
+  const currentShell = serverConfig?.terminal.currentShell ?? "";
+  const [terminalShellArgsDraft, setTerminalShellArgsDraft] = useState(() =>
+    formatTerminalShellArgs(terminalSettings.profile.shellArgs),
+  );
+  const [terminalEnvDraft, setTerminalEnvDraft] = useState(() =>
+    formatTerminalEnv(terminalSettings.profile.env),
+  );
+  const [terminalEnvError, setTerminalEnvError] = useState<string | null>(null);
+
+  const updateTerminalProfile = useCallback(
+    (
+      patch: Partial<{
+        shellPath: string;
+        shellArgs: ReadonlyArray<string>;
+        env: Record<string, string>;
+      }>,
+    ) => {
+      updateSettings({
+        terminal: {
+          ...terminalSettings,
+          profile: {
+            ...terminalSettings.profile,
+            ...patch,
+          },
+        },
+      });
+    },
+    [terminalSettings, updateSettings],
+  );
+
+  useEffect(() => {
+    setTerminalShellArgsDraft((currentDraft) =>
+      Equal.equals(parseTerminalShellArgs(currentDraft), terminalSettings.profile.shellArgs)
+        ? currentDraft
+        : formatTerminalShellArgs(terminalSettings.profile.shellArgs),
+    );
+  }, [terminalSettings.profile.shellArgs]);
+
+  useEffect(() => {
+    setTerminalEnvDraft((currentDraft) => {
+      const parsedDraft = parseTerminalEnv(currentDraft);
+      if (
+        parsedDraft.error === null &&
+        Equal.equals(parsedDraft.env, terminalSettings.profile.env)
+      ) {
+        return currentDraft;
+      }
+      return formatTerminalEnv(terminalSettings.profile.env);
+    });
+    setTerminalEnvError(null);
+  }, [terminalSettings.profile.env]);
 
   return (
     <SettingsPageContainer>
@@ -649,6 +700,111 @@ export function TerminalSettingsPanel() {
             />
           }
         />
+
+        <SettingsRow
+          title="Shell executable override"
+          description="Optional absolute path for a different shell."
+          resetAction={
+            terminalSettings.profile.shellPath !==
+            DEFAULT_UNIFIED_SETTINGS.terminal.profile.shellPath ? (
+              <SettingResetButton
+                label="terminal shell path"
+                onClick={() =>
+                  updateTerminalProfile({
+                    shellPath: DEFAULT_UNIFIED_SETTINGS.terminal.profile.shellPath,
+                  })
+                }
+              />
+            ) : null
+          }
+          control={
+            <Input
+              className="w-full sm:w-96"
+              value={terminalSettings.profile.shellPath}
+              onChange={(event) => updateTerminalProfile({ shellPath: event.target.value })}
+              placeholder={currentShell}
+              spellCheck={false}
+              aria-label="Terminal shell path"
+            />
+          }
+        />
+
+        <SettingsRow
+          title="Shell arguments"
+          description="Optional startup arguments for the terminal shell. Enter one argument per line."
+          resetAction={
+            !Equal.equals(
+              terminalSettings.profile.shellArgs,
+              DEFAULT_UNIFIED_SETTINGS.terminal.profile.shellArgs,
+            ) ? (
+              <SettingResetButton
+                label="terminal shell arguments"
+                onClick={() =>
+                  updateTerminalProfile({
+                    shellArgs: DEFAULT_UNIFIED_SETTINGS.terminal.profile.shellArgs,
+                  })
+                }
+              />
+            ) : null
+          }
+          control={
+            <Textarea
+              className="min-h-24 w-full font-mono text-xs sm:w-96"
+              value={terminalShellArgsDraft}
+              onChange={(event) => {
+                const nextValue = event.target.value;
+                setTerminalShellArgsDraft(nextValue);
+                updateTerminalProfile({ shellArgs: parseTerminalShellArgs(nextValue) });
+              }}
+              placeholder={"-l\n--norc"}
+              spellCheck={false}
+              aria-label="Terminal shell arguments"
+            />
+          }
+        />
+
+        <SettingsRow
+          title="Profile environment"
+          description="Environment variables passed directly to the terminal profile. One KEY=value per line."
+          resetAction={
+            !Equal.equals(
+              terminalSettings.profile.env,
+              DEFAULT_UNIFIED_SETTINGS.terminal.profile.env,
+            ) ? (
+              <SettingResetButton
+                label="terminal profile environment variables"
+                onClick={() =>
+                  updateTerminalProfile({
+                    env: DEFAULT_UNIFIED_SETTINGS.terminal.profile.env,
+                  })
+                }
+              />
+            ) : null
+          }
+          status={
+            terminalEnvError ? <span className="text-destructive">{terminalEnvError}</span> : null
+          }
+          control={
+            <Textarea
+              className="min-h-28 w-full font-mono text-xs sm:w-96"
+              value={terminalEnvDraft}
+              onChange={(event) => {
+                const nextValue = event.target.value;
+                setTerminalEnvDraft(nextValue);
+                const parsed = parseTerminalEnv(nextValue);
+                setTerminalEnvError(parsed.error);
+                if (parsed.error !== null) {
+                  return;
+                }
+
+                updateTerminalProfile({ env: parsed.env });
+              }}
+              placeholder={"TERM_PROGRAM=T3Code\nTERM=xterm-256color"}
+              spellCheck={false}
+              aria-label="Terminal profile environment variables"
+            />
+          }
+        />
       </SettingsSection>
 
       <SettingsSection title="How it works">
@@ -707,7 +863,6 @@ export function GeneralSettingsPanel() {
   const keybindingsConfigPath = useServerKeybindingsConfigPath();
   const availableEditors = useServerAvailableEditors();
   const observability = useServerObservability();
-  const serverConfig = useServerConfig();
   const serverProviders = useServerProviders();
   const visibleProviderSettings = PROVIDER_SETTINGS.filter(
     (providerSettings) =>
@@ -752,48 +907,6 @@ export function GeneralSettingsPanel() {
     settings.textGenerationModelSelection ?? null,
     DEFAULT_UNIFIED_SETTINGS.textGenerationModelSelection ?? null,
   );
-  const updateTerminalProfile = useCallback(
-    (
-      patch: Partial<{
-        shellPath: string;
-        shellArgs: ReadonlyArray<string>;
-        env: Record<string, string>;
-      }>,
-    ) => {
-      updateSettings({
-        terminal: {
-          profile: {
-            ...settings.terminal.profile,
-            ...patch,
-          },
-        },
-      });
-    },
-    [settings.terminal.profile, updateSettings],
-  );
-
-  useEffect(() => {
-    setTerminalShellArgsDraft((currentDraft) =>
-      Equal.equals(parseTerminalShellArgs(currentDraft), settings.terminal.profile.shellArgs)
-        ? currentDraft
-        : formatTerminalShellArgs(settings.terminal.profile.shellArgs),
-    );
-  }, [settings.terminal.profile.shellArgs]);
-
-  useEffect(() => {
-    setTerminalEnvDraft((currentDraft) => {
-      const parsedDraft = parseTerminalEnv(currentDraft);
-      if (
-        parsedDraft.error === null &&
-        Equal.equals(parsedDraft.env, settings.terminal.profile.env)
-      ) {
-        return currentDraft;
-      }
-      return formatTerminalEnv(settings.terminal.profile.env);
-    });
-    setTerminalEnvError(null);
-  }, [settings.terminal.profile.env]);
-
   const openInPreferredEditor = useCallback(
     (target: "keybindings" | "logsDirectory", path: string | null, failureMessage: string) => {
       if (!path) return;

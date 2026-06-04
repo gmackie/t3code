@@ -136,21 +136,23 @@ export const ObservabilitySettings = Schema.Struct({
 });
 export type ObservabilitySettings = typeof ObservabilitySettings.Type;
 
-export const TerminalSettings = Schema.Struct({
-  environmentVariablesText: Schema.String.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
-  zshStartupDirectory: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
-});
-export type TerminalSettings = typeof TerminalSettings.Type;
+const TerminalProfileEnvKey = Schema.String.check(
+  Schema.isPattern(/^[A-Za-z_][A-Za-z0-9_]*$/),
+).check(Schema.isMaxLength(128));
+const TerminalProfileEnvValue = Schema.String.check(Schema.isMaxLength(8_192));
 
-export const ServerSettings = Schema.Struct({
-  enableAssistantStreaming: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
-  defaultThreadEnvMode: ThreadEnvMode.pipe(
-    Schema.withDecodingDefault(Effect.succeed("local" as const satisfies ThreadEnvMode)),
+export const TerminalProfileSettings = Schema.Struct({
+  shellPath: TrimmedString.pipe(Schema.withDecodingDefaultKey(Effect.succeed(""))),
+  shellArgs: Schema.Array(TrimmedString).pipe(Schema.withDecodingDefaultKey(Effect.succeed([]))),
+  env: Schema.Record(TerminalProfileEnvKey, TerminalProfileEnvValue).pipe(
+    Schema.withDecodingDefaultKey(Effect.succeed({})),
   ),
 });
 export type TerminalProfileSettings = typeof TerminalProfileSettings.Type;
 
 export const TerminalSettings = Schema.Struct({
+  environmentVariablesText: Schema.String.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
+  zshStartupDirectory: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
   profile: TerminalProfileSettings.pipe(Schema.withDecodingDefaultKey(Effect.succeed({}))),
 });
 export type TerminalSettings = typeof TerminalSettings.Type;
@@ -281,6 +283,7 @@ export const ServerSettingsPatch = Schema.Struct({
     Schema.Struct({
       environmentVariablesText: Schema.optionalKey(Schema.String),
       zshStartupDirectory: Schema.optionalKey(Schema.String),
+      profile: Schema.optionalKey(TerminalProfileSettingsPatch),
     }),
   ),
   providers: Schema.optionalKey(

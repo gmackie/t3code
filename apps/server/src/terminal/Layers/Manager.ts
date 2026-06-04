@@ -30,6 +30,7 @@ import {
   terminalSessionsTotal,
 } from "../../observability/Metrics.ts";
 import { runProcess } from "../../processRunner.ts";
+import { ServerSettingsService } from "../../serverSettings.ts";
 import {
   TerminalCwdError,
   TerminalHistoryError,
@@ -46,6 +47,7 @@ import {
   type PtyExitEvent,
   type PtyProcess,
 } from "../Services/PTY.ts";
+import { resolveTerminalShellSpawnConfig } from "../terminalProfile.ts";
 
 const DEFAULT_HISTORY_LINE_LIMIT = 5_000;
 const DEFAULT_PERSIST_DEBOUNCE_MS = 40;
@@ -707,6 +709,7 @@ interface TerminalManagerOptions {
   historyLineLimit?: number;
   ptyAdapter: PtyAdapterShape;
   shellResolver?: () => string;
+  terminalProfileResolver?: Effect.Effect<TerminalProfileSettings>;
   platform?: NodeJS.Platform;
   env?: NodeJS.ProcessEnv;
   subprocessChecker?: TerminalSubprocessChecker;
@@ -756,6 +759,13 @@ export const makeTerminalManagerWithOptions = Effect.fn("makeTerminalManagerWith
     const platform = options.platform ?? process.platform;
     const baseEnv = options.env ?? process.env;
     const shellResolver = options.shellResolver ?? (() => defaultShellResolver(platform, baseEnv));
+    const terminalProfileResolver =
+      options.terminalProfileResolver ??
+      Effect.succeed({
+        shellPath: "",
+        shellArgs: [],
+        env: {},
+      } satisfies TerminalProfileSettings);
     const subprocessChecker = options.subprocessChecker ?? defaultSubprocessChecker;
     const subprocessPollIntervalMs =
       options.subprocessPollIntervalMs ?? DEFAULT_SUBPROCESS_POLL_INTERVAL_MS;
@@ -1418,8 +1428,19 @@ export const makeTerminalManagerWithOptions = Effect.fn("makeTerminalManagerWith
         increment(terminalSessionsTotal, { lifecycle: eventType }).pipe(
           Effect.andThen(
             Effect.gen(function* () {
-              const shellCandidates = resolveShellCandidates(shellResolver, platform, baseEnv);
-              const terminalEnv = createTerminalSpawnEnv(baseEnv, session.runtimeEnv);
+              const terminalProfile = yield* terminalProfileResolver;
+              const shellSpawnConfig = resolveTerminalShellSpawnConfig({
+                platform,
+                processEnv: baseEnv,
+                shellResolver,
+                profile: terminalProfile,
+              });
+              const terminalEnv = createTerminalSpawnEnv(
+                baseEnv,
+                shellSpawnConfig.profileEnv,
+                session.runtimeEnv,
+              );
+              const shellCandidates = shellSpawnConfig.shellCandidates;
               const spawnResult = yield* trySpawn(shellCandidates, terminalEnv, session);
               ptyProcess = spawnResult.process;
               startedShell = spawnResult.shellLabel;

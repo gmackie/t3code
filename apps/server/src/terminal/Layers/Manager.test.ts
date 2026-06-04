@@ -201,6 +201,7 @@ interface CreateManagerOptions {
   subprocessPollIntervalMs?: number;
   processKillGraceMs?: number;
   maxRetainedInactiveSessions?: number;
+  terminalProfileResolver?: Effect.Effect<TerminalProfileSettings>;
   ptyAdapter?: FakePtyAdapter;
 }
 
@@ -244,6 +245,9 @@ const createManager = (
           : {}),
         ...(options.maxRetainedInactiveSessions !== undefined
           ? { maxRetainedInactiveSessions: options.maxRetainedInactiveSessions }
+          : {}),
+        ...(options.terminalProfileResolver !== undefined
+          ? { terminalProfileResolver: options.terminalProfileResolver }
           : {}),
       });
       const eventsRef = yield* Ref.make<ReadonlyArray<TerminalEvent>>([]);

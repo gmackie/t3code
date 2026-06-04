@@ -78,6 +78,7 @@ import {
   getDesktopBackendBootstrapStream,
 } from "./backendBootstrap.js";
 import { getDesktopRuntimeIdentity } from "./appIdentity.js";
+import { maybeSyncNightlyEnvironmentToGmacko } from "./startupStateSync.ts";
 import {
   createInitialDesktopUpdateState,
   reduceDesktopUpdateStateOnCheckFailure,
@@ -130,6 +131,8 @@ const REMOVE_SAVED_ENVIRONMENT_SECRET_CHANNEL = "desktop:remove-saved-environmen
 const GET_SERVER_EXPOSURE_STATE_CHANNEL = "desktop:get-server-exposure-state";
 const SET_SERVER_EXPOSURE_MODE_CHANNEL = "desktop:set-server-exposure-mode";
 const DESKTOP_SCHEME = "t3";
+const ROOT_DIR = Path.resolve(__dirname, "../../..");
+const isDevelopment = Boolean(process.env.VITE_DEV_SERVER_URL);
 const desktopAppBranding: DesktopAppBranding = resolveDesktopAppBranding({
   isDevelopment,
   appVersion: app.getVersion(),
@@ -168,6 +171,9 @@ const APP_RUN_ID = Crypto.randomBytes(6).toString("hex");
 const SERVER_SETTINGS_PATH = Path.join(STATE_DIR, "settings.json");
 const AUTO_UPDATE_STARTUP_DELAY_MS = 15_000;
 const AUTO_UPDATE_POLL_INTERVAL_MS = 4 * 60 * 60 * 1000;
+const NIGHTLY_SYNC_SOURCE_STATE_DIR =
+  process.env.T3CODE_GMACKO_SYNC_NIGHTLY_STATE_DIR?.trim() ||
+  Path.join(OS.homedir(), ".t3", "userdata");
 
 function resolvePickFolderDefaultPath(rawOptions: unknown): string | undefined {
   if (typeof rawOptions !== "object" || rawOptions === null) {
@@ -262,7 +268,7 @@ let desktopLogSink: RotatingFileSink | null = null;
 let backendLogSink: RotatingFileSink | null = null;
 let restoreStdIoCapture: (() => void) | null = null;
 const startupStateSyncResult = maybeSyncNightlyEnvironmentToGmacko({
-  isGmacko: desktopRuntimeIdentity.updateChannel === "gmacko",
+  isGmacko: APP_IDENTITY.packageName === "t3code-gmacko",
   enabledValue: process.env.T3CODE_GMACKO_SYNC_NIGHTLY_ON_STARTUP,
   sourceStateDir: NIGHTLY_SYNC_SOURCE_STATE_DIR,
   targetStateDir: STATE_DIR,

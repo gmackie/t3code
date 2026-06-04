@@ -21,6 +21,11 @@ describe("resolveTerminalSettingsEnv", () => {
       resolveTerminalSettingsEnv({
         environmentVariablesText: "CUSTOM_FLAG=1",
         zshStartupDirectory: "~/t3code-shell",
+        profile: {
+          shellPath: "",
+          shellArgs: [],
+          env: {},
+        },
       }),
     ).toEqual({
       CUSTOM_FLAG: "1",
