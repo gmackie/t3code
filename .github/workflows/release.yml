@@ -24,8 +24,8 @@ on:
         type: string
 
 permissions:
-  contents: read
-  id-token: none
+  contents: write
+  id-token: write
 
 jobs:
   check_changes:
@@ -418,6 +418,10 @@ jobs:
             fi
           else
             echo "Signing disabled for ${{ matrix.platform }}."
+          fi
+
+          if [[ "${{ needs.preflight.outputs.release_channel }}" == "gmacko" ]]; then
+            export T3CODE_DESKTOP_UPDATE_REPOSITORY=gmackie/t3code
           fi
 
           vp run dist:desktop:artifact "${args[@]}"

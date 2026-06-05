@@ -231,6 +231,21 @@ function assertWorkflowSupportsGmackoForkReleases(): void {
   );
   assertContains(
     workflow,
+    "contents: write",
+    "Release workflow does not grant content write permission needed to publish gmacko releases.",
+  );
+  assertContains(
+    workflow,
+    "id-token: write",
+    "Release workflow does not grant id-token permission needed by the release lane.",
+  );
+  assertContains(
+    workflow,
+    "T3CODE_DESKTOP_UPDATE_REPOSITORY=gmackie/t3code",
+    "Release workflow does not point gmacko updater metadata at the fork repository.",
+  );
+  assertContains(
+    workflow,
     "if: github.event_name == 'schedule' && github.repository == 'pingdotgg/t3code'",
     "Release workflow does not keep scheduled nightly releases scoped to the upstream repository.",
   );
