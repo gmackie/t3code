@@ -3,6 +3,7 @@ import {
   ArchiveIcon,
   ArrowLeftIcon,
   BotIcon,
+  ClipboardListIcon,
   GitBranchIcon,
   KeyboardIcon,
   Link2Icon,
@@ -20,27 +21,29 @@ import {
   SidebarSeparator,
   useSidebar,
 } from "../ui/sidebar";
+import {
+  SETTINGS_NAV_ITEM_DEFINITIONS,
+  type SettingsSectionPath,
+} from "./SettingsSidebarNav.logic";
 
-export type SettingsSectionPath =
-  | "/settings/general"
-  | "/settings/keybindings"
-  | "/settings/providers"
-  | "/settings/source-control"
-  | "/settings/connections"
-  | "/settings/archived";
+const SETTINGS_NAV_ICONS: Record<SettingsSectionPath, ComponentType<{ className?: string }>> = {
+  "/settings/general": Settings2Icon,
+  "/settings/keybindings": KeyboardIcon,
+  "/settings/providers": BotIcon,
+  "/settings/issues": ClipboardListIcon,
+  "/settings/source-control": GitBranchIcon,
+  "/settings/connections": Link2Icon,
+  "/settings/archived": ArchiveIcon,
+};
 
 export const SETTINGS_NAV_ITEMS: ReadonlyArray<{
   label: string;
   to: SettingsSectionPath;
   icon: ComponentType<{ className?: string }>;
-}> = [
-  { label: "General", to: "/settings/general", icon: Settings2Icon },
-  { label: "Keybindings", to: "/settings/keybindings", icon: KeyboardIcon },
-  { label: "Providers", to: "/settings/providers", icon: BotIcon },
-  { label: "Source Control", to: "/settings/source-control", icon: GitBranchIcon },
-  { label: "Connections", to: "/settings/connections", icon: Link2Icon },
-  { label: "Archive", to: "/settings/archived", icon: ArchiveIcon },
-];
+}> = SETTINGS_NAV_ITEM_DEFINITIONS.map((item) => ({
+  ...item,
+  icon: SETTINGS_NAV_ICONS[item.to],
+}));
 
 export function SettingsSidebarNav({ pathname }: { pathname: string }) {
   const navigate = useNavigate();

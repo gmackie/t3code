@@ -340,6 +340,7 @@ export type ObservabilitySettings = typeof ObservabilitySettings.Type;
 export const LinearIssueSettings = Schema.Struct({
   enabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   apiToken: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
+  domain: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed("linear.app"))),
   defaultTeamKey: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
   projectMappings: Schema.Record(
     ProjectId,
@@ -496,6 +497,7 @@ const TerminalProfileSettingsPatch = Schema.Struct({
 const LinearIssueSettingsPatch = Schema.Struct({
   enabled: Schema.optionalKey(Schema.Boolean),
   apiToken: Schema.optionalKey(TrimmedString),
+  domain: Schema.optionalKey(TrimmedString),
   defaultTeamKey: Schema.optionalKey(TrimmedString),
   projectMappings: Schema.optionalKey(
     Schema.Record(
