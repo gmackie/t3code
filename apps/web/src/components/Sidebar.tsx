@@ -1,7 +1,9 @@
 import {
   ArchiveIcon,
   ArrowUpDownIcon,
+  CheckIcon,
   ChevronRightIcon,
+  ClipboardListIcon,
   CloudIcon,
   FolderPlusIcon,
   SearchIcon,
@@ -39,6 +41,8 @@ import { CSS } from "@dnd-kit/utilities";
 import {
   type ContextMenuItem,
   type DesktopUpdateState,
+  type LinearIssueProject,
+  type LinearIssueValidationResult,
   ProjectId,
   type ScopedThreadRef,
   type SidebarProjectGroupingMode,
@@ -949,6 +953,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
   const defaultThreadEnvMode = useSettings<ThreadEnvMode>(
     (settings) => settings.defaultThreadEnvMode,
   );
+  const linearSettings = useSettings((settings) => settings.issues.linear);
   const projectGroupingSettings = useSettings(selectProjectGroupingSettings);
   const { updateSettings } = useUpdateSettings();
   const sidebarThreadPreviewCount = useSettings<SidebarThreadPreviewCount>(
@@ -1085,6 +1090,12 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
   const [projectCustomColorInput, setProjectCustomColorInput] = useState<string>(
     DEFAULT_CUSTOM_PROJECT_COLOR,
   );
+  const [linearProjectDialogTarget, setLinearProjectDialogTarget] =
+    useState<SidebarProjectGroupMember | null>(null);
+  const [linearProjectValidation, setLinearProjectValidation] =
+    useState<LinearIssueValidationResult | null>(null);
+  const [linearProjectLoading, setLinearProjectLoading] = useState(false);
+  const [linearProjectSelection, setLinearProjectSelection] = useState<string | null>(null);
   const renamingCommittedRef = useRef(false);
   const renamingInputRef = useRef<HTMLInputElement | null>(null);
   const confirmArchiveButtonRefs = useRef(new Map<string, HTMLButtonElement>());
@@ -1309,6 +1320,46 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
     setProjectColorDialogOpen(true);
   }, [projectColor]);
 
+  const loadLinearProjectValidation = useCallback(() => {
+    const api = readLocalApi();
+    if (!api) {
+      setLinearProjectValidation({
+        ok: false,
+        workspaceName: null,
+        userName: null,
+        projects: [],
+        error: "Local backend is unavailable.",
+      });
+      return;
+    }
+
+    setLinearProjectLoading(true);
+    void api.server
+      .validateLinearIssues()
+      .then(setLinearProjectValidation)
+      .catch((error) => {
+        setLinearProjectValidation({
+          ok: false,
+          workspaceName: null,
+          userName: null,
+          projects: [],
+          error: error instanceof Error ? error.message : "Unable to load Linear projects.",
+        });
+      })
+      .finally(() => setLinearProjectLoading(false));
+  }, []);
+
+  const openLinearProjectDialog = useCallback(
+    (member: SidebarProjectGroupMember) => {
+      const existingMapping = linearSettings.projectMappings[member.id];
+      setLinearProjectDialogTarget(member);
+      setLinearProjectSelection(existingMapping?.linearProjectId ?? null);
+      setLinearProjectValidation(null);
+      loadLinearProjectValidation();
+    },
+    [linearSettings.projectMappings, loadLinearProjectValidation],
+  );
+
   const removeProject = useCallback(
     async (member: SidebarProjectGroupMember, options: { force?: boolean } = {}): Promise<void> => {
       const memberProjectRef = scopeProjectRef(member.environmentId, member.id);
@@ -1456,7 +1507,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
 
         const actionHandlers = new Map<string, () => Promise<void> | void>();
         const makeLeaf = (
-          action: "rename" | "grouping" | "copy-path" | "delete",
+          action: "rename" | "linear-project" | "grouping" | "copy-path" | "delete",
           member: SidebarProjectGroupMember,
           options?: {
             destructive?: boolean;
@@ -1468,6 +1519,9 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
             switch (action) {
               case "rename":
                 openProjectRenameDialog(member);
+                return;
+              case "linear-project":
+                openLinearProjectDialog(member);
                 return;
               case "grouping":
                 openProjectGroupingDialog(member);
@@ -1489,7 +1543,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
         };
 
         const buildTargetedItem = (
-          action: "rename" | "grouping" | "copy-path" | "delete",
+          action: "rename" | "linear-project" | "grouping" | "copy-path" | "delete",
           label: string,
           options?: {
             destructive?: boolean;
@@ -1523,6 +1577,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
           [
             buildTargetedItem("rename", "Rename project"),
             { id: "project-color", label: "Project color..." },
+            buildTargetedItem("linear-project", "Assign Linear project..."),
             buildTargetedItem("grouping", "Project grouping…"),
             buildTargetedItem("copy-path", "Copy Project Path"),
             buildTargetedItem("delete", "Remove project", {
@@ -1551,6 +1606,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
       copyPathToClipboard,
       handleRemoveProject,
       openProjectColorDialog,
+      openLinearProjectDialog,
       openProjectGroupingDialog,
       openProjectRenameDialog,
       project.groupedProjectCount,
@@ -1562,6 +1618,68 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
   const closeProjectColorDialog = useCallback(() => {
     setProjectColorDialogOpen(false);
   }, []);
+
+  const closeLinearProjectDialog = useCallback(() => {
+    setLinearProjectDialogTarget(null);
+    setLinearProjectSelection(null);
+  }, []);
+
+  const selectedLinearProject = useMemo<LinearIssueProject | null>(() => {
+    if (!linearProjectSelection) {
+      return null;
+    }
+    return (
+      linearProjectValidation?.projects.find((project) => project.id === linearProjectSelection) ??
+      null
+    );
+  }, [linearProjectSelection, linearProjectValidation?.projects]);
+
+  const saveLinearProjectMapping = useCallback(() => {
+    if (!linearProjectDialogTarget || !selectedLinearProject) {
+      return;
+    }
+
+    updateSettings({
+      issues: {
+        linear: {
+          ...linearSettings,
+          projectMappings: {
+            ...linearSettings.projectMappings,
+            [linearProjectDialogTarget.id]: {
+              linearProjectId: selectedLinearProject.id,
+              linearProjectName: selectedLinearProject.name,
+              teamKey: selectedLinearProject.teamKey ?? "",
+            },
+          },
+        },
+      },
+    });
+    closeLinearProjectDialog();
+  }, [
+    closeLinearProjectDialog,
+    linearProjectDialogTarget,
+    linearSettings,
+    selectedLinearProject,
+    updateSettings,
+  ]);
+
+  const clearLinearProjectMapping = useCallback(() => {
+    if (!linearProjectDialogTarget) {
+      return;
+    }
+
+    const nextMappings = { ...linearSettings.projectMappings };
+    delete nextMappings[linearProjectDialogTarget.id];
+    updateSettings({
+      issues: {
+        linear: {
+          ...linearSettings,
+          projectMappings: nextMappings,
+        },
+      },
+    });
+    closeLinearProjectDialog();
+  }, [closeLinearProjectDialog, linearProjectDialogTarget, linearSettings, updateSettings]);
 
   const saveProjectColor = useCallback(() => {
     setProjectColor(project.projectKey, projectColorSelection);
@@ -2281,6 +2399,102 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
               Cancel
             </Button>
             <Button onClick={saveProjectGroupingPreference}>Save</Button>
+          </DialogFooter>
+        </DialogPopup>
+      </Dialog>
+
+      <Dialog
+        open={linearProjectDialogTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            closeLinearProjectDialog();
+          }
+        }}
+      >
+        <DialogPopup className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Assign Linear project</DialogTitle>
+            <DialogDescription>
+              {linearProjectDialogTarget
+                ? `Map ${linearProjectDialogTarget.name} to a Linear project.`
+                : "Map this project to Linear."}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogPanel>
+            <div className="space-y-2">
+              {linearProjectLoading ? (
+                <div className="rounded-md border border-border px-3 py-2 text-muted-foreground text-xs">
+                  Loading Linear projects...
+                </div>
+              ) : linearProjectValidation && !linearProjectValidation.ok ? (
+                <div className="rounded-md border border-destructive/40 px-3 py-2 text-destructive text-xs">
+                  {linearProjectValidation.error ?? "Unable to load Linear projects."}
+                </div>
+              ) : linearProjectValidation?.projects.length ? (
+                <div className="max-h-72 overflow-auto rounded-md border border-border">
+                  {linearProjectValidation.projects.map((linearProject) => {
+                    const mappedHere = linearProjectDialogTarget
+                      ? linearProject.mappedProjectIds.includes(linearProjectDialogTarget.id)
+                      : false;
+                    const mappedElsewhere =
+                      linearProject.mappedProjectIds.length > 0 && !mappedHere;
+                    const selected = linearProjectSelection === linearProject.id;
+
+                    return (
+                      <button
+                        key={linearProject.id}
+                        type="button"
+                        aria-pressed={selected}
+                        className={cn(
+                          "flex w-full items-center gap-3 border-border border-b px-3 py-2 text-left last:border-b-0 hover:bg-accent focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring",
+                          selected ? "bg-accent" : "",
+                        )}
+                        onClick={() => setLinearProjectSelection(linearProject.id)}
+                      >
+                        <span className="flex size-5 shrink-0 items-center justify-center rounded-md border border-border">
+                          {selected ? <CheckIcon className="size-3.5" aria-hidden /> : null}
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate font-medium text-sm">
+                            {linearProject.name}
+                          </span>
+                          <span className="block truncate text-muted-foreground text-xs">
+                            {linearProject.teamKey ? linearProject.teamKey : "No team"}
+                            {linearProject.teamName ? ` · ${linearProject.teamName}` : ""}
+                          </span>
+                        </span>
+                        <span className="shrink-0 text-muted-foreground text-xs">
+                          {mappedHere ? "Mapped here" : mappedElsewhere ? "Mapped" : "Unmapped"}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="rounded-md border border-border px-3 py-2 text-muted-foreground text-xs">
+                  No Linear projects found.
+                </div>
+              )}
+            </div>
+          </DialogPanel>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={clearLinearProjectMapping}
+              disabled={
+                !linearProjectDialogTarget ||
+                !linearSettings.projectMappings[linearProjectDialogTarget.id]
+              }
+            >
+              Clear
+            </Button>
+            <Button variant="outline" onClick={closeLinearProjectDialog}>
+              Cancel
+            </Button>
+            <Button onClick={saveLinearProjectMapping} disabled={!selectedLinearProject}>
+              <ClipboardListIcon className="size-3.5" aria-hidden />
+              Save
+            </Button>
           </DialogFooter>
         </DialogPopup>
       </Dialog>

@@ -1,3 +1,4 @@
+import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import { PositiveInt, ProjectId, ThreadId, TrimmedNonEmptyString } from "./baseSchemas.ts";
 import { ChangeRequestState, SourceControlProviderKind } from "./sourceControl.ts";
@@ -146,6 +147,24 @@ export const IssueProviderDiscoveryItem = Schema.Struct({
   detail: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
 });
 export type IssueProviderDiscoveryItem = typeof IssueProviderDiscoveryItem.Type;
+
+export const LinearIssueProject = Schema.Struct({
+  id: TrimmedNonEmptyString,
+  name: TrimmedNonEmptyString,
+  teamKey: Schema.optional(TrimmedNonEmptyString),
+  teamName: Schema.optional(TrimmedNonEmptyString),
+  mappedProjectIds: Schema.Array(ProjectId).pipe(Schema.withDecodingDefault(Effect.succeed([]))),
+});
+export type LinearIssueProject = typeof LinearIssueProject.Type;
+
+export const LinearIssueValidationResult = Schema.Struct({
+  ok: Schema.Boolean,
+  workspaceName: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
+  userName: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
+  projects: Schema.Array(LinearIssueProject),
+  error: Schema.optional(Schema.NullOr(Schema.String)),
+});
+export type LinearIssueValidationResult = typeof LinearIssueValidationResult.Type;
 
 export class IssueProviderError extends Schema.TaggedErrorClass<IssueProviderError>()(
   "IssueProviderError",

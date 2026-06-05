@@ -77,6 +77,7 @@ import { WorkspacePathOutsideRootError } from "./workspace/Services/WorkspacePat
 import { VcsStatusBroadcaster } from "./vcs/VcsStatusBroadcaster.ts";
 import { VcsProvisioningService } from "./vcs/VcsProvisioningService.ts";
 import { GitWorkflowService } from "./git/GitWorkflowService.ts";
+import * as LinearIssueClient from "./issue/LinearIssueClient.ts";
 import { ReviewService } from "./review/ReviewService.ts";
 import { ProjectSetupScriptRunner } from "./project/Services/ProjectSetupScriptRunner.ts";
 import { RepositoryIdentityResolver } from "./project/Services/RepositoryIdentityResolver.ts";
@@ -144,6 +145,7 @@ const RPC_REQUIRED_SCOPE = new Map<string, AuthEnvironmentScope>([
   [WS_METHODS.serverRemoveKeybinding, AuthOrchestrationOperateScope],
   [WS_METHODS.serverGetSettings, AuthOrchestrationReadScope],
   [WS_METHODS.serverUpdateSettings, AuthOrchestrationOperateScope],
+  [WS_METHODS.serverValidateLinearIssues, AuthOrchestrationReadScope],
   [WS_METHODS.serverDiscoverSourceControl, AuthOrchestrationReadScope],
   [WS_METHODS.serverGetTraceDiagnostics, AuthOrchestrationReadScope],
   [WS_METHODS.serverGetProcessDiagnostics, AuthOrchestrationReadScope],
@@ -1045,6 +1047,16 @@ const makeWsRpcLayer = (currentSession: AuthenticatedSession) =>
           observeRpcEffect(
             WS_METHODS.serverUpdateSettings,
             serverSettings.updateSettings(patch).pipe(Effect.map(redactServerSettingsForClient)),
+            {
+              "rpc.aggregate": "server",
+            },
+          ),
+        [WS_METHODS.serverValidateLinearIssues]: (_input) =>
+          observeRpcEffect(
+            WS_METHODS.serverValidateLinearIssues,
+            serverSettings.getSettings.pipe(
+              Effect.flatMap(LinearIssueClient.validateLinearSettings),
+            ),
             {
               "rpc.aggregate": "server",
             },

@@ -8,6 +8,7 @@ import {
   IssueProjectAssociation,
   IssueProviderKind,
   IssueReference,
+  LinearIssueValidationResult,
 } from "./issue.ts";
 
 const decodeIssueProviderKind = Schema.decodeSync(IssueProviderKind);
@@ -16,6 +17,7 @@ const decodeIssueReference = Schema.decodeSync(IssueReference);
 const decodeIssuePrepareThreadResult = Schema.decodeSync(IssuePrepareThreadResult);
 const decodeIssueProjectAssociation = Schema.decodeSync(IssueProjectAssociation);
 const decodeIssueLifecycleUpdateInput = Schema.decodeSync(IssueLifecycleUpdateInput);
+const decodeLinearIssueValidationResult = Schema.decodeSync(LinearIssueValidationResult);
 
 describe("issue contracts", () => {
   it("decodes provider kinds", () => {
@@ -100,5 +102,24 @@ describe("issue contracts", () => {
 
     expect(update.event).toBe("change_request_opened");
     expect(update.changeRequest?.number).toBe(123);
+  });
+
+  it("decodes Linear validation results with mapped projects", () => {
+    const result = decodeLinearIssueValidationResult({
+      ok: true,
+      workspaceName: "Acme",
+      userName: "Ada",
+      projects: [
+        {
+          id: "linear-project-1",
+          name: "T3 Code",
+          teamKey: "ENG",
+          teamName: "Engineering",
+          mappedProjectIds: ["project-1"],
+        },
+      ],
+    });
+
+    expect(result.projects[0]?.mappedProjectIds).toEqual(["project-1"]);
   });
 });

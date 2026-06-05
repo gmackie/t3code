@@ -1,7 +1,11 @@
-import { ClipboardListIcon } from "lucide-react";
+import { ClipboardListIcon, RefreshCwIcon } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import type { LinearIssueValidationResult } from "@t3tools/contracts";
 import { DEFAULT_UNIFIED_SETTINGS } from "@t3tools/contracts/settings";
 
 import { useSettings, useUpdateSettings } from "../../hooks/useSettings";
+import { readLocalApi } from "../../localApi";
+import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Switch } from "../ui/switch";
 import {
@@ -46,6 +50,8 @@ function LinearSettingsResetButton({
 export function IssueSettingsPanel() {
   const linearSettings = useSettings((settings) => settings.issues.linear);
   const { updateSettings } = useUpdateSettings();
+  const [validation, setValidation] = useState<LinearIssueValidationResult | null>(null);
+  const [validating, setValidating] = useState(false);
   const mappedProjectCount = Object.keys(linearSettings.projectMappings).length;
   const updateLinearSettings = (patch: Partial<typeof linearSettings>) => {
     updateSettings({
@@ -57,6 +63,44 @@ export function IssueSettingsPanel() {
       },
     });
   };
+  const validateLinear = useCallback(() => {
+    const api = readLocalApi();
+    if (!api) {
+      setValidation({
+        ok: false,
+        workspaceName: null,
+        userName: null,
+        projects: [],
+        error: "Local backend is unavailable.",
+      });
+      return;
+    }
+
+    setValidating(true);
+    void api.server
+      .validateLinearIssues()
+      .then(setValidation)
+      .catch((error) => {
+        setValidation({
+          ok: false,
+          workspaceName: null,
+          userName: null,
+          projects: [],
+          error: error instanceof Error ? error.message : "Unable to validate Linear settings.",
+        });
+      })
+      .finally(() => setValidating(false));
+  }, []);
+
+  useEffect(() => {
+    if (!linearSettings.enabled || linearSettings.apiToken.trim().length === 0) {
+      setValidation(null);
+      return;
+    }
+
+    const timeout = window.setTimeout(validateLinear, 400);
+    return () => window.clearTimeout(timeout);
+  }, [linearSettings.apiToken, linearSettings.domain, linearSettings.enabled, validateLinear]);
 
   return (
     <SettingsPageContainer>
@@ -67,7 +111,15 @@ export function IssueSettingsPanel() {
         <SettingsRow
           title="Linear"
           description="Use Linear issues as the issue source for mapped projects."
-          status={linearSettings.enabled ? "Enabled" : "Disabled"}
+          status={
+            validation
+              ? validation.ok
+                ? `Connected${validation.workspaceName ? ` to ${validation.workspaceName}` : ""}`
+                : "Validation failed"
+              : linearSettings.enabled
+                ? "Enabled"
+                : "Disabled"
+          }
           control={
             <Switch
               checked={linearSettings.enabled}
@@ -132,7 +184,60 @@ export function IssueSettingsPanel() {
           status={`${mappedProjectCount} mapped ${
             mappedProjectCount === 1 ? "project" : "projects"
           }`}
+          control={
+            <Button size="sm" variant="outline" onClick={validateLinear} disabled={validating}>
+              <RefreshCwIcon
+                className={validating ? "size-3.5 animate-spin" : "size-3.5"}
+                aria-hidden
+              />
+              Validate
+            </Button>
+          }
         />
+        {validation ? (
+          <div className="border-border border-t px-5 py-4">
+            {validation.ok ? (
+              <div className="space-y-2">
+                <div className="text-muted-foreground text-xs">
+                  {validation.projects.length} Linear{" "}
+                  {validation.projects.length === 1 ? "project" : "projects"}
+                  {validation.userName ? ` visible to ${validation.userName}` : ""}
+                </div>
+                <div className="max-h-64 overflow-auto rounded-md border border-border">
+                  {validation.projects.length === 0 ? (
+                    <div className="px-3 py-2 text-muted-foreground text-xs">
+                      No Linear projects found.
+                    </div>
+                  ) : (
+                    validation.projects.map((project) => (
+                      <div
+                        key={project.id}
+                        className="flex items-center justify-between gap-3 border-border border-b px-3 py-2 last:border-b-0"
+                      >
+                        <div className="min-w-0">
+                          <div className="truncate font-medium text-sm">{project.name}</div>
+                          <div className="truncate text-muted-foreground text-xs">
+                            {project.teamKey ? project.teamKey : "No team"}
+                            {project.teamName ? ` · ${project.teamName}` : ""}
+                          </div>
+                        </div>
+                        <div className="shrink-0 text-muted-foreground text-xs">
+                          {project.mappedProjectIds.length > 0
+                            ? `${project.mappedProjectIds.length} mapped`
+                            : "Unmapped"}
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div className="text-destructive text-xs">
+                {validation.error ?? "Unable to validate Linear settings."}
+              </div>
+            )}
+          </div>
+        ) : null}
       </SettingsSection>
     </SettingsPageContainer>
   );

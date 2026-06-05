@@ -142,6 +142,13 @@ vi.mock("@t3tools/client-runtime", async (importOriginal) => {
       removeKeybinding: vi.fn(),
       getSettings: vi.fn(),
       updateSettings: vi.fn(),
+      validateLinearIssues: vi.fn(async () => ({
+        ok: false,
+        workspaceName: null,
+        userName: null,
+        projects: [],
+        error: "Not configured.",
+      })),
       subscribeConfig: vi.fn(() => () => undefined),
       subscribeLifecycle: vi.fn(() => () => undefined),
       subscribeAuthAccess: vi.fn(() => () => undefined),
