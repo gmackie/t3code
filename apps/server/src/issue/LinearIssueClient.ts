@@ -82,7 +82,15 @@ export function normalizeLinearDomain(domain: string): string {
 }
 
 export function linearGraphqlUrl(domain: string): string {
-  return `https://api.${normalizeLinearDomain(domain)}/graphql`;
+  const normalized = normalizeLinearDomain(domain);
+  const url = new URL(normalized.match(/^https?:\/\//i) ? normalized : `https://${normalized}`);
+  if (url.hostname === "linear.app") {
+    url.hostname = "api.linear.app";
+  }
+  if (url.pathname === "/" || url.pathname.length === 0) {
+    url.pathname = "/graphql";
+  }
+  return url.toString();
 }
 
 function stringOrNull(value: unknown): string | null {
