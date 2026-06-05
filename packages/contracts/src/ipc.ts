@@ -147,7 +147,7 @@ export const DesktopUpdateStatusSchema = Schema.Literals([
 export const DesktopRuntimeArchSchema = Schema.Literals(["arm64", "x64", "other"]);
 export const DesktopThemeSchema = Schema.Literals(["light", "dark", "system"]);
 export const DesktopUpdateChannelSchema = Schema.Literals(["latest", "nightly", "gmacko"]);
-export const DesktopAppStageLabelSchema = Schema.Literals(["Alpha", "Dev", "Nightly"]);
+export const DesktopAppStageLabelSchema = Schema.Literals(["Alpha", "Dev", "Nightly", "Gmacko"]);
 
 export interface DesktopAppBranding {
   baseName: string;

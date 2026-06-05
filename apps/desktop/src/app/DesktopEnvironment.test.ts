@@ -93,6 +93,30 @@ describe("DesktopEnvironment", () => {
     }),
   );
 
+  it.effect("derives packaged gmacko identity and state paths", () =>
+    Effect.gen(function* () {
+      const environment = yield* makeEnvironment({
+        appVersion: "0.0.24-gmacko.202606050307",
+        isPackaged: true,
+        appPath: "/Applications/T3 Code (gmacko).app/Contents/Resources/app.asar",
+        resourcesPath: "/Applications/T3 Code (gmacko).app/Contents/Resources",
+      });
+
+      assert.equal(environment.displayName, "T3 Code (gmacko)");
+      assert.equal(environment.baseDir, "/Users/alice/.t3-gmacko");
+      assert.equal(environment.stateDir, "/Users/alice/.t3-gmacko/userdata-gmacko");
+      assert.equal(
+        environment.serverSettingsPath,
+        "/Users/alice/.t3-gmacko/userdata-gmacko/settings.json",
+      );
+      assert.equal(environment.appUserModelId, "com.t3tools.t3code.gmacko");
+      assert.equal(environment.linuxDesktopEntryName, "t3code-gmacko.desktop");
+      assert.equal(environment.linuxWmClass, "t3code-gmacko");
+      assert.equal(environment.userDataDirName, "t3code-gmacko");
+      assert.equal(environment.legacyUserDataDirName, "t3code-gmacko");
+    }),
+  );
+
   it.effect("resolves picker defaults without nullish sentinels", () =>
     Effect.gen(function* () {
       const environment = yield* makeEnvironment();
