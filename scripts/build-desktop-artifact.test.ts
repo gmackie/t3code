@@ -8,6 +8,7 @@ import {
   createStagePnpmConfig,
   resolveDesktopRuntimeDependencies,
   resolveBuildOptions,
+  resolveDesktopBuildAppId,
   resolveDesktopBuildIconAssets,
   resolveDesktopProductName,
   resolveDesktopUpdateChannel,
@@ -27,6 +28,14 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
     assert.equal(resolveDesktopProductName("0.0.17"), "T3 Code (Alpha)");
     assert.equal(resolveDesktopProductName("0.0.17-nightly.20260413.42"), "T3 Code (Nightly)");
     assert.equal(resolveDesktopProductName("0.0.20-gmacko.202604170930"), "T3 Code (gmacko)");
+  });
+
+  it("switches desktop packaging bundle ids for gmacko builds", () => {
+    assert.equal(resolveDesktopBuildAppId("0.0.17"), "com.t3tools.t3code");
+    assert.equal(
+      resolveDesktopBuildAppId("0.0.20-gmacko.202604170930"),
+      "com.t3tools.t3code.gmacko",
+    );
   });
 
   it("switches desktop packaging icons to the nightly artwork for nightly versions", () => {

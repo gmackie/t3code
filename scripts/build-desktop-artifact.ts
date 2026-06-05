@@ -5,17 +5,12 @@ import rootPackageJson from "../package.json" with { type: "json" };
 import desktopPackageJson from "../apps/desktop/package.json" with { type: "json" };
 import serverPackageJson from "../apps/server/package.json" with { type: "json" };
 import { getDesktopRuntimeIdentity } from "../apps/desktop/src/appIdentity.js";
-import platformNodeSharedPackageJson from "@effect/platform-node-shared/package.json" with { type: "json" };
 
 import { BRAND_ASSET_PATHS } from "./lib/brand-assets.ts";
 import { getDefaultBuildArch } from "./lib/build-target-arch.ts";
-import {
-  createDesktopElectronBuilderConfig,
-  type GitHubPublishConfig,
-} from "./lib/desktopElectronBuilderConfig.ts";
+import { type GitHubPublishConfig } from "./lib/desktopElectronBuilderConfig.ts";
 import { resolveDesktopAppDisplayName } from "./lib/desktopAppIdentity.ts";
 import { resolveCatalogDependencies } from "./lib/resolve-catalog.ts";
-import { createStageDependencyOverrides } from "./lib/stageDependencyOverrides.ts";
 
 import * as NodeRuntime from "@effect/platform-node/NodeRuntime";
 import * as NodeServices from "@effect/platform-node/NodeServices";
@@ -704,6 +699,15 @@ export function resolveDesktopProductName(version: string): string {
   return desktopPackageJson.productName ?? "T3 Code";
 }
 
+export function resolveDesktopBuildAppId(version: string): string {
+  const productName =
+    process.env.T3CODE_DESKTOP_APP_DISPLAY_NAME?.trim() || resolveDesktopProductName(version);
+  return getDesktopRuntimeIdentity({
+    isDevelopment: false,
+    appDisplayName: productName,
+  }).appId;
+}
+
 const createBuildConfig = Effect.fn("createBuildConfig")(function* (
   platform: typeof BuildPlatform.Type,
   target: string,
@@ -715,8 +719,12 @@ const createBuildConfig = Effect.fn("createBuildConfig")(function* (
   const updateChannel = resolveDesktopUpdateChannel(version);
   const productName =
     process.env.T3CODE_DESKTOP_APP_DISPLAY_NAME?.trim() || resolveDesktopProductName(version);
+  const appIdentity = getDesktopRuntimeIdentity({
+    isDevelopment: false,
+    appDisplayName: productName,
+  });
   const buildConfig: Record<string, unknown> = {
-    appId: "com.t3tools.t3code",
+    appId: appIdentity.appId,
     productName,
     artifactName: "T3-Code-${version}-${arch}.${ext}",
     directories: {
@@ -725,12 +733,15 @@ const createBuildConfig = Effect.fn("createBuildConfig")(function* (
   };
   const publishConfig = resolveGitHubPublishConfig(updateChannel);
   if (publishConfig) {
-    buildConfig.publish = [publishConfig];
+    buildConfig.publish = [
+      { ...publishConfig, updaterCacheDirName: appIdentity.updaterCacheDirName },
+    ];
   } else if (mockUpdates) {
     buildConfig.publish = [
       {
         provider: "generic",
         url: resolveMockUpdateServerUrl(mockUpdateServerPort),
+        updaterCacheDirName: appIdentity.updaterCacheDirName,
       },
     ];
   }
