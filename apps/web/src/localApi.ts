@@ -143,6 +143,26 @@ function createBrowserLocalApi(rpcClient?: WsRpcClient): LocalApi {
         rpcClient
           ? rpcClient.server.updateSettings(patch)
           : Promise.reject(unavailableLocalBackendError()),
+      validateLinearIssues: () =>
+        rpcClient
+          ? rpcClient.server.validateLinearIssues()
+          : Promise.reject(unavailableLocalBackendError()),
+      listProjectIssues: (input) =>
+        rpcClient
+          ? rpcClient.server.listProjectIssues(input)
+          : Promise.reject(unavailableLocalBackendError()),
+      listProjectIssueStatuses: (input) =>
+        rpcClient
+          ? rpcClient.server.listProjectIssueStatuses(input)
+          : Promise.reject(unavailableLocalBackendError()),
+      createProjectIssue: (input) =>
+        rpcClient
+          ? rpcClient.server.createProjectIssue(input)
+          : Promise.reject(unavailableLocalBackendError()),
+      updateProjectIssueStatus: (input) =>
+        rpcClient
+          ? rpcClient.server.updateProjectIssueStatus(input)
+          : Promise.reject(unavailableLocalBackendError()),
       discoverSourceControl: () =>
         rpcClient
           ? rpcClient.server.discoverSourceControl()

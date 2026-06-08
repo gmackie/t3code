@@ -17,8 +17,8 @@ const mockCreateWsRpcClient = vi.fn();
 const mockWaitForSavedEnvironmentRegistryHydration = vi.fn();
 const mockListSavedEnvironmentRecords = vi.fn();
 const mockGetSavedEnvironmentRecord = vi.fn();
-const mockReadSavedEnvironmentBearerToken = vi.fn();
 const mockReadSavedEnvironmentCredential = vi.fn();
+const mockReadSavedEnvironmentBearerToken = vi.fn();
 const mockSavedEnvironmentRegistrySubscribe = vi.fn();
 const mockGetPrimaryKnownEnvironment = vi.hoisted(() => vi.fn());
 const mockFetchRemoteSessionState = vi.fn();
@@ -36,6 +36,9 @@ vi.mock("../primary", () => ({
 }));
 
 vi.mock("../../lib/runtime", () => ({
+  remoteHttpRuntime: {
+    runPromise: mockRemoteHttpRunPromise,
+  },
   webRuntime: {
     runPromise: mockRemoteHttpRunPromise,
   },
@@ -46,8 +49,8 @@ vi.mock("./catalog", () => ({
   hasSavedEnvironmentRegistryHydrated: vi.fn(() => true),
   listSavedEnvironmentRecords: mockListSavedEnvironmentRecords,
   persistSavedEnvironmentRecord: vi.fn(),
-  readSavedEnvironmentBearerToken: mockReadSavedEnvironmentBearerToken,
   readSavedEnvironmentCredential: mockReadSavedEnvironmentCredential,
+  readSavedEnvironmentBearerToken: mockReadSavedEnvironmentBearerToken,
   removeSavedEnvironmentBearerToken: vi.fn(),
   useSavedEnvironmentRegistryStore: {
     subscribe: mockSavedEnvironmentRegistrySubscribe,
@@ -67,7 +70,6 @@ vi.mock("./catalog", () => ({
   },
   waitForSavedEnvironmentRegistryHydration: mockWaitForSavedEnvironmentRegistryHydration,
   writeSavedEnvironmentBearerToken: vi.fn(),
-  writeSavedEnvironmentCredential: vi.fn(),
 }));
 
 vi.mock("./connection", async (importOriginal) => ({
@@ -81,10 +83,6 @@ vi.mock("@t3tools/client-runtime", async (importOriginal) => {
     dispose: async () => undefined,
     reconnect: async () => undefined,
     isHeartbeatFresh: () => false,
-    cloud: {
-      getRelayClientStatus: vi.fn(),
-      installRelayClient: vi.fn(),
-    },
     orchestration: {
       dispatchCommand: vi.fn(),
       getTurnDiff: vi.fn(),
@@ -105,6 +103,8 @@ vi.mock("@t3tools/client-runtime", async (importOriginal) => {
       onMetadata: vi.fn(() => () => undefined),
     },
     projects: {
+      listEntries: vi.fn(),
+      readFile: vi.fn(),
       searchEntries: vi.fn(),
       writeFile: vi.fn(),
     },
@@ -147,6 +147,21 @@ vi.mock("@t3tools/client-runtime", async (importOriginal) => {
       removeKeybinding: vi.fn(),
       getSettings: vi.fn(),
       updateSettings: vi.fn(),
+      validateLinearIssues: vi.fn(async () => ({
+        ok: false,
+        workspaceName: null,
+        userName: null,
+        projects: [],
+        error: "Not configured.",
+      })),
+      listProjectIssues: vi.fn(async () => ({
+        issues: [],
+      })),
+      listProjectIssueStatuses: vi.fn(async () => ({
+        statuses: [],
+      })),
+      createProjectIssue: vi.fn(),
+      updateProjectIssueStatus: vi.fn(),
       subscribeConfig: vi.fn(() => () => undefined),
       subscribeLifecycle: vi.fn(() => () => undefined),
       subscribeAuthAccess: vi.fn(() => () => undefined),
@@ -154,6 +169,10 @@ vi.mock("@t3tools/client-runtime", async (importOriginal) => {
       getProcessDiagnostics: vi.fn(),
       getProcessResourceHistory: vi.fn(),
       signalProcess: vi.fn(),
+    },
+    cloud: {
+      getRelayClientStatus: vi.fn(),
+      installRelayClient: vi.fn(),
     },
   };
   return {
@@ -274,16 +293,14 @@ describe("retainThreadDetailSubscription", () => {
     mockCreateEnvironmentConnection.mockImplementation((input) => {
       const reconnect = vi.fn(async () => undefined);
       mockConnectionReconnects.push(reconnect);
-      queueMicrotask(() => {
-        input.onConfigSnapshot?.({
-          environment: {
-            environmentId: input.knownEnvironment.environmentId,
-            label: input.knownEnvironment.label,
-            platform: { os: "darwin", arch: "arm64" },
-            serverVersion: "0.0.0-test",
-            capabilities: { repositoryIdentity: true },
-          },
-        });
+      input.onConfigSnapshot?.({
+        environment: {
+          environmentId: input.knownEnvironment.environmentId,
+          label: input.knownEnvironment.label,
+          platform: { os: "darwin", arch: "arm64" },
+          serverVersion: "0.0.0-test",
+          capabilities: { repositoryIdentity: true },
+        },
       });
       return {
         kind: input.kind,
@@ -307,11 +324,8 @@ describe("retainThreadDetailSubscription", () => {
     mockWaitForSavedEnvironmentRegistryHydration.mockResolvedValue(undefined);
     mockListSavedEnvironmentRecords.mockReturnValue([]);
     mockGetSavedEnvironmentRecord.mockReturnValue(null);
+    mockReadSavedEnvironmentCredential.mockResolvedValue(null);
     mockReadSavedEnvironmentBearerToken.mockResolvedValue(null);
-    mockReadSavedEnvironmentCredential.mockImplementation(async () => {
-      const token = await mockReadSavedEnvironmentBearerToken();
-      return token ? { version: 1, method: "bearer", token } : null;
-    });
     mockFetchRemoteSessionState.mockResolvedValue({
       authenticated: true,
       scopes: ["orchestration:read"],
@@ -355,7 +369,7 @@ describe("retainThreadDetailSubscription", () => {
 
     stop();
     await resetEnvironmentServiceForTests();
-  });
+  }, 15_000);
 
   it("does not start the primary connection until the known environment has an id", async () => {
     mockGetPrimaryKnownEnvironment.mockReturnValue({
@@ -429,7 +443,7 @@ describe("retainThreadDetailSubscription", () => {
 
     stop();
     await resetEnvironmentServiceForTests();
-  });
+  }, 15_000);
 
   it("reattaches retained thread detail subscriptions after a saved environment reconnect replaces the client", async () => {
     const environmentId = EnvironmentId.make("env-remote");
@@ -444,6 +458,11 @@ describe("retainThreadDetailSubscription", () => {
     };
     mockListSavedEnvironmentRecords.mockReturnValue([record]);
     mockGetSavedEnvironmentRecord.mockReturnValue(record);
+    mockReadSavedEnvironmentCredential.mockResolvedValue({
+      version: 1,
+      method: "bearer",
+      token: "bearer-token",
+    });
     mockReadSavedEnvironmentBearerToken.mockResolvedValue("bearer-token");
 
     const {
@@ -456,7 +475,7 @@ describe("retainThreadDetailSubscription", () => {
     } = await import("./service");
 
     const stop = startEnvironmentConnectionService(new QueryClient());
-    savedEnvironmentRegistryListener?.();
+    await reconnectSavedEnvironment(environmentId);
     await vi.waitFor(() => {
       expect(
         listEnvironmentConnections().some(

@@ -45,6 +45,18 @@ import {
 } from "./review.ts";
 import { KeybindingsConfigError } from "./keybindings.ts";
 import {
+  ProjectIssueCreateInput,
+  ProjectIssueCreateResult,
+  IssueListResult,
+  IssueProviderError,
+  LinearIssueValidationResult,
+  ProjectIssueListInput,
+  ProjectIssueStatusListInput,
+  ProjectIssueStatusListResult,
+  ProjectIssueStatusUpdateInput,
+  ProjectIssueStatusUpdateResult,
+} from "./issue.ts";
+import {
   ClientOrchestrationCommand,
   ORCHESTRATION_WS_METHODS,
   OrchestrationDispatchCommandError,
@@ -64,6 +76,12 @@ import {
   RelayClientStatusSchema,
 } from "./relayClient.ts";
 import {
+  ProjectListEntriesError,
+  ProjectListEntriesInput,
+  ProjectListEntriesResult,
+  ProjectReadFileError,
+  ProjectReadFileInput,
+  ProjectReadFileResult,
   ProjectSearchEntriesError,
   ProjectSearchEntriesInput,
   ProjectSearchEntriesResult,
@@ -121,6 +139,8 @@ export const WS_METHODS = {
   projectsList: "projects.list",
   projectsAdd: "projects.add",
   projectsRemove: "projects.remove",
+  projectsListEntries: "projects.listEntries",
+  projectsReadFile: "projects.readFile",
   projectsSearchEntries: "projects.searchEntries",
   projectsWriteFile: "projects.writeFile",
 
@@ -165,6 +185,11 @@ export const WS_METHODS = {
   serverRemoveKeybinding: "server.removeKeybinding",
   serverGetSettings: "server.getSettings",
   serverUpdateSettings: "server.updateSettings",
+  serverValidateLinearIssues: "server.validateLinearIssues",
+  serverListProjectIssues: "server.listProjectIssues",
+  serverListProjectIssueStatuses: "server.listProjectIssueStatuses",
+  serverCreateProjectIssue: "server.createProjectIssue",
+  serverUpdateProjectIssueStatus: "server.updateProjectIssueStatus",
   serverDiscoverSourceControl: "server.discoverSourceControl",
   serverGetTraceDiagnostics: "server.getTraceDiagnostics",
   serverGetProcessDiagnostics: "server.getProcessDiagnostics",
@@ -238,6 +263,42 @@ export const WsServerUpdateSettingsRpc = Rpc.make(WS_METHODS.serverUpdateSetting
   success: ServerSettings,
   error: Schema.Union([ServerSettingsError, EnvironmentAuthorizationError]),
 });
+
+export const WsServerValidateLinearIssuesRpc = Rpc.make(WS_METHODS.serverValidateLinearIssues, {
+  payload: Schema.Struct({}),
+  success: LinearIssueValidationResult,
+  error: Schema.Union([IssueProviderError, ServerSettingsError, EnvironmentAuthorizationError]),
+});
+
+export const WsServerListProjectIssuesRpc = Rpc.make(WS_METHODS.serverListProjectIssues, {
+  payload: ProjectIssueListInput,
+  success: IssueListResult,
+  error: Schema.Union([IssueProviderError, ServerSettingsError, EnvironmentAuthorizationError]),
+});
+
+export const WsServerListProjectIssueStatusesRpc = Rpc.make(
+  WS_METHODS.serverListProjectIssueStatuses,
+  {
+    payload: ProjectIssueStatusListInput,
+    success: ProjectIssueStatusListResult,
+    error: Schema.Union([IssueProviderError, ServerSettingsError, EnvironmentAuthorizationError]),
+  },
+);
+
+export const WsServerCreateProjectIssueRpc = Rpc.make(WS_METHODS.serverCreateProjectIssue, {
+  payload: ProjectIssueCreateInput,
+  success: ProjectIssueCreateResult,
+  error: Schema.Union([IssueProviderError, ServerSettingsError, EnvironmentAuthorizationError]),
+});
+
+export const WsServerUpdateProjectIssueStatusRpc = Rpc.make(
+  WS_METHODS.serverUpdateProjectIssueStatus,
+  {
+    payload: ProjectIssueStatusUpdateInput,
+    success: ProjectIssueStatusUpdateResult,
+    error: Schema.Union([IssueProviderError, ServerSettingsError, EnvironmentAuthorizationError]),
+  },
+);
 
 export const WsServerDiscoverSourceControlRpc = Rpc.make(WS_METHODS.serverDiscoverSourceControl, {
   payload: Schema.Struct({}),
@@ -313,6 +374,18 @@ export const WsProjectsSearchEntriesRpc = Rpc.make(WS_METHODS.projectsSearchEntr
   payload: ProjectSearchEntriesInput,
   success: ProjectSearchEntriesResult,
   error: Schema.Union([ProjectSearchEntriesError, EnvironmentAuthorizationError]),
+});
+
+export const WsProjectsListEntriesRpc = Rpc.make(WS_METHODS.projectsListEntries, {
+  payload: ProjectListEntriesInput,
+  success: ProjectListEntriesResult,
+  error: Schema.Union([ProjectListEntriesError, EnvironmentAuthorizationError]),
+});
+
+export const WsProjectsReadFileRpc = Rpc.make(WS_METHODS.projectsReadFile, {
+  payload: ProjectReadFileInput,
+  success: ProjectReadFileResult,
+  error: Schema.Union([ProjectReadFileError, EnvironmentAuthorizationError]),
 });
 
 export const WsProjectsWriteFileRpc = Rpc.make(WS_METHODS.projectsWriteFile, {
@@ -553,6 +626,11 @@ export const WsRpcGroup = RpcGroup.make(
   WsServerRemoveKeybindingRpc,
   WsServerGetSettingsRpc,
   WsServerUpdateSettingsRpc,
+  WsServerValidateLinearIssuesRpc,
+  WsServerListProjectIssuesRpc,
+  WsServerListProjectIssueStatusesRpc,
+  WsServerCreateProjectIssueRpc,
+  WsServerUpdateProjectIssueStatusRpc,
   WsServerDiscoverSourceControlRpc,
   WsServerGetTraceDiagnosticsRpc,
   WsServerGetProcessDiagnosticsRpc,
@@ -564,6 +642,8 @@ export const WsRpcGroup = RpcGroup.make(
   WsSourceControlCloneRepositoryRpc,
   WsSourceControlPublishRepositoryRpc,
   WsProjectsSearchEntriesRpc,
+  WsProjectsListEntriesRpc,
+  WsProjectsReadFileRpc,
   WsProjectsWriteFileRpc,
   WsShellOpenInEditorRpc,
   WsFilesystemBrowseRpc,

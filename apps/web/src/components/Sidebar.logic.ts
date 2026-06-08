@@ -1,4 +1,5 @@
 import * as React from "react";
+import type { IssueItem } from "@t3tools/contracts";
 import type { SidebarProjectSortOrder, SidebarThreadSortOrder } from "@t3tools/contracts/settings";
 import {
   getThreadSortTimestamp,
@@ -213,6 +214,113 @@ export function resolveSidebarNewThreadSeedContext(input: {
   };
 }
 
+export interface LinearProjectLinkSummary {
+  readonly mappedProjectCount: number;
+  readonly linearProjectId: string | null;
+  readonly label: string;
+  readonly shortLabel: string;
+}
+
+export function resolveLinearProjectLinkSummary(input: {
+  memberProjectIds: readonly string[];
+  projectMappings: Readonly<
+    Record<
+      string,
+      {
+        readonly linearProjectId: string;
+        readonly linearProjectName: string;
+        readonly teamKey: string;
+      }
+    >
+  >;
+}): LinearProjectLinkSummary | null {
+  const mappedEntries = input.memberProjectIds.flatMap((projectId) => {
+    const mapping = input.projectMappings[projectId];
+    return mapping ? [{ projectId, mapping }] : [];
+  });
+
+  if (mappedEntries.length === 0) {
+    return null;
+  }
+
+  if (mappedEntries.length === 1) {
+    const mapping = mappedEntries[0]!.mapping;
+    return {
+      mappedProjectCount: 1,
+      linearProjectId: mapping.linearProjectId,
+      label: mapping.linearProjectName,
+      shortLabel: mapping.teamKey || mapping.linearProjectName,
+    };
+  }
+
+  return {
+    mappedProjectCount: mappedEntries.length,
+    linearProjectId: null,
+    label: `${mappedEntries.length} linked`,
+    shortLabel: `${mappedEntries.length} linked`,
+  };
+}
+
+export function resolveLinearProjectBadgeClassName(): string {
+  return cn(
+    "shrink-0 rounded-md border bg-transparent px-1.5 py-0.5 font-semibold text-[10px] shadow-none transition-colors focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring",
+    "border-amber-400/35 text-amber-300/90 hover:border-amber-300/55 hover:text-amber-200",
+  );
+}
+
+export function buildIssueThreadDraftPrompt(issue: IssueItem): string {
+  const lines = [
+    `Please start a new thread for ${issue.provider === "linear" ? "Linear" : "linked"} issue ${issue.key}.`,
+    "",
+    `Title: ${issue.title}`,
+    `State: ${issue.state}`,
+    `URL: ${issue.url}`,
+  ];
+
+  if (issue.assigneeName) {
+    lines.push(`Assignee: ${issue.assigneeName}`);
+  }
+
+  if (issue.labels.length > 0) {
+    lines.push(`Labels: ${issue.labels.join(", ")}`);
+  }
+
+  if (issue.descriptionMarkdown && issue.descriptionMarkdown.trim().length > 0) {
+    lines.push("", "Issue description:", issue.descriptionMarkdown.trim());
+  }
+
+  return lines.join("\n");
+}
+
+const THREAD_ISSUE_BADGE_BASE_CLASS_NAME =
+  "inline-flex h-4 shrink-0 items-center rounded border bg-transparent px-1 font-semibold text-[9px]";
+
+const THREAD_ISSUE_BADGE_CLASS_BY_STATUS_KEY: Record<string, string> = {
+  backlog: "border-zinc-400/30 text-zinc-300/85",
+  todo: "border-zinc-400/30 text-zinc-300/85",
+  unstarted: "border-zinc-400/30 text-zinc-300/85",
+  planned: "border-zinc-400/30 text-zinc-300/85",
+  started: "border-cyan-400/35 text-cyan-300/90",
+  working: "border-cyan-400/35 text-cyan-300/90",
+  "in-progress": "border-cyan-400/35 text-cyan-300/90",
+  "in progress": "border-cyan-400/35 text-cyan-300/90",
+  review: "border-sky-400/35 text-sky-300/90",
+  "in-review": "border-sky-400/35 text-sky-300/90",
+  "in review": "border-sky-400/35 text-sky-300/90",
+  done: "border-emerald-400/35 text-emerald-300/90",
+  completed: "border-emerald-400/35 text-emerald-300/90",
+  canceled: "border-rose-400/35 text-rose-300/90",
+  cancelled: "border-rose-400/35 text-rose-300/90",
+};
+
+export function resolveThreadIssueBadgeClassName(statusName: string | null | undefined): string {
+  const statusKey = statusName?.trim().toLowerCase() ?? "";
+  return cn(
+    THREAD_ISSUE_BADGE_BASE_CLASS_NAME,
+    THREAD_ISSUE_BADGE_CLASS_BY_STATUS_KEY[statusKey] ?? "border-amber-400/35 text-amber-300/90",
+  );
+}
+
 export function orderItemsByPreferredIds<TItem, TId>(input: {
   items: readonly TItem[];
   preferredIds: readonly TId[];
@@ -330,6 +438,10 @@ export function resolveThreadStatusPill(input: {
   thread: ThreadStatusInput;
 }): ThreadStatusPill | null {
   const { thread } = input;
+  const hasUnsettledStartedTurn =
+    thread.latestTurn?.startedAt !== null &&
+    thread.latestTurn?.startedAt !== undefined &&
+    !isLatestTurnSettled(thread.latestTurn, thread.session);
 
   if (thread.hasPendingApprovals) {
     return {
@@ -349,7 +461,7 @@ export function resolveThreadStatusPill(input: {
     };
   }
 
-  if (thread.session?.status === "running") {
+  if (thread.session?.status === "running" || hasUnsettledStartedTurn) {
     return {
       label: "Working",
       colorClass: "text-sky-600 dark:text-sky-300/80",

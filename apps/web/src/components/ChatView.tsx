@@ -155,6 +155,7 @@ import { resolveEffectiveEnvMode, resolveEnvironmentOptionLabel } from "./Branch
 import { ProviderStatusBanner } from "./chat/ProviderStatusBanner";
 import { ThreadErrorBanner } from "./chat/ThreadErrorBanner";
 import { ComposerBannerStack, type ComposerBannerStackItem } from "./chat/ComposerBannerStack";
+import ChatMarkdown from "./ChatMarkdown";
 import {
   MAX_HIDDEN_MOUNTED_TERMINAL_THREADS,
   buildExpiredTerminalContextToastCopy,
@@ -194,6 +195,13 @@ import {
   isVersionMismatchDismissed,
   resolveServerConfigVersionMismatch,
 } from "../versionSkew";
+import {
+  readThreadIssueLinks,
+  resolveProjectIssueStatusBadgeClassName,
+  shouldRenderThreadIssueSidebar,
+  THREAD_ISSUE_LINKS_CHANGED_EVENT,
+  type ThreadIssueLink,
+} from "../projectIssues.logic";
 
 const IMAGE_ONLY_BOOTSTRAP_PROMPT =
   "[User attached one or more images without additional text. Respond using the conversation context and the attached image(s).]";
@@ -207,6 +215,118 @@ type EnvironmentUnavailableState = {
   readonly label: string;
   readonly connectionState: "connecting" | "disconnected" | "error";
 };
+
+function threadIssueLinkToIssueLike(link: ThreadIssueLink) {
+  return {
+    provider: link.provider,
+    id: link.id,
+    key: link.key,
+    title: link.title,
+    url: link.url,
+    state: "unknown" as const,
+    labels: [...link.labels],
+    comments: [...link.comments],
+    ...(link.statusName ? { statusName: link.statusName } : {}),
+    ...(link.descriptionMarkdown ? { descriptionMarkdown: link.descriptionMarkdown } : {}),
+    ...(link.assigneeName ? { assigneeName: link.assigneeName } : {}),
+  };
+}
+
+function ThreadIssueContextPanelContent(props: {
+  readonly issueLink: ThreadIssueLink;
+  readonly markdownCwd: string | undefined;
+  readonly workspaceRoot: string | undefined;
+}) {
+  const { issueLink, markdownCwd, workspaceRoot } = props;
+  const issueLike = threadIssueLinkToIssueLike(issueLink);
+  const visibleComments = issueLink.comments.slice(0, 3);
+
+  return (
+    <div className="min-h-0 flex-1 overflow-auto">
+      <div className="border-b border-border/60 px-5 py-4">
+        <h2 className="flex items-baseline gap-2.5 font-semibold text-foreground text-xl leading-tight">
+          <span className="shrink-0 text-muted-foreground/70 text-sm tracking-tight">
+            {issueLink.key}
+          </span>
+          <span className="line-clamp-3">{issueLink.title}</span>
+        </h2>
+        <a
+          href={issueLink.url}
+          target="_blank"
+          rel="noreferrer"
+          className="mt-3 inline-flex items-center gap-1 text-muted-foreground text-sm transition-colors hover:text-foreground"
+        >
+          Open issue
+        </a>
+        {issueLink.statusName ? (
+          <div className="mt-3">
+            <span className={resolveProjectIssueStatusBadgeClassName(issueLike)}>
+              {issueLink.statusName}
+            </span>
+          </div>
+        ) : null}
+      </div>
+      <div className="min-h-0 flex-1 space-y-5 overflow-auto px-5 py-4">
+        {issueLink.assigneeName || issueLink.labels.length > 0 ? (
+          <div className="space-y-2 text-xs">
+            {issueLink.assigneeName ? (
+              <div className="text-muted-foreground">
+                Assignee <span className="text-foreground">{issueLink.assigneeName}</span>
+              </div>
+            ) : null}
+            {issueLink.labels.length > 0 ? (
+              <div className="flex flex-wrap gap-1.5">
+                {issueLink.labels.map((label) => (
+                  <span
+                    key={label}
+                    className="rounded-md border border-border/70 px-1.5 py-0.5 text-muted-foreground"
+                  >
+                    {label}
+                  </span>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+
+        <section className="space-y-2">
+          <h3 className="font-medium text-muted-foreground text-xs uppercase tracking-wide">
+            Description
+          </h3>
+          {issueLink.descriptionMarkdown ? (
+            <ChatMarkdown
+              text={issueLink.descriptionMarkdown}
+              cwd={markdownCwd}
+              workspaceRoot={workspaceRoot}
+            />
+          ) : (
+            <p className="text-muted-foreground text-sm">No issue description.</p>
+          )}
+        </section>
+
+        {visibleComments.length > 0 ? (
+          <section className="space-y-3">
+            <h3 className="font-medium text-muted-foreground text-xs uppercase tracking-wide">
+              Comments
+            </h3>
+            {visibleComments.map((comment) => (
+              <article key={comment.id} className="rounded-lg border border-border/70 p-3">
+                {comment.authorName ? (
+                  <div className="mb-2 text-muted-foreground text-xs">{comment.authorName}</div>
+                ) : null}
+                <ChatMarkdown
+                  text={comment.bodyMarkdown}
+                  cwd={markdownCwd}
+                  workspaceRoot={workspaceRoot}
+                />
+              </article>
+            ))}
+          </section>
+        ) : null}
+      </div>
+    </div>
+  );
+}
 
 type ThreadPlanCatalogEntry = Pick<Thread, "id" | "proposedPlans">;
 
@@ -866,6 +986,8 @@ export default function ChatView(props: ChatViewProps) {
     useState<Record<string, number>>({});
   const [planSidebarOpen, setPlanSidebarOpen] = useState(false);
   const shouldUsePlanSidebarSheet = useMediaQuery(RIGHT_PANEL_INLINE_LAYOUT_MEDIA_QUERY);
+  const [rightPanelTab, setRightPanelTab] = useState<"tasks" | "issue">("tasks");
+  const [dismissedThreadIssueId, setDismissedThreadIssueId] = useState<string | null>(null);
   // Tracks whether the user explicitly dismissed the sidebar for the active turn.
   const planSidebarDismissedForTurnRef = useRef<string | null>(null);
   // When set, the thread-change reset effect will open the sidebar instead of closing it.
@@ -882,6 +1004,7 @@ export default function ChatView(props: ChatViewProps) {
   const [pendingServerThreadEnvMode, setPendingServerThreadEnvMode] =
     useState<DraftThreadEnvMode | null>(null);
   const [pendingServerThreadBranch, setPendingServerThreadBranch] = useState<string | null>();
+  const [threadIssueLinks, setThreadIssueLinks] = useState(() => readThreadIssueLinks());
   const [lastInvokedScriptByProjectId, setLastInvokedScriptByProjectId] = useLocalStorage(
     LAST_INVOKED_SCRIPT_BY_PROJECT_KEY,
     {},
@@ -999,6 +1122,36 @@ export default function ChatView(props: ChatViewProps) {
     [activeThread],
   );
   const activeThreadKey = activeThreadRef ? scopedThreadKey(activeThreadRef) : null;
+  const activeThreadIssueLink = activeThreadKey
+    ? (threadIssueLinks[activeThreadKey] ?? null)
+    : null;
+  const shouldShowThreadIssuePanel = shouldRenderThreadIssueSidebar({
+    activeIssueId: activeThreadIssueLink?.id ?? null,
+    dismissedIssueId: dismissedThreadIssueId,
+  });
+  const rightPanelOpen = planSidebarOpen || shouldShowThreadIssuePanel;
+
+  useEffect(() => {
+    const refreshThreadIssueLinks = () => {
+      setThreadIssueLinks(readThreadIssueLinks());
+    };
+    window.addEventListener(THREAD_ISSUE_LINKS_CHANGED_EVENT, refreshThreadIssueLinks);
+    window.addEventListener("storage", refreshThreadIssueLinks);
+    return () => {
+      window.removeEventListener(THREAD_ISSUE_LINKS_CHANGED_EVENT, refreshThreadIssueLinks);
+      window.removeEventListener("storage", refreshThreadIssueLinks);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (shouldShowThreadIssuePanel && !planSidebarOpen) {
+      setRightPanelTab("issue");
+      return;
+    }
+    if (!shouldShowThreadIssuePanel && rightPanelTab === "issue") {
+      setRightPanelTab("tasks");
+    }
+  }, [planSidebarOpen, rightPanelTab, shouldShowThreadIssuePanel]);
 
   useEffect(() => {
     if (!activeThreadRef) {
@@ -1063,7 +1216,6 @@ export default function ChatView(props: ChatViewProps) {
   const activeProject = useStore(
     useMemo(() => createProjectSelectorByRef(activeProjectRef), [activeProjectRef]),
   );
-
   useEffect(() => {
     if (routeKind !== "server") {
       return;
@@ -2398,6 +2550,9 @@ export default function ChatView(props: ChatViewProps) {
   }, [handleInteractionModeChange, interactionMode]);
   const togglePlanSidebar = useCallback(() => {
     setPlanSidebarOpen((open) => {
+      if (!open) {
+        setRightPanelTab("tasks");
+      }
       if (open) {
         planSidebarDismissedForTurnRef.current =
           activePlan?.turnId ?? sidebarProposedPlan?.turnId ?? "__dismissed__";
@@ -2412,6 +2567,24 @@ export default function ChatView(props: ChatViewProps) {
     planSidebarDismissedForTurnRef.current =
       activePlan?.turnId ?? sidebarProposedPlan?.turnId ?? "__dismissed__";
   }, [activePlan?.turnId, sidebarProposedPlan?.turnId]);
+  const closeRightPanel = useCallback(() => {
+    if (rightPanelTab === "issue" && shouldShowThreadIssuePanel && activeThreadIssueLink) {
+      setDismissedThreadIssueId(activeThreadIssueLink.id);
+      setRightPanelTab("tasks");
+      return;
+    }
+
+    closePlanSidebar();
+    if (shouldShowThreadIssuePanel) {
+      setRightPanelTab("issue");
+    }
+  }, [activeThreadIssueLink, closePlanSidebar, rightPanelTab, shouldShowThreadIssuePanel]);
+  const handleRightPanelTabChange = useCallback((tab: "tasks" | "issue") => {
+    if (tab === "tasks") {
+      setPlanSidebarOpen(true);
+    }
+    setRightPanelTab(tab);
+  }, []);
 
   const persistThreadSettingsForNextTurn = useCallback(
     async (input: {
@@ -3947,17 +4120,29 @@ export default function ChatView(props: ChatViewProps) {
         {/* end chat column */}
 
         {/* Plan sidebar */}
-        {planSidebarOpen && !shouldUsePlanSidebarSheet ? (
+        {rightPanelOpen && !shouldUsePlanSidebarSheet ? (
           <PlanSidebar
             activePlan={activePlan}
             activeProposedPlan={sidebarProposedPlan}
             label={planSidebarLabel}
+            activeTab={rightPanelTab}
+            issueLabel={activeThreadIssueLink?.key}
+            issueContent={
+              shouldShowThreadIssuePanel && activeThreadIssueLink ? (
+                <ThreadIssueContextPanelContent
+                  issueLink={activeThreadIssueLink}
+                  markdownCwd={gitCwd ?? undefined}
+                  workspaceRoot={activeWorkspaceRoot}
+                />
+              ) : undefined
+            }
             environmentId={environmentId}
             markdownCwd={gitCwd ?? undefined}
             workspaceRoot={activeWorkspaceRoot}
             timestampFormat={timestampFormat}
             mode="sidebar"
-            onClose={closePlanSidebar}
+            onClose={closeRightPanel}
+            onTabChange={handleRightPanelTabChange}
           />
         ) : null}
       </div>
@@ -3981,17 +4166,29 @@ export default function ChatView(props: ChatViewProps) {
         />
       ))}
       {shouldUsePlanSidebarSheet ? (
-        <RightPanelSheet open={planSidebarOpen} onClose={closePlanSidebar}>
+        <RightPanelSheet open={rightPanelOpen} onClose={closeRightPanel}>
           <PlanSidebar
             activePlan={activePlan}
             activeProposedPlan={sidebarProposedPlan}
             label={planSidebarLabel}
+            activeTab={rightPanelTab}
+            issueLabel={activeThreadIssueLink?.key}
+            issueContent={
+              shouldShowThreadIssuePanel && activeThreadIssueLink ? (
+                <ThreadIssueContextPanelContent
+                  issueLink={activeThreadIssueLink}
+                  markdownCwd={gitCwd ?? undefined}
+                  workspaceRoot={activeWorkspaceRoot}
+                />
+              ) : undefined
+            }
             environmentId={environmentId}
             markdownCwd={gitCwd ?? undefined}
             workspaceRoot={activeWorkspaceRoot}
             timestampFormat={timestampFormat}
             mode="sheet"
-            onClose={closePlanSidebar}
+            onClose={closeRightPanel}
+            onTabChange={handleRightPanelTabChange}
           />
         </RightPanelSheet>
       ) : null}
