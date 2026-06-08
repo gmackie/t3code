@@ -201,7 +201,11 @@ import { SidebarUpdatePill } from "./sidebar/SidebarUpdatePill";
 import { useCopyToClipboard } from "~/hooks/useCopyToClipboard";
 import { useIsMobile } from "~/hooks/useMediaQuery";
 import { CommandDialogTrigger } from "./ui/command";
-import { useClientSettings, useUpdateClientSettings } from "~/hooks/useSettings";
+import {
+  useClientSettings,
+  usePrimarySettings,
+  useUpdateClientSettings,
+} from "~/hooks/useSettings";
 import { primaryServerConfigAtom, primaryServerKeybindingsAtom } from "../state/server";
 import {
   derivePhysicalProjectKey,
@@ -1231,6 +1235,22 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
     }
     return counts;
   }, [memberProjectByScopedKey, project.memberProjects, projectThreads]);
+  const linearProjectMappings = usePrimarySettings(
+    (settings) => settings.issues.linear.projectMappings,
+  );
+  const linearProjectLink = useMemo(() => {
+    for (const member of project.memberProjects) {
+      const mapping = linearProjectMappings[member.id];
+      if (mapping) {
+        return {
+          environmentId: member.environmentId,
+          projectId: member.id,
+          label: mapping.teamKey || mapping.linearProjectName,
+        };
+      }
+    }
+    return null;
+  }, [linearProjectMappings, project.memberProjects]);
 
   const { projectStatus, visibleProjectThreads, orderedProjectThreadKeys } = useMemo(() => {
     const lastVisitedAtByThreadKey = new Map(
@@ -1373,6 +1393,24 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
       suppressProjectClickAfterDragRef,
       suppressProjectClickForContextMenuRef,
     ],
+  );
+  const handleLinearProjectLinkClick = useCallback(
+    (event: React.MouseEvent<HTMLButtonElement>) => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (!linearProjectLink) return;
+      if (isMobile) {
+        setOpenMobile(false);
+      }
+      void router.navigate({
+        to: "/project/$environmentId/$projectId",
+        params: {
+          environmentId: linearProjectLink.environmentId,
+          projectId: linearProjectLink.projectId,
+        },
+      });
+    },
+    [isMobile, linearProjectLink, router, setOpenMobile],
   );
 
   const handleProjectButtonKeyDown = useCallback(
@@ -2237,6 +2275,17 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
               <span className="shrink-0 text-[10px] text-muted-foreground/60">
                 {project.groupedProjectCount} projects
               </span>
+            ) : null}
+            {linearProjectLink ? (
+              <button
+                type="button"
+                className="shrink-0 rounded-md border border-amber-400/35 bg-amber-400/10 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-amber-200/80 transition-colors hover:border-amber-300/50 hover:bg-amber-300/15 hover:text-amber-100"
+                title={`Open ${linearProjectLink.label} issues`}
+                aria-label={`Open ${linearProjectLink.label} issues`}
+                onClick={handleLinearProjectLinkClick}
+              >
+                {linearProjectLink.label}
+              </button>
             ) : null}
           </span>
         </SidebarMenuButton>

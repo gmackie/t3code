@@ -20,6 +20,7 @@ import {
 function makeUiState(overrides: Partial<UiState> = {}): UiState {
   return {
     projectExpandedById: {},
+    projectColorById: {},
     projectOrder: [],
     threadLastVisitedAtById: {},
     threadChangedFilesExpandedById: {},
@@ -167,6 +168,7 @@ describe("parsePersistedState", () => {
       projectExpandedById: {
         logical: false,
       },
+      projectColorById: {},
       projectOrder: ["physical-b", "physical-a"],
       threadLastVisitedAtById: {
         "environment:thread-1": "2026-02-25T12:35:00.000Z",
@@ -270,13 +272,10 @@ describe("uiStateStore persistence", () => {
       localStorageStub.getItem(PERSISTED_STATE_KEY) ?? "{}",
     ) as PersistedUiState;
     expect(persisted).toEqual({
-      projectExpandedById: {
-        logical: false,
-      },
-      projectOrder: ["physical-b", "physical-a"],
-      threadLastVisitedAtById: {
-        "environment:thread-1": "2026-02-25T12:35:00.000Z",
-      },
+      collapsedProjectCwds: [],
+      expandedProjectCwds: [],
+      projectColorCwds: {},
+      projectOrderCwds: [],
       defaultAdvertisedEndpointKey: "desktop-core:lan:http",
       threadChangedFilesExpandedById: {
         "environment:thread-1": {
@@ -285,7 +284,9 @@ describe("uiStateStore persistence", () => {
       },
     });
     expect(parsePersistedState(persisted)).toEqual({
-      ...state,
+      ...makeUiState({
+        defaultAdvertisedEndpointKey: "desktop-core:lan:http",
+      }),
       threadChangedFilesExpandedById: {
         "environment:thread-1": {
           "turn-1": false,
@@ -304,6 +305,8 @@ describe("uiStateStore persistence", () => {
     const persisted = JSON.parse(
       localStorageStub.getItem(PERSISTED_STATE_KEY) ?? "{}",
     ) as PersistedUiState;
-    expect(resolveProjectExpanded(persisted.projectExpandedById ?? {}, ["unknown"])).toBe(true);
+    expect(
+      resolveProjectExpanded(parsePersistedState(persisted).projectExpandedById, ["unknown"]),
+    ).toBe(true);
   });
 });

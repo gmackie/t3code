@@ -89,6 +89,7 @@ import * as WorkspacePaths from "./workspace/WorkspacePaths.ts";
 import * as VcsStatusBroadcaster from "./vcs/VcsStatusBroadcaster.ts";
 import * as VcsProvisioningService from "./vcs/VcsProvisioningService.ts";
 import * as GitWorkflowService from "./git/GitWorkflowService.ts";
+import * as LinearIssueClient from "./issue/LinearIssueClient.ts";
 import * as ReviewService from "./review/ReviewService.ts";
 import * as ProjectSetupScriptRunner from "./project/ProjectSetupScriptRunner.ts";
 import * as RepositoryIdentityResolver from "./project/RepositoryIdentityResolver.ts";
@@ -289,6 +290,11 @@ const RPC_REQUIRED_SCOPE = new Map<string, AuthEnvironmentScope>([
   [WS_METHODS.serverRemoveKeybinding, AuthOrchestrationOperateScope],
   [WS_METHODS.serverGetSettings, AuthOrchestrationReadScope],
   [WS_METHODS.serverUpdateSettings, AuthOrchestrationOperateScope],
+  [WS_METHODS.serverValidateLinearIssues, AuthOrchestrationReadScope],
+  [WS_METHODS.serverListProjectIssues, AuthOrchestrationReadScope],
+  [WS_METHODS.serverListProjectIssueStatuses, AuthOrchestrationReadScope],
+  [WS_METHODS.serverCreateProjectIssue, AuthOrchestrationOperateScope],
+  [WS_METHODS.serverUpdateProjectIssueStatus, AuthOrchestrationOperateScope],
   [WS_METHODS.serverDiscoverSourceControl, AuthOrchestrationReadScope],
   [WS_METHODS.serverGetTraceDiagnostics, AuthOrchestrationReadScope],
   [WS_METHODS.serverGetProcessDiagnostics, AuthOrchestrationReadScope],
@@ -1222,6 +1228,105 @@ const makeWsRpcLayer = (currentSession: EnvironmentAuth.AuthenticatedSession) =>
             serverSettings
               .updateSettings(patch)
               .pipe(Effect.map(ServerSettings.redactServerSettingsForClient)),
+            {
+              "rpc.aggregate": "server",
+            },
+          ),
+        [WS_METHODS.serverValidateLinearIssues]: (_input) =>
+          observeRpcEffect(
+            WS_METHODS.serverValidateLinearIssues,
+            serverSettings.getSettings.pipe(
+              Effect.flatMap(LinearIssueClient.validateLinearSettings),
+            ),
+            {
+              "rpc.aggregate": "server",
+            },
+          ),
+        [WS_METHODS.serverListProjectIssues]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.serverListProjectIssues,
+            serverSettings.getSettings.pipe(
+              Effect.flatMap((settings) => {
+                const listInput: {
+                  projectId: typeof input.projectId;
+                  query?: string;
+                  limit?: number;
+                } = { projectId: input.projectId };
+                if (input.query !== undefined) listInput.query = input.query;
+                if (input.limit !== undefined) listInput.limit = input.limit;
+                return LinearIssueClient.listMappedProjectIssues(settings, listInput);
+              }),
+            ),
+            {
+              "rpc.aggregate": "server",
+            },
+          ),
+        [WS_METHODS.serverListProjectIssueStatuses]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.serverListProjectIssueStatuses,
+            serverSettings.getSettings.pipe(
+              Effect.flatMap((settings) =>
+                LinearIssueClient.listMappedProjectIssueStatuses(settings, input),
+              ),
+            ),
+            {
+              "rpc.aggregate": "server",
+            },
+          ),
+        [WS_METHODS.serverCreateProjectIssue]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.serverCreateProjectIssue,
+            serverSettings.getSettings.pipe(
+              Effect.flatMap((settings) => {
+                const createInput: {
+                  projectId: typeof input.projectId;
+                  title: string;
+                  descriptionMarkdown?: string;
+                  statusId?: string;
+                  statusName?: string;
+                } = {
+                  projectId: input.projectId,
+                  title: input.title,
+                };
+                if (input.descriptionMarkdown !== undefined) {
+                  createInput.descriptionMarkdown = input.descriptionMarkdown;
+                }
+                if (input.statusId !== undefined) {
+                  createInput.statusId = input.statusId;
+                }
+                if (input.statusName !== undefined) {
+                  createInput.statusName = input.statusName;
+                }
+                return LinearIssueClient.createMappedProjectIssue(settings, createInput);
+              }),
+            ),
+            {
+              "rpc.aggregate": "server",
+            },
+          ),
+        [WS_METHODS.serverUpdateProjectIssueStatus]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.serverUpdateProjectIssueStatus,
+            serverSettings.getSettings.pipe(
+              Effect.flatMap((settings) => {
+                const updateInput: {
+                  projectId: typeof input.projectId;
+                  issueId: string;
+                  statusId?: string;
+                  statusName?: string;
+                } = {
+                  projectId: input.projectId,
+                  issueId: input.issueId,
+                };
+                if (input.statusId !== undefined) {
+                  updateInput.statusId = input.statusId;
+                }
+                if (input.statusName !== undefined) {
+                  updateInput.statusName = input.statusName;
+                }
+                return LinearIssueClient.updateMappedProjectIssueStatus(settings, updateInput);
+              }),
+            ),
             {
               "rpc.aggregate": "server",
             },

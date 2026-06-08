@@ -1,7 +1,14 @@
-import { ArchiveIcon, ArchiveX, LoaderIcon, PlusIcon, RefreshCwIcon } from "lucide-react";
-import { Link } from "@tanstack/react-router";
-import { useCallback, useMemo, useRef, useState } from "react";
+import {
+  ArchiveIcon,
+  ArchiveX,
+  LoaderIcon,
+  PlusIcon,
+  RefreshCwIcon,
+  TerminalIcon,
+} from "lucide-react";
 import { useAtomValue } from "@effect/atom-react";
+import { Link } from "@tanstack/react-router";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   defaultInstanceIdForDriver,
   type DesktopUpdateChannel,
@@ -57,12 +64,15 @@ import {
 } from "../../state/server";
 import { usePrimaryEnvironment } from "../../state/environments";
 import { useProjects } from "../../state/entities";
+import { useServerConfigs } from "../../state/entities";
 import { useArchivedThreadSnapshots } from "../../lib/archivedThreadsState";
 import { formatRelativeTime, formatRelativeTimeLabel } from "../../timestampFormat";
 import { Button } from "../ui/button";
 import { DraftInput } from "../ui/draft-input";
+import { Input } from "../ui/input";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { Switch } from "../ui/switch";
+import { Textarea } from "../ui/textarea";
 import { stackedThreadToast, toastManager } from "../ui/toast";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { AddProviderInstanceDialog } from "./AddProviderInstanceDialog";
@@ -372,6 +382,58 @@ function AboutVersionSection() {
   );
 }
 
+function formatTerminalShellArgs(shellArgs: ReadonlyArray<string>) {
+  return shellArgs.join("\n");
+}
+
+function parseTerminalShellArgs(shellArgsText: string) {
+  return shellArgsText
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+}
+
+function formatTerminalEnv(env: Record<string, string>) {
+  return Object.entries(env)
+    .map(([key, value]) => `${key}=${value}`)
+    .join("\n");
+}
+
+function parseTerminalEnv(envText: string) {
+  const env: Record<string, string> = {};
+  const lines = envText
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+
+  for (const line of lines) {
+    const separatorIndex = line.indexOf("=");
+    if (separatorIndex <= 0) {
+      return {
+        env: null,
+        error: "Environment variables must use KEY=VALUE format.",
+      } as const;
+    }
+
+    const key = line.slice(0, separatorIndex).trim();
+    const value = line.slice(separatorIndex + 1);
+
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) {
+      return {
+        env: null,
+        error: "Environment variable names must start with a letter or underscore.",
+      } as const;
+    }
+
+    env[key] = value;
+  }
+
+  return {
+    env,
+    error: null,
+  } as const;
+}
+
 export function useSettingsRestore(onRestored?: () => void) {
   const { theme, setTheme } = useTheme();
   const settings = usePrimarySettings();
@@ -417,6 +479,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       ...(settings.addProjectBaseDirectory !== DEFAULT_UNIFIED_SETTINGS.addProjectBaseDirectory
         ? ["Add project base directory"]
         : []),
+      ...(!Equal.equals(settings.terminal, DEFAULT_UNIFIED_SETTINGS.terminal) ? ["Terminal"] : []),
       ...(settings.confirmThreadArchive !== DEFAULT_UNIFIED_SETTINGS.confirmThreadArchive
         ? ["Archive confirmation"]
         : []),
@@ -439,6 +502,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       settings.enableAssistantStreaming,
       settings.sidebarThreadPreviewCount,
       settings.timestampFormat,
+      settings.terminal,
       theme,
     ],
   );
@@ -476,6 +540,269 @@ export function useSettingsRestore(onRestored?: () => void) {
     changedSettingLabels,
     restoreDefaults,
   };
+}
+
+export function TerminalSettingsPanel() {
+  const settings = usePrimarySettings();
+  const updateSettings = useUpdatePrimarySettings();
+  const terminalSettings = settings.terminal;
+  const primaryEnvironment = usePrimaryEnvironment();
+  const serverConfigs = useServerConfigs();
+  const serverConfig = primaryEnvironment
+    ? serverConfigs.get(primaryEnvironment.environmentId)
+    : undefined;
+  const currentShell = serverConfig?.terminal?.currentShell ?? "";
+  const [terminalShellArgsDraft, setTerminalShellArgsDraft] = useState(() =>
+    formatTerminalShellArgs(terminalSettings.profile.shellArgs),
+  );
+  const [terminalEnvDraft, setTerminalEnvDraft] = useState(() =>
+    formatTerminalEnv(terminalSettings.profile.env),
+  );
+  const [terminalEnvError, setTerminalEnvError] = useState<string | null>(null);
+
+  const updateTerminalProfile = useCallback(
+    (
+      patch: Partial<{
+        shellPath: string;
+        shellArgs: ReadonlyArray<string>;
+        env: Record<string, string>;
+      }>,
+    ) => {
+      updateSettings({
+        terminal: {
+          ...terminalSettings,
+          profile: {
+            ...terminalSettings.profile,
+            ...patch,
+          },
+        },
+      });
+    },
+    [terminalSettings, updateSettings],
+  );
+
+  useEffect(() => {
+    setTerminalShellArgsDraft((currentDraft) =>
+      Equal.equals(parseTerminalShellArgs(currentDraft), terminalSettings.profile.shellArgs)
+        ? currentDraft
+        : formatTerminalShellArgs(terminalSettings.profile.shellArgs),
+    );
+  }, [terminalSettings.profile.shellArgs]);
+
+  useEffect(() => {
+    setTerminalEnvDraft((currentDraft) => {
+      const parsedDraft = parseTerminalEnv(currentDraft);
+      if (
+        parsedDraft.error === null &&
+        Equal.equals(parsedDraft.env, terminalSettings.profile.env)
+      ) {
+        return currentDraft;
+      }
+      return formatTerminalEnv(terminalSettings.profile.env);
+    });
+    setTerminalEnvError(null);
+  }, [terminalSettings.profile.env]);
+
+  return (
+    <SettingsPageContainer>
+      <SettingsSection title="Terminal">
+        <SettingsRow
+          title="Environment variables"
+          description="One KEY=value per line. These are merged into every terminal before project/worktree variables are added."
+          resetAction={
+            terminalSettings.environmentVariablesText !==
+            DEFAULT_UNIFIED_SETTINGS.terminal.environmentVariablesText ? (
+              <SettingResetButton
+                label="terminal environment variables"
+                onClick={() =>
+                  updateSettings({
+                    terminal: {
+                      ...terminalSettings,
+                      environmentVariablesText:
+                        DEFAULT_UNIFIED_SETTINGS.terminal.environmentVariablesText,
+                    },
+                  })
+                }
+              />
+            ) : null
+          }
+          control={
+            <Textarea
+              className="min-h-28 w-full font-mono text-xs sm:w-96"
+              value={terminalSettings.environmentVariablesText}
+              onChange={(event) =>
+                updateSettings({
+                  terminal: {
+                    ...terminalSettings,
+                    environmentVariablesText: event.target.value,
+                  },
+                })
+              }
+              placeholder={"T3_SANDBOX=1\nFEATURE_FLAG=true"}
+              spellCheck={false}
+              aria-label="Terminal environment variables"
+            />
+          }
+        />
+
+        <SettingsRow
+          title="Zsh startup directory"
+          description='Sets ZDOTDIR for integrated terminals. Point this at a directory containing a separate ".zshrc".'
+          resetAction={
+            terminalSettings.zshStartupDirectory !==
+            DEFAULT_UNIFIED_SETTINGS.terminal.zshStartupDirectory ? (
+              <SettingResetButton
+                label="zsh startup directory"
+                onClick={() =>
+                  updateSettings({
+                    terminal: {
+                      ...terminalSettings,
+                      zshStartupDirectory: DEFAULT_UNIFIED_SETTINGS.terminal.zshStartupDirectory,
+                    },
+                  })
+                }
+              />
+            ) : null
+          }
+          control={
+            <Input
+              className="w-full sm:w-96"
+              value={terminalSettings.zshStartupDirectory}
+              onChange={(event) =>
+                updateSettings({
+                  terminal: {
+                    ...terminalSettings,
+                    zshStartupDirectory: event.target.value,
+                  },
+                })
+              }
+              placeholder="~/.config/t3code/zsh"
+              spellCheck={false}
+              aria-label="Zsh startup directory"
+            />
+          }
+        />
+
+        <SettingsRow
+          title="Shell executable override"
+          description="Optional absolute path for a different shell."
+          resetAction={
+            terminalSettings.profile.shellPath !==
+            DEFAULT_UNIFIED_SETTINGS.terminal.profile.shellPath ? (
+              <SettingResetButton
+                label="terminal shell path"
+                onClick={() =>
+                  updateTerminalProfile({
+                    shellPath: DEFAULT_UNIFIED_SETTINGS.terminal.profile.shellPath,
+                  })
+                }
+              />
+            ) : null
+          }
+          control={
+            <Input
+              className="w-full sm:w-96"
+              value={terminalSettings.profile.shellPath}
+              onChange={(event) => updateTerminalProfile({ shellPath: event.target.value })}
+              placeholder={currentShell}
+              spellCheck={false}
+              aria-label="Terminal shell path"
+            />
+          }
+        />
+
+        <SettingsRow
+          title="Shell arguments"
+          description="Optional startup arguments for the terminal shell. Enter one argument per line."
+          resetAction={
+            !Equal.equals(
+              terminalSettings.profile.shellArgs,
+              DEFAULT_UNIFIED_SETTINGS.terminal.profile.shellArgs,
+            ) ? (
+              <SettingResetButton
+                label="terminal shell arguments"
+                onClick={() =>
+                  updateTerminalProfile({
+                    shellArgs: DEFAULT_UNIFIED_SETTINGS.terminal.profile.shellArgs,
+                  })
+                }
+              />
+            ) : null
+          }
+          control={
+            <Textarea
+              className="min-h-24 w-full font-mono text-xs sm:w-96"
+              value={terminalShellArgsDraft}
+              onChange={(event) => {
+                const nextValue = event.target.value;
+                setTerminalShellArgsDraft(nextValue);
+                updateTerminalProfile({ shellArgs: parseTerminalShellArgs(nextValue) });
+              }}
+              placeholder={"-l\n--norc"}
+              spellCheck={false}
+              aria-label="Terminal shell arguments"
+            />
+          }
+        />
+
+        <SettingsRow
+          title="Profile environment"
+          description="Environment variables passed directly to the terminal profile. One KEY=value per line."
+          resetAction={
+            !Equal.equals(
+              terminalSettings.profile.env,
+              DEFAULT_UNIFIED_SETTINGS.terminal.profile.env,
+            ) ? (
+              <SettingResetButton
+                label="terminal profile environment variables"
+                onClick={() =>
+                  updateTerminalProfile({
+                    env: DEFAULT_UNIFIED_SETTINGS.terminal.profile.env,
+                  })
+                }
+              />
+            ) : null
+          }
+          status={
+            terminalEnvError ? <span className="text-destructive">{terminalEnvError}</span> : null
+          }
+          control={
+            <Textarea
+              className="min-h-28 w-full font-mono text-xs sm:w-96"
+              value={terminalEnvDraft}
+              onChange={(event) => {
+                const nextValue = event.target.value;
+                setTerminalEnvDraft(nextValue);
+                const parsed = parseTerminalEnv(nextValue);
+                setTerminalEnvError(parsed.error);
+                if (parsed.error !== null) {
+                  return;
+                }
+
+                updateTerminalProfile({ env: parsed.env });
+              }}
+              placeholder={"TERM_PROGRAM=T3Code\nTERM=xterm-256color"}
+              spellCheck={false}
+              aria-label="Terminal profile environment variables"
+            />
+          }
+        />
+      </SettingsSection>
+
+      <SettingsSection title="How it works">
+        <SettingsRow
+          title={
+            <span className="inline-flex items-center gap-2">
+              <TerminalIcon className="size-4 text-muted-foreground" />
+              Terminal startup
+            </span>
+          }
+          description="T3 Code passes these values through the existing terminal env override path, so regular terminals, script terminals, and worktree terminals share the same base environment."
+          control={null}
+        />
+      </SettingsSection>
+    </SettingsPageContainer>
+  );
 }
 
 export function GeneralSettingsPanel() {

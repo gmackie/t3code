@@ -2,7 +2,7 @@ import * as Effect from "effect/Effect";
 import * as Duration from "effect/Duration";
 import * as Schema from "effect/Schema";
 import * as SchemaTransformation from "effect/SchemaTransformation";
-import { TrimmedNonEmptyString, TrimmedString } from "./baseSchemas.ts";
+import { ProjectId, TrimmedNonEmptyString, TrimmedString } from "./baseSchemas.ts";
 import { DEFAULT_GIT_TEXT_GENERATION_MODEL, ProviderOptionSelections } from "./model.ts";
 import { ModelSelection } from "./orchestration.ts";
 import { ProviderInstanceConfig, ProviderInstanceId } from "./providerInstance.ts";
@@ -81,16 +81,16 @@ export const ClientSettingsSchema = Schema.Struct({
     SidebarProjectGroupingMode,
   ).pipe(Schema.withDecodingDefault(Effect.succeed({}))),
   sidebarProjectSortOrder: SidebarProjectSortOrder.pipe(
-    Schema.withDecodingDefault(Effect.succeed(DEFAULT_SIDEBAR_PROJECT_SORT_ORDER)),
+    Schema.withDecodingDefaultKey(Effect.succeed(DEFAULT_SIDEBAR_PROJECT_SORT_ORDER)),
   ),
   sidebarThreadSortOrder: SidebarThreadSortOrder.pipe(
-    Schema.withDecodingDefault(Effect.succeed(DEFAULT_SIDEBAR_THREAD_SORT_ORDER)),
+    Schema.withDecodingDefaultKey(Effect.succeed(DEFAULT_SIDEBAR_THREAD_SORT_ORDER)),
   ),
   sidebarThreadPreviewCount: SidebarThreadPreviewCount.pipe(
     Schema.withDecodingDefault(Effect.succeed(DEFAULT_SIDEBAR_THREAD_PREVIEW_COUNT)),
   ),
   timestampFormat: TimestampFormat.pipe(
-    Schema.withDecodingDefault(Effect.succeed(DEFAULT_TIMESTAMP_FORMAT)),
+    Schema.withDecodingDefaultKey(Effect.succeed(DEFAULT_TIMESTAMP_FORMAT)),
   ),
 });
 export type ClientSettings = typeof ClientSettingsSchema.Type;
@@ -111,7 +111,7 @@ const makeBinaryPathSetting = (fallback: string) =>
         encode: (value) => Effect.succeed(value),
       }),
     ),
-    Schema.withDecodingDefault(Effect.succeed(fallback)),
+    Schema.withDecodingDefaultKey(Effect.succeed(fallback)),
   );
 
 export type ProviderSettingsFormControl = "text" | "password" | "textarea" | "switch";
@@ -356,30 +356,71 @@ export const OpenCodeSettings = makeProviderSettingsSchema(
 export type OpenCodeSettings = typeof OpenCodeSettings.Type;
 
 export const ObservabilitySettings = Schema.Struct({
-  otlpTracesUrl: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
-  otlpMetricsUrl: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
+  otlpTracesUrl: TrimmedString.pipe(Schema.withDecodingDefaultKey(Effect.succeed(""))),
+  otlpMetricsUrl: TrimmedString.pipe(Schema.withDecodingDefaultKey(Effect.succeed(""))),
 });
 export type ObservabilitySettings = typeof ObservabilitySettings.Type;
 
+export const LinearIssueSettings = Schema.Struct({
+  enabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
+  apiToken: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
+  domain: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed("linear.app"))),
+  defaultTeamKey: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
+  projectMappings: Schema.Record(
+    ProjectId,
+    Schema.Struct({
+      linearProjectId: TrimmedString,
+      linearProjectName: TrimmedString,
+      teamKey: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
+    }),
+  ).pipe(Schema.withDecodingDefault(Effect.succeed({}))),
+});
+export type LinearIssueSettings = typeof LinearIssueSettings.Type;
+
 export const DEFAULT_AUTOMATIC_GIT_FETCH_INTERVAL = Duration.seconds(30);
 
+const TerminalProfileEnvKey = Schema.String.check(
+  Schema.isPattern(/^[A-Za-z_][A-Za-z0-9_]*$/),
+).check(Schema.isMaxLength(128));
+const TerminalProfileEnvValue = Schema.String.check(Schema.isMaxLength(8_192));
+
+export const TerminalProfileSettings = Schema.Struct({
+  shellPath: TrimmedString.pipe(Schema.withDecodingDefaultKey(Effect.succeed(""))),
+  shellArgs: Schema.Array(TrimmedString).pipe(Schema.withDecodingDefaultKey(Effect.succeed([]))),
+  env: Schema.Record(TerminalProfileEnvKey, TerminalProfileEnvValue).pipe(
+    Schema.withDecodingDefaultKey(Effect.succeed({})),
+  ),
+});
+export type TerminalProfileSettings = typeof TerminalProfileSettings.Type;
+
+export const TerminalSettings = Schema.Struct({
+  environmentVariablesText: Schema.String.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
+  zshStartupDirectory: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
+  profile: TerminalProfileSettings.pipe(Schema.withDecodingDefaultKey(Effect.succeed({}))),
+});
+export type TerminalSettings = typeof TerminalSettings.Type;
+
 export const ServerSettings = Schema.Struct({
-  enableAssistantStreaming: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
-  enableProviderUpdateChecks: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
+  enableAssistantStreaming: Schema.Boolean.pipe(
+    Schema.withDecodingDefaultKey(Effect.succeed(false)),
+  ),
+  enableProviderUpdateChecks: Schema.Boolean.pipe(
+    Schema.withDecodingDefaultKey(Effect.succeed(true)),
+  ),
   automaticGitFetchInterval: Schema.DurationFromMillis.pipe(
-    Schema.withDecodingDefault(
+    Schema.withDecodingDefaultKey(
       Effect.succeed(Duration.toMillis(DEFAULT_AUTOMATIC_GIT_FETCH_INTERVAL)),
     ),
   ),
   defaultThreadEnvMode: ThreadEnvMode.pipe(
-    Schema.withDecodingDefault(Effect.succeed("local" as const satisfies ThreadEnvMode)),
+    Schema.withDecodingDefaultKey(Effect.succeed("local" as const satisfies ThreadEnvMode)),
   ),
   newWorktreesStartFromOrigin: Schema.Boolean.pipe(
-    Schema.withDecodingDefault(Effect.succeed(false)),
+    Schema.withDecodingDefaultKey(Effect.succeed(false)),
   ),
-  addProjectBaseDirectory: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
+  addProjectBaseDirectory: TrimmedString.pipe(Schema.withDecodingDefaultKey(Effect.succeed(""))),
   textGenerationModelSelection: ModelSelection.pipe(
-    Schema.withDecodingDefault(
+    Schema.withDecodingDefaultKey(
       Effect.succeed({
         instanceId: ProviderInstanceId.make("codex"),
         model: DEFAULT_GIT_TEXT_GENERATION_MODEL,
@@ -408,7 +449,11 @@ export const ServerSettings = Schema.Struct({
   providerInstances: Schema.Record(ProviderInstanceId, ProviderInstanceConfig).pipe(
     Schema.withDecodingDefault(Effect.succeed({})),
   ),
+  issues: Schema.Struct({
+    linear: LinearIssueSettings.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
+  }).pipe(Schema.withDecodingDefault(Effect.succeed({}))),
   observability: ObservabilitySettings.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
+  terminal: TerminalSettings.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
 });
 export type ServerSettings = typeof ServerSettings.Type;
 
@@ -501,6 +546,29 @@ const OpenCodeSettingsPatch = Schema.Struct({
   customModels: Schema.optionalKey(Schema.Array(Schema.String)),
 });
 
+const TerminalProfileSettingsPatch = Schema.Struct({
+  shellPath: Schema.optionalKey(Schema.String),
+  shellArgs: Schema.optionalKey(Schema.Array(Schema.String)),
+  env: Schema.optionalKey(Schema.Record(TerminalProfileEnvKey, TerminalProfileEnvValue)),
+});
+
+const LinearIssueSettingsPatch = Schema.Struct({
+  enabled: Schema.optionalKey(Schema.Boolean),
+  apiToken: Schema.optionalKey(TrimmedString),
+  domain: Schema.optionalKey(TrimmedString),
+  defaultTeamKey: Schema.optionalKey(TrimmedString),
+  projectMappings: Schema.optionalKey(
+    Schema.Record(
+      ProjectId,
+      Schema.Struct({
+        linearProjectId: TrimmedString,
+        linearProjectName: TrimmedString,
+        teamKey: Schema.optionalKey(TrimmedString),
+      }),
+    ),
+  ),
+});
+
 export const ServerSettingsPatch = Schema.Struct({
   // Server settings
   enableAssistantStreaming: Schema.optionalKey(Schema.Boolean),
@@ -514,6 +582,13 @@ export const ServerSettingsPatch = Schema.Struct({
     Schema.Struct({
       otlpTracesUrl: Schema.optionalKey(TrimmedString),
       otlpMetricsUrl: Schema.optionalKey(TrimmedString),
+    }),
+  ),
+  terminal: Schema.optionalKey(
+    Schema.Struct({
+      environmentVariablesText: Schema.optionalKey(Schema.String),
+      zshStartupDirectory: Schema.optionalKey(Schema.String),
+      profile: Schema.optionalKey(TerminalProfileSettingsPatch),
     }),
   ),
   providers: Schema.optionalKey(
@@ -530,6 +605,11 @@ export const ServerSettingsPatch = Schema.Struct({
   // patches risk leaving driver-specific config in a half-merged state.
   // The web UI sends a fully-formed map every time it edits this field.
   providerInstances: Schema.optionalKey(Schema.Record(ProviderInstanceId, ProviderInstanceConfig)),
+  issues: Schema.optionalKey(
+    Schema.Struct({
+      linear: Schema.optionalKey(LinearIssueSettingsPatch),
+    }),
+  ),
 });
 export type ServerSettingsPatch = typeof ServerSettingsPatch.Type;
 

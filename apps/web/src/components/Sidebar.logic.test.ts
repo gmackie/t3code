@@ -1,17 +1,21 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import {
   createThreadJumpHintVisibilityController,
+  buildIssueThreadDraftPrompt,
   getSidebarThreadIdsToPrewarm,
   getVisibleSidebarThreadIds,
   resolveAdjacentThreadId,
   getFallbackThreadIdAfterDelete,
   getVisibleThreadsForProject,
   getProjectSortTimestamp,
+  resolveLinearProjectBadgeClassName,
   hasUnseenCompletion,
   isContextMenuPointerDown,
   isTrailingDoubleClick,
   orderItemsByPreferredIds,
   resolveProjectStatusIndicator,
+  resolveLinearProjectLinkSummary,
+  resolveThreadIssueBadgeClassName,
   resolveSidebarNewThreadSeedContext,
   resolveSidebarNewThreadEnvMode,
   resolveSidebarStageBadgeLabel,
@@ -116,6 +120,14 @@ describe("hasUnseenCompletion", () => {
         session: null,
       }),
     ).toBe(false);
+  });
+});
+
+describe("resolveThreadIssueBadgeClassName", () => {
+  it("uses subdued status color for in-review linked issue badges", () => {
+    expect(resolveThreadIssueBadgeClassName("In Review")).toContain("border-sky-400/35");
+    expect(resolveThreadIssueBadgeClassName("In Review")).toContain("text-sky-300/90");
+    expect(resolveThreadIssueBadgeClassName("In Review")).not.toContain("bg-amber-400");
   });
 });
 
@@ -344,6 +356,92 @@ describe("resolveSidebarNewThreadSeedContext", () => {
     ).toEqual({
       envMode: "worktree",
     });
+  });
+});
+
+describe("resolveLinearProjectLinkSummary", () => {
+  it("returns the mapped Linear project for a single mapped project", () => {
+    expect(
+      resolveLinearProjectLinkSummary({
+        memberProjectIds: ["project-1"],
+        projectMappings: {
+          "project-1": {
+            linearProjectId: "linear-project-1",
+            linearProjectName: "Customer Portal",
+            teamKey: "ENG",
+          },
+        },
+      }),
+    ).toEqual({
+      mappedProjectCount: 1,
+      linearProjectId: "linear-project-1",
+      label: "Customer Portal",
+      shortLabel: "ENG",
+    });
+  });
+
+  it("collapses multiple mapped projects into a count summary", () => {
+    expect(
+      resolveLinearProjectLinkSummary({
+        memberProjectIds: ["project-1", "project-2", "project-3"],
+        projectMappings: {
+          "project-1": {
+            linearProjectId: "linear-project-1",
+            linearProjectName: "Customer Portal",
+            teamKey: "ENG",
+          },
+          "project-2": {
+            linearProjectId: "linear-project-2",
+            linearProjectName: "Infra",
+            teamKey: "OPS",
+          },
+        },
+      }),
+    ).toEqual({
+      mappedProjectCount: 2,
+      linearProjectId: null,
+      label: "2 linked",
+      shortLabel: "2 linked",
+    });
+  });
+
+  it("returns null when no project mapping exists", () => {
+    expect(
+      resolveLinearProjectLinkSummary({
+        memberProjectIds: ["project-1"],
+        projectMappings: {},
+      }),
+    ).toBeNull();
+  });
+});
+
+describe("resolveLinearProjectBadgeClassName", () => {
+  it("uses subdued border and text styling instead of a bright yellow background", () => {
+    const className = resolveLinearProjectBadgeClassName();
+
+    expect(className).toContain("border-amber-400/35");
+    expect(className).toContain("text-amber-300/90");
+    expect(className).not.toContain("bg-amber-400");
+  });
+});
+
+describe("buildIssueThreadDraftPrompt", () => {
+  it("builds a seeded prompt from issue metadata", () => {
+    expect(
+      buildIssueThreadDraftPrompt({
+        provider: "linear",
+        id: "issue-1",
+        key: "ENG-123",
+        title: "Fix startup regression",
+        url: "https://linear.app/acme/issue/ENG-123/fix-startup-regression",
+        state: "open",
+        statusName: "Backlog",
+        assigneeName: "Mackie",
+        labels: ["bug", "customer"],
+        comments: [],
+        descriptionMarkdown: "Users hit a blank screen after launch.",
+      }),
+    ).toContain("Please start a new thread for Linear issue ENG-123");
   });
 });
 
@@ -611,6 +709,24 @@ describe("resolveThreadStatusPill", () => {
     expect(
       resolveThreadStatusPill({
         thread: baseThread,
+      }),
+    ).toMatchObject({ label: "Working", pulse: true });
+  });
+
+  it("keeps showing working while the latest turn is still unsettled even after the session flips back to ready", () => {
+    expect(
+      resolveThreadStatusPill({
+        thread: {
+          ...baseThread,
+          latestTurn: {
+            ...makeLatestTurn(),
+            completedAt: null,
+          },
+          session: {
+            ...baseThread.session,
+            status: "ready",
+          },
+        },
       }),
     ).toMatchObject({ label: "Working", pulse: true });
   });
