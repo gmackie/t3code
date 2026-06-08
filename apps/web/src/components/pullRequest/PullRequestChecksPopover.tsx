@@ -55,8 +55,11 @@ function ChecksBody({ checks }: { checks: ReadonlyArray<PullRequestCheck> }) {
     <ul className="flex flex-col gap-1">
       {/* Keyed by position as well as by name: the host is the one that decides how many runs
           share a name, and a repeated key is a rendering fault rather than a wrong list. */}
-      {checks.map((check, index) => (
-        <li key={`${index}:${check.name}`} className="flex items-center gap-2 text-xs">
+      {checks.map((check) => (
+        <li
+          key={`${check.name}:${check.status}:${check.description ?? ""}:${check.url ?? ""}`}
+          className="flex items-center gap-2 text-xs"
+        >
           <PullRequestCheckStatusIcon status={check.status} />
           <Tooltip>
             <TooltipTrigger
