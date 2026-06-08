@@ -104,6 +104,7 @@ const withIdentity = <A, E, R>(
   input: {
     readonly calls?: ElectronAppCalls;
     readonly environment?: TestEnvironmentInput;
+    readonly existingPathIncludes?: string;
     readonly legacyPathExists?: boolean;
     readonly packageJson?: string;
     readonly pngIconPath?: Option.Option<string>;
@@ -121,7 +122,10 @@ const withIdentity = <A, E, R>(
         Layer.provideMerge(
           FileSystem.layerNoop({
             exists: (path) =>
-              Effect.succeed(input.legacyPathExists === true && path.includes("T3 Code (Alpha)")),
+              Effect.succeed(
+                input.legacyPathExists === true &&
+                  path.includes(input.existingPathIncludes ?? "T3 Code (Alpha)"),
+              ),
             readFileString: () =>
               Effect.succeed(input.packageJson ?? '{"t3codeCommitHash":"abcdef1234567890"}'),
           }),
@@ -144,6 +148,26 @@ describe("DesktopAppIdentity", () => {
         assert.equal(userDataPath, "/Users/alice/Library/Application Support/T3 Code (Alpha)");
       }),
       { legacyPathExists: true },
+    ),
+  );
+
+  it.effect("does not fall back to the alpha userData path for gmacko builds", () =>
+    withIdentity(
+      Effect.gen(function* () {
+        const identity = yield* DesktopAppIdentity.DesktopAppIdentity;
+        const userDataPath = yield* identity.resolveUserDataPath;
+
+        assert.equal(userDataPath, "/Users/alice/Library/Application Support/t3code-gmacko");
+      }),
+      {
+        environment: {
+          appVersion: "0.0.24-gmacko.202606050307",
+          appPath: "/Applications/T3 Code (gmacko).app/Contents/Resources/app.asar",
+          resourcesPath: "/Applications/T3 Code (gmacko).app/Contents/Resources",
+        },
+        existingPathIncludes: "T3 Code (Alpha)",
+        legacyPathExists: true,
+      },
     ),
   );
 

@@ -15,8 +15,9 @@ import {
   type DesktopSettings,
   resolveDefaultDesktopSettings,
 } from "../settings/DesktopAppSettings.ts";
+import { getDesktopRuntimeIdentity } from "../appIdentity.js";
 import * as DesktopConfig from "./DesktopConfig.ts";
-import { isNightlyDesktopVersion } from "../updates/updateChannels.ts";
+import { isGmackoDesktopVersion, isNightlyDesktopVersion } from "../updates/updateChannels.ts";
 
 export interface MakeDesktopEnvironmentInput {
   readonly dirname: string;
@@ -91,6 +92,10 @@ function resolveDesktopAppStageLabel(input: {
     return "Dev";
   }
 
+  if (isGmackoDesktopVersion(input.appVersion)) {
+    return "Gmacko";
+  }
+
   return isNightlyDesktopVersion(input.appVersion) ? "Nightly" : "Alpha";
 }
 
@@ -102,7 +107,8 @@ function resolveDesktopAppBranding(input: {
   return {
     baseName: APP_BASE_NAME,
     stageLabel,
-    displayName: `${APP_BASE_NAME} (${stageLabel})`,
+    displayName:
+      stageLabel === "Gmacko" ? `${APP_BASE_NAME} (gmacko)` : `${APP_BASE_NAME} (${stageLabel})`,
   };
 }
 
@@ -152,7 +158,6 @@ const makeDesktopEnvironment = Effect.fn("desktop.environment.make")(function* (
       : input.platform === "darwin"
         ? path.join(homeDirectory, "Library", "Application Support")
         : Option.getOrElse(config.xdgConfigHome, () => path.join(homeDirectory, ".config"));
-  const baseDir = Option.getOrElse(config.t3Home, () => path.join(homeDirectory, ".t3"));
   const rootDir = path.resolve(input.dirname, "../../..");
   const appRoot = input.isPackaged ? input.appPath : rootDir;
   const branding = resolveDesktopAppBranding({
@@ -160,9 +165,19 @@ const makeDesktopEnvironment = Effect.fn("desktop.environment.make")(function* (
     appVersion: input.appVersion,
   });
   const displayName = branding.displayName;
-  const stateDir = path.join(baseDir, isDevelopment ? "dev" : "userdata");
-  const userDataDirName = isDevelopment ? "t3code-dev" : "t3code";
-  const legacyUserDataDirName = isDevelopment ? "T3 Code (Dev)" : "T3 Code (Alpha)";
+  const runtimeIdentity = getDesktopRuntimeIdentity({
+    isDevelopment,
+    appDisplayName: displayName,
+  });
+  const baseDir = Option.getOrElse(config.t3Home, () =>
+    path.join(homeDirectory, runtimeIdentity.baseDirName),
+  );
+  const stateDir = path.join(baseDir, isDevelopment ? "dev" : runtimeIdentity.stateDirName);
+  const legacyUserDataDirName = isDevelopment
+    ? "T3 Code (Dev)"
+    : runtimeIdentity.userDataDirName === "t3code-gmacko"
+      ? runtimeIdentity.userDataDirName
+      : "T3 Code (Alpha)";
   const resourcesPath = input.resourcesPath;
 
   return DesktopEnvironment.of({
@@ -201,12 +216,12 @@ const makeDesktopEnvironment = Effect.fn("desktop.environment.make")(function* (
     otlpExportIntervalMs: config.otlpExportIntervalMs,
     branding,
     displayName,
-    appUserModelId: Option.getOrElse(config.appUserModelIdOverride, () =>
-      isDevelopment ? "com.t3tools.t3code.dev" : "com.t3tools.t3code",
-    ),
-    linuxDesktopEntryName: isDevelopment ? "t3code-dev.desktop" : "t3code.desktop",
-    linuxWmClass: isDevelopment ? "t3code-dev" : "t3code",
-    userDataDirName,
+    appUserModelId: isDevelopment ? "com.t3tools.t3code.dev" : runtimeIdentity.appUserModelId,
+    linuxDesktopEntryName: isDevelopment
+      ? "t3code-dev.desktop"
+      : `${runtimeIdentity.packageName}.desktop`,
+    linuxWmClass: isDevelopment ? "t3code-dev" : runtimeIdentity.packageName,
+    userDataDirName: runtimeIdentity.userDataDirName,
     legacyUserDataDirName,
     defaultDesktopSettings: resolveDefaultDesktopSettings(input.appVersion),
     runtimeInfo: resolveDesktopRuntimeInfo({
