@@ -604,4 +604,21 @@ describe("DesktopUpdates", () => {
       }),
     ).pipe(Effect.provide(Layer.merge(TestClock.layer(), harness.layer)));
   });
+
+  it.effect("allows gmacko prereleases without enabling downgrades", () => {
+    const harness = makeHarness();
+
+    return Effect.scoped(
+      Effect.gen(function* () {
+        const updates = yield* DesktopUpdates.DesktopUpdates;
+        yield* updates.configure;
+
+        const state = yield* updates.setChannel("gmacko");
+
+        assert.equal(state.channel, "gmacko");
+        assert.equal(harness.fullChangelog(), true);
+        assert.equal(harness.allowDowngrade(), false);
+      }),
+    ).pipe(Effect.provide(Layer.merge(TestClock.layer(), harness.layer)));
+  });
 });
