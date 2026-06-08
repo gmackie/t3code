@@ -31,6 +31,7 @@ const flushCallbacks = Effect.yieldNow;
 
 function makeHarness(options: UpdatesHarnessOptions = {}) {
   let checkCount = 0;
+  let allowPrerelease = false;
   let allowDowngrade = false;
   const feedUrls: ElectronUpdater.ElectronUpdaterFeedUrl[] = [];
   const listeners = new Map<string, Set<(...args: readonly unknown[]) => void>>();
@@ -61,7 +62,10 @@ function makeHarness(options: UpdatesHarnessOptions = {}) {
     setAutoDownload: () => Effect.void,
     setAutoInstallOnAppQuit: () => Effect.void,
     setChannel: () => Effect.void,
-    setAllowPrerelease: () => Effect.void,
+    setAllowPrerelease: (value) =>
+      Effect.sync(() => {
+        allowPrerelease = value;
+      }),
     allowDowngrade: Effect.sync(() => allowDowngrade),
     setAllowDowngrade: (value) =>
       Effect.sync(() => {
@@ -159,6 +163,8 @@ function makeHarness(options: UpdatesHarnessOptions = {}) {
   return {
     layer,
     checkCount: () => checkCount,
+    allowPrerelease: () => allowPrerelease,
+    allowDowngrade: () => allowDowngrade,
     feedUrls: () => feedUrls,
     listenerCount: () =>
       Array.from(listeners.values()).reduce(
@@ -237,6 +243,23 @@ describe("DesktopUpdates", () => {
         assert.equal(state.channel, "nightly");
         assert.equal(persistedSettings.updateChannel, "nightly");
         assert.equal(persistedSettings.updateChannelConfiguredByUser, true);
+      }),
+    ).pipe(Effect.provide(Layer.merge(TestClock.layer(), harness.layer)));
+  });
+
+  it.effect("allows gmacko prerelease updates without enabling downgrades", () => {
+    const harness = makeHarness();
+
+    return Effect.scoped(
+      Effect.gen(function* () {
+        const updates = yield* DesktopUpdates.DesktopUpdates;
+        yield* updates.configure;
+
+        const state = yield* updates.setChannel("gmacko");
+
+        assert.equal(state.channel, "gmacko");
+        assert.equal(harness.allowPrerelease(), true);
+        assert.equal(harness.allowDowngrade(), false);
       }),
     ).pipe(Effect.provide(Layer.merge(TestClock.layer(), harness.layer)));
   });
