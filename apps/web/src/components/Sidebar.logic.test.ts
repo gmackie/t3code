@@ -4,17 +4,23 @@ import {
   buildBulkTitleRegenerationContextMenuItem,
   buildMultiSelectThreadContextMenuItems,
   createThreadJumpHintVisibilityController,
+  buildIssueThreadDraftPrompt,
   getSidebarThreadIdsToPrewarm,
   getVisibleSidebarThreadIds,
   resolveAdjacentThreadId,
   getFallbackThreadIdAfterDelete,
   getVisibleThreadsForProject,
   getProjectSortTimestamp,
+  resolveLinearProjectBadgeClassName,
   hasUnseenCompletion,
   isContextMenuPointerDown,
   isTrailingDoubleClick,
   orderItemsByPreferredIds,
   resolveProjectStatusIndicator,
+  resolveLinearProjectLinkSummary,
+  resolveThreadIssueBadgeClassName,
+  resolveSidebarNewThreadSeedContext,
+  resolveSidebarNewThreadEnvMode,
   resolveSidebarStageBadgeLabel,
   resolveThreadRowClassName,
   resolveSidebarV2Status,
@@ -288,6 +294,14 @@ describe("hasUnseenCompletion", () => {
   });
 });
 
+describe("resolveThreadIssueBadgeClassName", () => {
+  it("uses subdued status color for in-review linked issue badges", () => {
+    expect(resolveThreadIssueBadgeClassName("In Review")).toContain("border-sky-400/35");
+    expect(resolveThreadIssueBadgeClassName("In Review")).toContain("text-sky-300/90");
+    expect(resolveThreadIssueBadgeClassName("In Review")).not.toContain("bg-amber-400");
+  });
+});
+
 describe("createThreadJumpHintVisibilityController", () => {
   beforeEach(() => {
     vi.useFakeTimers();
@@ -407,6 +421,198 @@ describe("isTrailingDoubleClick", () => {
 
   it("ignores further clicks of a triple-click", () => {
     expect(isTrailingDoubleClick(3)).toBe(true);
+  });
+});
+
+describe("resolveSidebarNewThreadEnvMode", () => {
+  it("uses the app default when the caller does not request a specific mode", () => {
+    expect(
+      resolveSidebarNewThreadEnvMode({
+        defaultEnvMode: "worktree",
+      }),
+    ).toBe("worktree");
+  });
+
+  it("preserves an explicit requested mode over the app default", () => {
+    expect(
+      resolveSidebarNewThreadEnvMode({
+        requestedEnvMode: "local",
+        defaultEnvMode: "worktree",
+      }),
+    ).toBe("local");
+  });
+});
+
+describe("resolveSidebarNewThreadSeedContext", () => {
+  it("prefers the default worktree mode over active thread context", () => {
+    expect(
+      resolveSidebarNewThreadSeedContext({
+        projectId: "project-1",
+        defaultEnvMode: "worktree",
+        activeThread: {
+          projectId: "project-1",
+          branch: "feature/existing",
+          worktreePath: "/repo/.t3/worktrees/existing",
+        },
+        activeDraftThread: {
+          projectId: "project-1",
+          branch: "feature/draft",
+          worktreePath: "/repo/.t3/worktrees/draft",
+          envMode: "worktree",
+          startFromOrigin: true,
+        },
+      }),
+    ).toEqual({
+      envMode: "worktree",
+    });
+  });
+
+  it("inherits the active server thread context when creating a new thread in the same project", () => {
+    expect(
+      resolveSidebarNewThreadSeedContext({
+        projectId: "project-1",
+        defaultEnvMode: "local",
+        activeThread: {
+          projectId: "project-1",
+          branch: "effect-atom",
+          worktreePath: null,
+        },
+        activeDraftThread: null,
+      }),
+    ).toEqual({
+      branch: "effect-atom",
+      worktreePath: null,
+      envMode: "local",
+    });
+  });
+
+  it("prefers the active draft thread context when it matches the target project", () => {
+    expect(
+      resolveSidebarNewThreadSeedContext({
+        projectId: "project-1",
+        defaultEnvMode: "local",
+        activeThread: {
+          projectId: "project-1",
+          branch: "effect-atom",
+          worktreePath: null,
+        },
+        activeDraftThread: {
+          projectId: "project-1",
+          branch: "feature/new-draft",
+          worktreePath: "/repo/worktree",
+          envMode: "worktree",
+          startFromOrigin: true,
+        },
+      }),
+    ).toEqual({
+      branch: "feature/new-draft",
+      worktreePath: "/repo/worktree",
+      envMode: "worktree",
+      startFromOrigin: true,
+    });
+  });
+
+  it("falls back to the default env mode when there is no matching active thread context", () => {
+    expect(
+      resolveSidebarNewThreadSeedContext({
+        projectId: "project-2",
+        defaultEnvMode: "worktree",
+        activeThread: {
+          projectId: "project-1",
+          branch: "effect-atom",
+          worktreePath: null,
+        },
+        activeDraftThread: null,
+      }),
+    ).toEqual({
+      envMode: "worktree",
+    });
+  });
+});
+
+describe("resolveLinearProjectLinkSummary", () => {
+  it("returns the mapped Linear project for a single mapped project", () => {
+    expect(
+      resolveLinearProjectLinkSummary({
+        memberProjectIds: ["project-1"],
+        projectMappings: {
+          "project-1": {
+            linearProjectId: "linear-project-1",
+            linearProjectName: "Customer Portal",
+            teamKey: "ENG",
+          },
+        },
+      }),
+    ).toEqual({
+      mappedProjectCount: 1,
+      linearProjectId: "linear-project-1",
+      label: "Customer Portal",
+      shortLabel: "ENG",
+    });
+  });
+
+  it("collapses multiple mapped projects into a count summary", () => {
+    expect(
+      resolveLinearProjectLinkSummary({
+        memberProjectIds: ["project-1", "project-2", "project-3"],
+        projectMappings: {
+          "project-1": {
+            linearProjectId: "linear-project-1",
+            linearProjectName: "Customer Portal",
+            teamKey: "ENG",
+          },
+          "project-2": {
+            linearProjectId: "linear-project-2",
+            linearProjectName: "Infra",
+            teamKey: "OPS",
+          },
+        },
+      }),
+    ).toEqual({
+      mappedProjectCount: 2,
+      linearProjectId: null,
+      label: "2 linked",
+      shortLabel: "2 linked",
+    });
+  });
+
+  it("returns null when no project mapping exists", () => {
+    expect(
+      resolveLinearProjectLinkSummary({
+        memberProjectIds: ["project-1"],
+        projectMappings: {},
+      }),
+    ).toBeNull();
+  });
+});
+
+describe("resolveLinearProjectBadgeClassName", () => {
+  it("uses subdued border and text styling instead of a bright yellow background", () => {
+    const className = resolveLinearProjectBadgeClassName();
+
+    expect(className).toContain("border-amber-400/35");
+    expect(className).toContain("text-amber-300/90");
+    expect(className).not.toContain("bg-amber-400");
+  });
+});
+
+describe("buildIssueThreadDraftPrompt", () => {
+  it("builds a seeded prompt from issue metadata", () => {
+    expect(
+      buildIssueThreadDraftPrompt({
+        provider: "linear",
+        id: "issue-1",
+        key: "ENG-123",
+        title: "Fix startup regression",
+        url: "https://linear.app/acme/issue/ENG-123/fix-startup-regression",
+        state: "open",
+        statusName: "Backlog",
+        assigneeName: "Mackie",
+        labels: ["bug", "customer"],
+        comments: [],
+        descriptionMarkdown: "Users hit a blank screen after launch.",
+      }),
+    ).toContain("Please start a new thread for Linear issue ENG-123");
   });
 });
 
@@ -1053,6 +1259,24 @@ describe("resolveThreadStatusPill", () => {
     expect(
       resolveThreadStatusPill({
         thread: baseThread,
+      }),
+    ).toMatchObject({ label: "Working", pulse: true });
+  });
+
+  it("keeps showing working while the latest turn is still unsettled even after the session flips back to ready", () => {
+    expect(
+      resolveThreadStatusPill({
+        thread: {
+          ...baseThread,
+          latestTurn: {
+            ...makeLatestTurn(),
+            completedAt: null,
+          },
+          session: {
+            ...baseThread.session,
+            status: "ready",
+          },
+        },
       }),
     ).toMatchObject({ label: "Working", pulse: true });
   });
