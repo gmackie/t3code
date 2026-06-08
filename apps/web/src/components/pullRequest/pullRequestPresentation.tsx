@@ -206,7 +206,7 @@ export function pullRequestChecksState(
   if (checks.length === 0) return null;
   const statuses = new Set(checks.map((check) => check.status));
   if (statuses.has("failure") || statuses.has("cancelled")) return "failing";
-  if (statuses.has("pending") || statuses.has("action-required")) return "pending";
+  if (statuses.has("pending")) return "pending";
   return statuses.has("success") ? "passing" : null;
 }
 
