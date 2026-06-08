@@ -58,6 +58,25 @@ function createBrowserLocalApi(): LocalApi {
         writeBrowserClientSettings(settings);
       },
     },
+    server: {
+      getConfig: () => Promise.reject(unavailableLocalBackendError()),
+      refreshProviders: () => Promise.reject(unavailableLocalBackendError()),
+      updateProvider: () => Promise.reject(unavailableLocalBackendError()),
+      upsertKeybinding: () => Promise.reject(unavailableLocalBackendError()),
+      removeKeybinding: () => Promise.reject(unavailableLocalBackendError()),
+      getSettings: () => Promise.reject(unavailableLocalBackendError()),
+      updateSettings: () => Promise.reject(unavailableLocalBackendError()),
+      validateLinearIssues: () => Promise.reject(unavailableLocalBackendError()),
+      listProjectIssues: () => Promise.reject(unavailableLocalBackendError()),
+      listProjectIssueStatuses: () => Promise.reject(unavailableLocalBackendError()),
+      createProjectIssue: () => Promise.reject(unavailableLocalBackendError()),
+      updateProjectIssueStatus: () => Promise.reject(unavailableLocalBackendError()),
+      discoverSourceControl: () => Promise.reject(unavailableLocalBackendError()),
+      getTraceDiagnostics: () => Promise.reject(unavailableLocalBackendError()),
+      getProcessDiagnostics: () => Promise.reject(unavailableLocalBackendError()),
+      getProcessResourceHistory: () => Promise.reject(unavailableLocalBackendError()),
+      signalProcess: () => Promise.reject(unavailableLocalBackendError()),
+    },
   };
 }
 
