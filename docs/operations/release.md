@@ -4,6 +4,19 @@
 
 This document covers the unified release workflow for stable and nightly desktop releases.
 
+## GMACKO fork lane
+
+The `custom-local` fork is released independently by
+`.forgejo/workflows/gmacko-nightly.yml`. ForgeGraph rebases the lane onto upstream `main`, runs the
+preflight checks, promotes the verified commit to GitHub with a force-with-lease, and publishes
+GMACKO desktop artifacts as a prerelease. Push-triggered runs supersede stale work so only the newest
+verified lane tip is eligible for promotion.
+
+GMACKO builds use the `gmacko` updater channel, the `com.gmacko.t3code` application identity, and
+isolated application and server state directories. Windows artifacts are best effort; macOS and
+Linux artifacts remain required. The workflow owns fork releases only and does not publish the
+upstream CLI or hosted web application.
+
 ## What the workflow does
 
 - Workflow: `.github/workflows/release.yml`
