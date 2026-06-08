@@ -1,7 +1,9 @@
 import {
   ArchiveIcon,
   ArrowUpDownIcon,
+  CheckIcon,
   ChevronRightIcon,
+  ClipboardListIcon,
   CloudIcon,
   FolderPlusIcon,
   SearchIcon,
@@ -39,6 +41,9 @@ import { CSS } from "@dnd-kit/utilities";
 import {
   type ContextMenuItem,
   type DesktopUpdateState,
+  type IssueItem,
+  type LinearIssueProject,
+  type LinearIssueValidationResult,
   ProjectId,
   type ScopedThreadRef,
   type SidebarProjectGroupingMode,
@@ -64,7 +69,7 @@ import { usePrimaryEnvironmentId } from "../environments/primary";
 import { isElectron } from "../env";
 import { APP_STAGE_LABEL, APP_VERSION } from "../branding";
 import { isTerminalFocused } from "../lib/terminalFocus";
-import { isMacPlatform, newCommandId } from "../lib/utils";
+import { cn, isMacPlatform, newCommandId } from "../lib/utils";
 import {
   selectProjectByRef,
   selectProjectsAcrossEnvironments,
@@ -76,6 +81,8 @@ import {
 import { selectThreadTerminalUiState, useTerminalUiStateStore } from "../terminalUiStateStore";
 import { useThreadRunningTerminalIds } from "../terminalSessionState";
 import { useUiStateStore } from "../uiStateStore";
+import { normalizeProjectHexColor, PROJECT_COLORS, type ProjectColor } from "../uiStateStore";
+import { isProjectColorPreset, PROJECT_COLOR_LABELS, PROJECT_COLOR_VALUES } from "../projectColors";
 import {
   resolveShortcutCommand,
   shortcutLabelForCommand,
@@ -163,8 +170,11 @@ import {
   resolveAdjacentThreadId,
   isContextMenuPointerDown,
   resolveProjectStatusIndicator,
+  resolveLinearProjectBadgeClassName,
+  resolveLinearProjectLinkSummary,
   resolveSidebarNewThreadSeedContext,
   resolveSidebarNewThreadEnvMode,
+  resolveThreadIssueBadgeClassName,
   resolveThreadRowClassName,
   resolveThreadStatusPill,
   orderItemsByPreferredIds,
@@ -197,6 +207,13 @@ import {
   type SidebarProjectGroupMember,
   type SidebarProjectSnapshot,
 } from "../sidebarProjectGrouping";
+import {
+  issueToThreadIssueLink,
+  readThreadIssueLinks,
+  type ThreadIssueLink,
+  type ThreadIssueLinkMap,
+  writeThreadIssueLinks,
+} from "../projectIssues.logic";
 import { SidebarProviderUpdatePill } from "./sidebar/SidebarProviderUpdatePill";
 const SIDEBAR_SORT_LABELS: Record<SidebarProjectSortOrder, string> = {
   updated_at: "Last user message",
@@ -217,6 +234,11 @@ const PROJECT_GROUPING_MODE_LABELS: Record<SidebarProjectGroupingMode, string> =
   repository_path: "Group by repository path",
   separate: "Keep separate",
 };
+const DEFAULT_CUSTOM_PROJECT_COLOR = "#14b8a6" as const;
+
+function formatProjectColorInput(color: ProjectColor | null): string {
+  return color && !isProjectColorPreset(color) ? color : DEFAULT_CUSTOM_PROJECT_COLOR;
+}
 
 function clampSidebarThreadPreviewCount(value: number): SidebarThreadPreviewCount {
   return Math.min(
@@ -279,6 +301,7 @@ function buildThreadJumpLabelMap(input: {
 
 interface SidebarThreadRowProps {
   thread: SidebarThreadSummary;
+  issueLink: ThreadIssueLink | null;
   projectCwd: string | null;
   orderedProjectThreadKeys: readonly string[];
   isActive: boolean;
@@ -338,6 +361,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
     attemptArchiveThread,
     openPrLink,
     thread,
+    issueLink,
   } = props;
   const threadRef = scopeThreadRef(thread.environmentId, thread.id);
   const threadKey = scopedThreadKey(threadRef);
@@ -578,6 +602,14 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
             </Tooltip>
           )}
           {threadStatus && <ThreadStatusLabel status={threadStatus} />}
+          {issueLink ? (
+            <span
+              className={resolveThreadIssueBadgeClassName(issueLink.statusName)}
+              title={`${issueLink.key}: ${issueLink.title}`}
+            >
+              {issueLink.key}
+            </span>
+          ) : null}
           {renamingThreadKey === threadKey ? (
             <input
               ref={handleRenameInputRef}
@@ -726,6 +758,7 @@ interface SidebarProjectThreadListProps {
   hiddenThreadStatus: ThreadStatusPill | null;
   orderedProjectThreadKeys: readonly string[];
   renderedThreads: readonly SidebarThreadSummary[];
+  threadIssueLinks: ThreadIssueLinkMap;
   showEmptyThreadState: boolean;
   shouldShowThreadPanel: boolean;
   isThreadListExpanded: boolean;
@@ -776,6 +809,7 @@ const SidebarProjectThreadList = memo(function SidebarProjectThreadList(
     hiddenThreadStatus,
     orderedProjectThreadKeys,
     renderedThreads,
+    threadIssueLinks,
     showEmptyThreadState,
     shouldShowThreadPanel,
     isThreadListExpanded,
@@ -829,6 +863,7 @@ const SidebarProjectThreadList = memo(function SidebarProjectThreadList(
             <SidebarThreadRow
               key={threadKey}
               thread={thread}
+              issueLink={threadIssueLinks[threadKey] ?? null}
               projectCwd={projectCwd}
               orderedProjectThreadKeys={orderedProjectThreadKeys}
               isActive={activeRouteThreadKey === threadKey}
@@ -901,6 +936,8 @@ interface SidebarProjectItemProps {
   archiveThread: ReturnType<typeof useThreadActions>["archiveThread"];
   deleteThread: ReturnType<typeof useThreadActions>["deleteThread"];
   threadJumpLabelByKey: ReadonlyMap<string, string>;
+  threadIssueLinks: ThreadIssueLinkMap;
+  setThreadIssueLinks: React.Dispatch<React.SetStateAction<ThreadIssueLinkMap>>;
   attachThreadListAutoAnimateRef: (node: HTMLElement | null) => void;
   expandThreadListForProject: (projectKey: string) => void;
   collapseThreadListForProject: (projectKey: string) => void;
@@ -921,6 +958,8 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
     archiveThread,
     deleteThread,
     threadJumpLabelByKey,
+    threadIssueLinks,
+    setThreadIssueLinks,
     attachThreadListAutoAnimateRef,
     expandThreadListForProject,
     collapseThreadListForProject,
@@ -942,6 +981,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
   const defaultThreadEnvMode = useSettings<ThreadEnvMode>(
     (settings) => settings.defaultThreadEnvMode,
   );
+  const linearSettings = useSettings((settings) => settings.issues.linear);
   const projectGroupingSettings = useSettings(selectProjectGroupingSettings);
   const { updateSettings } = useUpdateSettings();
   const sidebarThreadPreviewCount = useSettings<SidebarThreadPreviewCount>(
@@ -952,6 +992,10 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
   const markThreadUnread = useUiStateStore((state) => state.markThreadUnread);
   const toggleProject = useUiStateStore((state) => state.toggleProject);
   const toggleThreadSelection = useThreadSelectionStore((state) => state.toggleThread);
+  const projectColor = useUiStateStore(
+    (state) => state.projectColorById[project.projectKey] ?? null,
+  );
+  const setProjectColor = useUiStateStore((state) => state.setProjectColor);
   const rangeSelectTo = useThreadSelectionStore((state) => state.rangeSelectTo);
   const clearSelection = useThreadSelectionStore((state) => state.clearSelection);
   const removeFromSelection = useThreadSelectionStore((state) => state.removeFromSelection);
@@ -1069,6 +1113,17 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
   const [projectGroupingSelection, setProjectGroupingSelection] = useState<
     SidebarProjectGroupingMode | "inherit"
   >("inherit");
+  const [projectColorDialogOpen, setProjectColorDialogOpen] = useState(false);
+  const [projectColorSelection, setProjectColorSelection] = useState<ProjectColor | null>(null);
+  const [projectCustomColorInput, setProjectCustomColorInput] = useState<string>(
+    DEFAULT_CUSTOM_PROJECT_COLOR,
+  );
+  const [linearProjectDialogTarget, setLinearProjectDialogTarget] =
+    useState<SidebarProjectGroupMember | null>(null);
+  const [linearProjectValidation, setLinearProjectValidation] =
+    useState<LinearIssueValidationResult | null>(null);
+  const [linearProjectLoading, setLinearProjectLoading] = useState(false);
+  const [linearProjectSelection, setLinearProjectSelection] = useState<string | null>(null);
   const renamingCommittedRef = useRef(false);
   const renamingInputRef = useRef<HTMLInputElement | null>(null);
   const confirmArchiveButtonRefs = useRef(new Map<string, HTMLButtonElement>());
@@ -1081,6 +1136,18 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
         ]),
       ),
     [project.memberProjects],
+  );
+  const mappedProjectMembers = useMemo(
+    () => project.memberProjects.filter((member) => linearSettings.projectMappings[member.id]),
+    [linearSettings.projectMappings, project.memberProjects],
+  );
+  const linearProjectLinkSummary = useMemo(
+    () =>
+      resolveLinearProjectLinkSummary({
+        memberProjectIds: project.memberProjects.map((member) => member.id),
+        projectMappings: linearSettings.projectMappings,
+      }),
+    [linearSettings.projectMappings, project.memberProjects],
   );
   const memberThreadCountByPhysicalKey = useMemo(() => {
     const counts = new Map<string, number>(
@@ -1287,6 +1354,68 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
     [projectGroupingSettings.sidebarProjectGroupingOverrides],
   );
 
+  const openProjectColorDialog = useCallback(() => {
+    setProjectColorSelection(projectColor);
+    setProjectCustomColorInput(formatProjectColorInput(projectColor));
+    setProjectColorDialogOpen(true);
+  }, [projectColor]);
+
+  const loadLinearProjectValidation = useCallback(() => {
+    const api = readLocalApi();
+    if (!api) {
+      setLinearProjectValidation({
+        ok: false,
+        workspaceName: null,
+        userName: null,
+        projects: [],
+        error: "Local backend is unavailable.",
+      });
+      return;
+    }
+
+    setLinearProjectLoading(true);
+    void api.server
+      .validateLinearIssues()
+      .then(setLinearProjectValidation)
+      .catch((error) => {
+        setLinearProjectValidation({
+          ok: false,
+          workspaceName: null,
+          userName: null,
+          projects: [],
+          error: error instanceof Error ? error.message : "Unable to load Linear projects.",
+        });
+      })
+      .finally(() => setLinearProjectLoading(false));
+  }, []);
+
+  const openLinearProjectDialog = useCallback(
+    (member: SidebarProjectGroupMember) => {
+      const existingMapping = linearSettings.projectMappings[member.id];
+      setLinearProjectDialogTarget(member);
+      setLinearProjectSelection(existingMapping?.linearProjectId ?? null);
+      setLinearProjectValidation(null);
+      loadLinearProjectValidation();
+    },
+    [linearSettings.projectMappings, loadLinearProjectValidation],
+  );
+
+  const openProjectIssuesPage = useCallback(
+    (member: SidebarProjectGroupMember) => {
+      if (isMobile) {
+        setOpenMobile(false);
+      }
+      void router.navigate({
+        to: "/project/$environmentId/$projectId",
+        params: {
+          environmentId: member.environmentId,
+          projectId: member.id,
+        },
+      });
+    },
+    [isMobile, router, setOpenMobile],
+  );
+
   const removeProject = useCallback(
     async (member: SidebarProjectGroupMember, options: { force?: boolean } = {}): Promise<void> => {
       const memberProjectRef = scopeProjectRef(member.environmentId, member.id);
@@ -1434,7 +1563,13 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
 
         const actionHandlers = new Map<string, () => Promise<void> | void>();
         const makeLeaf = (
-          action: "rename" | "grouping" | "copy-path" | "delete",
+          action:
+            | "rename"
+            | "linear-project"
+            | "project-issues"
+            | "grouping"
+            | "copy-path"
+            | "delete",
           member: SidebarProjectGroupMember,
           options?: {
             destructive?: boolean;
@@ -1446,6 +1581,12 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
             switch (action) {
               case "rename":
                 openProjectRenameDialog(member);
+                return;
+              case "linear-project":
+                openLinearProjectDialog(member);
+                return;
+              case "project-issues":
+                openProjectIssuesPage(member);
                 return;
               case "grouping":
                 openProjectGroupingDialog(member);
@@ -1467,7 +1608,13 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
         };
 
         const buildTargetedItem = (
-          action: "rename" | "grouping" | "copy-path" | "delete",
+          action:
+            | "rename"
+            | "linear-project"
+            | "project-issues"
+            | "grouping"
+            | "copy-path"
+            | "delete",
           label: string,
           options?: {
             destructive?: boolean;
@@ -1500,6 +1647,11 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
         const clicked = await api.contextMenu.show(
           [
             buildTargetedItem("rename", "Rename project"),
+            { id: "project-color", label: "Project color..." },
+            buildTargetedItem("linear-project", "Assign Linear project..."),
+            buildTargetedItem("project-issues", "View linked issues...", {
+              isDisabled: (member) => !linearSettings.projectMappings[member.id],
+            }),
             buildTargetedItem("grouping", "Project grouping…"),
             buildTargetedItem("copy-path", "Copy Project Path"),
             buildTargetedItem("delete", "Remove project", {
@@ -1516,18 +1668,114 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
           return;
         }
 
+        if (clicked === "project-color") {
+          openProjectColorDialog();
+          return;
+        }
+
         await actionHandlers.get(clicked)?.();
       })();
     },
     [
       copyPathToClipboard,
       handleRemoveProject,
+      openProjectColorDialog,
+      openProjectIssuesPage,
+      openLinearProjectDialog,
       openProjectGroupingDialog,
       openProjectRenameDialog,
       project.groupedProjectCount,
       project.memberProjects,
       suppressProjectClickForContextMenuRef,
+      linearSettings.projectMappings,
     ],
+  );
+
+  const closeProjectColorDialog = useCallback(() => {
+    setProjectColorDialogOpen(false);
+  }, []);
+
+  const closeLinearProjectDialog = useCallback(() => {
+    setLinearProjectDialogTarget(null);
+    setLinearProjectSelection(null);
+  }, []);
+
+  const selectedLinearProject = useMemo<LinearIssueProject | null>(() => {
+    if (!linearProjectSelection) {
+      return null;
+    }
+    return (
+      linearProjectValidation?.projects.find((project) => project.id === linearProjectSelection) ??
+      null
+    );
+  }, [linearProjectSelection, linearProjectValidation?.projects]);
+
+  const saveLinearProjectMapping = useCallback(() => {
+    if (!linearProjectDialogTarget || !selectedLinearProject) {
+      return;
+    }
+
+    updateSettings({
+      issues: {
+        linear: {
+          ...linearSettings,
+          projectMappings: {
+            ...linearSettings.projectMappings,
+            [linearProjectDialogTarget.id]: {
+              linearProjectId: selectedLinearProject.id,
+              linearProjectName: selectedLinearProject.name,
+              teamKey: selectedLinearProject.teamKey ?? "",
+            },
+          },
+        },
+      },
+    });
+    closeLinearProjectDialog();
+  }, [
+    closeLinearProjectDialog,
+    linearProjectDialogTarget,
+    linearSettings,
+    selectedLinearProject,
+    updateSettings,
+  ]);
+
+  const clearLinearProjectMapping = useCallback(() => {
+    if (!linearProjectDialogTarget) {
+      return;
+    }
+
+    const nextMappings = { ...linearSettings.projectMappings };
+    delete nextMappings[linearProjectDialogTarget.id];
+    updateSettings({
+      issues: {
+        linear: {
+          ...linearSettings,
+          projectMappings: nextMappings,
+        },
+      },
+    });
+    closeLinearProjectDialog();
+  }, [closeLinearProjectDialog, linearProjectDialogTarget, linearSettings, updateSettings]);
+
+  const saveProjectColor = useCallback(() => {
+    setProjectColor(project.projectKey, projectColorSelection);
+    closeProjectColorDialog();
+  }, [closeProjectColorDialog, project.projectKey, projectColorSelection, setProjectColor]);
+
+  const normalizedProjectCustomColor = normalizeProjectHexColor(projectCustomColorInput);
+  const selectedProjectCustomColorInvalid =
+    projectColorSelection !== null &&
+    !isProjectColorPreset(projectColorSelection) &&
+    normalizedProjectCustomColor === null;
+  const selectCustomProjectColor = useCallback(
+    (value: string) => {
+      setProjectCustomColorInput(value);
+      const normalized = normalizeProjectHexColor(value);
+      if (normalized) {
+        setProjectColorSelection(normalized);
+      }
+    },
+    [setProjectColorSelection],
   );
 
   const navigateToThread = useCallback(
@@ -1651,7 +1899,13 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
   );
 
   const createThreadForProjectMember = useCallback(
-    (member: SidebarProjectGroupMember) => {
+    async (
+      member: SidebarProjectGroupMember,
+      options?: {
+        branch?: string | null;
+        prompt?: string;
+      },
+    ) => {
       const currentRouteParams =
         router.state.matches[router.state.matches.length - 1]?.params ?? {};
       const currentRouteTarget = resolveThreadRouteTarget(currentRouteParams);
@@ -1689,16 +1943,25 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
               }
             : null,
       });
+      const branch = options?.branch !== undefined ? options.branch : seedContext.branch;
       if (isMobile) {
         setOpenMobile(false);
       }
-      void handleNewThread(scopeProjectRef(member.environmentId, member.id), {
-        ...(seedContext.branch !== undefined ? { branch: seedContext.branch } : {}),
+      const projectRef = scopeProjectRef(member.environmentId, member.id);
+      await handleNewThread(projectRef, {
+        ...(branch !== undefined ? { branch } : {}),
         ...(seedContext.worktreePath !== undefined
           ? { worktreePath: seedContext.worktreePath }
           : {}),
         envMode: seedContext.envMode,
       });
+
+      if (options?.prompt) {
+        const draftThread = useComposerDraftStore.getState().getDraftThreadByProjectRef(projectRef);
+        if (draftThread) {
+          useComposerDraftStore.getState().setPrompt(draftThread.draftId, options.prompt);
+        }
+      }
     },
     [defaultThreadEnvMode, handleNewThread, isMobile, router, setOpenMobile],
   );
@@ -1741,6 +2004,50 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
       })();
     },
     [createThreadForProjectMember, project.groupedProjectCount, project.memberProjects],
+  );
+
+  const handleProjectIssuesClick = useCallback(
+    (event: React.MouseEvent<HTMLElement>) => {
+      event.preventDefault();
+      event.stopPropagation();
+
+      if (mappedProjectMembers.length === 0) {
+        return;
+      }
+
+      if (mappedProjectMembers.length === 1) {
+        openProjectIssuesPage(mappedProjectMembers[0]!);
+        return;
+      }
+
+      void (async () => {
+        const api = readLocalApi();
+        if (!api) {
+          return;
+        }
+        const clicked = await api.contextMenu.show(
+          mappedProjectMembers.map((member) => ({
+            id: member.physicalProjectKey,
+            label: formatProjectMemberActionLabel(member, project.groupedProjectCount),
+          })),
+          {
+            x: event.clientX,
+            y: event.clientY,
+          },
+        );
+        if (!clicked) {
+          return;
+        }
+        const targetMember = mappedProjectMembers.find(
+          (member) => member.physicalProjectKey === clicked,
+        );
+        if (!targetMember) {
+          return;
+        }
+        openProjectIssuesPage(targetMember);
+      })();
+    },
+    [mappedProjectMembers, openProjectIssuesPage, project.groupedProjectCount],
   );
 
   const attemptArchiveThread = useCallback(
@@ -1908,12 +2215,25 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
       const threadKey = scopedThreadKey(threadRef);
       const thread = sidebarThreadByKeyRef.current.get(threadKey) ?? null;
       if (!thread) return;
+      const issueLink = threadIssueLinks[threadKey] ?? null;
       const threadProject = memberProjectByScopedKey.get(
         scopedProjectKey(scopeProjectRef(thread.environmentId, thread.projectId)),
       );
+      const threadLinearMapping = linearSettings.projectMappings[thread.projectId] ?? null;
       const threadWorkspacePath = thread.worktreePath ?? threadProject?.cwd ?? project.cwd ?? null;
       const clicked = await api.contextMenu.show(
         [
+          ...(threadLinearMapping
+            ? [{ id: "assign-issue", label: "Assign issue..." } satisfies ContextMenuItem<string>]
+            : []),
+          ...(issueLink
+            ? [
+                {
+                  id: "remove-issue",
+                  label: `Remove ${issueLink.key}`,
+                } satisfies ContextMenuItem<string>,
+              ]
+            : []),
           { id: "rename", label: "Rename thread" },
           { id: "mark-unread", label: "Mark unread" },
           { id: "copy-path", label: "Copy Path" },
@@ -1922,6 +2242,69 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
         ],
         position,
       );
+
+      if (clicked === "assign-issue") {
+        if (!threadLinearMapping) {
+          return;
+        }
+        try {
+          const result = await api.server.listProjectIssues({
+            projectId: thread.projectId,
+            limit: 100,
+          });
+          if (result.issues.length === 0) {
+            toastManager.add(
+              stackedThreadToast({
+                type: "warning",
+                title: "No issues found",
+                description: "Create an issue before assigning it to a thread.",
+              }),
+            );
+            return;
+          }
+          const issueByMenuId = new Map<string, IssueItem>();
+          const issueMenuItems = result.issues.slice(0, 50).map((issue, index) => {
+            const id = `issue:${index}`;
+            issueByMenuId.set(id, issue);
+            return {
+              id,
+              label: `${issue.key} ${issue.title}`,
+            } satisfies ContextMenuItem<string>;
+          });
+          const selectedIssueId = await api.contextMenu.show(issueMenuItems, position);
+          const selectedIssue = selectedIssueId ? issueByMenuId.get(selectedIssueId) : null;
+          if (!selectedIssue) {
+            return;
+          }
+          setThreadIssueLinks((current) => {
+            const next = {
+              ...current,
+              [threadKey]: issueToThreadIssueLink(selectedIssue),
+            };
+            writeThreadIssueLinks(next);
+            return next;
+          });
+        } catch (error) {
+          toastManager.add(
+            stackedThreadToast({
+              type: "error",
+              title: "Failed to assign issue",
+              description: error instanceof Error ? error.message : "Unable to load issues.",
+            }),
+          );
+        }
+        return;
+      }
+
+      if (clicked === "remove-issue") {
+        setThreadIssueLinks((current) => {
+          const next = { ...current };
+          delete next[threadKey];
+          writeThreadIssueLinks(next);
+          return next;
+        });
+        return;
+      }
 
       if (clicked === "rename") {
         setRenamingThreadKey(threadKey);
@@ -1971,9 +2354,12 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
       copyPathToClipboard,
       copyThreadIdToClipboard,
       deleteThread,
+      linearSettings.projectMappings,
       markThreadUnread,
       memberProjectByScopedKey,
       project.cwd,
+      setThreadIssueLinks,
+      threadIssueLinks,
     ],
   );
 
@@ -2015,11 +2401,34 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
               }`}
             />
           )}
-          <ProjectFavicon environmentId={project.environmentId} cwd={project.cwd} />
+          <ProjectFavicon
+            environmentId={project.environmentId}
+            cwd={project.cwd}
+            projectColor={projectColor}
+          />
           <span className="flex min-w-0 flex-1 items-center gap-2">
             <span className="truncate text-xs font-medium text-foreground/90">
               {project.displayName}
             </span>
+            {linearProjectLinkSummary ? (
+              <span
+                role="button"
+                tabIndex={0}
+                title={`Open ${linearProjectLinkSummary.label} issues`}
+                aria-label={`Open ${linearProjectLinkSummary.label} issues`}
+                data-thread-selection-safe
+                className={resolveLinearProjectBadgeClassName()}
+                onClick={handleProjectIssuesClick}
+                onKeyDown={(event) => {
+                  if (event.key !== "Enter" && event.key !== " ") {
+                    return;
+                  }
+                  handleProjectIssuesClick(event as unknown as React.MouseEvent<HTMLElement>);
+                }}
+              >
+                {linearProjectLinkSummary.shortLabel}
+              </span>
+            ) : null}
             {project.groupedProjectCount > 1 ? (
               <span className="shrink-0 text-[10px] text-muted-foreground/60">
                 {project.groupedProjectCount} projects
@@ -2054,12 +2463,22 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
         <Tooltip>
           <TooltipTrigger
             render={
-              <div className="pointer-events-none absolute top-1 right-1.5 opacity-0 transition-opacity duration-150 max-sm:pointer-events-auto max-sm:opacity-100 group-hover/project-header:pointer-events-auto group-hover/project-header:opacity-100 group-focus-within/project-header:pointer-events-auto group-focus-within/project-header:opacity-100">
+              <div className="pointer-events-none absolute top-1 right-1.5 flex items-center gap-1 opacity-0 transition-opacity duration-150 max-sm:pointer-events-auto max-sm:opacity-100 group-hover/project-header:pointer-events-auto group-hover/project-header:opacity-100 group-focus-within/project-header:pointer-events-auto group-focus-within/project-header:opacity-100">
+                {linearProjectLinkSummary ? (
+                  <button
+                    type="button"
+                    aria-label={`View linked issues for ${project.displayName}`}
+                    className="pointer-events-auto inline-flex size-5 cursor-pointer items-center justify-center rounded-md text-muted-foreground/60 hover:bg-secondary hover:text-foreground focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring"
+                    onClick={handleProjectIssuesClick}
+                  >
+                    <ClipboardListIcon className="size-3.5" />
+                  </button>
+                ) : null}
                 <button
                   type="button"
                   aria-label={`Create new thread in ${project.displayName}`}
                   data-testid="new-thread-button"
-                  className="inline-flex size-5 cursor-pointer items-center justify-center rounded-md text-muted-foreground/60 hover:bg-secondary hover:text-foreground focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring"
+                  className="pointer-events-auto inline-flex size-5 cursor-pointer items-center justify-center rounded-md text-muted-foreground/60 hover:bg-secondary hover:text-foreground focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring"
                   onClick={handleCreateThreadClick}
                 >
                   <SquarePenIcon className="size-3.5" />
@@ -2068,7 +2487,11 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
             }
           />
           <TooltipPopup side="top">
-            {newThreadShortcutLabel ? `New thread (${newThreadShortcutLabel})` : "New thread"}
+            {linearProjectLinkSummary
+              ? "View linked issues or start a new thread"
+              : newThreadShortcutLabel
+                ? `New thread (${newThreadShortcutLabel})`
+                : "New thread"}
           </TooltipPopup>
         </Tooltip>
       </div>
@@ -2080,6 +2503,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
         hiddenThreadStatus={hiddenThreadStatus}
         orderedProjectThreadKeys={orderedProjectThreadKeys}
         renderedThreads={renderedThreads}
+        threadIssueLinks={threadIssueLinks}
         showEmptyThreadState={showEmptyThreadState}
         shouldShowThreadPanel={shouldShowThreadPanel}
         isThreadListExpanded={isThreadListExpanded}
@@ -2223,6 +2647,204 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
               Cancel
             </Button>
             <Button onClick={saveProjectGroupingPreference}>Save</Button>
+          </DialogFooter>
+        </DialogPopup>
+      </Dialog>
+
+      <Dialog
+        open={linearProjectDialogTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            closeLinearProjectDialog();
+          }
+        }}
+      >
+        <DialogPopup className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Assign Linear project</DialogTitle>
+            <DialogDescription>
+              {linearProjectDialogTarget
+                ? `Map ${linearProjectDialogTarget.name} to a Linear project.`
+                : "Map this project to Linear."}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogPanel>
+            <div className="space-y-2">
+              {linearProjectLoading ? (
+                <div className="rounded-md border border-border px-3 py-2 text-muted-foreground text-xs">
+                  Loading Linear projects...
+                </div>
+              ) : linearProjectValidation && !linearProjectValidation.ok ? (
+                <div className="rounded-md border border-destructive/40 px-3 py-2 text-destructive text-xs">
+                  {linearProjectValidation.error ?? "Unable to load Linear projects."}
+                </div>
+              ) : linearProjectValidation?.projects.length ? (
+                <div className="max-h-72 overflow-auto rounded-md border border-border">
+                  {linearProjectValidation.projects.map((linearProject) => {
+                    const mappedHere = linearProjectDialogTarget
+                      ? linearProject.mappedProjectIds.includes(linearProjectDialogTarget.id)
+                      : false;
+                    const mappedElsewhere =
+                      linearProject.mappedProjectIds.length > 0 && !mappedHere;
+                    const selected = linearProjectSelection === linearProject.id;
+
+                    return (
+                      <button
+                        key={linearProject.id}
+                        type="button"
+                        aria-pressed={selected}
+                        className={cn(
+                          "flex w-full items-center gap-3 border-border border-b px-3 py-2 text-left last:border-b-0 hover:bg-accent focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring",
+                          selected ? "bg-accent" : "",
+                        )}
+                        onClick={() => setLinearProjectSelection(linearProject.id)}
+                      >
+                        <span className="flex size-5 shrink-0 items-center justify-center rounded-md border border-border">
+                          {selected ? <CheckIcon className="size-3.5" aria-hidden /> : null}
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate font-medium text-sm">
+                            {linearProject.name}
+                          </span>
+                          <span className="block truncate text-muted-foreground text-xs">
+                            {linearProject.teamKey ? linearProject.teamKey : "No team"}
+                            {linearProject.teamName ? ` · ${linearProject.teamName}` : ""}
+                          </span>
+                        </span>
+                        <span className="shrink-0 text-muted-foreground text-xs">
+                          {mappedHere ? "Mapped here" : mappedElsewhere ? "Mapped" : "Unmapped"}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="rounded-md border border-border px-3 py-2 text-muted-foreground text-xs">
+                  No Linear projects found.
+                </div>
+              )}
+            </div>
+          </DialogPanel>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={clearLinearProjectMapping}
+              disabled={
+                !linearProjectDialogTarget ||
+                !linearSettings.projectMappings[linearProjectDialogTarget.id]
+              }
+            >
+              Clear
+            </Button>
+            <Button variant="outline" onClick={closeLinearProjectDialog}>
+              Cancel
+            </Button>
+            <Button onClick={saveLinearProjectMapping} disabled={!selectedLinearProject}>
+              <ClipboardListIcon className="size-3.5" aria-hidden />
+              Save
+            </Button>
+          </DialogFooter>
+        </DialogPopup>
+      </Dialog>
+
+      <Dialog
+        open={projectColorDialogOpen}
+        onOpenChange={(open) => {
+          if (!open) {
+            closeProjectColorDialog();
+          }
+        }}
+      >
+        <DialogPopup className="max-w-xs">
+          <DialogHeader>
+            <DialogTitle>Project color</DialogTitle>
+            <DialogDescription>{`Choose a sidebar color for ${project.displayName}.`}</DialogDescription>
+          </DialogHeader>
+          <DialogPanel>
+            <div className="grid grid-cols-4 gap-1.5">
+              <button
+                type="button"
+                aria-label="No project color"
+                aria-pressed={projectColorSelection === null}
+                className={cn(
+                  "flex h-7 items-center justify-center rounded-md border border-border px-2 text-[11px] text-muted-foreground hover:bg-accent focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring",
+                  projectColorSelection === null ? "ring-1 ring-ring" : "",
+                )}
+                onClick={() => setProjectColorSelection(null)}
+              >
+                None
+              </button>
+              {PROJECT_COLORS.map((color) => (
+                <button
+                  key={color}
+                  type="button"
+                  aria-label={`${PROJECT_COLOR_LABELS[color]} project color`}
+                  aria-pressed={projectColorSelection === color}
+                  className={cn(
+                    "flex h-7 items-center justify-center rounded-md border border-border hover:bg-accent focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring",
+                    projectColorSelection === color ? "ring-1 ring-ring" : "",
+                  )}
+                  onClick={() => setProjectColorSelection(color)}
+                >
+                  <span
+                    aria-hidden="true"
+                    className="size-3.5 rounded-full"
+                    style={{ backgroundColor: PROJECT_COLOR_VALUES[color] }}
+                  />
+                </button>
+              ))}
+            </div>
+            <div className="mt-3 flex items-center gap-2">
+              <button
+                type="button"
+                aria-label="Custom project color"
+                aria-pressed={
+                  projectColorSelection !== null && !isProjectColorPreset(projectColorSelection)
+                }
+                className={cn(
+                  "relative flex size-7 shrink-0 items-center justify-center overflow-hidden rounded-md border border-border focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring",
+                  projectColorSelection !== null && !isProjectColorPreset(projectColorSelection)
+                    ? "ring-1 ring-ring"
+                    : "",
+                )}
+                style={{
+                  backgroundColor: normalizedProjectCustomColor ?? DEFAULT_CUSTOM_PROJECT_COLOR,
+                }}
+                onClick={() =>
+                  setProjectColorSelection(
+                    normalizedProjectCustomColor ?? DEFAULT_CUSTOM_PROJECT_COLOR,
+                  )
+                }
+              >
+                <input
+                  aria-label="Pick custom project color"
+                  className="absolute inset-0 size-full cursor-pointer opacity-0"
+                  type="color"
+                  value={normalizedProjectCustomColor ?? DEFAULT_CUSTOM_PROJECT_COLOR}
+                  onChange={(event) => selectCustomProjectColor(event.currentTarget.value)}
+                />
+              </button>
+              <Input
+                nativeInput
+                size="sm"
+                value={projectCustomColorInput}
+                aria-label="Custom project color hex value"
+                aria-invalid={normalizedProjectCustomColor === null}
+                className="flex-1 rounded-md"
+                inputMode="text"
+                spellCheck={false}
+                maxLength={7}
+                onChange={(event) => selectCustomProjectColor(event.currentTarget.value)}
+              />
+            </div>
+          </DialogPanel>
+          <DialogFooter>
+            <Button variant="outline" onClick={closeProjectColorDialog}>
+              Cancel
+            </Button>
+            <Button onClick={saveProjectColor} disabled={selectedProjectCustomColorInvalid}>
+              Save
+            </Button>
           </DialogFooter>
         </DialogPopup>
       </Dialog>
@@ -2545,6 +3167,8 @@ interface SidebarProjectsContentProps {
   newThreadShortcutLabel: string | null;
   commandPaletteShortcutLabel: string | null;
   threadJumpLabelByKey: ReadonlyMap<string, string>;
+  threadIssueLinks: ThreadIssueLinkMap;
+  setThreadIssueLinks: React.Dispatch<React.SetStateAction<ThreadIssueLinkMap>>;
   attachThreadListAutoAnimateRef: (node: HTMLElement | null) => void;
   expandThreadListForProject: (projectKey: string) => void;
   collapseThreadListForProject: (projectKey: string) => void;
@@ -2586,6 +3210,8 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
     newThreadShortcutLabel,
     commandPaletteShortcutLabel,
     threadJumpLabelByKey,
+    threadIssueLinks,
+    setThreadIssueLinks,
     attachThreadListAutoAnimateRef,
     expandThreadListForProject,
     collapseThreadListForProject,
@@ -2732,6 +3358,8 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
                         archiveThread={archiveThread}
                         deleteThread={deleteThread}
                         threadJumpLabelByKey={threadJumpLabelByKey}
+                        threadIssueLinks={threadIssueLinks}
+                        setThreadIssueLinks={setThreadIssueLinks}
                         attachThreadListAutoAnimateRef={attachThreadListAutoAnimateRef}
                         expandThreadListForProject={expandThreadListForProject}
                         collapseThreadListForProject={collapseThreadListForProject}
@@ -2764,6 +3392,8 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
                 archiveThread={archiveThread}
                 deleteThread={deleteThread}
                 threadJumpLabelByKey={threadJumpLabelByKey}
+                threadIssueLinks={threadIssueLinks}
+                setThreadIssueLinks={setThreadIssueLinks}
                 attachThreadListAutoAnimateRef={attachThreadListAutoAnimateRef}
                 expandThreadListForProject={expandThreadListForProject}
                 collapseThreadListForProject={collapseThreadListForProject}
@@ -2815,6 +3445,9 @@ export default function Sidebar() {
   const [expandedThreadListsByProject, setExpandedThreadListsByProject] = useState<
     ReadonlySet<string>
   >(() => new Set());
+  const [threadIssueLinks, setThreadIssueLinks] = useState<ThreadIssueLinkMap>(() =>
+    readThreadIssueLinks(),
+  );
   const { showThreadJumpHints, updateThreadJumpHintsVisibility } = useThreadJumpHintVisibility();
   const dragInProgressRef = useRef(false);
   const suppressProjectClickAfterDragRef = useRef(false);
@@ -3449,6 +4082,8 @@ export default function Sidebar() {
             newThreadShortcutLabel={newThreadShortcutLabel}
             commandPaletteShortcutLabel={commandPaletteShortcutLabel}
             threadJumpLabelByKey={visibleThreadJumpLabelByKey}
+            threadIssueLinks={threadIssueLinks}
+            setThreadIssueLinks={setThreadIssueLinks}
             attachThreadListAutoAnimateRef={attachThreadListAutoAnimateRef}
             expandThreadListForProject={expandThreadListForProject}
             collapseThreadListForProject={collapseThreadListForProject}

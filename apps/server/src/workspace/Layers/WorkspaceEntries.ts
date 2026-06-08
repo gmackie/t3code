@@ -98,6 +98,15 @@ function toSearchableWorkspaceEntry(entry: ProjectEntry): SearchableWorkspaceEnt
   };
 }
 
+function toProjectEntry(entry: SearchableWorkspaceEntry): ProjectEntry {
+  return {
+    path: entry.path,
+    kind: entry.kind,
+    ...(entry.parentPath ? { parentPath: entry.parentPath } : {}),
+    ...(entry.gitStatus ? { gitStatus: entry.gitStatus } : {}),
+  };
+}
+
 function scoreEntry(entry: SearchableWorkspaceEntry, query: string): number | null {
   if (!query) {
     return entry.kind === "directory" ? 0 : 1;
@@ -528,9 +537,20 @@ export const makeWorkspaceEntries = Effect.gen(function* () {
     },
   );
 
+  const list: WorkspaceEntriesShape["list"] = Effect.fn("WorkspaceEntries.list")(function* (input) {
+    const normalizedCwd = yield* normalizeWorkspaceRoot(input.cwd);
+    return yield* Cache.get(workspaceIndexCache, normalizedCwd).pipe(
+      Effect.map((index) => ({
+        entries: index.entries.map(toProjectEntry),
+        truncated: index.truncated,
+      })),
+    );
+  });
+
   return {
     browse,
     invalidate,
+    list,
     search,
   } satisfies WorkspaceEntriesShape;
 });

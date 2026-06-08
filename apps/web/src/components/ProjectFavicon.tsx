@@ -2,12 +2,14 @@ import type { EnvironmentId } from "@t3tools/contracts";
 import { FolderIcon } from "lucide-react";
 import { useState } from "react";
 import { resolveEnvironmentHttpUrl } from "../environments/runtime";
+import type { ProjectColor } from "../uiStateStore";
 
 const loadedProjectFaviconSrcs = new Set<string>();
 
 export function ProjectFavicon(input: {
   environmentId: EnvironmentId;
   cwd: string;
+  projectColor?: ProjectColor | null;
   className?: string;
 }) {
   const src = (() => {

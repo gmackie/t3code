@@ -3,6 +3,7 @@ import * as Crypto from "effect/Crypto";
 import * as DateTime from "effect/DateTime";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Queue from "effect/Queue";
@@ -34,6 +35,8 @@ import {
   OrchestrationGetTurnDiffError,
   ORCHESTRATION_WS_METHODS,
   ProjectSearchEntriesError,
+  ProjectListEntriesError,
+  ProjectReadFileError,
   ProjectWriteFileError,
   RelayClientInstallFailedError,
   type RelayClientInstallProgressEvent,
@@ -70,12 +73,14 @@ import { ServerLifecycleEvents } from "./serverLifecycleEvents.ts";
 import { ServerRuntimeStartup } from "./serverRuntimeStartup.ts";
 import { redactServerSettingsForClient, ServerSettingsService } from "./serverSettings.ts";
 import { TerminalManager } from "./terminal/Services/Manager.ts";
+import { discoverTerminalShells } from "./terminal/terminalProfile.ts";
 import { WorkspaceEntries } from "./workspace/Services/WorkspaceEntries.ts";
 import { WorkspaceFileSystem } from "./workspace/Services/WorkspaceFileSystem.ts";
 import { WorkspacePathOutsideRootError } from "./workspace/Services/WorkspacePaths.ts";
 import { VcsStatusBroadcaster } from "./vcs/VcsStatusBroadcaster.ts";
 import { VcsProvisioningService } from "./vcs/VcsProvisioningService.ts";
 import { GitWorkflowService } from "./git/GitWorkflowService.ts";
+import * as LinearIssueClient from "./issue/LinearIssueClient.ts";
 import { ReviewService } from "./review/ReviewService.ts";
 import { ProjectSetupScriptRunner } from "./project/Services/ProjectSetupScriptRunner.ts";
 import { RepositoryIdentityResolver } from "./project/Services/RepositoryIdentityResolver.ts";
@@ -144,6 +149,11 @@ const RPC_REQUIRED_SCOPE = new Map<string, AuthEnvironmentScope>([
   [WS_METHODS.serverRemoveKeybinding, AuthOrchestrationOperateScope],
   [WS_METHODS.serverGetSettings, AuthOrchestrationReadScope],
   [WS_METHODS.serverUpdateSettings, AuthOrchestrationOperateScope],
+  [WS_METHODS.serverValidateLinearIssues, AuthOrchestrationReadScope],
+  [WS_METHODS.serverListProjectIssues, AuthOrchestrationReadScope],
+  [WS_METHODS.serverListProjectIssueStatuses, AuthOrchestrationReadScope],
+  [WS_METHODS.serverCreateProjectIssue, AuthOrchestrationOperateScope],
+  [WS_METHODS.serverUpdateProjectIssueStatus, AuthOrchestrationOperateScope],
   [WS_METHODS.serverDiscoverSourceControl, AuthOrchestrationReadScope],
   [WS_METHODS.serverGetTraceDiagnostics, AuthOrchestrationReadScope],
   [WS_METHODS.serverGetProcessDiagnostics, AuthOrchestrationReadScope],
@@ -248,6 +258,7 @@ const makeWsRpcLayer = (currentSession: AuthenticatedSession) =>
       const startup = yield* ServerRuntimeStartup;
       const workspaceEntries = yield* WorkspaceEntries;
       const workspaceFileSystem = yield* WorkspaceFileSystem;
+      const fileSystem = yield* FileSystem.FileSystem;
       const projectSetupScriptRunner = yield* ProjectSetupScriptRunner;
       const repositoryIdentityResolver = yield* RepositoryIdentityResolver;
       const serverEnvironment = yield* ServerEnvironment;
@@ -730,6 +741,14 @@ const makeWsRpcLayer = (currentSession: AuthenticatedSession) =>
         const settings = redactServerSettingsForClient(yield* serverSettings.getSettings);
         const environment = yield* serverEnvironment.getDescriptor;
         const auth = yield* serverAuth.getDescriptor();
+        const terminal = yield* Effect.promise(() =>
+          discoverTerminalShells({
+            platform: process.platform,
+            env: process.env,
+            // @effect-diagnostics-next-line runEffectInsideEffect:off
+            probe: (candidatePath) => Effect.runPromise(fileSystem.exists(candidatePath)),
+          }),
+        );
 
         return {
           environment,
@@ -750,6 +769,7 @@ const makeWsRpcLayer = (currentSession: AuthenticatedSession) =>
               : {}),
             otlpMetricsEnabled: config.otlpMetricsUrl !== undefined,
           },
+          terminal,
           settings,
         };
       });
@@ -1042,6 +1062,105 @@ const makeWsRpcLayer = (currentSession: AuthenticatedSession) =>
               "rpc.aggregate": "server",
             },
           ),
+        [WS_METHODS.serverValidateLinearIssues]: (_input) =>
+          observeRpcEffect(
+            WS_METHODS.serverValidateLinearIssues,
+            serverSettings.getSettings.pipe(
+              Effect.flatMap(LinearIssueClient.validateLinearSettings),
+            ),
+            {
+              "rpc.aggregate": "server",
+            },
+          ),
+        [WS_METHODS.serverListProjectIssues]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.serverListProjectIssues,
+            serverSettings.getSettings.pipe(
+              Effect.flatMap((settings) => {
+                const listInput: {
+                  projectId: typeof input.projectId;
+                  query?: string;
+                  limit?: number;
+                } = { projectId: input.projectId };
+                if (input.query !== undefined) listInput.query = input.query;
+                if (input.limit !== undefined) listInput.limit = input.limit;
+                return LinearIssueClient.listMappedProjectIssues(settings, listInput);
+              }),
+            ),
+            {
+              "rpc.aggregate": "server",
+            },
+          ),
+        [WS_METHODS.serverListProjectIssueStatuses]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.serverListProjectIssueStatuses,
+            serverSettings.getSettings.pipe(
+              Effect.flatMap((settings) =>
+                LinearIssueClient.listMappedProjectIssueStatuses(settings, input),
+              ),
+            ),
+            {
+              "rpc.aggregate": "server",
+            },
+          ),
+        [WS_METHODS.serverCreateProjectIssue]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.serverCreateProjectIssue,
+            serverSettings.getSettings.pipe(
+              Effect.flatMap((settings) => {
+                const createInput: {
+                  projectId: typeof input.projectId;
+                  title: string;
+                  descriptionMarkdown?: string;
+                  statusId?: string;
+                  statusName?: string;
+                } = {
+                  projectId: input.projectId,
+                  title: input.title,
+                };
+                if (input.descriptionMarkdown !== undefined) {
+                  createInput.descriptionMarkdown = input.descriptionMarkdown;
+                }
+                if (input.statusId !== undefined) {
+                  createInput.statusId = input.statusId;
+                }
+                if (input.statusName !== undefined) {
+                  createInput.statusName = input.statusName;
+                }
+                return LinearIssueClient.createMappedProjectIssue(settings, createInput);
+              }),
+            ),
+            {
+              "rpc.aggregate": "server",
+            },
+          ),
+        [WS_METHODS.serverUpdateProjectIssueStatus]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.serverUpdateProjectIssueStatus,
+            serverSettings.getSettings.pipe(
+              Effect.flatMap((settings) => {
+                const updateInput: {
+                  projectId: typeof input.projectId;
+                  issueId: string;
+                  statusId?: string;
+                  statusName?: string;
+                } = {
+                  projectId: input.projectId,
+                  issueId: input.issueId,
+                };
+                if (input.statusId !== undefined) {
+                  updateInput.statusId = input.statusId;
+                }
+                if (input.statusName !== undefined) {
+                  updateInput.statusName = input.statusName;
+                }
+                return LinearIssueClient.updateMappedProjectIssueStatus(settings, updateInput);
+              }),
+            ),
+            {
+              "rpc.aggregate": "server",
+            },
+          ),
         [WS_METHODS.serverDiscoverSourceControl]: (_input) =>
           observeRpcEffect(
             WS_METHODS.serverDiscoverSourceControl,
@@ -1147,6 +1266,36 @@ const makeWsRpcLayer = (currentSession: AuthenticatedSession) =>
                     cause,
                   }),
               ),
+            ),
+            { "rpc.aggregate": "workspace" },
+          ),
+        [WS_METHODS.projectsListEntries]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.projectsListEntries,
+            workspaceEntries.list(input).pipe(
+              Effect.mapError(
+                (cause) =>
+                  new ProjectListEntriesError({
+                    message: `Failed to list workspace entries: ${cause.detail}`,
+                    cause,
+                  }),
+              ),
+            ),
+            { "rpc.aggregate": "workspace" },
+          ),
+        [WS_METHODS.projectsReadFile]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.projectsReadFile,
+            workspaceFileSystem.readFile(input).pipe(
+              Effect.mapError((cause) => {
+                const message = isWorkspacePathOutsideRootError(cause)
+                  ? "Workspace file path must stay within the project root."
+                  : "Failed to read workspace file";
+                return new ProjectReadFileError({
+                  message,
+                  cause,
+                });
+              }),
             ),
             { "rpc.aggregate": "workspace" },
           ),

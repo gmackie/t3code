@@ -80,6 +80,8 @@ export interface WsRpcClient {
     readonly onMetadata: RpcStreamMethod<typeof WS_METHODS.subscribeTerminalMetadata>;
   };
   readonly projects: {
+    readonly listEntries: RpcUnaryMethod<typeof WS_METHODS.projectsListEntries>;
+    readonly readFile: RpcUnaryMethod<typeof WS_METHODS.projectsReadFile>;
     readonly searchEntries: RpcUnaryMethod<typeof WS_METHODS.projectsSearchEntries>;
     readonly writeFile: RpcUnaryMethod<typeof WS_METHODS.projectsWriteFile>;
   };
@@ -140,6 +142,17 @@ export interface WsRpcClient {
     readonly updateSettings: (
       patch: ServerSettingsPatch,
     ) => ReturnType<RpcUnaryMethod<typeof WS_METHODS.serverUpdateSettings>>;
+    readonly validateLinearIssues: RpcUnaryNoArgMethod<
+      typeof WS_METHODS.serverValidateLinearIssues
+    >;
+    readonly listProjectIssues: RpcUnaryMethod<typeof WS_METHODS.serverListProjectIssues>;
+    readonly listProjectIssueStatuses: RpcUnaryMethod<
+      typeof WS_METHODS.serverListProjectIssueStatuses
+    >;
+    readonly createProjectIssue: RpcUnaryMethod<typeof WS_METHODS.serverCreateProjectIssue>;
+    readonly updateProjectIssueStatus: RpcUnaryMethod<
+      typeof WS_METHODS.serverUpdateProjectIssueStatus
+    >;
     readonly subscribeConfig: RpcStreamMethod<typeof WS_METHODS.subscribeServerConfig>;
     readonly subscribeLifecycle: RpcStreamMethod<typeof WS_METHODS.subscribeServerLifecycle>;
     readonly subscribeAuthAccess: RpcStreamMethod<typeof WS_METHODS.subscribeAuthAccess>;
@@ -213,6 +226,10 @@ export function createWsRpcClient(
         ),
     },
     projects: {
+      listEntries: (input) =>
+        transport.request((client) => client[WS_METHODS.projectsListEntries](input)),
+      readFile: (input) =>
+        transport.request((client) => client[WS_METHODS.projectsReadFile](input)),
       searchEntries: (input) =>
         transport.request((client) => client[WS_METHODS.projectsSearchEntries](input)),
       writeFile: (input) =>
@@ -301,6 +318,16 @@ export function createWsRpcClient(
       getSettings: () => transport.request((client) => client[WS_METHODS.serverGetSettings]({})),
       updateSettings: (patch) =>
         transport.request((client) => client[WS_METHODS.serverUpdateSettings]({ patch })),
+      validateLinearIssues: () =>
+        transport.request((client) => client[WS_METHODS.serverValidateLinearIssues]({})),
+      listProjectIssues: (input) =>
+        transport.request((client) => client[WS_METHODS.serverListProjectIssues](input)),
+      listProjectIssueStatuses: (input) =>
+        transport.request((client) => client[WS_METHODS.serverListProjectIssueStatuses](input)),
+      createProjectIssue: (input) =>
+        transport.request((client) => client[WS_METHODS.serverCreateProjectIssue](input)),
+      updateProjectIssueStatus: (input) =>
+        transport.request((client) => client[WS_METHODS.serverUpdateProjectIssueStatus](input)),
       subscribeConfig: (listener, options) =>
         transport.subscribe(
           (client) => client[WS_METHODS.subscribeServerConfig]({}),
