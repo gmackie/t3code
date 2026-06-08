@@ -53,6 +53,7 @@ function makeEnvironmentLayer(
   options?: {
     readonly appPath?: string;
     readonly isPackaged?: boolean;
+    readonly appVersion?: string;
     readonly devServerUrl?: string;
     readonly platform?: NodeJS.Platform;
     readonly resourcesPath?: string;
@@ -63,8 +64,8 @@ function makeEnvironmentLayer(
     homeDirectory: baseDir,
     platform: options?.platform ?? "darwin",
     processArch: "x64",
-    appVersion: "1.2.3",
-    appPath: options?.appPath ?? "/repo",
+    appVersion: options?.appVersion ?? "1.2.3",
+    appPath: "/repo",
     isPackaged: options?.isPackaged ?? true,
     resourcesPath: options?.resourcesPath ?? "/missing/resources",
     runningUnderArm64Translation: false,
@@ -144,6 +145,7 @@ describe("DesktopBackendConfiguration", () => {
         assert.equal(first.bootstrap.port, 4888);
         assert.equal(first.bootstrap.host, "0.0.0.0");
         assert.equal(first.bootstrap.t3Home, environment.baseDir);
+        assert.equal(first.bootstrap.stateDirName, "userdata");
         assert.equal(first.bootstrap.tailscaleServeEnabled, true);
         assert.equal(first.bootstrap.tailscaleServePort, 8443);
         assert.match(first.bootstrap.desktopBootstrapToken, /^[0-9a-f]{48}$/i);
@@ -152,167 +154,34 @@ describe("DesktopBackendConfiguration", () => {
     ),
   );
 
-  it.effect("resolveWsl reuses the primary's bootstrap token", () =>
-    withHarness(
-      Effect.gen(function* () {
-        const configuration = yield* DesktopBackendConfiguration.DesktopBackendConfiguration;
-
-        const primary = yield* configuration.resolvePrimary;
-        const wsl = yield* configuration.resolveWsl({ port: 5000, distro: null });
-
-        assert.equal(wsl.bootstrap.desktopBootstrapToken, primary.bootstrap.desktopBootstrapToken);
-      }),
-    ),
-  );
-
-  it.effect("resolveWsl pins a default-tracking run to the concrete default distro", () =>
+  it.effect("passes the desktop variant state directory to the backend bootstrap", () =>
     Effect.gen(function* () {
       const fileSystem = yield* FileSystem.FileSystem;
-      const path = yield* Path.Path;
       const baseDir = yield* fileSystem.makeTempDirectoryScoped({
         prefix: "t3-desktop-backend-config-test-",
       });
-      const entryPath = path.join(baseDir, "app.asar.unpacked/apps/server/dist/bin.mjs");
-      yield* fileSystem.makeDirectory(path.dirname(entryPath), { recursive: true });
-      yield* fileSystem.writeFileString(entryPath, "");
 
-      const observedDistros: Array<string | null> = [];
-      const config = yield* Effect.gen(function* () {
+      yield* Effect.gen(function* () {
         const configuration = yield* DesktopBackendConfiguration.DesktopBackendConfiguration;
-        return yield* configuration.resolveWsl({ port: 5000, distro: null });
+        const config = yield* configuration.resolve;
+        assert.equal(config.bootstrap.t3Home, baseDir);
+        assert.equal(config.bootstrap.stateDirName, "userdata-gmacko");
       }).pipe(
         Effect.provide(
           DesktopBackendConfiguration.layer.pipe(
             Layer.provideMerge(serverExposureLayer),
-            Layer.provideMerge(DesktopAppSettings.layerTest()),
-            Layer.provideMerge(
-              DesktopWslEnvironment.layerTest({
-                isAvailable: true,
-                distros: [
-                  { name: "Debian", isDefault: false, version: 2 },
-                  { name: "Ubuntu", isDefault: true, version: 2 },
-                ],
-                windowsToWslPath: (distro) => {
-                  observedDistros.push(distro);
-                  return Option.some("/repo/apps/server/dist/bin.mjs");
-                },
-                ensureNodePty: (distro) => {
-                  observedDistros.push(distro);
-                  return { ok: true, nodePath: "/usr/bin/node", resolvedPath: "/usr/bin:/bin" };
-                },
-                getDistroIp: (distro) => {
-                  observedDistros.push(distro);
-                  return Option.some("172.27.0.99");
-                },
-              }),
-            ),
             Layer.provideMerge(
               makeEnvironmentLayer(baseDir, {
-                appPath: baseDir,
-                platform: "win32",
-                resourcesPath: baseDir,
+                appVersion: "0.0.24-gmacko.202606050524",
               }),
             ),
           ),
         ),
       );
-
-      assert.equal(config.runningDistro, "Ubuntu");
-      assert.deepEqual(config.args.slice(0, 2), ["-d", "Ubuntu"]);
-      assert.deepEqual(observedDistros, ["Ubuntu", "Ubuntu", "Ubuntu"]);
-      assert.isTrue(Option.isNone(config.preflightFailure));
     }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
   );
 
-  it.effect(
-    "resolveWsl preserves inherited PATH with quote-sensitive values as separate args",
-    () =>
-      Effect.gen(function* () {
-        const fileSystem = yield* FileSystem.FileSystem;
-        const path = yield* Path.Path;
-        const baseDir = yield* fileSystem.makeTempDirectoryScoped({
-          prefix: "t3-desktop-backend-config-test-",
-        });
-        const entryPath = path.join(baseDir, "app.asar.unpacked/apps/server/dist/bin.mjs");
-        yield* fileSystem.makeDirectory(path.dirname(entryPath), { recursive: true });
-        yield* fileSystem.writeFileString(entryPath, "");
-
-        const nodePath = "/home/test user's/.nvm/versions/node/v22.0.0/bin/node";
-        const linuxEntryPath = "/tmp/t3 code's launch/entry file.mjs";
-        const resolvedPath = "/home/test user/bin:/opt/test's tools/bin:/usr/bin:/bin";
-        const devServerUrl = "http://127.0.0.1:5733/dev%20assets/?label=hello%20world";
-        const config = yield* Effect.gen(function* () {
-          const configuration = yield* DesktopBackendConfiguration.DesktopBackendConfiguration;
-          return yield* configuration.resolveWsl({ port: 5000, distro: "Ubuntu" });
-        }).pipe(
-          Effect.provide(
-            DesktopBackendConfiguration.layer.pipe(
-              Layer.provideMerge(serverExposureLayer),
-              Layer.provideMerge(DesktopAppSettings.layerTest()),
-              Layer.provideMerge(
-                DesktopWslEnvironment.layerTest({
-                  isAvailable: true,
-                  distros: [{ name: "Ubuntu", isDefault: true, version: 2 }],
-                  windowsToWslPath: () => Option.some(linuxEntryPath),
-                  ensureNodePty: () => ({ ok: true, nodePath, resolvedPath }),
-                  getDistroIp: () => Option.some("172.27.0.99"),
-                }),
-              ),
-              Layer.provideMerge(
-                makeEnvironmentLayer(baseDir, {
-                  appPath: baseDir,
-                  devServerUrl,
-                  isPackaged: true,
-                  platform: "win32",
-                  resourcesPath: baseDir,
-                }),
-              ),
-            ),
-          ),
-        );
-
-        assert.equal(config.bootstrapDelivery, "stdin");
-        assert.deepEqual(config.args, [
-          "-d",
-          "Ubuntu",
-          "--exec",
-          "env",
-          "PATH=/home/test user's/.nvm/versions/node/v22.0.0/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/home/test user/bin:/opt/test's tools/bin:/usr/bin:/bin",
-          nodePath,
-          linuxEntryPath,
-          "--bootstrap-fd",
-          "0",
-          "--dev-url",
-          devServerUrl,
-        ]);
-        assert.notInclude(config.args, "bash");
-        assert.notInclude(config.args, "/bin/sh");
-        assert.notInclude(config.args, "-c");
-        assert.isTrue(Option.isNone(config.preflightFailure));
-      }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
-  );
-
-  it.effect("resolvePrimary and resolveWsl share one token under concurrent resolution", () =>
-    withHarness(
-      Effect.gen(function* () {
-        const configuration = yield* DesktopBackendConfiguration.DesktopBackendConfiguration;
-
-        // Resolve both before any token is cached, concurrently, so the
-        // generate step (a yield point) can interleave. The atomic
-        // get-or-create must still hand both the same token; a non-atomic
-        // Ref would let each generate its own and break the shared-token
-        // invariant.
-        const [primary, wsl] = yield* Effect.all(
-          [configuration.resolvePrimary, configuration.resolveWsl({ port: 5000, distro: null })],
-          { concurrency: "unbounded" },
-        );
-
-        assert.equal(wsl.bootstrap.desktopBootstrapToken, primary.bootstrap.desktopBootstrapToken);
-      }),
-    ),
-  );
-
-  it.effect("resolvePrimary surfaces persisted backend observability endpoints", () =>
+  it.effect("includes persisted backend observability endpoints when present", () =>
     withHarness(
       Effect.gen(function* () {
         const fileSystem = yield* FileSystem.FileSystem;
