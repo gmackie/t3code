@@ -21,6 +21,7 @@ import rootPackageJson from "../package.json" with { type: "json" };
 import desktopPackageJson from "../apps/desktop/package.json" with { type: "json" };
 import gnomeCaptureBundle from "../apps/desktop/gnome-extension/bundle.json" with { type: "json" };
 import serverPackageJson from "../apps/server/package.json" with { type: "json" };
+import { getDesktopRuntimeIdentity } from "../apps/desktop/src/appIdentity.js";
 
 import { applyWebBrandAssets } from "./apply-web-brand-assets.ts";
 import {
@@ -74,6 +75,7 @@ const StageWorkspaceConfig = Schema.Struct({
     cpu: Schema.Array(Schema.String),
     libc: Schema.optional(Schema.Array(Schema.String)),
   }),
+  ignoredOptionalDependencies: Schema.Array(Schema.String),
   // pnpm 11 only reads these from pnpm-workspace.yaml (not package.json#pnpm).
   // Without allowBuilds the staged `vp install --prod` fails with
   // ERR_PNPM_IGNORED_BUILDS for packages that have lifecycle scripts.
@@ -1499,6 +1501,10 @@ export function createStageWorkspaceConfig(input: {
 
   return {
     supportedArchitectures,
+    // T3 Code supplies the user's installed Claude executable to the SDK.
+    // These optional packages are bundled CLI copies that release stages do
+    // not execute.
+    ignoredOptionalDependencies: ["@anthropic-ai/claude-agent-sdk-*"],
     ...(allowBuilds && Object.keys(allowBuilds).length > 0 ? { allowBuilds } : {}),
     ...(patchedDependencies && Object.keys(patchedDependencies).length > 0
       ? { patchedDependencies }
@@ -2202,48 +2208,53 @@ export const stageResourceMonitor = Effect.fn("stageResourceMonitor")(function* 
   );
   const builtBinaries: string[] = [];
 
-  for (const rustTarget of rustTargets) {
-    if (!reuseResourceMonitor) {
-      const spawnCommand = yield* resolveSpawnCommand("cargo", [
-        "build",
-        "--locked",
-        "--release",
-        "--manifest-path",
-        manifestPath,
-        "--target",
-        rustTarget,
-      ]);
-      yield* runCommand(
-        ChildProcess.make(spawnCommand.command, spawnCommand.args, {
-          cwd: input.repoRoot,
-          shell: spawnCommand.shell,
-        }),
-        {
-          label: `cargo build resource monitor (${rustTarget})`,
-          verbose: input.verbose,
-        },
-      );
-    }
+  // Windows release artifacts are cross-built on macOS, where the MSVC
+  // monitor target cannot link. The server already degrades cleanly when the
+  // optional monitor is absent.
+  if (input.platform !== "win") {
+    for (const rustTarget of rustTargets) {
+      if (!reuseResourceMonitor) {
+        const spawnCommand = yield* resolveSpawnCommand("cargo", [
+          "build",
+          "--locked",
+          "--release",
+          "--manifest-path",
+          manifestPath,
+          "--target",
+          rustTarget,
+        ]);
+        yield* runCommand(
+          ChildProcess.make(spawnCommand.command, spawnCommand.args, {
+            cwd: input.repoRoot,
+            shell: spawnCommand.shell,
+          }),
+          {
+            label: `cargo build resource monitor (${rustTarget})`,
+            verbose: input.verbose,
+          },
+        );
+      }
 
-    const binaryPath = path.join(
-      input.repoRoot,
-      "native/resource-monitor/target",
-      rustTarget,
-      "release",
-      executableName,
-    );
-    if (!(yield* fs.exists(binaryPath))) {
-      return yield* new ResourceMonitorBuildOutputMissingError({
-        binaryPath,
+      const binaryPath = path.join(
+        input.repoRoot,
+        "native/resource-monitor/target",
         rustTarget,
-        platform: input.platform,
-        arch: input.arch,
-      });
+        "release",
+        executableName,
+      );
+      if (!(yield* fs.exists(binaryPath))) {
+        return yield* new ResourceMonitorBuildOutputMissingError({
+          binaryPath,
+          rustTarget,
+          platform: input.platform,
+          arch: input.arch,
+        });
+      }
+      if (reuseResourceMonitor) {
+        yield* Effect.log(`[desktop-artifact] Reusing cached resource monitor (${rustTarget}).`);
+      }
+      builtBinaries.push(binaryPath);
     }
-    if (reuseResourceMonitor) {
-      yield* Effect.log(`[desktop-artifact] Reusing cached resource monitor (${rustTarget}).`);
-    }
-    builtBinaries.push(binaryPath);
   }
 
   const destinationDirectory = path.join(input.stageResourcesDir, "resource-monitor");
@@ -2253,7 +2264,7 @@ export const stageResourceMonitor = Effect.fn("stageResourceMonitor")(function* 
 
   if (builtBinaries.length === 1) {
     yield* fs.copyFile(builtBinaries[0]!, destinationPath);
-  } else {
+  } else if (builtBinaries.length > 1) {
     yield* runCommand(
       ChildProcess.make("lipo", ["-create", ...builtBinaries, "-output", destinationPath]),
       {
@@ -2535,7 +2546,7 @@ export function resolveDesktopRuntimeDependencies(
 }
 
 export const resolveGitHubPublishConfig = Effect.fn("resolveGitHubPublishConfig")(function* (
-  updateChannel: "latest" | "nightly",
+  updateChannel: "latest" | "nightly" | "gmacko",
 ) {
   const env = yield* Config.all({
     updateRepository: Config.string("T3CODE_DESKTOP_UPDATE_REPOSITORY").pipe(Config.option),
@@ -2555,13 +2566,15 @@ export const resolveGitHubPublishConfig = Effect.fn("resolveGitHubPublishConfig"
     provider: "github",
     owner,
     repo,
-    releaseType: updateChannel === "nightly" ? "prerelease" : "release",
+    releaseType: updateChannel === "latest" ? "release" : "prerelease",
     ...(updateChannel === "nightly" ? { channel: "nightly" as const } : {}),
   };
 });
 
-export function resolveDesktopUpdateChannel(version: string): "latest" | "nightly" {
-  return /-nightly\.\d{8}\.\d+$/.test(version) ? "nightly" : "latest";
+export function resolveDesktopUpdateChannel(version: string): "latest" | "nightly" | "gmacko" {
+  if (/-nightly\.\d{8}\.\d+$/.test(version)) return "nightly";
+  if (/-gmacko\.\d+$/.test(version)) return "gmacko";
+  return "latest";
 }
 
 // Pull request builds (`-pr.<n>.`) and the maintainers' preview train
@@ -2576,15 +2589,25 @@ export function isDesktopPreviewVersion(version: string): boolean {
 }
 
 export function resolveDesktopWebAssetBrand(version: string): WebAssetBrand {
-  return resolveWebAssetBrandForChannel(resolveDesktopUpdateChannel(version));
+  const channel = resolveDesktopUpdateChannel(version);
+  return resolveWebAssetBrandForChannel(channel === "gmacko" ? "latest" : channel);
 }
 
 export function resolveDesktopBuildIconAssets(version: string): DesktopBuildIconAssets {
-  if (resolveDesktopUpdateChannel(version) === "nightly") {
+  const updateChannel = resolveDesktopUpdateChannel(version);
+  if (updateChannel === "nightly") {
     return {
       macIconPng: BRAND_ASSET_PATHS.nightlyMacIconPng,
       linuxIconPng: BRAND_ASSET_PATHS.nightlyLinuxIconPng,
       windowsIconIco: BRAND_ASSET_PATHS.nightlyWindowsIconIco,
+    };
+  }
+
+  if (updateChannel === "gmacko") {
+    return {
+      macIconPng: BRAND_ASSET_PATHS.gmackoMacIconPng,
+      linuxIconPng: BRAND_ASSET_PATHS.gmackoLinuxIconPng,
+      windowsIconIco: BRAND_ASSET_PATHS.gmackoWindowsIconIco,
     };
   }
 
@@ -2613,9 +2636,10 @@ export function resolvePackageManagerUserAgent(packageManager: string): string {
 }
 
 export function resolveDesktopProductName(version: string): string {
-  return resolveDesktopUpdateChannel(version) === "nightly"
-    ? "T3 Code (Nightly)"
-    : (desktopPackageJson.productName ?? "T3 Code");
+  const channel = resolveDesktopUpdateChannel(version);
+  if (channel === "nightly") return "T3 Code (Nightly)";
+  if (channel === "gmacko") return "T3 Code (gmacko)";
+  return desktopPackageJson.productName ?? "T3 Code";
 }
 
 export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
@@ -2637,9 +2661,14 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
   wslRuntimeBundled = false,
   arch?: typeof BuildArch.Type,
 ) {
+  const productName = resolveDesktopProductName(version);
+  const appIdentity = getDesktopRuntimeIdentity({
+    isDevelopment: false,
+    appDisplayName: productName,
+  });
   const buildConfig: Record<string, unknown> = {
-    appId: DESKTOP_APP_ID,
-    productName: resolveDesktopProductName(version),
+    appId: appIdentity.appId,
+    productName,
     artifactName: "T3-Code-${version}-${arch}.${ext}",
     electronLanguages: [...DESKTOP_ELECTRON_LANGUAGES],
     files: [
@@ -2671,12 +2700,19 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
   if (!isDesktopPreviewVersion(version)) {
     const publishConfig = yield* resolveGitHubPublishConfig(updateChannel);
     if (publishConfig) {
-      buildConfig.publish = [publishConfig];
+      buildConfig.publish = [
+        updateChannel === "gmacko"
+          ? { ...publishConfig, updaterCacheDirName: appIdentity.updaterCacheDirName }
+          : publishConfig,
+      ];
     } else if (mockUpdates) {
       buildConfig.publish = [
         {
           provider: "generic",
           url: resolveMockUpdateServerUrl(mockUpdateServerPort),
+          ...(updateChannel === "gmacko"
+            ? { updaterCacheDirName: appIdentity.updaterCacheDirName }
+            : {}),
         },
       ];
     }
@@ -2715,7 +2751,7 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
       // DMG window backgrounds by volume name, so reusing a generic name can
       // make a newly built background look unchanged during testing.
       title: `${resolveDesktopProductName(version)} ${version} Installer`,
-      background: `dmg/dmg-background-${updateChannel}.png`,
+      background: `dmg/dmg-background-${updateChannel === "gmacko" ? "latest" : updateChannel}.png`,
       window: {
         width: 640,
         // The DMG backend derives bounds from the image, including Finder's
@@ -3189,19 +3225,6 @@ export const validateWindowsPackagedPayload = Effect.fn(
     });
   }
 
-  const resourceMonitorPath = path.join(
-    resourcesDir,
-    "resource-monitor",
-    resourceMonitorExecutableName("win"),
-  );
-  if (!(yield* isFile(resourceMonitorPath))) {
-    return yield* new WindowsPackagedPayloadValidationError({
-      reason: "resource-monitor-missing",
-      packagedAppDir,
-      missingFiles: ["resource-monitor/t3-resource-monitor.exe"],
-    });
-  }
-
   const wslArchivePath = path.join(resourcesDir, WSL_RUNTIME_ARCHIVE_NAME);
   const wslArchiveHashPath = path.join(resourcesDir, WSL_RUNTIME_ARCHIVE_HASH_NAME);
   const [hasWslArchive, hasWslArchiveHash] = yield* Effect.all([
@@ -3542,9 +3565,10 @@ const buildDesktopArtifact = Effect.fn("buildDesktopArtifact")(function* (
     }
   }
   if (options.platform === "mac" && options.target === "dmg") {
+    const updateChannel = resolveDesktopUpdateChannel(appVersion);
     yield* stageDesktopDmgBackground(
       stageResourcesDir,
-      resolveDesktopUpdateChannel(appVersion),
+      updateChannel === "gmacko" ? "latest" : updateChannel,
       options.verbose,
     );
   }

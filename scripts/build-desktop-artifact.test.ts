@@ -251,11 +251,13 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
   it("resolves the dedicated nightly updater channel from nightly versions", () => {
     assert.equal(resolveDesktopUpdateChannel("0.0.17-nightly.20260413.42"), "nightly");
     assert.equal(resolveDesktopUpdateChannel("0.0.17"), "latest");
+    assert.equal(resolveDesktopUpdateChannel("0.0.20-gmacko.202604170930"), "gmacko");
   });
 
   it("switches desktop packaging product names to nightly for nightly builds", () => {
     assert.equal(resolveDesktopProductName("0.0.17"), "T3 Code (Alpha)");
     assert.equal(resolveDesktopProductName("0.0.17-nightly.20260413.42"), "T3 Code (Nightly)");
+    assert.equal(resolveDesktopProductName("0.0.20-gmacko.202604170930"), "T3 Code (gmacko)");
   });
 
   it("switches desktop packaging icons to the nightly artwork for nightly versions", () => {
@@ -270,11 +272,18 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
       linuxIconPng: BRAND_ASSET_PATHS.nightlyLinuxIconPng,
       windowsIconIco: BRAND_ASSET_PATHS.nightlyWindowsIconIco,
     });
+
+    assert.deepStrictEqual(resolveDesktopBuildIconAssets("0.0.20-gmacko.202604170930"), {
+      macIconPng: BRAND_ASSET_PATHS.gmackoMacIconPng,
+      linuxIconPng: BRAND_ASSET_PATHS.gmackoLinuxIconPng,
+      windowsIconIco: BRAND_ASSET_PATHS.gmackoWindowsIconIco,
+    });
   });
 
   it("switches the bundled splash and favicon branding for nightly versions", () => {
     assert.equal(resolveDesktopWebAssetBrand("0.0.17"), "production");
     assert.equal(resolveDesktopWebAssetBrand("0.0.17-nightly.20260413.42"), "nightly");
+    assert.equal(resolveDesktopWebAssetBrand("0.0.20-gmacko.202604170930"), "production");
   });
 
   it.effect("resolves GitHub desktop publish config from Effect config", () =>
@@ -439,11 +448,15 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
 
   it("installs optional native dependencies for the target desktop architecture", () => {
     assert.deepStrictEqual(STAGE_INSTALL_ARGS, ["install", "--prod"]);
+    const ignoredClaudeCliPackages = {
+      ignoredOptionalDependencies: ["@anthropic-ai/claude-agent-sdk-*"],
+    };
     assert.deepStrictEqual(createStageWorkspaceConfig({ platform: "mac", arch: "x64" }), {
       supportedArchitectures: {
         os: ["darwin"],
         cpu: ["x64"],
       },
+      ...ignoredClaudeCliPackages,
     });
     assert.deepStrictEqual(createStageWorkspaceConfig({ platform: "linux", arch: "x64" }), {
       supportedArchitectures: {
@@ -451,6 +464,7 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
         cpu: ["x64"],
         libc: ["glibc"],
       },
+      ...ignoredClaudeCliPackages,
     });
     // Windows stages only win32 natives; WSL runs the separately built Linux
     // CLI archive rather than anything installed here.
@@ -459,18 +473,42 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
         os: ["win32"],
         cpu: ["x64"],
       },
+      ...ignoredClaudeCliPackages,
     });
-    assert.deepStrictEqual(createStageWorkspaceConfig({ platform: "win", arch: "arm64" }), {
-      supportedArchitectures: {
-        os: ["win32"],
-        cpu: ["arm64"],
+    // The server sidecar stage bundles the same-architecture WSL (Linux,
+    // glibc) backend, so its install must fetch Linux native optional deps
+    // (e.g. ffi-rs) too — and must be hoisted so the tree survives asar
+    // packing and runtime extraction without symlinks.
+    assert.deepStrictEqual(
+      createStageWorkspaceConfig({ platform: "win", arch: "x64", linuxServerBackend: true }),
+      {
+        supportedArchitectures: {
+          os: ["win32", "linux"],
+          cpu: ["x64"],
+          libc: ["glibc"],
+        },
+        ...ignoredClaudeCliPackages,
+        nodeLinker: "hoisted",
       },
-    });
+    );
+    assert.deepStrictEqual(
+      createStageWorkspaceConfig({ platform: "win", arch: "arm64", linuxServerBackend: true }),
+      {
+        supportedArchitectures: {
+          os: ["win32", "linux"],
+          cpu: ["arm64"],
+          libc: ["glibc"],
+        },
+        ...ignoredClaudeCliPackages,
+        nodeLinker: "hoisted",
+      },
+    );
     assert.deepStrictEqual(createStageWorkspaceConfig({ platform: "mac", arch: "universal" }), {
       supportedArchitectures: {
         os: ["darwin"],
         cpu: ["arm64", "x64"],
       },
+      ...ignoredClaudeCliPackages,
     });
   });
 
@@ -497,6 +535,7 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
           cpu: ["x64"],
           libc: ["glibc"],
         },
+        ignoredOptionalDependencies: ["@anthropic-ai/claude-agent-sdk-*"],
         allowBuilds: {
           electron: true,
           "node-pty": true,
@@ -527,6 +566,7 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
           os: ["darwin"],
           cpu: ["arm64"],
         },
+        ignoredOptionalDependencies: ["@anthropic-ai/claude-agent-sdk-*"],
       },
     );
   });
@@ -1480,7 +1520,11 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
         });
 
         assert.isFalse(
-          commands.some((command) => command.options.env?.ELECTRON_RUN_AS_NODE === "1"),
+          commands.some(
+            (command) =>
+              command.command !== process.execPath &&
+              command.options.env?.ELECTRON_RUN_AS_NODE === "1",
+          ),
         );
         assert.isTrue(
           commands.some(
@@ -1580,20 +1624,13 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
           fixture.packagedAppDir,
           "resources/resource-monitor/t3-resource-monitor.exe",
         );
-        yield* fs.remove(resourceMonitorPath);
-        yield* fs.makeDirectory(resourceMonitorPath);
-
-        const resourceMonitorError = yield* validateWindowsPackagedPayload({
+        yield* fs.remove(resourceMonitorPath, { recursive: true });
+        const withoutResourceMonitor = yield* validateWindowsPackagedPayload({
           stageDistDir: fixture.stageDistDir,
           appExecutableName: fixture.appExecutableName,
           targetArch: "x64",
-          appVersion: WINDOWS_PAYLOAD_FIXTURE_VERSION,
-        }).pipe(Effect.flip);
-        assert.instanceOf(resourceMonitorError, WindowsPackagedPayloadValidationError);
-        assert.equal(resourceMonitorError.reason, "resource-monitor-missing");
-        assert.deepStrictEqual(resourceMonitorError.missingFiles, [
-          "resource-monitor/t3-resource-monitor.exe",
-        ]);
+        });
+        assert.isDefined(withoutResourceMonitor);
       }),
     ),
   );
