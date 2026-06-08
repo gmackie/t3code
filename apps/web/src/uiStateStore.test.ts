@@ -21,6 +21,7 @@ import {
 function makeUiState(overrides: Partial<UiState> = {}): UiState {
   return {
     projectExpandedById: {},
+    projectColorById: {},
     projectOrder: [],
     threadLastVisitedAtById: {},
     threadChangedFilesExpandedById: {},
