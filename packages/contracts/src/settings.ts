@@ -1391,6 +1391,23 @@ const LinearIssueSettingsPatch = Schema.Struct({
   ),
 });
 
+const LinearIssueSettingsPatch = Schema.Struct({
+  enabled: Schema.optionalKey(Schema.Boolean),
+  apiToken: Schema.optionalKey(TrimmedString),
+  domain: Schema.optionalKey(TrimmedString),
+  defaultTeamKey: Schema.optionalKey(TrimmedString),
+  projectMappings: Schema.optionalKey(
+    Schema.Record(
+      ProjectId,
+      Schema.Struct({
+        linearProjectId: TrimmedString,
+        linearProjectName: TrimmedString,
+        teamKey: Schema.optionalKey(TrimmedString),
+      }),
+    ),
+  ),
+});
+
 export const ServerSettingsPatch = Schema.Struct({
   // Server settings
   responseStreamingMode: Schema.optionalKey(ResponseStreamingMode),
