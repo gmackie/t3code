@@ -1,16 +1,14 @@
 import {
   ArchiveIcon,
   ArchiveX,
-  InfoIcon,
   LoaderIcon,
   PlusIcon,
   RefreshCwIcon,
-  SettingsIcon,
+  TerminalIcon,
 } from "lucide-react";
-import { Link } from "@tanstack/react-router";
-import type { CSSProperties, ReactNode } from "react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAtomValue } from "@effect/atom-react";
+import { Link } from "@tanstack/react-router";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   defaultInstanceIdForDriver,
   type BackgroundActivityProfile,
@@ -95,6 +93,7 @@ import {
 } from "../../state/server";
 import { usePrimaryEnvironment } from "../../state/environments";
 import { useProjects } from "../../state/entities";
+import { useServerConfigs } from "../../state/entities";
 import { useArchivedThreadSnapshots } from "../../lib/archivedThreadsState";
 import { formatRelativeTimeLabel, getRelativeTimeState } from "../../timestampFormat";
 import { Button } from "../ui/button";
@@ -109,26 +108,9 @@ import {
 } from "../ui/dialog";
 import { DraftInput } from "../ui/draft-input";
 import { Input } from "../ui/input";
-import {
-  DEFAULT_CODE_FONT_STACK,
-  DEFAULT_SANS_FONT_STACK,
-  isFontFamilyAvailable,
-  isMonospaceFamily,
-  resolveDefaultFamilyLabel,
-  resolveTerminalFontPreference,
-  TYPOGRAPHY_ADVANCED_STORAGE_KEY,
-} from "../../appearanceFonts";
-import { CodeFontPreview, PromptFontPreview, TerminalFontPreview } from "./SettingsFontPreviews";
-import { discoverInstalledFonts, FontFamilyPicker, useFontEnumeration } from "./FontFamilyPicker";
-import {
-  NumberField,
-  NumberFieldDecrement,
-  NumberFieldGroup,
-  NumberFieldIncrement,
-  NumberFieldInput,
-} from "../ui/number-field";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { Switch } from "../ui/switch";
+import { Textarea } from "../ui/textarea";
 import { stackedThreadToast, toastManager } from "../ui/toast";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { AddProviderInstanceDialog } from "./AddProviderInstanceDialog";
@@ -580,6 +562,58 @@ function AboutVersionSection() {
   );
 }
 
+function formatTerminalShellArgs(shellArgs: ReadonlyArray<string>) {
+  return shellArgs.join("\n");
+}
+
+function parseTerminalShellArgs(shellArgsText: string) {
+  return shellArgsText
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+}
+
+function formatTerminalEnv(env: Record<string, string>) {
+  return Object.entries(env)
+    .map(([key, value]) => `${key}=${value}`)
+    .join("\n");
+}
+
+function parseTerminalEnv(envText: string) {
+  const env: Record<string, string> = {};
+  const lines = envText
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+
+  for (const line of lines) {
+    const separatorIndex = line.indexOf("=");
+    if (separatorIndex <= 0) {
+      return {
+        env: null,
+        error: "Environment variables must use KEY=VALUE format.",
+      } as const;
+    }
+
+    const key = line.slice(0, separatorIndex).trim();
+    const value = line.slice(separatorIndex + 1);
+
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) {
+      return {
+        env: null,
+        error: "Environment variable names must start with a letter or underscore.",
+      } as const;
+    }
+
+    env[key] = value;
+  }
+
+  return {
+    env,
+    error: null,
+  } as const;
+}
+
 export function useSettingsRestore(onRestored?: () => void) {
   const { theme, setTheme } = useTheme();
   const settings = usePrimarySettings();
@@ -644,6 +678,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       ...(settings.addProjectBaseDirectory !== DEFAULT_UNIFIED_SETTINGS.addProjectBaseDirectory
         ? ["Add project base directory"]
         : []),
+      ...(!Equal.equals(settings.terminal, DEFAULT_UNIFIED_SETTINGS.terminal) ? ["Terminal"] : []),
       ...(settings.confirmThreadArchive !== DEFAULT_UNIFIED_SETTINGS.confirmThreadArchive
         ? ["Archive confirmation"]
         : []),
@@ -677,7 +712,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       settings.sidebarProjectGroupingMode,
       settings.sidebarThreadPreviewCount,
       settings.timestampFormat,
-      settings.wordWrap,
+      settings.terminal,
       theme,
     ],
   );
@@ -728,273 +763,270 @@ export function useSettingsRestore(onRestored?: () => void) {
   };
 }
 
-function BackgroundActivityAdvancedDialog({
-  open,
-  onOpenChange,
-}: {
-  readonly open: boolean;
-  readonly onOpenChange: (open: boolean) => void;
-}) {
+export function TerminalSettingsPanel() {
   const settings = usePrimarySettings();
   const updateSettings = useUpdatePrimarySettings();
-  const resolvedBackgroundActivity = resolveServerBackgroundActivitySettings(settings);
-  const activeProfile = resolvedBackgroundActivity.profile;
-  const automaticGitFetchIntervalSeconds = durationToSeconds(
-    resolvedBackgroundActivity.automaticGitFetchInterval,
+  const terminalSettings = settings.terminal;
+  const primaryEnvironment = usePrimaryEnvironment();
+  const serverConfigs = useServerConfigs();
+  const serverConfig = primaryEnvironment
+    ? serverConfigs.get(primaryEnvironment.environmentId)
+    : undefined;
+  const currentShell = serverConfig?.terminal?.currentShell ?? "";
+  const [terminalShellArgsDraft, setTerminalShellArgsDraft] = useState(() =>
+    formatTerminalShellArgs(terminalSettings.profile.shellArgs),
   );
-  const providerHealthRefreshIntervalSeconds = durationToSeconds(
-    resolvedBackgroundActivity.providerHealthRefreshInterval,
+  const [terminalEnvDraft, setTerminalEnvDraft] = useState(() =>
+    formatTerminalEnv(terminalSettings.profile.env),
   );
-  const hostPowerMonitorActiveIntervalSeconds = durationToSeconds(
-    resolvedBackgroundActivity.hostPowerMonitorActiveInterval,
+  const [terminalEnvError, setTerminalEnvError] = useState<string | null>(null);
+
+  const updateTerminalProfile = useCallback(
+    (
+      patch: Partial<{
+        shellPath: string;
+        shellArgs: ReadonlyArray<string>;
+        env: Record<string, string>;
+      }>,
+    ) => {
+      updateSettings({
+        terminal: {
+          ...terminalSettings,
+          profile: {
+            ...terminalSettings.profile,
+            ...patch,
+          },
+        },
+      });
+    },
+    [terminalSettings, updateSettings],
   );
-  const hostPowerMonitorIdleIntervalSeconds = durationToSeconds(
-    resolvedBackgroundActivity.hostPowerMonitorIdleInterval,
-  );
+
+  useEffect(() => {
+    setTerminalShellArgsDraft((currentDraft) =>
+      Equal.equals(parseTerminalShellArgs(currentDraft), terminalSettings.profile.shellArgs)
+        ? currentDraft
+        : formatTerminalShellArgs(terminalSettings.profile.shellArgs),
+    );
+  }, [terminalSettings.profile.shellArgs]);
+
+  useEffect(() => {
+    setTerminalEnvDraft((currentDraft) => {
+      const parsedDraft = parseTerminalEnv(currentDraft);
+      if (
+        parsedDraft.error === null &&
+        Equal.equals(parsedDraft.env, terminalSettings.profile.env)
+      ) {
+        return currentDraft;
+      }
+      return formatTerminalEnv(terminalSettings.profile.env);
+    });
+    setTerminalEnvError(null);
+  }, [terminalSettings.profile.env]);
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogPopup className="max-w-xl">
-        <DialogHeader>
-          <DialogTitle>Background Activity</DialogTitle>
-          <DialogDescription>
-            Tune the shared power policy and the background intervals that feed it.
-          </DialogDescription>
-        </DialogHeader>
-        <DialogPanel className="space-y-0 px-6 pb-5">
-          <div className="overflow-hidden rounded-xl border bg-card text-card-foreground">
-            <div className="flex flex-col gap-3 border-b px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-              <div className="min-w-0 space-y-1">
-                <div className="text-sm font-medium">Shared policy</div>
-                <p className="text-xs leading-relaxed text-muted-foreground">
-                  Controls whether background work may run after a subscribed interval fires.
-                </p>
-              </div>
-              <Select
-                value={activeProfile}
-                onValueChange={(value) => {
-                  if (
-                    value === "balanced" ||
-                    value === "performance" ||
-                    value === "battery-saver"
-                  ) {
-                    updateSettings({
-                      backgroundActivity: backgroundActivitySharedPolicySettings(settings, value),
-                    });
-                  }
-                }}
-              >
-                <SelectTrigger className="w-full sm:w-40" aria-label="Shared background policy">
-                  <SelectValue>{BACKGROUND_ACTIVITY_PROFILE_LABELS[activeProfile]}</SelectValue>
-                </SelectTrigger>
-                <SelectPopup align="end" alignItemWithTrigger={false}>
-                  <SelectItem hideIndicator value="balanced">
-                    {BACKGROUND_ACTIVITY_PROFILE_LABELS.balanced}
-                  </SelectItem>
-                  <SelectItem hideIndicator value="performance">
-                    {BACKGROUND_ACTIVITY_PROFILE_LABELS.performance}
-                  </SelectItem>
-                  <SelectItem hideIndicator value="battery-saver">
-                    {BACKGROUND_ACTIVITY_PROFILE_LABELS["battery-saver"]}
-                  </SelectItem>
-                </SelectPopup>
-              </Select>
-            </div>
+    <SettingsPageContainer>
+      <SettingsSection title="Terminal">
+        <SettingsRow
+          title="Environment variables"
+          description="One KEY=value per line. These are merged into every terminal before project/worktree variables are added."
+          resetAction={
+            terminalSettings.environmentVariablesText !==
+            DEFAULT_UNIFIED_SETTINGS.terminal.environmentVariablesText ? (
+              <SettingResetButton
+                label="terminal environment variables"
+                onClick={() =>
+                  updateSettings({
+                    terminal: {
+                      ...terminalSettings,
+                      environmentVariablesText:
+                        DEFAULT_UNIFIED_SETTINGS.terminal.environmentVariablesText,
+                    },
+                  })
+                }
+              />
+            ) : null
+          }
+          control={
+            <Textarea
+              className="min-h-28 w-full font-mono text-xs sm:w-96"
+              value={terminalSettings.environmentVariablesText}
+              onChange={(event) =>
+                updateSettings({
+                  terminal: {
+                    ...terminalSettings,
+                    environmentVariablesText: event.target.value,
+                  },
+                })
+              }
+              placeholder={"T3_SANDBOX=1\nFEATURE_FLAG=true"}
+              spellCheck={false}
+              aria-label="Terminal environment variables"
+            />
+          }
+        />
 
-            <div className="flex flex-col gap-3 border-b px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-              <div className="min-w-0 space-y-1">
-                <div className="text-sm font-medium">Git fetch interval</div>
-                <p className="text-xs leading-relaxed text-muted-foreground">
-                  Refresh remote branch status in the background.
-                </p>
-              </div>
-              <div className="flex shrink-0 items-center gap-2">
-                <NumberField
-                  value={automaticGitFetchIntervalSeconds}
-                  min={0}
-                  step={5}
-                  size="sm"
-                  className="w-32"
-                  onValueChange={(value) =>
-                    updateSettings(
-                      backgroundActivityOverrideSettings(
-                        settings.backgroundActivity,
-                        resolvedBackgroundActivity,
-                        {
-                          automaticGitFetchInterval: Duration.seconds(
-                            normalizeIntervalSeconds(value),
-                          ),
-                        },
-                      ),
-                    )
-                  }
-                >
-                  <NumberFieldGroup>
-                    <NumberFieldDecrement aria-label="Decrease Git fetch interval" />
-                    <NumberFieldInput aria-label="Git fetch interval in seconds" />
-                    <NumberFieldIncrement aria-label="Increase Git fetch interval" />
-                  </NumberFieldGroup>
-                </NumberField>
-                <span className="text-xs text-muted-foreground">seconds</span>
-              </div>
-            </div>
+        <SettingsRow
+          title="Zsh startup directory"
+          description='Sets ZDOTDIR for integrated terminals. Point this at a directory containing a separate ".zshrc".'
+          resetAction={
+            terminalSettings.zshStartupDirectory !==
+            DEFAULT_UNIFIED_SETTINGS.terminal.zshStartupDirectory ? (
+              <SettingResetButton
+                label="zsh startup directory"
+                onClick={() =>
+                  updateSettings({
+                    terminal: {
+                      ...terminalSettings,
+                      zshStartupDirectory: DEFAULT_UNIFIED_SETTINGS.terminal.zshStartupDirectory,
+                    },
+                  })
+                }
+              />
+            ) : null
+          }
+          control={
+            <Input
+              className="w-full sm:w-96"
+              value={terminalSettings.zshStartupDirectory}
+              onChange={(event) =>
+                updateSettings({
+                  terminal: {
+                    ...terminalSettings,
+                    zshStartupDirectory: event.target.value,
+                  },
+                })
+              }
+              placeholder="~/.config/t3code/zsh"
+              spellCheck={false}
+              aria-label="Zsh startup directory"
+            />
+          }
+        />
 
-            <div className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-              <div className="min-w-0 space-y-1">
-                <div className="text-sm font-medium">Provider health interval</div>
-                <p className="text-xs leading-relaxed text-muted-foreground">
-                  Refresh provider availability, versions, auth state, and model metadata.
-                </p>
-              </div>
-              <div className="flex shrink-0 items-center gap-2">
-                <NumberField
-                  value={providerHealthRefreshIntervalSeconds}
-                  min={0}
-                  step={PROVIDER_HEALTH_INTERVAL_STEP_SECONDS}
-                  size="sm"
-                  className="w-32"
-                  onValueChange={(value) =>
-                    updateSettings(
-                      backgroundActivityOverrideSettings(
-                        settings.backgroundActivity,
-                        resolvedBackgroundActivity,
-                        {
-                          providerHealthRefreshInterval: Duration.seconds(
-                            normalizeIntervalSeconds(value),
-                          ),
-                        },
-                      ),
-                    )
-                  }
-                >
-                  <NumberFieldGroup>
-                    <NumberFieldDecrement aria-label="Decrease provider health interval" />
-                    <NumberFieldInput aria-label="Provider health interval in seconds" />
-                    <NumberFieldIncrement aria-label="Increase provider health interval" />
-                  </NumberFieldGroup>
-                </NumberField>
-                <span className="text-xs text-muted-foreground">seconds</span>
-              </div>
-            </div>
+        <SettingsRow
+          title="Shell executable override"
+          description="Optional absolute path for a different shell."
+          resetAction={
+            terminalSettings.profile.shellPath !==
+            DEFAULT_UNIFIED_SETTINGS.terminal.profile.shellPath ? (
+              <SettingResetButton
+                label="terminal shell path"
+                onClick={() =>
+                  updateTerminalProfile({
+                    shellPath: DEFAULT_UNIFIED_SETTINGS.terminal.profile.shellPath,
+                  })
+                }
+              />
+            ) : null
+          }
+          control={
+            <Input
+              className="w-full sm:w-96"
+              value={terminalSettings.profile.shellPath}
+              onChange={(event) => updateTerminalProfile({ shellPath: event.target.value })}
+              placeholder={currentShell}
+              spellCheck={false}
+              aria-label="Terminal shell path"
+            />
+          }
+        />
 
-            <div className="flex flex-col gap-3 border-t px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-              <div className="min-w-0 space-y-1">
-                <div className="text-sm font-medium">Host power monitor</div>
-                <p className="text-xs leading-relaxed text-muted-foreground">
-                  Poll host power state while clients are active.
-                </p>
-              </div>
-              <div className="flex shrink-0 items-center gap-2">
-                <NumberField
-                  value={hostPowerMonitorActiveIntervalSeconds}
-                  min={5}
-                  step={5}
-                  size="sm"
-                  className="w-32"
-                  onValueChange={(value) =>
-                    updateSettings(
-                      backgroundActivityOverrideSettings(
-                        settings.backgroundActivity,
-                        resolvedBackgroundActivity,
-                        {
-                          hostPowerMonitorActiveInterval: Duration.seconds(
-                            normalizeIntervalSeconds(value, 5),
-                          ),
-                        },
-                      ),
-                    )
-                  }
-                >
-                  <NumberFieldGroup>
-                    <NumberFieldDecrement aria-label="Decrease active host power interval" />
-                    <NumberFieldInput aria-label="Active host power interval in seconds" />
-                    <NumberFieldIncrement aria-label="Increase active host power interval" />
-                  </NumberFieldGroup>
-                </NumberField>
-                <span className="text-xs text-muted-foreground">seconds</span>
-              </div>
-            </div>
+        <SettingsRow
+          title="Shell arguments"
+          description="Optional startup arguments for the terminal shell. Enter one argument per line."
+          resetAction={
+            !Equal.equals(
+              terminalSettings.profile.shellArgs,
+              DEFAULT_UNIFIED_SETTINGS.terminal.profile.shellArgs,
+            ) ? (
+              <SettingResetButton
+                label="terminal shell arguments"
+                onClick={() =>
+                  updateTerminalProfile({
+                    shellArgs: DEFAULT_UNIFIED_SETTINGS.terminal.profile.shellArgs,
+                  })
+                }
+              />
+            ) : null
+          }
+          control={
+            <Textarea
+              className="min-h-24 w-full font-mono text-xs sm:w-96"
+              value={terminalShellArgsDraft}
+              onChange={(event) => {
+                const nextValue = event.target.value;
+                setTerminalShellArgsDraft(nextValue);
+                updateTerminalProfile({ shellArgs: parseTerminalShellArgs(nextValue) });
+              }}
+              placeholder={"-l\n--norc"}
+              spellCheck={false}
+              aria-label="Terminal shell arguments"
+            />
+          }
+        />
 
-            <div className="flex flex-col gap-3 border-t px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-              <div className="min-w-0 space-y-1">
-                <div className="text-sm font-medium">Idle host monitor</div>
-                <p className="text-xs leading-relaxed text-muted-foreground">
-                  Poll host power state when no foreground client is active.
-                </p>
-              </div>
-              <div className="flex shrink-0 items-center gap-2">
-                <NumberField
-                  value={hostPowerMonitorIdleIntervalSeconds}
-                  min={5}
-                  step={30}
-                  size="sm"
-                  className="w-32"
-                  onValueChange={(value) =>
-                    updateSettings(
-                      backgroundActivityOverrideSettings(
-                        settings.backgroundActivity,
-                        resolvedBackgroundActivity,
-                        {
-                          hostPowerMonitorIdleInterval: Duration.seconds(
-                            normalizeIntervalSeconds(value, 5),
-                          ),
-                        },
-                      ),
-                    )
-                  }
-                >
-                  <NumberFieldGroup>
-                    <NumberFieldDecrement aria-label="Decrease idle host power interval" />
-                    <NumberFieldInput aria-label="Idle host power interval in seconds" />
-                    <NumberFieldIncrement aria-label="Increase idle host power interval" />
-                  </NumberFieldGroup>
-                </NumberField>
-                <span className="text-xs text-muted-foreground">seconds</span>
-              </div>
-            </div>
+        <SettingsRow
+          title="Profile environment"
+          description="Environment variables passed directly to the terminal profile. One KEY=value per line."
+          resetAction={
+            !Equal.equals(
+              terminalSettings.profile.env,
+              DEFAULT_UNIFIED_SETTINGS.terminal.profile.env,
+            ) ? (
+              <SettingResetButton
+                label="terminal profile environment variables"
+                onClick={() =>
+                  updateTerminalProfile({
+                    env: DEFAULT_UNIFIED_SETTINGS.terminal.profile.env,
+                  })
+                }
+              />
+            ) : null
+          }
+          status={
+            terminalEnvError ? <span className="text-destructive">{terminalEnvError}</span> : null
+          }
+          control={
+            <Textarea
+              className="min-h-28 w-full font-mono text-xs sm:w-96"
+              value={terminalEnvDraft}
+              onChange={(event) => {
+                const nextValue = event.target.value;
+                setTerminalEnvDraft(nextValue);
+                const parsed = parseTerminalEnv(nextValue);
+                setTerminalEnvError(parsed.error);
+                if (parsed.error !== null) {
+                  return;
+                }
 
-            <div className="grid gap-0 border-t sm:grid-cols-2">
-              {BACKGROUND_ACTIVITY_BOOLEAN_OVERRIDES.map(({ key, label }) => (
-                <label
-                  key={key}
-                  className="flex items-center justify-between gap-3 border-b px-4 py-3 last:border-b-0 sm:border-r sm:even:border-r-0"
-                >
-                  <span className="text-sm font-medium">{label}</span>
-                  <Switch
-                    checked={resolvedBackgroundActivity[key]}
-                    onCheckedChange={(checked) =>
-                      updateSettings(
-                        backgroundActivityOverrideSettings(
-                          settings.backgroundActivity,
-                          resolvedBackgroundActivity,
-                          {
-                            [key]: Boolean(checked),
-                          },
-                        ),
-                      )
-                    }
-                    aria-label={label}
-                  />
-                </label>
-              ))}
-            </div>
-          </div>
-        </DialogPanel>
-        <DialogFooter>
-          <Button
-            variant="outline"
-            onClick={() => updateSettings(resetBackgroundActivitySettings())}
-          >
-            Reset all
-          </Button>
-          <Button onClick={() => onOpenChange(false)}>Done</Button>
-        </DialogFooter>
-      </DialogPopup>
-    </Dialog>
+                updateTerminalProfile({ env: parsed.env });
+              }}
+              placeholder={"TERM_PROGRAM=T3Code\nTERM=xterm-256color"}
+              spellCheck={false}
+              aria-label="Terminal profile environment variables"
+            />
+          }
+        />
+      </SettingsSection>
+
+      <SettingsSection title="How it works">
+        <SettingsRow
+          title={
+            <span className="inline-flex items-center gap-2">
+              <TerminalIcon className="size-4 text-muted-foreground" />
+              Terminal startup
+            </span>
+          }
+          description="T3 Code passes these values through the existing terminal env override path, so regular terminals, script terminals, and worktree terminals share the same base environment."
+          control={null}
+        />
+      </SettingsSection>
+    </SettingsPageContainer>
   );
 }
 
-export function AppearanceSettingsPanel() {
+export function GeneralSettingsPanel() {
   const { theme, setTheme } = useTheme();
   const settings = usePrimarySettings();
   const updateSettings = useUpdatePrimarySettings();
