@@ -8,6 +8,7 @@ import {
   createStagePnpmConfig,
   resolveDesktopRuntimeDependencies,
   resolveBuildOptions,
+  resolveDesktopBuildAppId,
   resolveDesktopBuildIconAssets,
   resolveDesktopProductName,
   resolveDesktopUpdateChannel,
@@ -20,11 +21,21 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
   it("resolves the dedicated nightly updater channel from nightly versions", () => {
     assert.equal(resolveDesktopUpdateChannel("0.0.17-nightly.20260413.42"), "nightly");
     assert.equal(resolveDesktopUpdateChannel("0.0.17"), "latest");
+    assert.equal(resolveDesktopUpdateChannel("0.0.20-gmacko.202604170930"), "gmacko");
   });
 
   it("switches desktop packaging product names to nightly for nightly builds", () => {
     assert.equal(resolveDesktopProductName("0.0.17"), "T3 Code (Alpha)");
     assert.equal(resolveDesktopProductName("0.0.17-nightly.20260413.42"), "T3 Code (Nightly)");
+    assert.equal(resolveDesktopProductName("0.0.20-gmacko.202604170930"), "T3 Code (gmacko)");
+  });
+
+  it("switches desktop packaging bundle ids for gmacko builds", () => {
+    assert.equal(resolveDesktopBuildAppId("0.0.17"), "com.t3tools.t3code");
+    assert.equal(
+      resolveDesktopBuildAppId("0.0.20-gmacko.202604170930"),
+      "com.t3tools.t3code.gmacko",
+    );
   });
 
   it("switches desktop packaging icons to the nightly artwork for nightly versions", () => {
@@ -39,6 +50,16 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
       linuxIconPng: BRAND_ASSET_PATHS.nightlyLinuxIconPng,
       windowsIconIco: BRAND_ASSET_PATHS.nightlyWindowsIconIco,
     });
+
+    assert.deepStrictEqual(resolveDesktopBuildIconAssets("0.0.20-gmacko.202604170930"), {
+      macIconPng: BRAND_ASSET_PATHS.gmackoMacIconPng,
+      linuxIconPng: BRAND_ASSET_PATHS.gmackoLinuxIconPng,
+      windowsIconIco: BRAND_ASSET_PATHS.gmackoWindowsIconIco,
+    });
+  });
+
+  it("uses the white production mac icon asset", () => {
+    assert.equal(BRAND_ASSET_PATHS.productionMacIconPng, "assets/prod/white-macos-1024.png");
   });
 
   it("omits bundled workspace packages from staged desktop dependencies", () => {

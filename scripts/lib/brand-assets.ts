@@ -1,5 +1,5 @@
 export const BRAND_ASSET_PATHS = {
-  productionMacIconPng: "assets/prod/black-macos-1024.png",
+  productionMacIconPng: "assets/prod/white-macos-1024.png",
   productionLinuxIconPng: "assets/prod/black-universal-1024.png",
   productionWindowsIconIco: "assets/prod/t3-black-windows.ico",
   productionWebFaviconIco: "assets/prod/t3-black-web-favicon.ico",
@@ -14,6 +14,10 @@ export const BRAND_ASSET_PATHS = {
   nightlyWebFavicon16Png: "assets/nightly/blueprint-web-favicon-16x16.png",
   nightlyWebFavicon32Png: "assets/nightly/blueprint-web-favicon-32x32.png",
   nightlyWebAppleTouchIconPng: "assets/nightly/blueprint-web-apple-touch-180.png",
+
+  gmackoMacIconPng: "assets/gmacko/blueprint-gmacko-macos-1024.png",
+  gmackoLinuxIconPng: "assets/gmacko/blueprint-gmacko-universal-1024.png",
+  gmackoWindowsIconIco: "assets/gmacko/blueprint-gmacko-windows.ico",
 
   developmentDesktopIconPng: "assets/dev/blueprint-macos-1024.png",
   developmentWindowsIconIco: "assets/dev/blueprint-windows.ico",
