@@ -42,6 +42,7 @@ import {
   AlarmClockOffIcon,
   CheckIcon,
   ChevronDownIcon,
+  ClipboardListIcon,
   CircleAlertIcon,
   CircleCheckIcon,
   CircleDashedIcon,
@@ -2142,6 +2143,23 @@ export default function Sidebar() {
     [openProjectSettings],
   );
 
+  const handleProjectIssues = useCallback(
+    (
+      event: ReactMouseEvent<HTMLButtonElement>,
+      project: Pick<SidebarProjectSnapshot, "environmentId" | "id">,
+    ) => {
+      event.preventDefault();
+      event.stopPropagation();
+      dispatchProjectScopeMenu({ type: "open-changed", open: false });
+      if (isMobile) setOpenMobile(false);
+      void router.navigate({
+        to: "/project/$environmentId/$projectId",
+        params: { environmentId: project.environmentId, projectId: project.id },
+      });
+    },
+    [isMobile, router, setOpenMobile],
+  );
+
   // Settled threads stay in the live shell stream (settled ≠ archived), so
   // the partition works directly off live shells: no archived-snapshot
   // merging, no optimistic holds. Archived threads remain hidden here —
@@ -3677,6 +3695,12 @@ export default function Sidebar() {
                     <ComboboxList>
                       {(item: (typeof projectScopeItems)[number]) => {
                         const project = projectGroupByScopeKey.get(item.value) ?? null;
+                        const issueProject = project?.memberProjects.find((member) =>
+                          Boolean(
+                            serverConfigs.get(member.environmentId)?.settings.issues.linear
+                              .projectMappings[member.id],
+                          ),
+                        );
                         return (
                           <ComboboxItem
                             key={item.value}
@@ -3698,13 +3722,28 @@ export default function Sidebar() {
                               <FolderIcon className="size-4 shrink-0" />
                             )}
                             <span className="min-w-0 flex-1 truncate text-sm">{item.label}</span>
+                            {issueProject ? (
+                              <Button
+                                size="icon-xs"
+                                variant="ghost-muted"
+                                aria-label={`Linear issues for ${project?.displayName ?? item.label}`}
+                                title={`Linear issues for ${project?.displayName ?? item.label}`}
+                                className="ml-auto size-6 [--control-icon-color:currentColor] text-icon-muted focus-visible:bg-accent focus-visible:text-foreground"
+                                onPointerDown={(event) => event.stopPropagation()}
+                                onClick={(event) => {
+                                  handleProjectIssues(event, issueProject);
+                                }}
+                              >
+                                <ClipboardListIcon className="size-3.5" />
+                              </Button>
+                            ) : null}
                             {project ? (
                               <Button
                                 size="icon-xs"
                                 variant="ghost-muted"
                                 aria-label={`Project settings for ${project.displayName}`}
                                 title={`Project settings for ${project.displayName}`}
-                                className="ml-auto size-6 [--control-icon-color:currentColor] text-icon-muted focus-visible:bg-accent focus-visible:text-foreground"
+                                className="size-6 [--control-icon-color:currentColor] text-icon-muted focus-visible:bg-accent focus-visible:text-foreground"
                                 onPointerDown={(event) => event.stopPropagation()}
                                 onClick={(event) => {
                                   void handleProjectSettings(event, project);
