@@ -163,6 +163,12 @@ function assertContains(haystack: string, needle: string, message: string): void
   }
 }
 
+function assertNotContains(haystack: string, needle: string, message: string): void {
+  if (haystack.includes(needle)) {
+    throw new Error(message);
+  }
+}
+
 function assertExists(path: string, message: string): void {
   if (!NodeFS.existsSync(path)) {
     throw new Error(message);
@@ -185,9 +191,158 @@ function assertMissing(path: string, message: string): void {
   }
 }
 
+function assertWorkflowSupportsGmackoForkReleases(): void {
+  const workflow = NodeFS.readFileSync(
+    NodePath.resolve(repoRoot, ".github/workflows/release.yml"),
+    "utf8",
+  );
+  const gmackoSyncWorkflow = NodeFS.readFileSync(
+    NodePath.resolve(repoRoot, ".github/workflows/gmacko-sync-upstream.yml"),
+    "utf8",
+  );
+  assertContains(workflow, "- gmacko", "Release workflow is missing the gmacko channel option.");
+  assertContains(
+    workflow,
+    "workflow_dispatch gmacko releases must run from custom-local.",
+    "Release workflow does not enforce custom-local for manual gmacko releases.",
+  );
+  assertContains(
+    workflow,
+    "workflow_dispatch gmacko releases must run in gmackie/t3code.",
+    "Release workflow does not enforce the gmackie/t3code fork for manual gmacko releases.",
+  );
+  assertContains(
+    workflow,
+    'if [[ -n "$GMACKO_DATE" ]]; then',
+    "Release workflow does not guard against missing GitHub run timestamps.",
+  );
+  assertContains(
+    workflow,
+    'gmacko_stamp="$(date -u +%Y%m%d%H%M)"',
+    "Release workflow does not fall back to the runner UTC timestamp for gmacko releases.",
+  );
+  assertContains(
+    workflow,
+    "tag-triggered gmacko releases must run in gmackie/t3code.",
+    "Release workflow does not enforce the gmackie/t3code fork for tag-triggered gmacko releases.",
+  );
+  assertNotContains(
+    workflow,
+    "schedule:",
+    "Release workflow still contains upstream-owned scheduled nightly releases.",
+  );
+  assertNotContains(
+    workflow,
+    "- stable",
+    "Release workflow still exposes the upstream-owned stable channel.",
+  );
+  assertNotContains(
+    workflow,
+    "- nightly",
+    "Release workflow still exposes the upstream-owned nightly channel.",
+  );
+  assertNotContains(
+    workflow,
+    "publish_cli:",
+    "Release workflow still contains upstream-owned CLI publishing.",
+  );
+  assertNotContains(
+    workflow,
+    "deploy_web:",
+    "Release workflow still contains upstream-owned hosted web deploy.",
+  );
+  assertNotContains(
+    workflow,
+    "finalize:",
+    "Release workflow still contains upstream-owned stable release finalization.",
+  );
+  assertNotContains(
+    workflow,
+    "Announce release on Discord",
+    "Release workflow still contains upstream-owned Discord release announcements.",
+  );
+  assertNotContains(
+    workflow,
+    "pingdotgg/t3code",
+    "Release workflow still references the upstream repository.",
+  );
+  assertNotContains(
+    workflow,
+    "repository: ${{ needs.preflight.outputs.release_channel == 'gmacko' && 'gmackie/t3code' || github.repository }}",
+    "Release workflow still falls back to publishing releases in the workflow repository.",
+  );
+  assertContains(
+    workflow,
+    "steps.release_token.outputs.token",
+    "Release workflow does not use the fork-compatible release token fallback.",
+  );
+  assertContains(
+    workflow,
+    "contents: write",
+    "Release workflow does not grant content write permission needed to publish gmacko releases.",
+  );
+  assertContains(
+    workflow,
+    "id-token: write",
+    "Release workflow does not grant id-token permission needed by the release lane.",
+  );
+  assertContains(
+    workflow,
+    "T3CODE_DESKTOP_UPDATE_REPOSITORY: gmackie/t3code",
+    "Release workflow does not point gmacko updater metadata at the fork repository.",
+  );
+  assertContains(
+    workflow,
+    "macOS signing is required for gmacko releases; missing one or more Apple signing secrets.",
+    "Release workflow must fail macOS gmacko builds when Apple signing secrets are missing.",
+  );
+  assertContains(
+    workflow,
+    "Validate gmacko macOS signing secrets",
+    "Release workflow must validate gmacko macOS signing secrets before running build jobs.",
+  );
+  assertNotContains(
+    workflow,
+    "macOS signing disabled (missing one or more Apple signing secrets).",
+    "Release workflow must not publish unsigned macOS gmacko updater artifacts.",
+  );
+  assertContains(
+    workflow,
+    "repository: gmackie/t3code",
+    "Release workflow does not publish gmacko GitHub releases to the fork repository.",
+  );
+  assertContains(
+    gmackoSyncWorkflow,
+    "github.repository == 'gmackie/t3code'",
+    "Gmacko sync workflow does not stay scoped to the gmackie/t3code fork.",
+  );
+  assertContains(
+    gmackoSyncWorkflow,
+    "git fetch upstream main",
+    "Gmacko sync workflow does not fetch upstream main.",
+  );
+  assertContains(
+    gmackoSyncWorkflow,
+    "git merge --no-edit -X theirs upstream/main",
+    "Gmacko sync workflow does not merge upstream main into custom-local.",
+  );
+  assertContains(
+    gmackoSyncWorkflow,
+    "git push origin HEAD:custom-local",
+    "Gmacko sync workflow does not push the merged custom-local branch.",
+  );
+  assertContains(
+    gmackoSyncWorkflow,
+    "gh workflow run release.yml --ref custom-local -f channel=gmacko",
+    "Gmacko sync workflow does not dispatch the gmacko release workflow.",
+  );
+}
+
 const tempRoot = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "t3-release-smoke-"));
 
 try {
+  assertWorkflowSupportsGmackoForkReleases();
+
   copyWorkspaceManifestFixture(tempRoot);
 
   NodeChildProcess.execFileSync(
@@ -255,6 +410,36 @@ try {
     nightlyReleaseMetadata,
     "name=T3 Code Nightly 9.9.10-nightly.20260413.321 (abcdef123456)",
     "Expected nightly metadata to include the short commit SHA in the release name.",
+  );
+
+  const gmackoReleaseMetadata = NodeChildProcess.execFileSync(
+    process.execPath,
+    [
+      NodePath.resolve(repoRoot, "scripts/resolve-gmacko-release.ts"),
+      "--stamp",
+      "202604300228",
+      "--root",
+      tempRoot,
+    ],
+    {
+      cwd: repoRoot,
+      encoding: "utf8",
+    },
+  );
+  assertContains(
+    gmackoReleaseMetadata,
+    "version=9.9.9-gmacko.202604300228",
+    "Expected gmacko metadata to contain the derived gmacko version.",
+  );
+  assertContains(
+    gmackoReleaseMetadata,
+    "tag=v9.9.9-gmacko.202604300228",
+    "Expected gmacko metadata to contain the derived gmacko tag.",
+  );
+  assertContains(
+    gmackoReleaseMetadata,
+    "name=T3 Code (gmacko) 9.9.9-gmacko.202604300228",
+    "Expected gmacko metadata to contain the derived release name.",
   );
 
   const { arm64Path, x64Path } = writeMacManifestFixtures(tempRoot);

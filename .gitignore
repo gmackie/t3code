@@ -5,7 +5,6 @@ node_modules
 *.log
 *.tsbuildinfo
 apps/*/dist
-infra/*/dist
 .astro
 packages/*/dist
 .env
@@ -19,6 +18,8 @@ release-mock/
 apps/web/.playwright
 apps/web/playwright-report
 apps/web/src/components/__screenshots__
+apps/mobile/.expo/
+apps/mobile/ios/
 .vitest-*
 __screenshots__/
 .tanstack
@@ -27,8 +28,3 @@ squashfs-root/
 .gstack/
 dist-electron/
 .electron-runtime/
-node_modules/
-.alchemy/
-*.log
-.env*
-!.env.example

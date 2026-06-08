@@ -46,6 +46,7 @@ function makeEnvironmentLayer(
   baseDir: string,
   options?: {
     readonly isPackaged?: boolean;
+    readonly appVersion?: string;
     readonly devServerUrl?: string;
   },
 ) {
@@ -54,7 +55,7 @@ function makeEnvironmentLayer(
     homeDirectory: baseDir,
     platform: "darwin",
     processArch: "x64",
-    appVersion: "1.2.3",
+    appVersion: options?.appVersion ?? "1.2.3",
     appPath: "/repo",
     isPackaged: options?.isPackaged ?? true,
     resourcesPath: "/missing/resources",
@@ -125,12 +126,40 @@ describe("DesktopBackendConfiguration", () => {
         assert.equal(first.bootstrap.port, 4888);
         assert.equal(first.bootstrap.host, "0.0.0.0");
         assert.equal(first.bootstrap.t3Home, environment.baseDir);
+        assert.equal(first.bootstrap.stateDirName, "userdata");
         assert.equal(first.bootstrap.tailscaleServeEnabled, true);
         assert.equal(first.bootstrap.tailscaleServePort, 8443);
         assert.match(first.bootstrap.desktopBootstrapToken, /^[0-9a-f]{48}$/i);
         assert.equal(second.bootstrap.desktopBootstrapToken, first.bootstrap.desktopBootstrapToken);
       }),
     ),
+  );
+
+  it.effect("passes the desktop variant state directory to the backend bootstrap", () =>
+    Effect.gen(function* () {
+      const fileSystem = yield* FileSystem.FileSystem;
+      const baseDir = yield* fileSystem.makeTempDirectoryScoped({
+        prefix: "t3-desktop-backend-config-test-",
+      });
+
+      yield* Effect.gen(function* () {
+        const configuration = yield* DesktopBackendConfiguration.DesktopBackendConfiguration;
+        const config = yield* configuration.resolve;
+        assert.equal(config.bootstrap.t3Home, baseDir);
+        assert.equal(config.bootstrap.stateDirName, "userdata-gmacko");
+      }).pipe(
+        Effect.provide(
+          DesktopBackendConfiguration.layer.pipe(
+            Layer.provideMerge(serverExposureLayer),
+            Layer.provideMerge(
+              makeEnvironmentLayer(baseDir, {
+                appVersion: "0.0.24-gmacko.202606050524",
+              }),
+            ),
+          ),
+        ),
+      );
+    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
   );
 
   it.effect("includes persisted backend observability endpoints when present", () =>

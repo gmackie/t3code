@@ -126,6 +126,7 @@ const resolveBackendStartConfig = Effect.fn("desktop.backendConfiguration.resolv
         noBrowser: true,
         port: backendExposure.port,
         t3Home: environment.baseDir,
+        stateDirName: environment.path.basename(environment.stateDir),
         host: backendExposure.bindHost,
         desktopBootstrapToken: input.bootstrapToken,
         tailscaleServeEnabled: backendExposure.tailscaleServeEnabled,

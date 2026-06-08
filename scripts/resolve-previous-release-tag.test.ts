@@ -211,3 +211,28 @@ it.effect("preserves the GITHUB_OUTPUT append path and exact cause", () => {
     assert.notInclude(appendError.message, appendCause.message);
   });
 });
+
+it.effect("resolves the previous gmacko tag independently from stable and nightly tags", () =>
+  Effect.gen(function* () {
+    const previous = yield* resolvePreviousReleaseTag("gmacko", "v0.0.21-gmacko.202604300228", [
+      "v0.0.20",
+      "v0.0.21-gmacko.202604280101",
+      "v0.0.21-nightly.20260429.9",
+      "v0.0.21-gmacko.202604290101",
+    ]);
+
+    assert.equal(previous, "v0.0.21-gmacko.202604290101");
+  }),
+);
+
+it.effect("does not treat gmacko tags as stable release candidates", () =>
+  Effect.gen(function* () {
+    const previous = yield* resolvePreviousReleaseTag("stable", "v0.0.22", [
+      "v0.0.20",
+      "v0.0.21-gmacko.202604300228",
+      "v0.0.21-nightly.20260429.9",
+    ]);
+
+    assert.equal(previous, "v0.0.20");
+  }),
+);

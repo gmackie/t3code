@@ -9,10 +9,12 @@ import { resolveSpawnCommand } from "@t3tools/shared/shell";
 import rootPackageJson from "../package.json" with { type: "json" };
 import desktopPackageJson from "../apps/desktop/package.json" with { type: "json" };
 import serverPackageJson from "../apps/server/package.json" with { type: "json" };
+import { getDesktopRuntimeIdentity } from "../apps/desktop/src/appIdentity.js";
 
 import { BRAND_ASSET_PATHS } from "./lib/brand-assets.ts";
 import { getDefaultBuildArch } from "./lib/build-target-arch.ts";
 import { loadRepoEnv } from "./lib/public-config.ts";
+import { resolveDesktopAppDisplayName } from "./lib/desktopAppIdentity.ts";
 import { resolveCatalogDependencies } from "./lib/resolve-catalog.ts";
 
 import * as NodeRuntime from "@effect/platform-node/NodeRuntime";
@@ -438,11 +440,13 @@ const resolveGitCommitHash = Effect.fn("resolveGitCommitHash")(function* (repoRo
       cwd: repoRoot,
     }),
   ).pipe(
-    Effect.orElseSucceed(() => ({
-      stdout: "",
-      stderr: "",
-      exitCode: 1,
-    })),
+    Effect.catch(() =>
+      Effect.succeed({
+        stdout: "",
+        stderr: "",
+        exitCode: 1,
+      }),
+    ),
   );
 
   if (result.exitCode !== 0) {
@@ -486,11 +490,13 @@ const resolvePythonForNodeGyp = Effect.fn("resolvePythonForNodeGyp")(function* (
   const probe = yield* spawnAndCollectOutput(
     ChildProcess.make("python", ["-c", "import sys;print(sys.executable)"]),
   ).pipe(
-    Effect.orElseSucceed(() => ({
-      stdout: "",
-      stderr: "",
-      exitCode: 1,
-    })),
+    Effect.catch(() =>
+      Effect.succeed({
+        stdout: "",
+        stderr: "",
+        exitCode: 1,
+      }),
+    ),
   );
 
   if (probe.exitCode !== 0) {
@@ -679,6 +685,7 @@ function normalizePasskeyRpDomain(value: string): string {
 
 export function resolveMacPasskeySigningConfiguration(
   env: Readonly<Record<string, string | undefined>>,
+  appId: string = DESKTOP_APP_ID,
 ): MacPasskeySigningConfiguration {
   const teamId = env.T3CODE_APPLE_TEAM_ID?.trim().toUpperCase() ?? "";
   if (!APPLE_TEAM_ID_PATTERN.test(teamId)) {
@@ -714,7 +721,7 @@ export function resolveMacPasskeySigningConfiguration(
   }
 
   return {
-    appId: DESKTOP_APP_ID,
+    appId,
     teamId,
     rpDomains: uniqueRpDomains,
     provisioningProfilePath,
@@ -1227,7 +1234,7 @@ export function resolveDesktopRuntimeDependencies(
 }
 
 export const resolveGitHubPublishConfig = Effect.fn("resolveGitHubPublishConfig")(function* (
-  updateChannel: "latest" | "nightly",
+  updateChannel: "latest" | "nightly" | "gmacko",
 ) {
   const env = yield* Config.all({
     updateRepository: Config.string("T3CODE_DESKTOP_UPDATE_REPOSITORY").pipe(Config.option),
@@ -1247,21 +1254,35 @@ export const resolveGitHubPublishConfig = Effect.fn("resolveGitHubPublishConfig"
     provider: "github",
     owner,
     repo,
-    releaseType: updateChannel === "nightly" ? "prerelease" : "release",
-    ...(updateChannel === "nightly" ? { channel: "nightly" as const } : {}),
+    releaseType: updateChannel === "latest" ? "release" : "prerelease",
+    ...(updateChannel === "latest" ? {} : { channel: updateChannel }),
   };
 });
 
-export function resolveDesktopUpdateChannel(version: string): "latest" | "nightly" {
-  return /-nightly\.\d{8}\.\d+$/.test(version) ? "nightly" : "latest";
+export function resolveDesktopUpdateChannel(version: string): "latest" | "nightly" | "gmacko" {
+  if (/-nightly\.\d{8}\.\d+$/.test(version)) {
+    return "nightly";
+  }
+  if (/-gmacko\.\d+$/.test(version)) {
+    return "gmacko";
+  }
+  return "latest";
 }
 
 export function resolveDesktopBuildIconAssets(version: string): DesktopBuildIconAssets {
-  if (resolveDesktopUpdateChannel(version) === "nightly") {
+  const updateChannel = resolveDesktopUpdateChannel(version);
+  if (updateChannel === "nightly") {
     return {
       macIconPng: BRAND_ASSET_PATHS.nightlyMacIconPng,
       linuxIconPng: BRAND_ASSET_PATHS.nightlyLinuxIconPng,
       windowsIconIco: BRAND_ASSET_PATHS.nightlyWindowsIconIco,
+    };
+  }
+  if (updateChannel === "gmacko") {
+    return {
+      macIconPng: BRAND_ASSET_PATHS.gmackoMacIconPng,
+      linuxIconPng: BRAND_ASSET_PATHS.gmackoLinuxIconPng,
+      windowsIconIco: BRAND_ASSET_PATHS.gmackoWindowsIconIco,
     };
   }
 
@@ -1277,9 +1298,23 @@ export function resolveMockUpdateServerUrl(mockUpdateServerPort: number | undefi
 }
 
 export function resolveDesktopProductName(version: string): string {
-  return resolveDesktopUpdateChannel(version) === "nightly"
-    ? "T3 Code (Nightly)"
-    : (desktopPackageJson.productName ?? "T3 Code");
+  const updateChannel = resolveDesktopUpdateChannel(version);
+  if (updateChannel === "nightly") {
+    return "T3 Code (Nightly)";
+  }
+  if (updateChannel === "gmacko") {
+    return "T3 Code (gmacko)";
+  }
+  return desktopPackageJson.productName ?? "T3 Code";
+}
+
+export function resolveDesktopBuildAppId(version: string): string {
+  const productName =
+    process.env.T3CODE_DESKTOP_APP_DISPLAY_NAME?.trim() || resolveDesktopProductName(version);
+  return getDesktopRuntimeIdentity({
+    isDevelopment: false,
+    appDisplayName: productName,
+  }).appId;
 }
 
 export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
@@ -1296,24 +1331,33 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
       }
     | undefined,
 ) {
+  const updateChannel = resolveDesktopUpdateChannel(version);
+  const productName =
+    process.env.T3CODE_DESKTOP_APP_DISPLAY_NAME?.trim() || resolveDesktopProductName(version);
+  const appIdentity = getDesktopRuntimeIdentity({
+    isDevelopment: false,
+    appDisplayName: productName,
+  });
   const buildConfig: Record<string, unknown> = {
-    appId: DESKTOP_APP_ID,
-    productName: resolveDesktopProductName(version),
+    appId: appIdentity.appId,
+    productName,
     artifactName: "T3-Code-${version}-${arch}.${ext}",
     asarUnpack: [...DESKTOP_ASAR_UNPACK],
     directories: {
       buildResources: "apps/desktop/resources",
     },
   };
-  const updateChannel = resolveDesktopUpdateChannel(version);
   const publishConfig = yield* resolveGitHubPublishConfig(updateChannel);
   if (publishConfig) {
-    buildConfig.publish = [publishConfig];
+    buildConfig.publish = [
+      { ...publishConfig, updaterCacheDirName: appIdentity.updaterCacheDirName },
+    ];
   } else if (mockUpdates) {
     buildConfig.publish = [
       {
         provider: "generic",
         url: resolveMockUpdateServerUrl(mockUpdateServerPort),
+        updaterCacheDirName: appIdentity.updaterCacheDirName,
       },
     ];
   }
@@ -1354,10 +1398,7 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
 
   if (platform === "win") {
     buildConfig.npmRebuild = false;
-    const winConfig: Record<string, unknown> = {
-      target: [target],
-      icon: "icon.ico",
-    };
+    const winConfig = (buildConfig.win ?? {}) as Record<string, unknown>;
     if (signed) {
       winConfig.azureSignOptions = yield* AzureTrustedSigningOptionsConfig;
     } else {
@@ -1450,6 +1491,15 @@ const buildDesktopArtifact = Effect.fn("buildDesktopArtifact")(function* (
   const appVersion = options.version ?? serverPackageJson.version;
   const iconAssets = resolveDesktopBuildIconAssets(appVersion);
   const commitHash = yield* resolveGitCommitHash(repoRoot);
+  const desktopProductName = resolveDesktopAppDisplayName({
+    cwd: repoRoot,
+    baseDisplayName:
+      process.env.T3CODE_DESKTOP_APP_DISPLAY_NAME?.trim() || resolveDesktopProductName(appVersion),
+  });
+  const desktopRuntimeIdentity = getDesktopRuntimeIdentity({
+    isDevelopment: false,
+    appDisplayName: desktopProductName,
+  });
   const mkdir = options.keepStage ? fs.makeTempDirectory : fs.makeTempDirectoryScoped;
   const stageRoot = yield* mkdir({
     prefix: `t3code-desktop-${options.platform}-stage-`,
@@ -1525,7 +1575,11 @@ const buildDesktopArtifact = Effect.fn("buildDesktopArtifact")(function* (
   const configuredMacPasskeySigning =
     options.platform === "mac" && options.signed
       ? yield* Effect.try({
-          try: () => resolveMacPasskeySigningConfiguration(loadRepoEnv({ repoRoot })),
+          try: () =>
+            resolveMacPasskeySigningConfiguration(
+              loadRepoEnv({ repoRoot }),
+              desktopRuntimeIdentity.appId,
+            ),
           catch: MacPasskeySigningConfigurationResolutionError.fromCause,
         })
       : undefined;
@@ -1561,7 +1615,7 @@ const buildDesktopArtifact = Effect.fn("buildDesktopArtifact")(function* (
   };
   const stagePnpmConfig = createStagePnpmConfig(workspacePatchedDependencies, stageDependencies);
   const stagePackageJson: StagePackageJson = {
-    name: "t3code",
+    name: desktopRuntimeIdentity.packageName,
     version: appVersion,
     buildVersion: appVersion,
     t3codeCommitHash: commitHash,
@@ -1696,7 +1750,7 @@ const buildDesktopArtifact = Effect.fn("buildDesktopArtifact")(function* (
   const copiedArtifacts: string[] = [];
   for (const entry of stageEntries) {
     const from = path.join(stageDistDir, entry);
-    const stat = yield* fs.stat(from).pipe(Effect.orElseSucceed(() => null));
+    const stat = yield* fs.stat(from).pipe(Effect.catch(() => Effect.succeed(null)));
     if (!stat || stat.type !== "File") continue;
 
     const to = path.join(options.outputDir, entry);
