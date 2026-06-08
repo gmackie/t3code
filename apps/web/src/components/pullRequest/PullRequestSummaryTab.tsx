@@ -646,32 +646,42 @@ export function PullRequestSummaryTab({
         {detail.checks.length === 0 ? (
           <p className="text-xs text-muted-foreground">No checks reported.</p>
         ) : (
-          detail.checks.map((check, index) => {
-            const finding = { kind: "check", check } as const;
-            const failing = check.status === "failure" || check.status === "cancelled";
-            return (
-              <div
-                // Position too: the host decides how many runs share a name, and a repeated
-                // key would be a rendering fault on top of whatever the list already says.
-                key={`${index}:${check.name}:${check.url ?? ""}`}
-                className="group flex items-center gap-2 rounded-md pr-1 hover:bg-accent/60"
-              >
-                <button
-                  type="button"
-                  disabled={!check.url}
-                  onClick={() => check.url && openCheck(check.url)}
-                  className={cn(
-                    "flex min-w-0 flex-1 items-start gap-2 rounded-md px-2 py-2 text-left text-xs leading-5 [&>svg]:mt-0.5",
-                    check.url ? "cursor-pointer" : "cursor-default",
-                  )}
+          <div className="space-y-0.5">
+            {detail.checks.map((check) => {
+              const finding = { kind: "check", check } as const;
+              const failing = check.status === "failure" || check.status === "cancelled";
+              return (
+                <div
+                  // Position too: the host decides how many runs share a name, and a repeated
+                  // key would be a rendering fault on top of whatever the list already says.
+                  key={`${check.name}:${check.status}:${check.description ?? ""}:${check.url ?? ""}`}
+                  className="group flex items-center gap-1 rounded-md pr-1 hover:bg-accent/60"
                 >
-                  <PullRequestCheckStatusIcon status={check.status} />
-                  <span className="min-w-0 flex-1 wrap-anywhere">{check.name}</span>
-                  <span className="shrink-0 text-muted-foreground">
-                    {pullRequestCheckStatusLabel(check)}
-                  </span>
-                </button>
-                {/* Only where there is something to fix. A passing check has no failure to
+                  <button
+                    type="button"
+                    disabled={!check.url}
+                    onClick={() => check.url && openCheck(check.url)}
+                    className={cn(
+                      "flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs",
+                      check.url ? undefined : "cursor-default",
+                    )}
+                  >
+                    <button
+                      type="button"
+                      disabled={!check.url}
+                      onClick={() => check.url && openCheck(check.url)}
+                      className={cn(
+                        "flex min-w-0 flex-1 items-start gap-2 rounded-md px-2 py-2 text-left text-xs leading-5 [&>svg]:mt-0.5",
+                        check.url ? "cursor-pointer" : "cursor-default",
+                      )}
+                    >
+                      <PullRequestCheckStatusIcon status={check.status} />
+                      <span className="min-w-0 flex-1 wrap-anywhere">{check.name}</span>
+                      <span className="shrink-0 text-muted-foreground">
+                        {pullRequestCheckStatusLabel(check)}
+                      </span>
+                    </button>
+                    {/* Only where there is something to fix. A passing check has no failure to
                       reproduce, and the button would be an invitation to waste a thread. */}
                 {onFixFinding && failing ? (
                   <Button
