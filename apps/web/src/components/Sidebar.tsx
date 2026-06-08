@@ -38,6 +38,7 @@ import {
   AlarmClockOffIcon,
   CheckIcon,
   ChevronDownIcon,
+  ClipboardListIcon,
   CircleAlertIcon,
   CircleCheckIcon,
   CircleDashedIcon,
@@ -2457,23 +2458,27 @@ export default function Sidebar() {
     [openProjectSettings],
   );
 
-  // Keep a dropped row at its destination while its server applies the
-  // lifecycle command and any order-key writes. The next pickup waits for
-  // this hold so a second drop cannot replace an unconfirmed placement.
-  const [optimisticDrop, setOptimisticDrop] = useState<{
-    readonly key: string;
-    readonly sourceSection: SidebarSection;
-    readonly section: "pinned" | "active" | "settled";
-    readonly occurredAt: string;
-    readonly clearsSnooze: boolean;
-    /** Full destination order for pinned and active drops. */
-    readonly order: readonly string[] | null;
-    /** Destination order keys before the drop, to recognize concurrent writes. */
-    readonly keysAtDrop: ReadonlyMap<string, string | null>;
-    /** The keys this drop writes (one per planned assignment). The
-        override holds until all of them appear in canonical state. */
-    readonly assignedKeys: ReadonlyMap<string, string>;
-  } | null>(null);
+  const handleProjectIssues = useCallback(
+    (
+      event: ReactMouseEvent<HTMLButtonElement>,
+      project: Pick<SidebarProjectSnapshot, "environmentId" | "id">,
+    ) => {
+      event.preventDefault();
+      event.stopPropagation();
+      dispatchProjectScopeMenu({ type: "open-changed", open: false });
+      if (isMobile) setOpenMobile(false);
+      void router.navigate({
+        to: "/project/$environmentId/$projectId",
+        params: { environmentId: project.environmentId, projectId: project.id },
+      });
+    },
+    [isMobile, router, setOpenMobile],
+  );
+
+  // Settled threads stay in the live shell stream (settled ≠ archived), so
+  // the partition works directly off live shells: no archived-snapshot
+  // merging, no optimistic holds. Archived threads remain hidden here —
+  // archive keeps its original "remove from sidebar" meaning.
   const {
     pinnedThreads,
     draggableThreadKeys,
@@ -4443,6 +4448,12 @@ export default function Sidebar() {
                     <ComboboxList>
                       {(item: (typeof projectScopeItems)[number]) => {
                         const project = projectGroupByScopeKey.get(item.value) ?? null;
+                        const issueProject = project?.memberProjects.find((member) =>
+                          Boolean(
+                            serverConfigs.get(member.environmentId)?.settings.issues.linear
+                              .projectMappings[member.id],
+                          ),
+                        );
                         return (
                           <ComboboxItem
                             key={item.value}
@@ -4467,6 +4478,21 @@ export default function Sidebar() {
                               <FolderIcon className="size-4 shrink-0" />
                             )}
                             <span className="min-w-0 flex-1 truncate text-sm">{item.label}</span>
+                            {issueProject ? (
+                              <Button
+                                size="icon-xs"
+                                variant="ghost-muted"
+                                aria-label={`Linear issues for ${project?.displayName ?? item.label}`}
+                                title={`Linear issues for ${project?.displayName ?? item.label}`}
+                                className="ml-auto size-6 [--control-icon-color:currentColor] text-icon-muted focus-visible:bg-accent focus-visible:text-foreground"
+                                onPointerDown={(event) => event.stopPropagation()}
+                                onClick={(event) => {
+                                  handleProjectIssues(event, issueProject);
+                                }}
+                              >
+                                <ClipboardListIcon className="size-3.5" />
+                              </Button>
+                            ) : null}
                             {project ? (
                               <Button
                                 size="icon-xs"
@@ -4474,7 +4500,7 @@ export default function Sidebar() {
                                 tabIndex={-1}
                                 aria-hidden="true"
                                 title={`Project settings for ${project.displayName}`}
-                                className="ml-auto size-6 [--control-icon-color:currentColor] text-icon-muted focus-visible:bg-accent focus-visible:text-foreground"
+                                className="size-6 [--control-icon-color:currentColor] text-icon-muted focus-visible:bg-accent focus-visible:text-foreground"
                                 onPointerDown={(event) => event.stopPropagation()}
                                 onClick={(event) => {
                                   void handleProjectSettings(event, project);

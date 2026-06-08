@@ -1059,6 +1059,14 @@ export function createServerEnvironmentAtoms<R, E>(
       staleTimeMs: 60_000,
       refreshTrigger: ({ environmentId }) => usagePricesAtom(environmentId),
     }),
+    listProjectIssues: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:list-project-issues",
+      tag: WS_METHODS.serverListProjectIssues,
+    }),
+    listProjectIssueStatuses: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:list-project-issue-statuses",
+      tag: WS_METHODS.serverListProjectIssueStatuses,
+    }),
     configProjection,
     welcome,
     consumeResetCredit: createEnvironmentRpcCommand(runtime, {
@@ -1134,6 +1142,14 @@ export function createServerEnvironmentAtoms<R, E>(
       tag: WS_METHODS.serverUpdateSettings,
       scheduler: configScheduler,
       concurrency: configConcurrency,
+    }),
+    createProjectIssue: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:create-project-issue",
+      tag: WS_METHODS.serverCreateProjectIssue,
+    }),
+    updateProjectIssueStatus: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:update-project-issue-status",
+      tag: WS_METHODS.serverUpdateProjectIssueStatus,
     }),
     signalProcess: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:server:signal-process",
