@@ -35,7 +35,8 @@ class FakeElement {
   constructor(readonly tagName: string) {}
 
   get isConnected() {
-    let current: FakeElement | null = this;
+    if (this.tagName === "body") return true;
+    let current = this.parent;
     while (current?.parent) {
       current = current.parent;
     }
