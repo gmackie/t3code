@@ -785,6 +785,14 @@ export function createServerEnvironmentAtoms<R, E>(
       tag: WS_METHODS.serverGetUsageSummary,
       staleTimeMs: 60_000,
     }),
+    listProjectIssues: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:list-project-issues",
+      tag: WS_METHODS.serverListProjectIssues,
+    }),
+    listProjectIssueStatuses: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:list-project-issue-statuses",
+      tag: WS_METHODS.serverListProjectIssueStatuses,
+    }),
     configProjection,
     welcome: createEnvironmentRpcSubscriptionAtomFamily(runtime, {
       label: "environment-data:server:welcome",
@@ -852,6 +860,14 @@ export function createServerEnvironmentAtoms<R, E>(
       tag: WS_METHODS.serverUpdateSettings,
       scheduler: configScheduler,
       concurrency: configConcurrency,
+    }),
+    createProjectIssue: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:create-project-issue",
+      tag: WS_METHODS.serverCreateProjectIssue,
+    }),
+    updateProjectIssueStatus: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:update-project-issue-status",
+      tag: WS_METHODS.serverUpdateProjectIssueStatus,
     }),
     signalProcess: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:server:signal-process",
