@@ -1374,7 +1374,11 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsService.layerTest(), T
                       code: 0,
                     };
                   }
-                  throw new Error(`Unexpected args: ${command} ${joined}`);
+                  return {
+                    stdout: "",
+                    stderr: `Unexpected args: ${command} ${joined}`,
+                    code: 1,
+                  };
                 }),
               ),
             );
