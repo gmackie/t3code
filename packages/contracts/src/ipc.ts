@@ -93,6 +93,17 @@ import { AdvertisedEndpoint } from "./remoteAccess.ts";
 import { ExecutionEnvironmentDescriptor } from "./environment.ts";
 import type { ClientSettings } from "./settings.ts";
 import type {
+  IssueListResult,
+  LinearIssueValidationResult,
+  ProjectIssueCreateInput,
+  ProjectIssueCreateResult,
+  ProjectIssueListInput,
+  ProjectIssueStatusListInput,
+  ProjectIssueStatusListResult,
+  ProjectIssueStatusUpdateInput,
+  ProjectIssueStatusUpdateResult,
+} from "./issue.ts";
+import type {
   SourceControlCloneRepositoryInput,
   SourceControlCloneRepositoryResult,
   SourceControlPublishRepositoryInput,
@@ -149,8 +160,8 @@ export type DesktopUpdateStatus =
 
 export type DesktopRuntimeArch = "arm64" | "x64" | "other";
 export type DesktopTheme = "light" | "dark" | "system";
-export type DesktopUpdateChannel = "latest" | "nightly";
-export type DesktopAppStageLabel = "Alpha" | "Dev" | "Nightly";
+export type DesktopUpdateChannel = "latest" | "nightly" | "gmacko";
+export type DesktopAppStageLabel = "Alpha" | "Dev" | "Nightly" | "Gmacko";
 
 export const DesktopUpdateStatusSchema = Schema.Literals([
   "disabled",
@@ -164,8 +175,8 @@ export const DesktopUpdateStatusSchema = Schema.Literals([
 ]);
 export const DesktopRuntimeArchSchema = Schema.Literals(["arm64", "x64", "other"]);
 export const DesktopThemeSchema = Schema.Literals(["light", "dark", "system"]);
-export const DesktopUpdateChannelSchema = Schema.Literals(["latest", "nightly"]);
-export const DesktopAppStageLabelSchema = Schema.Literals(["Alpha", "Dev", "Nightly"]);
+export const DesktopUpdateChannelSchema = Schema.Literals(["latest", "nightly", "gmacko"]);
+export const DesktopAppStageLabelSchema = Schema.Literals(["Alpha", "Dev", "Nightly", "Gmacko"]);
 
 export interface DesktopAppBranding {
   baseName: string;
@@ -1164,6 +1175,38 @@ export interface LocalApi {
   persistence: {
     getClientSettings: () => Promise<ClientSettings | null>;
     setClientSettings: (settings: ClientSettings) => Promise<void>;
+  };
+  server: {
+    getConfig: () => Promise<ServerConfig>;
+    /**
+     * Refresh provider snapshots. When `input.instanceId` is supplied only that
+     * configured instance is probed; otherwise every configured instance is
+     * refreshed (legacy untargeted refresh).
+     */
+    refreshProviders: (input?: {
+      readonly instanceId?: ProviderInstanceId;
+    }) => Promise<ServerProviderUpdatedPayload>;
+    updateProvider: (input: ServerProviderUpdateInput) => Promise<ServerProviderUpdatedPayload>;
+    upsertKeybinding: (input: ServerUpsertKeybindingInput) => Promise<ServerUpsertKeybindingResult>;
+    removeKeybinding: (input: ServerRemoveKeybindingInput) => Promise<ServerRemoveKeybindingResult>;
+    getSettings: () => Promise<ServerSettings>;
+    updateSettings: (patch: ServerSettingsPatch) => Promise<ServerSettings>;
+    validateLinearIssues: () => Promise<LinearIssueValidationResult>;
+    listProjectIssues: (input: ProjectIssueListInput) => Promise<IssueListResult>;
+    listProjectIssueStatuses: (
+      input: ProjectIssueStatusListInput,
+    ) => Promise<ProjectIssueStatusListResult>;
+    createProjectIssue: (input: ProjectIssueCreateInput) => Promise<ProjectIssueCreateResult>;
+    updateProjectIssueStatus: (
+      input: ProjectIssueStatusUpdateInput,
+    ) => Promise<ProjectIssueStatusUpdateResult>;
+    discoverSourceControl: () => Promise<SourceControlDiscoveryResult>;
+    getTraceDiagnostics: () => Promise<ServerTraceDiagnosticsResult>;
+    getProcessDiagnostics: () => Promise<ServerProcessDiagnosticsResult>;
+    getProcessResourceHistory: (
+      input: ServerProcessResourceHistoryInput,
+    ) => Promise<ServerProcessResourceHistoryResult>;
+    signalProcess: (input: ServerSignalProcessInput) => Promise<ServerSignalProcessResult>;
   };
 }
 
