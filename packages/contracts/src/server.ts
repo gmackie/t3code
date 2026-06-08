@@ -223,6 +223,29 @@ export const ServerObservability = Schema.Struct({
 });
 export type ServerObservability = typeof ServerObservability.Type;
 
+export const ServerTerminalDiscoveredShellId = Schema.Literals([
+  "cmd",
+  "powershell",
+  "gitBash",
+  "wsl",
+]);
+export type ServerTerminalDiscoveredShellId = typeof ServerTerminalDiscoveredShellId.Type;
+
+export const ServerTerminalDiscoveredShell = Schema.Struct({
+  id: ServerTerminalDiscoveredShellId,
+  label: TrimmedNonEmptyString,
+  available: Schema.Boolean,
+  path: Schema.NullOr(TrimmedNonEmptyString),
+});
+export type ServerTerminalDiscoveredShell = typeof ServerTerminalDiscoveredShell.Type;
+
+export const ServerTerminal = Schema.Struct({
+  platform: TrimmedNonEmptyString,
+  currentShell: TrimmedNonEmptyString,
+  discoveredShells: Schema.Array(ServerTerminalDiscoveredShell),
+});
+export type ServerTerminal = typeof ServerTerminal.Type;
+
 export const ServerTraceDiagnosticsErrorKind = Schema.Literals([
   "trace-file-not-found",
   "trace-file-read-failed",
@@ -435,6 +458,7 @@ export const ServerConfig = Schema.Struct({
    */
   remoteOpenTargets: Schema.optionalKey(ForwardCompatibleArray(RemoteOpenTarget)),
   observability: ServerObservability,
+  terminal: Schema.optionalKey(ServerTerminal),
   settings: ServerSettings,
   /** Whether shell subscriptions can emit an opt-in catch-up completion marker. */
   shellResumeCompletionMarker: Schema.optionalKey(Schema.Boolean),

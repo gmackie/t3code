@@ -33,7 +33,7 @@ const runGit = (cwd: string, args: ReadonlyArray<string>) =>
     });
   });
 
-type GitContractError = GitCommandError | PlatformError.PlatformError;
+type GitContractError = Error | GitCommandError | PlatformError.PlatformError;
 
 runVcsDriverContractSuite<GitVcsDriver.GitVcsDriver, GitContractError>({
   name: "Git",
