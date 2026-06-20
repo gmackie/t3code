@@ -266,7 +266,15 @@ validationLayer("CodexAdapterLive validation", (it) => {
         runtimeMode: "full-access",
       });
 
-      assert.deepStrictEqual(validationRuntimeFactory.factory.mock.calls[0]?.[0], {
+      const runtimeInput = validationRuntimeFactory.factory.mock.calls[0]?.[0];
+      assert.deepStrictEqual(runtimeInput?.dynamicTools, CODEX_IN_APP_BROWSER_DYNAMIC_TOOLS);
+      assert.equal(typeof runtimeInput?.dynamicToolCallHandler, "function");
+      const {
+        dynamicTools: _dynamicTools,
+        dynamicToolCallHandler: _dynamicToolCallHandler,
+        ...mappedOptions
+      } = runtimeInput ?? {};
+      assert.deepStrictEqual(mappedOptions, {
         binaryPath: "codex",
         cwd: process.cwd(),
         model: "gpt-5.3-codex",
