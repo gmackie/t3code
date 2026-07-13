@@ -69,7 +69,8 @@ type StageWorkspaceConfig = typeof StageWorkspaceConfig.Type;
 const RepoRoot = Effect.service(Path.Path).pipe(
   Effect.flatMap((path) => path.fromFileUrl(new URL("..", import.meta.url))),
 );
-const encodeJsonString = Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown));
+const encodeJsonString = Schema.encodeEffect(Schema.UnknownFromJsonString);
+const decodeJsonString = Schema.decodeEffect(Schema.UnknownFromJsonString);
 const decodeWorkspaceConfig = Schema.decodeEffect(fromYaml(WorkspaceConfig));
 const decodeNodePtyManifest = Schema.decodeUnknownEffect(
   Schema.fromJsonString(Schema.Struct({ version: Schema.String })),
@@ -706,6 +707,43 @@ export class MissingMacPasskeyProvisioningProfileError extends Schema.TaggedErro
   }
 }
 
+export class MacPasskeyProvisioningProfileCapabilityError extends Schema.TaggedErrorClass<MacPasskeyProvisioningProfileCapabilityError>()(
+  "MacPasskeyProvisioningProfileCapabilityError",
+  {},
+) {
+  override get message(): string {
+    return "The macOS provisioning profile does not authorize Associated Domains.";
+  }
+}
+
+export class MacPasskeyProvisioningProfileIdentityError extends Schema.TaggedErrorClass<MacPasskeyProvisioningProfileIdentityError>()(
+  "MacPasskeyProvisioningProfileIdentityError",
+  {},
+) {
+  override get message(): string {
+    return "The macOS provisioning profile does not match the application identifier.";
+  }
+}
+
+export class MacPasskeyProvisioningProfileDecodeError extends Schema.TaggedErrorClass<MacPasskeyProvisioningProfileDecodeError>()(
+  "MacPasskeyProvisioningProfileDecodeError",
+  {
+    cause: Schema.Defect(),
+  },
+) {
+  override get message(): string {
+    return "The macOS provisioning profile could not be decoded.";
+  }
+}
+
+const MacPasskeyProvisioningProfileValidationError = Schema.Union([
+  MacPasskeyProvisioningProfileCapabilityError,
+  MacPasskeyProvisioningProfileIdentityError,
+]);
+const isMacPasskeyProvisioningProfileValidationError = Schema.is(
+  MacPasskeyProvisioningProfileValidationError,
+);
+
 export class MissingMacPasskeyDomainConfigurationError extends Schema.TaggedErrorClass<MissingMacPasskeyDomainConfigurationError>()(
   "MissingMacPasskeyDomainConfigurationError",
   {},
@@ -869,6 +907,41 @@ ${associatedDomains}
   </dict>
 </plist>
 `;
+}
+
+export function assertMacPasskeyProvisioningProfile(
+  profile: unknown,
+  configuration: MacPasskeySigningConfiguration,
+): void {
+  if (
+    typeof profile !== "object" ||
+    profile === null ||
+    !("Entitlements" in profile) ||
+    typeof profile.Entitlements !== "object" ||
+    profile.Entitlements === null ||
+    !("com.apple.developer.associated-domains" in profile.Entitlements)
+  ) {
+    throw new MacPasskeyProvisioningProfileCapabilityError();
+  }
+  const entitlements = profile.Entitlements as Record<string, unknown>;
+  const associatedDomains = entitlements["com.apple.developer.associated-domains"];
+  const authorizedDomains = Array.isArray(associatedDomains)
+    ? new Set(associatedDomains.filter((value): value is string => typeof value === "string"))
+    : new Set<string>();
+  const authorizesRequestedDomains = configuration.rpDomains.every(
+    (domain) => authorizedDomains.has("*") || authorizedDomains.has(`webcredentials:${domain}`),
+  );
+  if (associatedDomains !== "*" && !authorizesRequestedDomains) {
+    throw new MacPasskeyProvisioningProfileCapabilityError();
+  }
+
+  if (
+    entitlements["com.apple.application-identifier"] !==
+      `${configuration.teamId}.${configuration.appId}` ||
+    entitlements["com.apple.developer.team-identifier"] !== configuration.teamId
+  ) {
+    throw new MacPasskeyProvisioningProfileIdentityError();
+  }
 }
 
 export function resolveFffNativeDependencies(
@@ -1934,6 +2007,64 @@ const buildDesktopArtifact = Effect.fn("buildDesktopArtifact")(function* (
         provisioningProfilePath: macPasskeySigning.provisioningProfilePath,
       });
     }
+    const decodedProfilePath = path.join(stageRoot, "decoded-provisioning-profile.plist");
+    const decodedProfileEntitlementsPath = path.join(
+      stageRoot,
+      "decoded-provisioning-profile-entitlements.plist",
+    );
+    const decodedProfileEntitlementsJsonPath = path.join(
+      stageRoot,
+      "decoded-provisioning-profile-entitlements.json",
+    );
+    yield* runCommand(
+      ChildProcess.make("security", [
+        "cms",
+        "-D",
+        "-i",
+        macPasskeySigning.provisioningProfilePath,
+        "-o",
+        decodedProfilePath,
+      ]),
+      { label: "security cms decode provisioning profile", verbose: options.verbose },
+    );
+    yield* runCommand(
+      ChildProcess.make("plutil", [
+        "-extract",
+        "Entitlements",
+        "xml1",
+        "-o",
+        decodedProfileEntitlementsPath,
+        decodedProfilePath,
+      ]),
+      { label: "plutil extract provisioning profile entitlements", verbose: options.verbose },
+    );
+    yield* runCommand(
+      ChildProcess.make("plutil", [
+        "-convert",
+        "json",
+        "-o",
+        decodedProfileEntitlementsJsonPath,
+        decodedProfileEntitlementsPath,
+      ]),
+      { label: "plutil convert provisioning profile entitlements", verbose: options.verbose },
+    );
+    const decodedProfileEntitlementsJson = yield* fs.readFileString(
+      decodedProfileEntitlementsJsonPath,
+    );
+    const decodedProfileEntitlements = yield* decodeJsonString(decodedProfileEntitlementsJson).pipe(
+      Effect.mapError((cause) => new MacPasskeyProvisioningProfileDecodeError({ cause })),
+    );
+    yield* Effect.try({
+      try: () =>
+        assertMacPasskeyProvisioningProfile(
+          { Entitlements: decodedProfileEntitlements },
+          macPasskeySigning,
+        ),
+      catch: (cause) =>
+        isMacPasskeyProvisioningProfileValidationError(cause)
+          ? cause
+          : new MacPasskeyProvisioningProfileDecodeError({ cause }),
+    });
     yield* fs.writeFileString(macEntitlementsPath, renderMacPasskeyEntitlements(macPasskeySigning));
   }
 
