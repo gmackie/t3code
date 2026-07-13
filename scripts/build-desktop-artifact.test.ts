@@ -11,7 +11,7 @@ import * as Stream from "effect/Stream";
 import { ChildProcessSpawner } from "effect/unstable/process";
 
 import {
-  BundleNotSelfContainedError,
+  assertMacPasskeyProvisioningProfile,
   BuildCommandFailedError,
   createStageWorkspaceConfig,
   createStagePatchedDependencies,
@@ -850,6 +850,134 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
     assert.equal(configuration.appId, "com.gmacko.t3code");
     assert.include(entitlements, "<string>ABC1234567.com.gmacko.t3code</string>");
     assert.include(entitlements, "<string>webcredentials:tasks.gmac.io</string>");
+  });
+
+  it("rejects a provisioning profile that cannot authorize Associated Domains", () => {
+    const configuration = resolveMacPasskeySigningConfiguration(
+      {
+        T3CODE_APPLE_TEAM_ID: "ABC1234567",
+        T3CODE_MACOS_PROVISIONING_PROFILE: "/tmp/t3code.provisionprofile",
+        T3CODE_CLERK_PASSKEY_RP_DOMAINS: "tasks.gmac.io",
+      },
+      "com.gmacko.t3code",
+    );
+
+    assert.throws(
+      () =>
+        assertMacPasskeyProvisioningProfile(
+          {
+            Entitlements: {
+              "com.apple.application-identifier": "ABC1234567.com.gmacko.t3code",
+              "com.apple.developer.team-identifier": "ABC1234567",
+              "keychain-access-groups": ["ABC1234567.*"],
+            },
+          },
+          configuration,
+        ),
+      /does not authorize Associated Domains/u,
+    );
+  });
+
+  it("rejects a provisioning profile with an empty Associated Domains allowance", () => {
+    const configuration = resolveMacPasskeySigningConfiguration(
+      {
+        T3CODE_APPLE_TEAM_ID: "ABC1234567",
+        T3CODE_MACOS_PROVISIONING_PROFILE: "/tmp/t3code.provisionprofile",
+        T3CODE_CLERK_PASSKEY_RP_DOMAINS: "tasks.gmac.io",
+      },
+      "com.gmacko.t3code",
+    );
+
+    assert.throws(
+      () =>
+        assertMacPasskeyProvisioningProfile(
+          {
+            Entitlements: {
+              "com.apple.application-identifier": "ABC1234567.com.gmacko.t3code",
+              "com.apple.developer.team-identifier": "ABC1234567",
+              "com.apple.developer.associated-domains": [],
+            },
+          },
+          configuration,
+        ),
+      /does not authorize Associated Domains/u,
+    );
+  });
+
+  it("rejects a provisioning profile for a different application identifier", () => {
+    const configuration = resolveMacPasskeySigningConfiguration(
+      {
+        T3CODE_APPLE_TEAM_ID: "ABC1234567",
+        T3CODE_MACOS_PROVISIONING_PROFILE: "/tmp/t3code.provisionprofile",
+        T3CODE_CLERK_PASSKEY_RP_DOMAINS: "tasks.gmac.io",
+      },
+      "com.gmacko.t3code",
+    );
+
+    assert.throws(
+      () =>
+        assertMacPasskeyProvisioningProfile(
+          {
+            Entitlements: {
+              "com.apple.application-identifier": "ABC1234567.com.t3tools.t3code",
+              "com.apple.developer.team-identifier": "ABC1234567",
+              "com.apple.developer.associated-domains": ["*"],
+            },
+          },
+          configuration,
+        ),
+      /does not match the application identifier/u,
+    );
+  });
+
+  it("accepts Apple's wildcard Associated Domains profile allowance", () => {
+    const configuration = resolveMacPasskeySigningConfiguration(
+      {
+        T3CODE_APPLE_TEAM_ID: "ABC1234567",
+        T3CODE_MACOS_PROVISIONING_PROFILE: "/tmp/t3code.provisionprofile",
+        T3CODE_CLERK_PASSKEY_RP_DOMAINS: "tasks.gmac.io",
+      },
+      "com.gmacko.t3code",
+    );
+
+    assert.doesNotThrow(() =>
+      assertMacPasskeyProvisioningProfile(
+        {
+          Entitlements: {
+            "com.apple.application-identifier": "ABC1234567.com.gmacko.t3code",
+            "com.apple.developer.team-identifier": "ABC1234567",
+            "com.apple.developer.associated-domains": "*",
+          },
+        },
+        configuration,
+      ),
+    );
+  });
+
+  it("rejects a provisioning profile that authorizes a different Associated Domain", () => {
+    const configuration = resolveMacPasskeySigningConfiguration(
+      {
+        T3CODE_APPLE_TEAM_ID: "ABC1234567",
+        T3CODE_MACOS_PROVISIONING_PROFILE: "/tmp/t3code.provisionprofile",
+        T3CODE_CLERK_PASSKEY_RP_DOMAINS: "tasks.gmac.io",
+      },
+      "com.gmacko.t3code",
+    );
+
+    assert.throws(
+      () =>
+        assertMacPasskeyProvisioningProfile(
+          {
+            Entitlements: {
+              "com.apple.application-identifier": "ABC1234567.com.gmacko.t3code",
+              "com.apple.developer.team-identifier": "ABC1234567",
+              "com.apple.developer.associated-domains": ["webcredentials:other.example.com"],
+            },
+          },
+          configuration,
+        ),
+      /does not authorize Associated Domains/u,
+    );
   });
 
   it("rejects incomplete macOS passkey signing configuration", () => {
