@@ -13,6 +13,8 @@ describe("gmacko upstream sync workflow", () => {
 
     expect(workflow).toContain("git merge --no-edit upstream/main");
     expect(workflow).not.toContain("-X theirs");
+    expect(workflow).toContain('git ls-remote --exit-code --heads origin "$SYNC_BRANCH"');
+    expect(workflow).not.toContain("|| true");
     expect(workflow).toContain("gh pr create");
     expect(workflow).toContain("--base custom-local");
     expect(workflow).not.toContain("gh workflow run release.yml");
