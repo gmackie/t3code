@@ -323,18 +323,23 @@ function assertWorkflowSupportsGmackoForkReleases(): void {
   );
   assertContains(
     gmackoSyncWorkflow,
-    "git merge --no-edit -X theirs upstream/main",
-    "Gmacko sync workflow does not merge upstream main into custom-local.",
+    "git merge --no-edit upstream/main",
+    "Gmacko sync workflow does not prepare an upstream merge.",
+  );
+  assertNotContains(
+    gmackoSyncWorkflow,
+    "-X theirs",
+    "Gmacko sync workflow still prefers upstream conflict resolutions.",
   );
   assertContains(
     gmackoSyncWorkflow,
-    "git push origin HEAD:custom-local",
-    "Gmacko sync workflow does not push the merged custom-local branch.",
+    "gh pr create",
+    "Gmacko sync workflow does not open a reviewable pull request.",
   );
-  assertContains(
+  assertNotContains(
     gmackoSyncWorkflow,
-    "gh workflow run release.yml --ref custom-local -f channel=gmacko",
-    "Gmacko sync workflow does not dispatch the gmacko release workflow.",
+    "gh workflow run release.yml",
+    "Gmacko sync workflow still publishes unreviewed merges.",
   );
 }
 
