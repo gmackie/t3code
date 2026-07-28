@@ -98,6 +98,19 @@ describe("DesktopEnvironment", () => {
     }),
   );
 
+  it.effect("keeps implicit development state separate from production state", () =>
+    Effect.gen(function* () {
+      const development = yield* makeEnvironment(
+        {},
+        { VITE_DEV_SERVER_URL: "http://localhost:5173" },
+      );
+      const production = yield* makeEnvironment();
+
+      assert.equal(development.stateDir, "/Users/alice/.t3/dev");
+      assert.equal(production.stateDir, "/Users/alice/.t3/userdata");
+    }),
+  );
+
   it.effect("derives packaged gmacko identity and state paths", () =>
     Effect.gen(function* () {
       const environment = yield* makeEnvironment({
@@ -119,6 +132,20 @@ describe("DesktopEnvironment", () => {
       assert.equal(environment.linuxWmClass, "t3code-gmacko");
       assert.equal(environment.userDataDirName, "t3code-gmacko");
       assert.equal(environment.legacyUserDataDirName, "t3code-gmacko");
+    }),
+  );
+
+  it.effect("uses a configured app user model id override", () =>
+    Effect.gen(function* () {
+      const environment = yield* makeEnvironment(
+        {},
+        {
+          T3CODE_DESKTOP_APP_USER_MODEL_ID: " com.t3tools.t3code.dev.local ",
+          VITE_DEV_SERVER_URL: "http://localhost:5173",
+        },
+      );
+
+      assert.equal(environment.appUserModelId, "com.t3tools.t3code.dev.local");
     }),
   );
 
