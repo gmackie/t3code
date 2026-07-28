@@ -193,6 +193,7 @@ describe("parsePersistedState", () => {
       threadChangedFilesExpandedById: {
         "environment:thread-1": {
           "turn-1": false,
+          "turn-2": true,
         },
       },
     });
@@ -310,6 +311,7 @@ describe("uiStateStore persistence", () => {
       threadChangedFilesExpandedById: {
         "environment:thread-1": {
           "turn-1": false,
+          "turn-2": true,
         },
       },
     });
