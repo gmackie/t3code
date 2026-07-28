@@ -211,7 +211,9 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
     Effect.gen(function* () {
       const { join } = yield* Path.Path;
       const baseDir = join(NodeOS.tmpdir(), "t3-cli-config-state-dir-base");
-      const derivedPaths = yield* deriveServerPaths(baseDir, undefined, "userdata-gmacko");
+      const derivedPaths = yield* deriveServerPaths(baseDir, undefined, {
+        stateDirName: "userdata-gmacko",
+      });
       const resolved = yield* resolveServerConfig(
         {
           mode: Option.none(),
