@@ -1,5 +1,11 @@
 export const BRAND_ASSET_PATHS = {
-  productionMacIconPng: "assets/prod/white-macos-1024.png",
+  developmentIconComposerProject: "assets/dev/app-icon.icon",
+  developmentIosIconPng: "assets/dev/blueprint-ios-1024.png",
+  developmentUniversalIconPng: "assets/dev/blueprint-universal-1024.png",
+
+  productionIconComposerProject: "assets/prod/app-icon.icon",
+  productionIosIconPng: "assets/prod/black-ios-1024.png",
+  productionMacIconPng: "assets/prod/black-macos-1024.png",
   productionLinuxIconPng: "assets/prod/black-universal-1024.png",
   productionWindowsIconIco: "assets/prod/t3-black-windows.ico",
   productionWebFaviconIco: "assets/prod/t3-black-web-favicon.ico",
@@ -31,7 +37,7 @@ export const BRAND_ASSET_PATHS = {
 
 export type WebAssetBrand = "development" | "nightly" | "production";
 
-export const WEB_ASSET_CHANNELS = ["latest", "nightly"] as const;
+export const WEB_ASSET_CHANNELS = ["latest", "nightly", "gmacko"] as const;
 
 export type WebAssetChannel = (typeof WEB_ASSET_CHANNELS)[number];
 

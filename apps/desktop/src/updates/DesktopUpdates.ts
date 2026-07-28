@@ -336,10 +336,12 @@ export const make = Effect.gen(function* () {
     yield* electronUpdater.setChannel(channel);
     yield* electronUpdater.setAllowPrerelease(allowsPrerelease);
     yield* electronUpdater.setAllowDowngrade(allowsDowngrade);
+    yield* electronUpdater.setFullChangelog(allowsPrerelease);
     yield* logUpdaterInfo("using update channel", {
       channel,
       allowPrerelease: allowsPrerelease,
       allowDowngrade: allowsDowngrade,
+      fullChangelog: allowsPrerelease,
     });
   });
 
