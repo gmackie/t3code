@@ -161,6 +161,7 @@ const make = Effect.fn("desktop.environment.make")(function* (
       : input.platform === "darwin"
         ? path.join(homeDirectory, "Library", "Application Support")
         : Option.getOrElse(config.xdgConfigHome, () => path.join(homeDirectory, ".config"));
+  const configuredBaseDir = config.t3Home;
   const rootDir = path.resolve(input.dirname, "../../..");
   const appRoot = input.isPackaged ? input.appPath : rootDir;
   const serverRoot =
@@ -176,10 +177,17 @@ const make = Effect.fn("desktop.environment.make")(function* (
     isDevelopment,
     appDisplayName: displayName,
   });
-  const baseDir = Option.getOrElse(config.t3Home, () =>
+  const baseDir = Option.getOrElse(configuredBaseDir, () =>
     path.join(homeDirectory, runtimeIdentity.baseDirName),
   );
-  const stateDir = path.join(baseDir, isDevelopment ? "dev" : runtimeIdentity.stateDirName);
+  const stateDir = path.join(
+    baseDir,
+    isDevelopment
+      ? Option.isNone(configuredBaseDir)
+        ? "dev"
+        : "userdata"
+      : runtimeIdentity.stateDirName,
+  );
   const legacyUserDataDirName = isDevelopment
     ? "T3 Code (Dev)"
     : runtimeIdentity.userDataDirName === "t3code-gmacko"
@@ -224,7 +232,9 @@ const make = Effect.fn("desktop.environment.make")(function* (
     otlpExportIntervalMs: config.otlpExportIntervalMs,
     branding,
     displayName,
-    appUserModelId: isDevelopment ? "com.t3tools.t3code.dev" : runtimeIdentity.appUserModelId,
+    appUserModelId: Option.getOrElse(config.appUserModelIdOverride, () =>
+      isDevelopment ? "com.t3tools.t3code.dev" : runtimeIdentity.appUserModelId,
+    ),
     linuxDesktopEntryName: isDevelopment
       ? "t3code-dev.desktop"
       : `${runtimeIdentity.packageName}.desktop`,
