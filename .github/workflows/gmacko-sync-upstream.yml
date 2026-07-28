@@ -61,10 +61,24 @@ jobs:
           GH_TOKEN: ${{ secrets.GMACKO_SYNC_TOKEN || github.token }}
           SYNC_BRANCH: automation/gmacko-upstream-sync
         run: |
+          ref_visible=false
+          for attempt in 1 2 3 4 5; do
+            if gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/$SYNC_BRANCH" >/dev/null 2>&1; then
+              ref_visible=true
+              break
+            fi
+            sleep $((attempt * 2))
+          done
+          if [[ "$ref_visible" != "true" ]]; then
+            echo "Sync branch was pushed but is not visible through the GitHub API." >&2
+            exit 1
+          fi
+
           existing_pr="$(
             gh pr list \
+              --repo "$GITHUB_REPOSITORY" \
               --base custom-local \
-              --head "$SYNC_BRANCH" \
+              --head "$GITHUB_REPOSITORY_OWNER:$SYNC_BRANCH" \
               --state open \
               --json number \
               --jq '.[0].number // empty'
@@ -72,12 +86,14 @@ jobs:
 
           if [[ -n "$existing_pr" ]]; then
             gh pr edit "$existing_pr" \
+              --repo "$GITHUB_REPOSITORY" \
               --title "Sync upstream main into custom-local" \
               --body "Automated upstream sync for GMACKO. GitHub reports any conflicts for manual resolution. Merge only after required checks pass."
           else
             gh pr create \
+              --repo "$GITHUB_REPOSITORY" \
               --base custom-local \
-              --head "$SYNC_BRANCH" \
+              --head "$GITHUB_REPOSITORY_OWNER:$SYNC_BRANCH" \
               --title "Sync upstream main into custom-local" \
               --body "Automated upstream sync for GMACKO. GitHub reports any conflicts for manual resolution. Merge only after required checks pass."
           fi
