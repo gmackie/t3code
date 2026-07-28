@@ -158,6 +158,12 @@ function assertContains(haystack: string, needle: string, message: string): void
   }
 }
 
+function assertNotContains(haystack: string, needle: string, message: string): void {
+  if (haystack.includes(needle)) {
+    throw new Error(message);
+  }
+}
+
 function assertExists(path: string, message: string): void {
   if (!existsSync(path)) {
     throw new Error(message);
@@ -219,28 +225,28 @@ function assertWorkflowSupportsGmackoForkReleases(): void {
   );
   assertContains(
     gmackoSyncWorkflow,
-    'git switch -C "$SYNC_BRANCH" upstream/main',
-    "Gmacko sync workflow does not prepare an upstream-backed review branch.",
-  );
-  assertNotContains(
-    gmackoSyncWorkflow,
-    "git merge --no-edit upstream/main",
-    "Gmacko sync workflow still aborts before opening a PR when conflicts exist.",
-  );
-  assertNotContains(
-    gmackoSyncWorkflow,
-    "-X theirs",
-    "Gmacko sync workflow still prefers upstream conflict resolutions.",
+    "git rebase --force-rebase -X theirs upstream/main",
+    "Gmacko sync workflow does not rebase custom-local onto upstream while preserving GMACKO conflicts.",
   );
   assertContains(
     gmackoSyncWorkflow,
-    "gh pr create",
-    "Gmacko sync workflow does not open a reviewable pull request.",
+    'git push --force-with-lease="refs/heads/custom-local:$START_SHA" origin "HEAD:custom-local"',
+    "Gmacko sync workflow does not lease-protect the required force push to custom-local.",
+  );
+  assertContains(
+    gmackoSyncWorkflow,
+    "-X theirs",
+    "Gmacko sync workflow does not preserve GMACKO conflict hunks during rebase.",
   );
   assertNotContains(
     gmackoSyncWorkflow,
+    "gh pr create",
+    "Gmacko sync workflow still requires a pull request.",
+  );
+  assertContains(
+    gmackoSyncWorkflow,
     "gh workflow run release.yml",
-    "Gmacko sync workflow still publishes unreviewed merges.",
+    "Gmacko sync workflow does not publish an updater release after rebasing.",
   );
 }
 

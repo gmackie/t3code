@@ -8,19 +8,19 @@ const workflowPath = NodeURL.fileURLToPath(
 );
 
 describe("gmacko upstream sync workflow", () => {
-  it("opens a reviewable sync PR even when upstream conflicts with custom-local", () => {
+  it("automatically rebases custom-local onto upstream and dispatches a release", () => {
     const workflow = NodeFS.readFileSync(workflowPath, "utf8");
 
-    expect(workflow).toContain('git switch -C "$SYNC_BRANCH" upstream/main');
-    expect(workflow).not.toContain("git merge --no-edit upstream/main");
-    expect(workflow).not.toContain("-X theirs");
-    expect(workflow).toContain('git ls-remote --exit-code --heads origin "$SYNC_BRANCH"');
-    expect(workflow).not.toContain("|| true");
-    expect(workflow).toContain('gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/$SYNC_BRANCH"');
-    expect(workflow).toContain("gh pr create");
+    expect(workflow).toContain("git rebase --force-rebase -X theirs upstream/main");
+    expect(workflow).not.toContain("git merge --no-edit");
+    expect(workflow).toContain(
+      'git push --force-with-lease="refs/heads/custom-local:$START_SHA" origin "HEAD:custom-local"',
+    );
+    expect(workflow).not.toContain("git push --force origin");
+    expect(workflow).not.toContain("gh pr create");
     expect(workflow).toContain('--repo "$GITHUB_REPOSITORY"');
-    expect(workflow).toContain("--base custom-local");
-    expect(workflow).toContain('--head "$GITHUB_REPOSITORY_OWNER:$SYNC_BRANCH"');
-    expect(workflow).not.toContain("gh workflow run release.yml");
+    expect(workflow).toContain("gh workflow run release.yml");
+    expect(workflow).toContain("--ref custom-local");
+    expect(workflow).toContain("-f channel=gmacko");
   });
 });
