@@ -76,6 +76,7 @@ describe("brand-assets", () => {
   it("maps hosted release channels to web asset brands", () => {
     expect(resolveWebAssetBrandForChannel("latest")).toBe("production");
     expect(resolveWebAssetBrandForChannel("nightly")).toBe("nightly");
+    expect(resolveWebAssetBrandForChannel("gmacko")).toBe("production");
   });
 
   it("maps package versions to web asset brands", () => {
