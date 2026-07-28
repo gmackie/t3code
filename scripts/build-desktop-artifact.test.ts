@@ -124,13 +124,14 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
     });
   });
 
-  it("uses the white production mac icon asset", () => {
-    assert.equal(BRAND_ASSET_PATHS.productionMacIconPng, "assets/prod/white-macos-1024.png");
+  it("uses the black production mac icon asset", () => {
+    assert.equal(BRAND_ASSET_PATHS.productionMacIconPng, "assets/prod/black-macos-1024.png");
   });
 
   it("switches the bundled splash and favicon branding for nightly versions", () => {
     assert.equal(resolveDesktopWebAssetBrand("0.0.17"), "production");
     assert.equal(resolveDesktopWebAssetBrand("0.0.17-nightly.20260413.42"), "nightly");
+    assert.equal(resolveDesktopWebAssetBrand("0.0.20-gmacko.202604170930"), "production");
   });
 
   it.effect("resolves GitHub desktop publish config from Effect config", () =>
