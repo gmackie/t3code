@@ -1,5 +1,5 @@
 import * as React from "react";
-import type { IssueItem } from "@t3tools/contracts";
+import type { ContextMenuItem, IssueItem } from "@t3tools/contracts";
 import type { SidebarProjectSortOrder, SidebarThreadSortOrder } from "@t3tools/contracts/settings";
 import {
   getThreadSortTimestamp,
@@ -18,7 +18,7 @@ export const THREAD_JUMP_HINT_SHOW_DELAY_MS = 100;
 // Visible sidebar rows are prewarmed into the thread-detail cache so opening a
 // nearby thread usually reuses an already-hot subscription.
 export const SIDEBAR_THREAD_PREWARM_LIMIT = 10;
-
+export type SidebarNewThreadEnvMode = "local" | "worktree";
 type SidebarProject = {
   id: string;
   title: string;
@@ -426,7 +426,6 @@ export function resolveThreadIssueBadgeClassName(statusName: string | null | und
     THREAD_ISSUE_BADGE_CLASS_BY_STATUS_KEY[statusKey] ?? "border-amber-400/35 text-amber-300/90",
   );
 }
-
 export function orderItemsByPreferredIds<TItem, TId>(input: {
   items: readonly TItem[];
   preferredIds: readonly TId[];
