@@ -16,8 +16,11 @@ describe("gmacko upstream sync workflow", () => {
     expect(workflow).not.toContain("-X theirs");
     expect(workflow).toContain('git ls-remote --exit-code --heads origin "$SYNC_BRANCH"');
     expect(workflow).not.toContain("|| true");
+    expect(workflow).toContain('gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/$SYNC_BRANCH"');
     expect(workflow).toContain("gh pr create");
+    expect(workflow).toContain('--repo "$GITHUB_REPOSITORY"');
     expect(workflow).toContain("--base custom-local");
+    expect(workflow).toContain('--head "$GITHUB_REPOSITORY_OWNER:$SYNC_BRANCH"');
     expect(workflow).not.toContain("gh workflow run release.yml");
   });
 });
