@@ -336,7 +336,7 @@ function assertWorkflowSupportsGmackoForkReleases(): void {
     "-X theirs",
     "Gmacko sync workflow does not preserve GMACKO conflict hunks during rebase.",
   );
-  assertContains(
+  assertNotContains(
     gmackoSyncWorkflow,
     "gh pr create",
     "Gmacko sync workflow still requires a pull request.",

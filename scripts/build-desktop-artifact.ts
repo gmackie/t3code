@@ -2249,7 +2249,14 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
 
   if (platform === "win") {
     buildConfig.npmRebuild = false;
-    const winConfig = (buildConfig.win ?? {}) as Record<string, unknown>;
+    const winConfig: Record<string, unknown> = {
+      target: [target],
+      icon: "icon.ico",
+      // Resource editing applies the product metadata and icon independently
+      // of code signing. Disabling it for local unsigned builds leaves the
+      // packaged executable with Electron's stock icon.
+      signAndEditExecutable: true,
+    };
     if (signed) {
       winConfig.azureSignOptions = yield* AzureTrustedSigningOptionsConfig;
     }
