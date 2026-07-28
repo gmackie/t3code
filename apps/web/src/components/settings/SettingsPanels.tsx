@@ -6,6 +6,7 @@ import {
   RefreshCwIcon,
   TerminalIcon,
 } from "lucide-react";
+import type { CSSProperties } from "react";
 import { useAtomValue } from "@effect/atom-react";
 import { Link } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -525,7 +526,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       settings.sidebarProjectGroupingMode,
       settings.sidebarThreadPreviewCount,
       settings.timestampFormat,
-      settings.terminal,
+      settings.wordWrap,
       theme,
     ],
   );

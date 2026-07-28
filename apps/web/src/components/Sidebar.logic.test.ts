@@ -574,7 +574,6 @@ describe("buildIssueThreadDraftPrompt", () => {
     ).toContain("Please start a new thread for Linear issue ENG-123");
   });
 });
-
 describe("orderItemsByPreferredIds", () => {
   it("keeps preferred ids first, skips stale ids, and preserves the relative order of remaining items", () => {
     const ordered = orderItemsByPreferredIds({
