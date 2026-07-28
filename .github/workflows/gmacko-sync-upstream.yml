@@ -6,8 +6,8 @@ on:
   workflow_dispatch:
 
 permissions:
+  actions: write
   contents: write
-  pull-requests: write
 
 concurrency:
   group: gmacko-sync-upstream
@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   sync:
-    name: Prepare upstream sync PR
+    name: Rebase upstream and release
     # Scheduled workflows only run from the repository default branch. Keep this
     # workflow on main-local, but make the mutable release branch custom-local.
     if: github.repository == 'gmackie/t3code'
@@ -34,10 +34,8 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-      - id: sync_branch
-        name: Prepare sync branch
-        env:
-          SYNC_BRANCH: automation/gmacko-upstream-sync
+      - id: rebase_upstream
+        name: Rebase custom-local onto upstream
         run: |
           git remote add upstream https://github.com/pingdotgg/t3code.git
           git fetch upstream main
@@ -47,53 +45,37 @@ jobs:
             exit 0
           fi
 
-          if git ls-remote --exit-code --heads origin "$SYNC_BRANCH" >/dev/null; then
-            git fetch origin "$SYNC_BRANCH:refs/remotes/origin/$SYNC_BRANCH"
-          fi
-
-          git switch -C "$SYNC_BRANCH" upstream/main
-          git push --force-with-lease origin "HEAD:$SYNC_BRANCH"
+          START_SHA="$(git rev-parse HEAD)"
+          # Rebase reverses merge strategy labels: "theirs" is the GMACKO
+          # commit being replayed, while "ours" is the new upstream base.
+          git rebase --force-rebase -X theirs upstream/main
+          git push --force-with-lease="refs/heads/custom-local:$START_SHA" origin "HEAD:custom-local"
           echo "has_changes=true" >> "$GITHUB_OUTPUT"
+          echo "head_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
-      - name: Open or update sync PR
-        if: steps.sync_branch.outputs.has_changes == 'true'
+      - name: Publish synchronized GMACKO release
+        if: steps.rebase_upstream.outputs.has_changes == 'true'
         env:
           GH_TOKEN: ${{ secrets.GMACKO_SYNC_TOKEN || github.token }}
-          SYNC_BRANCH: automation/gmacko-upstream-sync
+          EXPECTED_SHA: ${{ steps.rebase_upstream.outputs.head_sha }}
         run: |
           ref_visible=false
           for attempt in 1 2 3 4 5; do
-            if gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/$SYNC_BRANCH" >/dev/null 2>&1; then
+            if visible_sha="$(
+              gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/custom-local" \
+                --jq '.object.sha' 2>/dev/null
+            )" && [[ "$visible_sha" == "$EXPECTED_SHA" ]]; then
               ref_visible=true
               break
             fi
             sleep $((attempt * 2))
           done
           if [[ "$ref_visible" != "true" ]]; then
-            echo "Sync branch was pushed but is not visible through the GitHub API." >&2
+            echo "Updated custom-local is not visible through the GitHub API." >&2
             exit 1
           fi
 
-          existing_pr="$(
-            gh pr list \
-              --repo "$GITHUB_REPOSITORY" \
-              --base custom-local \
-              --head "$GITHUB_REPOSITORY_OWNER:$SYNC_BRANCH" \
-              --state open \
-              --json number \
-              --jq '.[0].number // empty'
-          )"
-
-          if [[ -n "$existing_pr" ]]; then
-            gh pr edit "$existing_pr" \
-              --repo "$GITHUB_REPOSITORY" \
-              --title "Sync upstream main into custom-local" \
-              --body "Automated upstream sync for GMACKO. GitHub reports any conflicts for manual resolution. Merge only after required checks pass."
-          else
-            gh pr create \
-              --repo "$GITHUB_REPOSITORY" \
-              --base custom-local \
-              --head "$GITHUB_REPOSITORY_OWNER:$SYNC_BRANCH" \
-              --title "Sync upstream main into custom-local" \
-              --body "Automated upstream sync for GMACKO. GitHub reports any conflicts for manual resolution. Merge only after required checks pass."
-          fi
+          gh workflow run release.yml \
+            --repo "$GITHUB_REPOSITORY" \
+            --ref custom-local \
+            -f channel=gmacko
