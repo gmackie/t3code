@@ -23,11 +23,7 @@ export type RuntimeMode = typeof RuntimeMode.Type;
 export const StartupPresentation = Schema.Literals(["browser", "headless"]);
 export type StartupPresentation = typeof StartupPresentation.Type;
 
-const normalizeStateDirName = Effect.fn(function* (
-  value: string | undefined,
-  devUrl: URL | undefined,
-) {
-  const fallback = devUrl !== undefined ? "dev" : "userdata";
+const normalizeStateDirName = Effect.fn(function* (value: string | undefined, fallback: string) {
   const stateDirName = value?.trim() || fallback;
   if (
     stateDirName === "." ||
@@ -65,6 +61,7 @@ export interface ServerDerivedPaths {
 
 export interface DeriveServerPathsOptions {
   readonly baseDirIsExplicit?: boolean;
+  readonly stateDirName?: string;
 }
 
 /**
@@ -117,10 +114,15 @@ export const layer = (config: ServerConfig["Service"]) => Layer.succeed(ServerCo
 export const deriveServerPaths = Effect.fn(function* (
   baseDir: ServerConfig["Service"]["baseDir"],
   devUrl: ServerConfig["Service"]["devUrl"],
-  stateDirName?: string | undefined,
+  options: DeriveServerPathsOptions = {},
 ): Effect.fn.Return<ServerDerivedPaths, Error, Path.Path> {
   const { join } = yield* Path.Path;
-  const stateDir = join(baseDir, yield* normalizeStateDirName(stateDirName, devUrl));
+  const fallbackStateDirName =
+    devUrl !== undefined && !options.baseDirIsExplicit ? "dev" : "userdata";
+  const stateDir = join(
+    baseDir,
+    yield* normalizeStateDirName(options.stateDirName, fallbackStateDirName),
+  );
   const dbPath = join(stateDir, "state.sqlite");
   const attachmentsDir = join(stateDir, "attachments");
   const logsDir = join(stateDir, "logs");

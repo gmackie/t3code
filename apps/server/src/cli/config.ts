@@ -292,7 +292,10 @@ export const resolveServerConfig = (
         Option.fromUndefinedOr(bootstrap?.stateDirName),
       ),
     );
-    const derivedPaths = yield* ServerConfig.deriveServerPaths(baseDir, devUrl, stateDirName);
+    const derivedPaths = yield* ServerConfig.deriveServerPaths(baseDir, devUrl, {
+      baseDirIsExplicit: Option.isSome(explicitBaseDir),
+      ...(stateDirName !== undefined ? { stateDirName } : {}),
+    });
     yield* ServerConfig.ensureServerDirectories(derivedPaths);
     const persistedObservabilitySettings = yield* loadPersistedObservabilitySettings(
       derivedPaths.settingsPath,

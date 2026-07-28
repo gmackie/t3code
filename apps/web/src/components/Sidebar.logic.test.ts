@@ -447,7 +447,6 @@ describe("shouldCreateNewThreadInCurrentProject", () => {
     expect(shouldCreateNewThreadInCurrentProject(true, 1)).toBe(true);
   });
 });
-
 describe("orderItemsByPreferredIds", () => {
   it("keeps preferred ids first, skips stale ids, and preserves the relative order of remaining items", () => {
     const ordered = orderItemsByPreferredIds({
