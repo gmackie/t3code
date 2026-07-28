@@ -8,10 +8,11 @@ const workflowPath = NodeURL.fileURLToPath(
 );
 
 describe("gmacko upstream sync workflow", () => {
-  it("opens a reviewable sync PR without preferring upstream conflicts", () => {
+  it("opens a reviewable sync PR even when upstream conflicts with custom-local", () => {
     const workflow = NodeFS.readFileSync(workflowPath, "utf8");
 
-    expect(workflow).toContain("git merge --no-edit upstream/main");
+    expect(workflow).toContain('git switch -C "$SYNC_BRANCH" upstream/main');
+    expect(workflow).not.toContain("git merge --no-edit upstream/main");
     expect(workflow).not.toContain("-X theirs");
     expect(workflow).toContain('git ls-remote --exit-code --heads origin "$SYNC_BRANCH"');
     expect(workflow).not.toContain("|| true");

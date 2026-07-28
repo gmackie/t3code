@@ -323,8 +323,18 @@ function assertWorkflowSupportsGmackoForkReleases(): void {
   );
   assertContains(
     gmackoSyncWorkflow,
-    "git merge --no-edit -X theirs upstream/main",
-    "Gmacko sync workflow does not merge upstream main into custom-local.",
+    'git switch -C "$SYNC_BRANCH" upstream/main',
+    "Gmacko sync workflow does not prepare an upstream-backed review branch.",
+  );
+  assertNotContains(
+    gmackoSyncWorkflow,
+    "git merge --no-edit upstream/main",
+    "Gmacko sync workflow still aborts before opening a PR when conflicts exist.",
+  );
+  assertNotContains(
+    gmackoSyncWorkflow,
+    "-X theirs",
+    "Gmacko sync workflow still prefers upstream conflict resolutions.",
   );
   assertContains(
     gmackoSyncWorkflow,

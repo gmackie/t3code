@@ -34,7 +34,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-      - id: merge
+      - id: sync_branch
         name: Prepare sync branch
         env:
           SYNC_BRANCH: automation/gmacko-upstream-sync
@@ -51,13 +51,12 @@ jobs:
             git fetch origin "$SYNC_BRANCH:refs/remotes/origin/$SYNC_BRANCH"
           fi
 
-          git switch -C "$SYNC_BRANCH"
-          git merge --no-edit upstream/main
+          git switch -C "$SYNC_BRANCH" upstream/main
           git push --force-with-lease origin "HEAD:$SYNC_BRANCH"
           echo "has_changes=true" >> "$GITHUB_OUTPUT"
 
       - name: Open or update sync PR
-        if: steps.merge.outputs.has_changes == 'true'
+        if: steps.sync_branch.outputs.has_changes == 'true'
         env:
           GH_TOKEN: ${{ secrets.GMACKO_SYNC_TOKEN || github.token }}
           SYNC_BRANCH: automation/gmacko-upstream-sync
@@ -74,11 +73,11 @@ jobs:
           if [[ -n "$existing_pr" ]]; then
             gh pr edit "$existing_pr" \
               --title "Sync upstream main into custom-local" \
-              --body "Automated upstream sync for GMACKO. Merge only after required checks pass."
+              --body "Automated upstream sync for GMACKO. GitHub reports any conflicts for manual resolution. Merge only after required checks pass."
           else
             gh pr create \
               --base custom-local \
               --head "$SYNC_BRANCH" \
               --title "Sync upstream main into custom-local" \
-              --body "Automated upstream sync for GMACKO. Merge only after required checks pass."
+              --body "Automated upstream sync for GMACKO. GitHub reports any conflicts for manual resolution. Merge only after required checks pass."
           fi
