@@ -328,6 +328,11 @@ function assertWorkflowSupportsGmackoForkReleases(): void {
   );
   assertContains(
     gmackoSyncWorkflow,
+    "vp install --lockfile-only --no-frozen-lockfile",
+    "Gmacko sync workflow does not refresh the lockfile after rebasing upstream manifests.",
+  );
+  assertContains(
+    gmackoSyncWorkflow,
     'git push --force-with-lease="refs/heads/custom-local:$START_SHA" origin "HEAD:custom-local"',
     "Gmacko sync workflow does not lease-protect the required force push to custom-local.",
   );
@@ -345,6 +350,11 @@ function assertWorkflowSupportsGmackoForkReleases(): void {
     gmackoSyncWorkflow,
     "gh workflow run release.yml",
     "Gmacko sync workflow does not publish an updater release after merging.",
+  );
+  assertContains(
+    gmackoSyncWorkflow,
+    'gh run view "$release_run_id"',
+    "Gmacko sync workflow does not wait for the dispatched release result.",
   );
 }
 
