@@ -28,7 +28,7 @@ describe("gmacko upstream sync workflow", () => {
     expect(workflow).toContain("--ref custom-local");
     expect(workflow).toContain("-f channel=gmacko");
     expect(workflow).toContain('--commit "$EXPECTED_SHA"');
-    expect(workflow).toContain('gh run view "$release_run_id"');
+    expect(workflow).toContain('retry_gh_read run view "$release_run_id"');
     expect(workflow).toContain('[[ "$release_conclusion" == "success" ]]');
   });
 
@@ -45,5 +45,9 @@ describe("gmacko upstream sync workflow", () => {
     expect(publishStep).toContain("Release already published for $EXPECTED_SHA");
     expect(publishStep).toContain('known_release_run_ids="$(');
     expect(publishStep).toContain('--arg known "$known_release_run_ids"');
+    expect(publishStep).toContain('if ! release_candidates="$(');
+    expect(publishStep).toContain("Unable to list release runs; retrying.");
+    expect(publishStep).toContain('if ! release_state="$(');
+    expect(publishStep).toContain("Unable to read release run $release_run_id; retrying.");
   });
 });
