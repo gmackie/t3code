@@ -31,4 +31,19 @@ describe("gmacko upstream sync workflow", () => {
     expect(workflow).toContain('gh run view "$release_run_id"');
     expect(workflow).toContain('[[ "$release_conclusion" == "success" ]]');
   });
+
+  it("retries publication when the current custom-local SHA has no release", () => {
+    const workflow = NodeFS.readFileSync(workflowPath, "utf8");
+    const publishStep = workflow.slice(
+      workflow.indexOf("- name: Publish synchronized GMACKO release"),
+    );
+
+    expect(publishStep).toMatch(/^- name: Publish synchronized GMACKO release\n\s+env:/m);
+    expect(publishStep).toContain("repos/$GITHUB_REPOSITORY/releases?per_page=100");
+    expect(publishStep).toContain("select(.target_commitish == $expected_sha)");
+    expect(publishStep).toContain("select(.draft == false and .prerelease == true)");
+    expect(publishStep).toContain("Release already published for $EXPECTED_SHA");
+    expect(publishStep).toContain('known_release_run_ids="$(');
+    expect(publishStep).toContain('--arg known "$known_release_run_ids"');
+  });
 });
