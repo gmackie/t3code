@@ -255,7 +255,7 @@ function assertWorkflowSupportsGmackoForkReleases(): void {
   );
   assertContains(
     gmackoSyncWorkflow,
-    'gh run view "$release_run_id"',
+    'retry_gh_read run view "$release_run_id"',
     "Gmacko sync workflow does not wait for the dispatched release result.",
   );
 }
