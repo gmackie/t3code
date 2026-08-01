@@ -93,17 +93,6 @@ import { AdvertisedEndpoint } from "./remoteAccess.ts";
 import { ExecutionEnvironmentDescriptor } from "./environment.ts";
 import type { ClientSettings } from "./settings.ts";
 import type {
-  IssueListResult,
-  LinearIssueValidationResult,
-  ProjectIssueCreateInput,
-  ProjectIssueCreateResult,
-  ProjectIssueListInput,
-  ProjectIssueStatusListInput,
-  ProjectIssueStatusListResult,
-  ProjectIssueStatusUpdateInput,
-  ProjectIssueStatusUpdateResult,
-} from "./issue.ts";
-import type {
   SourceControlCloneRepositoryInput,
   SourceControlCloneRepositoryResult,
   SourceControlPublishRepositoryInput,
@@ -1152,38 +1141,6 @@ export interface LocalApi {
   persistence: {
     getClientSettings: () => Promise<ClientSettings | null>;
     setClientSettings: (settings: ClientSettings) => Promise<void>;
-  };
-  server: {
-    getConfig: () => Promise<ServerConfig>;
-    /**
-     * Refresh provider snapshots. When `input.instanceId` is supplied only that
-     * configured instance is probed; otherwise every configured instance is
-     * refreshed (legacy untargeted refresh).
-     */
-    refreshProviders: (input?: {
-      readonly instanceId?: ProviderInstanceId;
-    }) => Promise<ServerProviderUpdatedPayload>;
-    updateProvider: (input: ServerProviderUpdateInput) => Promise<ServerProviderUpdatedPayload>;
-    upsertKeybinding: (input: ServerUpsertKeybindingInput) => Promise<ServerUpsertKeybindingResult>;
-    removeKeybinding: (input: ServerRemoveKeybindingInput) => Promise<ServerRemoveKeybindingResult>;
-    getSettings: () => Promise<ServerSettings>;
-    updateSettings: (patch: ServerSettingsPatch) => Promise<ServerSettings>;
-    validateLinearIssues: () => Promise<LinearIssueValidationResult>;
-    listProjectIssues: (input: ProjectIssueListInput) => Promise<IssueListResult>;
-    listProjectIssueStatuses: (
-      input: ProjectIssueStatusListInput,
-    ) => Promise<ProjectIssueStatusListResult>;
-    createProjectIssue: (input: ProjectIssueCreateInput) => Promise<ProjectIssueCreateResult>;
-    updateProjectIssueStatus: (
-      input: ProjectIssueStatusUpdateInput,
-    ) => Promise<ProjectIssueStatusUpdateResult>;
-    discoverSourceControl: () => Promise<SourceControlDiscoveryResult>;
-    getTraceDiagnostics: () => Promise<ServerTraceDiagnosticsResult>;
-    getProcessDiagnostics: () => Promise<ServerProcessDiagnosticsResult>;
-    getProcessResourceHistory: (
-      input: ServerProcessResourceHistoryInput,
-    ) => Promise<ServerProcessResourceHistoryResult>;
-    signalProcess: (input: ServerSignalProcessInput) => Promise<ServerSignalProcessResult>;
   };
 }
 
