@@ -20,7 +20,7 @@ jobs:
     # workflow on main-local, but make the mutable release branch custom-local.
     if: github.repository == 'gmackie/t3code'
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 50
     steps:
       - name: Checkout custom-local
         uses: actions/checkout@v6
@@ -49,15 +49,47 @@ jobs:
           # Rebase reverses merge strategy labels: "theirs" is the GMACKO
           # commit being replayed, while "ours" is the new upstream base.
           git rebase --force-rebase -X theirs upstream/main
-          git push --force-with-lease="refs/heads/custom-local:$START_SHA" origin "HEAD:custom-local"
           echo "has_changes=true" >> "$GITHUB_OUTPUT"
+          echo "start_sha=$START_SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Setup Vite+
+        if: steps.rebase_upstream.outputs.has_changes == 'true'
+        uses: voidzero-dev/setup-vp@v1
+        with:
+          node-version-file: package.json
+          cache: true
+          run-install: false
+
+      - id: refresh_lockfile
+        name: Refresh lockfile after rebase
+        if: steps.rebase_upstream.outputs.has_changes == 'true'
+        run: |
+          LOCK_COMMIT_SUBJECT="chore: refresh lockfile after upstream rebase"
+          vp install --lockfile-only --no-frozen-lockfile
+          git add pnpm-lock.yaml
+
+          if ! git diff --cached --quiet; then
+            if [[ "$(git log -1 --format=%s)" == "$LOCK_COMMIT_SUBJECT" ]]; then
+              git commit --amend --no-edit
+            else
+              git commit -m "$LOCK_COMMIT_SUBJECT"
+            fi
+          fi
+
           echo "head_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Push rebased custom-local
+        if: steps.rebase_upstream.outputs.has_changes == 'true'
+        env:
+          START_SHA: ${{ steps.rebase_upstream.outputs.start_sha }}
+        run: |
+          git push --force-with-lease="refs/heads/custom-local:$START_SHA" origin "HEAD:custom-local"
 
       - name: Publish synchronized GMACKO release
         if: steps.rebase_upstream.outputs.has_changes == 'true'
         env:
           GH_TOKEN: ${{ secrets.GMACKO_SYNC_TOKEN || github.token }}
-          EXPECTED_SHA: ${{ steps.rebase_upstream.outputs.head_sha }}
+          EXPECTED_SHA: ${{ steps.refresh_lockfile.outputs.head_sha }}
         run: |
           ref_visible=false
           for attempt in 1 2 3 4 5; do
@@ -79,3 +111,49 @@ jobs:
             --repo "$GITHUB_REPOSITORY" \
             --ref custom-local \
             -f channel=gmacko
+
+          release_run_id=""
+          for attempt in $(seq 1 12); do
+            release_run_id="$(
+              gh run list \
+                --repo "$GITHUB_REPOSITORY" \
+                --workflow release.yml \
+                --branch custom-local \
+                --event workflow_dispatch \
+                --commit "$EXPECTED_SHA" \
+                --limit 1 \
+                --json databaseId \
+                --jq '.[0].databaseId // empty'
+            )"
+            if [[ -n "$release_run_id" ]]; then
+              break
+            fi
+            sleep 5
+          done
+
+          if [[ -z "$release_run_id" ]]; then
+            echo "Dispatched release run was not found for $EXPECTED_SHA." >&2
+            exit 1
+          fi
+
+          for attempt in $(seq 1 160); do
+            release_state="$(
+              gh run view "$release_run_id" \
+                --repo "$GITHUB_REPOSITORY" \
+                --json status,conclusion \
+                --jq '[.status, (.conclusion // "")] | @tsv'
+            )"
+            IFS=$'\t' read -r release_status release_conclusion <<< "$release_state"
+
+            if [[ "$release_status" == "completed" ]]; then
+              if [[ "$release_conclusion" == "success" ]]; then
+                exit 0
+              fi
+              echo "Release run $release_run_id completed with $release_conclusion." >&2
+              exit 1
+            fi
+            sleep 15
+          done
+
+          echo "Timed out waiting for release run $release_run_id." >&2
+          exit 1
