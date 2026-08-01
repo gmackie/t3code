@@ -1,4 +1,5 @@
 import { scopeProjectRef } from "@t3tools/client-runtime/environment";
+import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
 import type { EnvironmentId, IssueItem, ProjectId, ProjectIssueStatus } from "@t3tools/contracts";
 import { ClipboardListIcon, KanbanIcon, ListIcon, PlusIcon, RefreshCwIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -20,7 +21,6 @@ import { SidebarInset, SidebarTrigger } from "./ui/sidebar";
 import { Textarea } from "./ui/textarea";
 import { useComposerDraftStore } from "../composerDraftStore";
 import { useNewThreadHandler } from "../hooks/useHandleNewThread";
-import { readLocalApi } from "../localApi";
 import { inferProjectTitleFromPath } from "../lib/projectPaths";
 import { cn } from "../lib/utils";
 import {
@@ -34,6 +34,8 @@ import {
 } from "../projectIssues.logic";
 import { usePrimarySettings } from "../hooks/useSettings";
 import { useProjects } from "../state/entities";
+import { serverEnvironment } from "../state/server";
+import { useAtomCommand } from "../state/use-atom-command";
 
 interface ProjectIssueViewerProps {
   readonly environmentId: EnvironmentId;
@@ -128,6 +130,18 @@ export function ProjectIssueViewer({ environmentId, projectId }: ProjectIssueVie
   const [newTitle, setNewTitle] = useState("");
   const [newDescription, setNewDescription] = useState("");
   const [newStatusId, setNewStatusId] = useState<string>("");
+  const listProjectIssues = useAtomCommand(serverEnvironment.listProjectIssues, {
+    reportFailure: false,
+  });
+  const listProjectIssueStatuses = useAtomCommand(serverEnvironment.listProjectIssueStatuses, {
+    reportFailure: false,
+  });
+  const createProjectIssue = useAtomCommand(serverEnvironment.createProjectIssue, {
+    reportFailure: false,
+  });
+  const updateProjectIssueStatus = useAtomCommand(serverEnvironment.updateProjectIssueStatus, {
+    reportFailure: false,
+  });
 
   const statusOptions = useMemo(() => {
     return resolveSelectableIssueStatuses({ statuses, issues });
@@ -142,46 +156,44 @@ export function ProjectIssueViewer({ environmentId, projectId }: ProjectIssueVie
 
   const loadIssues = useCallback(
     (nextQuery: string = query) => {
-      const api = readLocalApi();
-      if (!api) {
-        setIssues([]);
-        setError("Local backend is unavailable.");
-        return;
-      }
       setLoading(true);
       setError(null);
-      void api.server
-        .listProjectIssues({
+      void listProjectIssues({
+        environmentId,
+        input: {
           projectId,
           ...(nextQuery.trim().length > 0 ? { query: nextQuery.trim() } : {}),
           limit: 100,
-        })
-        .then((result) => setIssues(result.issues))
-        .catch((loadError) => {
+        },
+      }).then((result) => {
+        if (result._tag === "Success") {
+          setIssues(result.value.issues);
+        } else {
           setIssues([]);
-          setError(loadError instanceof Error ? loadError.message : "Unable to load issues.");
-        })
-        .finally(() => setLoading(false));
+          const error = squashAtomCommandFailure(result);
+          setError(error instanceof Error ? error.message : "Unable to load issues.");
+        }
+        setLoading(false);
+      });
     },
-    [projectId, query],
+    [environmentId, listProjectIssues, projectId, query],
   );
 
   const loadStatuses = useCallback(() => {
-    const api = readLocalApi();
-    if (!api) {
-      setStatuses([]);
-      setError("Local backend is unavailable.");
-      return;
-    }
     setError(null);
-    void api.server
-      .listProjectIssueStatuses({ projectId })
-      .then((result) => setStatuses(result.statuses))
-      .catch((loadError) => {
+    void listProjectIssueStatuses({
+      environmentId,
+      input: { projectId },
+    }).then((result) => {
+      if (result._tag === "Success") {
+        setStatuses(result.value.statuses);
+      } else {
         setStatuses([]);
-        setError(loadError instanceof Error ? loadError.message : "Unable to load issue statuses.");
-      });
-  }, [projectId]);
+        const error = squashAtomCommandFailure(result);
+        setError(error instanceof Error ? error.message : "Unable to load issue statuses.");
+      }
+    });
+  }, [environmentId, listProjectIssueStatuses, projectId]);
 
   useEffect(() => {
     loadIssues("");
@@ -191,68 +203,72 @@ export function ProjectIssueViewer({ environmentId, projectId }: ProjectIssueVie
   const createIssue = useCallback(() => {
     const title = newTitle.trim();
     if (!title) return;
-    const api = readLocalApi();
-    if (!api) {
-      setError("Local backend is unavailable.");
-      return;
-    }
     setCreating(true);
     setError(null);
     const selectedStatus = statusOptions.find((status) => status.id === newStatusId);
-    void api.server
-      .createProjectIssue({
+    void createProjectIssue({
+      environmentId,
+      input: {
         projectId,
         title,
         ...(newDescription.trim().length > 0 ? { descriptionMarkdown: newDescription.trim() } : {}),
         ...(selectedStatus
           ? { statusId: selectedStatus.id, statusName: selectedStatus.name }
           : { statusName: DEFAULT_CREATE_STATUS }),
-      })
-      .then((result) => {
+      },
+    }).then((result) => {
+      if (result._tag === "Success") {
         setIssues((current) => [
-          result.issue,
-          ...current.filter((issue) => issue.id !== result.issue.id),
+          result.value.issue,
+          ...current.filter((issue) => issue.id !== result.value.issue.id),
         ]);
         setNewTitle("");
         setNewDescription("");
         setCreateIssueOpen(false);
-      })
-      .catch((createError) => {
-        setError(createError instanceof Error ? createError.message : "Unable to create issue.");
-      })
-      .finally(() => setCreating(false));
-  }, [newDescription, newStatusId, newTitle, projectId, statusOptions]);
+      } else {
+        const error = squashAtomCommandFailure(result);
+        setError(error instanceof Error ? error.message : "Unable to create issue.");
+      }
+      setCreating(false);
+    });
+  }, [
+    createProjectIssue,
+    environmentId,
+    newDescription,
+    newStatusId,
+    newTitle,
+    projectId,
+    statusOptions,
+  ]);
 
   const updateIssueStatus = useCallback(
     (issue: IssueItem, status: ProjectIssueStatus) => {
       if ((issue.statusId ?? issue.statusName ?? issue.state) === status.id) return;
-      const api = readLocalApi();
-      if (!api) {
-        setError("Local backend is unavailable.");
-        return;
-      }
       setUpdatingIssueId(issue.id);
       setError(null);
-      void api.server
-        .updateProjectIssueStatus({
+      void updateProjectIssueStatus({
+        environmentId,
+        input: {
           projectId,
           issueId: issue.id,
           statusId: status.id,
           statusName: status.name,
-        })
-        .then((result) => {
+        },
+      }).then((result) => {
+        if (result._tag === "Success") {
           setIssues((current) =>
             current.map((candidate) =>
-              candidate.id === result.issue.id ? result.issue : candidate,
+              candidate.id === result.value.issue.id ? result.value.issue : candidate,
             ),
           );
-        })
-        .catch((updateError) => {
-          setError(updateError instanceof Error ? updateError.message : "Unable to update issue.");
-        })
-        .finally(() => setUpdatingIssueId(null));
+        } else {
+          const error = squashAtomCommandFailure(result);
+          setError(error instanceof Error ? error.message : "Unable to update issue.");
+        }
+        setUpdatingIssueId(null);
+      });
     },
-    [projectId],
+    [environmentId, projectId, updateProjectIssueStatus],
   );
 
   const startThreadForIssue = useCallback(
