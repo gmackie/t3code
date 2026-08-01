@@ -42,6 +42,7 @@ jobs:
 
           if git merge-base --is-ancestor upstream/main HEAD; then
             echo "has_changes=false" >> "$GITHUB_OUTPUT"
+            echo "head_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
@@ -51,6 +52,7 @@ jobs:
           git rebase --force-rebase -X theirs upstream/main
           echo "has_changes=true" >> "$GITHUB_OUTPUT"
           echo "start_sha=$START_SHA" >> "$GITHUB_OUTPUT"
+          echo "head_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       - name: Setup Vite+
         if: steps.rebase_upstream.outputs.has_changes == 'true'
@@ -86,10 +88,9 @@ jobs:
           git push --force-with-lease="refs/heads/custom-local:$START_SHA" origin "HEAD:custom-local"
 
       - name: Publish synchronized GMACKO release
-        if: steps.rebase_upstream.outputs.has_changes == 'true'
         env:
           GH_TOKEN: ${{ secrets.GMACKO_SYNC_TOKEN || github.token }}
-          EXPECTED_SHA: ${{ steps.refresh_lockfile.outputs.head_sha }}
+          EXPECTED_SHA: ${{ steps.refresh_lockfile.outputs.head_sha || steps.rebase_upstream.outputs.head_sha }}
         run: |
           ref_visible=false
           for attempt in 1 2 3 4 5; do
@@ -107,6 +108,34 @@ jobs:
             exit 1
           fi
 
+          existing_release_tag="$(
+            gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100" |
+              jq -r --arg expected_sha "$EXPECTED_SHA" '
+                [
+                  .[]
+                  | select(.target_commitish == $expected_sha)
+                  | select(.draft == false and .prerelease == true)
+                  | select(.tag_name | test("^v[0-9]+\\.[0-9]+\\.[0-9]+-gmacko\\.[0-9]+$"))
+                ][0].tag_name // empty
+              '
+          )"
+          if [[ -n "$existing_release_tag" ]]; then
+            echo "Release already published for $EXPECTED_SHA: $existing_release_tag"
+            exit 0
+          fi
+
+          known_release_run_ids="$(
+            gh run list \
+              --repo "$GITHUB_REPOSITORY" \
+              --workflow release.yml \
+              --branch custom-local \
+              --event workflow_dispatch \
+              --commit "$EXPECTED_SHA" \
+              --limit 100 \
+              --json databaseId \
+              --jq '.[].databaseId'
+          )"
+
           gh workflow run release.yml \
             --repo "$GITHUB_REPOSITORY" \
             --ref custom-local \
@@ -121,9 +150,17 @@ jobs:
                 --branch custom-local \
                 --event workflow_dispatch \
                 --commit "$EXPECTED_SHA" \
-                --limit 1 \
+                --limit 20 \
                 --json databaseId \
-                --jq '.[0].databaseId // empty'
+                --jq '[.[].databaseId | tostring]'
+            )"
+            release_run_id="$(
+              jq -nr \
+                --arg known "$known_release_run_ids" \
+                --argjson candidates "$release_run_id" '
+                  ($known | split("\n")) as $known_ids
+                  | [$candidates[] | select(. as $id | $known_ids | index($id) | not)][0] // empty
+                '
             )"
             if [[ -n "$release_run_id" ]]; then
               break
