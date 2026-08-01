@@ -92,6 +92,18 @@ jobs:
           GH_TOKEN: ${{ secrets.GMACKO_SYNC_TOKEN || github.token }}
           EXPECTED_SHA: ${{ steps.refresh_lockfile.outputs.head_sha || steps.rebase_upstream.outputs.head_sha }}
         run: |
+          retry_gh_read() {
+            local attempt
+            for attempt in 1 2 3 4 5; do
+              if gh "$@"; then
+                return 0
+              fi
+              echo "GitHub API read failed (attempt $attempt); retrying." >&2
+              sleep $((attempt * 2))
+            done
+            return 1
+          }
+
           ref_visible=false
           for attempt in 1 2 3 4 5; do
             if visible_sha="$(
@@ -108,24 +120,29 @@ jobs:
             exit 1
           fi
 
+          if ! releases_json="$(
+            retry_gh_read api "repos/$GITHUB_REPOSITORY/releases?per_page=100"
+          )"; then
+            echo "Unable to list published releases." >&2
+            exit 1
+          fi
           existing_release_tag="$(
-            gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100" |
-              jq -r --arg expected_sha "$EXPECTED_SHA" '
-                [
-                  .[]
-                  | select(.target_commitish == $expected_sha)
-                  | select(.draft == false and .prerelease == true)
-                  | select(.tag_name | test("^v[0-9]+\\.[0-9]+\\.[0-9]+-gmacko\\.[0-9]+$"))
-                ][0].tag_name // empty
-              '
+            jq -r --arg expected_sha "$EXPECTED_SHA" '
+              [
+                .[]
+                | select(.target_commitish == $expected_sha)
+                | select(.draft == false and .prerelease == true)
+                | select(.tag_name | test("^v[0-9]+\\.[0-9]+\\.[0-9]+-gmacko\\.[0-9]+$"))
+              ][0].tag_name // empty
+            ' <<< "$releases_json"
           )"
           if [[ -n "$existing_release_tag" ]]; then
             echo "Release already published for $EXPECTED_SHA: $existing_release_tag"
             exit 0
           fi
 
-          known_release_run_ids="$(
-            gh run list \
+          if ! known_release_run_ids="$(
+            retry_gh_read run list \
               --repo "$GITHUB_REPOSITORY" \
               --workflow release.yml \
               --branch custom-local \
@@ -134,7 +151,10 @@ jobs:
               --limit 100 \
               --json databaseId \
               --jq '.[].databaseId'
-          )"
+          )"; then
+            echo "Unable to snapshot existing release runs." >&2
+            exit 1
+          fi
 
           gh workflow run release.yml \
             --repo "$GITHUB_REPOSITORY" \
@@ -143,8 +163,8 @@ jobs:
 
           release_run_id=""
           for attempt in $(seq 1 12); do
-            release_run_id="$(
-              gh run list \
+            if ! release_candidates="$(
+              retry_gh_read run list \
                 --repo "$GITHUB_REPOSITORY" \
                 --workflow release.yml \
                 --branch custom-local \
@@ -153,11 +173,15 @@ jobs:
                 --limit 20 \
                 --json databaseId \
                 --jq '[.[].databaseId | tostring]'
-            )"
+            )"; then
+              echo "Unable to list release runs; retrying." >&2
+              sleep 5
+              continue
+            fi
             release_run_id="$(
               jq -nr \
                 --arg known "$known_release_run_ids" \
-                --argjson candidates "$release_run_id" '
+                --argjson candidates "$release_candidates" '
                   ($known | split("\n")) as $known_ids
                   | [$candidates[] | select(. as $id | $known_ids | index($id) | not)][0] // empty
                 '
@@ -174,12 +198,16 @@ jobs:
           fi
 
           for attempt in $(seq 1 160); do
-            release_state="$(
-              gh run view "$release_run_id" \
+            if ! release_state="$(
+              retry_gh_read run view "$release_run_id" \
                 --repo "$GITHUB_REPOSITORY" \
                 --json status,conclusion \
                 --jq '[.status, (.conclusion // "")] | @tsv'
-            )"
+            )"; then
+              echo "Unable to read release run $release_run_id; retrying." >&2
+              sleep 15
+              continue
+            fi
             IFS=$'\t' read -r release_status release_conclusion <<< "$release_state"
 
             if [[ "$release_status" == "completed" ]]; then
