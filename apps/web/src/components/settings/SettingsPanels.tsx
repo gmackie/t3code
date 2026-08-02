@@ -125,6 +125,7 @@ import { DRIVER_OPTIONS, getDriverOption } from "./providerDriverMeta";
 import {
   backgroundActivitySharedPolicySettings,
   buildProviderInstanceUpdatePatch,
+  DESKTOP_UPDATE_CHANNEL_OPTIONS,
   formatDiagnosticsDescription,
   hasChangedBackgroundActivitySettings,
   isProjectGroupingEnabled,
@@ -356,6 +357,9 @@ function AboutVersionSection() {
 
   const hasDesktopBridge = typeof window !== "undefined" && Boolean(window.desktopBridge);
   const selectedUpdateChannel = updateState?.channel ?? "latest";
+  const selectedUpdateChannelLabel =
+    DESKTOP_UPDATE_CHANNEL_OPTIONS.find((option) => option.value === selectedUpdateChannel)
+      ?.label ?? "Stable";
   const selectedHostedAppChannel = hasDesktopBridge ? null : HOSTED_APP_CHANNEL;
 
   const handleUpdateChannelChange = useCallback(
@@ -499,7 +503,7 @@ function AboutVersionSection() {
       {hasDesktopBridge ? (
         <SettingsRow
           title="Update track"
-          description="Stable follows full releases. Nightly follows the nightly desktop channel and can switch back to stable immediately."
+          description="Stable follows full releases. Nightly follows the nightly desktop channel. GMACKO follows the custom GMACKO release lane."
           control={
             <Select
               value={selectedUpdateChannel}
@@ -512,17 +516,14 @@ function AboutVersionSection() {
                 aria-label="Update track"
                 disabled={isChangingUpdateChannel}
               >
-                <SelectValue>
-                  {selectedUpdateChannel === "nightly" ? "Nightly" : "Stable"}
-                </SelectValue>
+                <SelectValue>{selectedUpdateChannelLabel}</SelectValue>
               </SelectTrigger>
               <SelectPopup align="end" alignItemWithTrigger={false}>
-                <SelectItem hideIndicator value="latest">
-                  Stable
-                </SelectItem>
-                <SelectItem hideIndicator value="nightly">
-                  Nightly
-                </SelectItem>
+                {DESKTOP_UPDATE_CHANNEL_OPTIONS.map((option) => (
+                  <SelectItem hideIndicator key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
               </SelectPopup>
             </Select>
           }
@@ -1104,7 +1105,7 @@ export function AppearanceSettingsPanel() {
         {showEnvironmentIdentification ? (
           <SettingsRow
             {...searchableSetting("environment-identification")}
-            description="Choose how Dev and Nightly environments are identified."
+            description="Choose how Dev, Nightly, and GMACKO environments are identified."
             resetAction={
               settings.environmentIdentificationMode !== DEFAULT_ENVIRONMENT_IDENTIFICATION_MODE ? (
                 <SettingResetButton
