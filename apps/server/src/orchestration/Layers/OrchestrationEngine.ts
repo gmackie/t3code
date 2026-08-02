@@ -1,10 +1,5 @@
-import type {
-  OrchestrationEvent,
-  OrchestrationReadModel,
-  ProjectId,
-  ThreadId,
-} from "@t3tools/contracts";
-import { OrchestrationCommand } from "@t3tools/contracts";
+import type { OrchestrationEvent, OrchestrationReadModel, ProjectId } from "@t3tools/contracts";
+import { OrchestrationCommand, ThreadId } from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
 import * as Clock from "effect/Clock";
 import * as Crypto from "effect/Crypto";
@@ -54,7 +49,7 @@ const isOrchestrationCommandInvariantError = Schema.is(OrchestrationCommandInvar
 
 interface CommandEnvelope {
   command: OrchestrationCommand;
-  result: Deferred.Deferred<{ sequence: number }, OrchestrationDispatchError>;
+  result: Deferred.Deferred<{ sequence: number; threadId?: ThreadId }, OrchestrationDispatchError>;
   startedAtMs: number;
 }
 
@@ -159,12 +154,44 @@ const makeOrchestrationEngine = Effect.gen(function* () {
           if (existingReceipt.value.status === "accepted") {
             return {
               sequence: existingReceipt.value.resultSequence,
+              ...(envelope.command.type === "thread.import"
+                ? { threadId: envelope.command.threadId }
+                : {}),
             };
           }
           return yield* new OrchestrationCommandPreviouslyRejectedError({
             commandId: envelope.command.commandId,
             detail: existingReceipt.value.error ?? "Previously rejected.",
           });
+        }
+
+        if (envelope.command.type === "thread.import") {
+          const existingImport = yield* sql<{ threadId: string; eventSequence: number }>`
+            SELECT thread_id AS "threadId", event_sequence AS "eventSequence"
+            FROM projection_external_thread_imports
+            WHERE environment_id = ${envelope.command.environmentId}
+              AND continuation_group = ${envelope.command.provenance.continuationGroup}
+              AND provider_instance_id = ${envelope.command.provenance.provider.instanceId}
+              AND provider_driver = ${envelope.command.provenance.provider.driver}
+              AND native_thread_id = ${envelope.command.provenance.nativeThreadId}
+            LIMIT 1
+          `;
+          const duplicate = existingImport[0];
+          if (duplicate !== undefined) {
+            yield* commandReceiptRepository.upsert({
+              commandId: envelope.command.commandId,
+              aggregateKind: "thread",
+              aggregateId: ThreadId.make(duplicate.threadId),
+              acceptedAt: envelope.command.provenance.importedAt,
+              resultSequence: duplicate.eventSequence,
+              status: "accepted",
+              error: null,
+            });
+            return {
+              sequence: duplicate.eventSequence,
+              threadId: ThreadId.make(duplicate.threadId),
+            };
+          }
         }
 
         const eventBase = yield* decideOrchestrationCommand({
@@ -245,7 +272,12 @@ const makeOrchestrationEngine = Effect.gen(function* () {
             );
           }
         }
-        return { sequence: committedCommand.lastSequence };
+        return {
+          sequence: committedCommand.lastSequence,
+          ...(envelope.command.type === "thread.import"
+            ? { threadId: envelope.command.threadId }
+            : {}),
+        };
       }).pipe(Effect.withSpan(`orchestration.command.${envelope.command.type}`)),
     ).pipe(
       Effect.flatMap((exit) =>
@@ -331,7 +363,10 @@ const makeOrchestrationEngine = Effect.gen(function* () {
 
   const dispatch: OrchestrationEngineShape["dispatch"] = (command) =>
     Effect.gen(function* () {
-      const result = yield* Deferred.make<{ sequence: number }, OrchestrationDispatchError>();
+      const result = yield* Deferred.make<
+        { sequence: number; threadId?: ThreadId },
+        OrchestrationDispatchError
+      >();
       yield* Queue.offer(commandQueue, {
         command,
         result,

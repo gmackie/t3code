@@ -7,6 +7,7 @@ import {
   type OrchestrationEvent,
 } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
+import { it as effectIt } from "@effect/vitest";
 import { describe, expect, it } from "vite-plus/test";
 
 import { createEmptyReadModel, projectEvent } from "./projector.ts";
@@ -956,4 +957,66 @@ describe("orchestration projector", () => {
     expect(thread?.checkpoints[0]?.turnId).toBe("turn-100");
     expect(thread?.checkpoints.at(-1)?.turnId).toBe("turn-599");
   });
+
+  effectIt.effect("keeps the full normalized history for an imported thread", () =>
+    Effect.gen(function* () {
+      const now = "2026-01-01T00:00:00.000Z";
+      const afterCreate = yield* projectEvent(
+        createEmptyReadModel(now),
+        makeEvent({
+          sequence: 1,
+          type: "thread.created",
+          aggregateKind: "thread",
+          aggregateId: "thread-imported-large",
+          occurredAt: now,
+          commandId: "cmd-create-imported-large",
+          payload: {
+            threadId: "thread-imported-large",
+            projectId: "project-1",
+            title: "Imported large thread",
+            modelSelection: { instanceId: "codex", model: "gpt-5" },
+            runtimeMode: "full-access",
+            interactionMode: "default",
+            branch: null,
+            worktreePath: null,
+            createdAt: now,
+            updatedAt: now,
+          },
+        }),
+      );
+      const normalizedHistory = Array.from({ length: 10_000 }, (_, sequence) => ({
+        _tag: "Activity" as const,
+        sequence,
+        label: `activity-${sequence}`,
+      }));
+      const projected = yield* projectEvent(
+        afterCreate,
+        makeEvent({
+          sequence: 2,
+          type: "thread.imported",
+          aggregateKind: "thread",
+          aggregateId: "thread-imported-large",
+          occurredAt: now,
+          commandId: "cmd-imported-large",
+          payload: {
+            threadId: "thread-imported-large",
+            environmentId: "local",
+            provenance: {
+              provider: { instanceId: "codex", driver: "codex" },
+              nativeThreadId: "native-large",
+              continuationGroup: "home:test",
+              originalCwd: "/tmp/test",
+              decoderVersion: "codex-v1",
+              importedAt: now,
+            },
+            modelSelection: { instanceId: "codex", model: "gpt-5" },
+            runtimeMode: "full-access",
+            normalizedHistory,
+          },
+        }),
+      );
+
+      expect(projected.threads[0]?.activities).toHaveLength(10_000);
+    }),
+  );
 });
