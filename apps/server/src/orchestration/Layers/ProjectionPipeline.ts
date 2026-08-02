@@ -1,16 +1,21 @@
 import {
   ApprovalRequestId,
+  CheckpointRef,
   type ChatAttachment,
   type OrchestrationEvent,
   type OrchestrationSessionStatus,
+  MessageId,
   ThreadId,
+  TurnId,
 } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
+import * as DateTime from "effect/DateTime";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as Stream from "effect/Stream";
+import * as Schema from "effect/Schema";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 
 import { toPersistenceSqlError, type ProjectionRepositoryError } from "../../persistence/Errors.ts";
@@ -44,6 +49,8 @@ import { ProjectionThreadSessionRepositoryLive } from "../../persistence/Layers/
 import { ProjectionTurnRepositoryLive } from "../../persistence/Layers/ProjectionTurns.ts";
 import { ProjectionThreadRepositoryLive } from "../../persistence/Layers/ProjectionThreads.ts";
 import { ServerConfig } from "../../config.ts";
+import { NormalizedThreadImportHistory } from "../../threadImport/ThreadImportSource.ts";
+import { projectImportedHistory } from "../importedHistoryProjection.ts";
 import {
   OrchestrationProjectionPipeline,
   type OrchestrationProjectionPipelineShape,
@@ -65,10 +72,12 @@ export const ORCHESTRATION_PROJECTOR_NAMES = {
   threadTurns: "projection.thread-turns",
   checkpoints: "projection.checkpoints",
   pendingApprovals: "projection.pending-approvals",
+  externalThreadImports: "projection.external-thread-imports",
 } as const;
 
 type ProjectorName =
   (typeof ORCHESTRATION_PROJECTOR_NAMES)[keyof typeof ORCHESTRATION_PROJECTOR_NAMES];
+const decodeImportedHistory = Schema.decodeUnknownEffect(NormalizedThreadImportHistory);
 
 /**
  * Turn state to settle still-running turns with when their session leaves the
@@ -1598,6 +1607,179 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
       }
     });
 
+    const applyExternalThreadImportsProjection: ProjectorDefinition["apply"] = Effect.fn(
+      "applyExternalThreadImportsProjection",
+    )(function* (event, _attachmentSideEffects) {
+      if (event.type === "thread.deleted") {
+        yield* sql`
+          DELETE FROM projection_external_thread_imports
+          WHERE thread_id = ${event.payload.threadId}
+        `.pipe(Effect.mapError(toPersistenceSqlError("ProjectionExternalThreadImports.delete")));
+        return;
+      }
+      if (event.type !== "thread.imported") return;
+      // Migration 33 emitted the imported history as ordinary message/activity
+      // events and already materialized its provenance row. Migration 34 keeps
+      // that row (defaulting its environment to local), so replaying the legacy
+      // marker itself must remain a no-op.
+      if (!("normalizedHistory" in event.payload)) return;
+      const provenance = event.payload.provenance;
+      const history = yield* decodeImportedHistory(event.payload.normalizedHistory).pipe(
+        Effect.mapError((cause) =>
+          toPersistenceSqlError("ProjectionExternalThreadImports.decodeHistory")(cause),
+        ),
+      );
+      const presentation = projectImportedHistory({
+        threadId: event.payload.threadId,
+        createdAt: provenance.importedAt,
+        history,
+      });
+      yield* Effect.forEach(
+        presentation.messages,
+        (message) =>
+          projectionThreadMessageRepository.upsert({
+            messageId: message.id,
+            threadId: event.payload.threadId,
+            turnId: message.turnId,
+            role: message.role,
+            text: message.text,
+            attachments: message.attachments,
+            isStreaming: false,
+            createdAt: message.createdAt,
+            updatedAt: message.updatedAt,
+          }),
+        { concurrency: 1, discard: true },
+      );
+      yield* Effect.forEach(
+        presentation.activities,
+        (activity) =>
+          projectionThreadActivityRepository.upsert({
+            activityId: activity.id,
+            threadId: event.payload.threadId,
+            turnId: activity.turnId,
+            tone: activity.tone,
+            kind: activity.kind,
+            summary: activity.summary,
+            payload: activity.payload,
+            ...(activity.sequence === undefined ? {} : { sequence: activity.sequence }),
+            createdAt: activity.createdAt,
+          }),
+        { concurrency: 1, discard: true },
+      );
+      const encodeJson = Schema.encodeEffect(Schema.UnknownFromJsonString);
+      const resumeCursorJson =
+        provenance.resumeCursor === undefined
+          ? null
+          : yield* encodeJson(provenance.resumeCursor).pipe(Effect.orDie);
+      const runtimePayloadJson = yield* encodeJson({
+        cwd: provenance.originalCwd,
+        modelSelection: event.payload.modelSelection,
+      }).pipe(Effect.orDie);
+      yield* sql`
+        INSERT INTO projection_external_thread_imports (
+          thread_id, environment_id, provider_instance_id, provider_driver, continuation_group,
+          native_thread_id, original_cwd, resume_cursor_json, decoder_version,
+          imported_at, event_sequence
+        ) VALUES (
+          ${event.payload.threadId}, ${event.payload.environmentId}, ${provenance.provider.instanceId},
+          ${provenance.provider.driver}, ${provenance.continuationGroup},
+          ${provenance.nativeThreadId}, ${provenance.originalCwd},
+          ${resumeCursorJson},
+          ${provenance.decoderVersion}, ${provenance.importedAt}, ${event.sequence}
+        )
+        ON CONFLICT(thread_id) DO UPDATE SET
+          resume_cursor_json = excluded.resume_cursor_json,
+          decoder_version = excluded.decoder_version,
+          imported_at = excluded.imported_at,
+          event_sequence = excluded.event_sequence
+      `.pipe(Effect.mapError(toPersistenceSqlError("ProjectionExternalThreadImports.upsert")));
+      yield* sql`
+        INSERT INTO provider_session_runtime (
+          thread_id, provider_name, provider_instance_id, adapter_key, runtime_mode,
+          status, last_seen_at, resume_cursor_json, runtime_payload_json
+        ) VALUES (
+          ${event.payload.threadId}, ${provenance.provider.driver},
+          ${provenance.provider.instanceId}, ${provenance.provider.driver}, ${event.payload.runtimeMode},
+          'stopped', ${provenance.importedAt},
+          ${resumeCursorJson},
+          ${runtimePayloadJson}
+        )
+        ON CONFLICT(thread_id) DO UPDATE SET
+          provider_name = excluded.provider_name,
+          provider_instance_id = excluded.provider_instance_id,
+          adapter_key = excluded.adapter_key,
+          runtime_mode = excluded.runtime_mode,
+          status = excluded.status,
+          last_seen_at = excluded.last_seen_at,
+          resume_cursor_json = excluded.resume_cursor_json,
+          runtime_payload_json = excluded.runtime_payload_json
+      `.pipe(Effect.mapError(toPersistenceSqlError("ProviderSessionRuntime.upsertImported")));
+
+      let turnCount = 0;
+      let latestTurnId: TurnId | null = null;
+      let latestAssistantMessageId: MessageId | null = null;
+      const seenTurnIds = new Set<string>();
+      for (const item of history) {
+        if (item._tag === "Message" && item.role === "assistant") {
+          latestAssistantMessageId = MessageId.make(
+            `import:${event.payload.threadId}:message:${item.sequence}`,
+          );
+          continue;
+        }
+        if (item._tag !== "TurnLifecycle") continue;
+        const turnId = TurnId.make(`import:${event.payload.threadId}:turn:${item.turnId}`);
+        if (!seenTurnIds.has(item.turnId)) {
+          seenTurnIds.add(item.turnId);
+          turnCount += 1;
+        }
+        if (item.phase === "started") latestAssistantMessageId = null;
+        const occurredAt = DateTime.formatIso(
+          DateTime.add(DateTime.makeUnsafe(event.payload.provenance.importedAt), {
+            milliseconds: item.sequence,
+          }),
+        );
+        yield* projectionTurnRepository.upsertByTurnId({
+          threadId: event.payload.threadId,
+          turnId,
+          pendingMessageId: null,
+          sourceProposedPlanThreadId: null,
+          sourceProposedPlanId: null,
+          assistantMessageId: latestAssistantMessageId,
+          state:
+            item.phase === "completed"
+              ? "completed"
+              : item.phase === "failed"
+                ? "error"
+                : item.phase === "interrupted"
+                  ? "interrupted"
+                  : "interrupted",
+          requestedAt: occurredAt,
+          startedAt: occurredAt,
+          completedAt: item.phase === "started" ? occurredAt : occurredAt,
+          checkpointTurnCount: turnCount,
+          checkpointRef: CheckpointRef.make(
+            `import:${event.payload.threadId}:checkpoint:${turnCount}`,
+          ),
+          checkpointStatus: "missing",
+          checkpointFiles: [],
+        });
+        latestTurnId = turnId;
+      }
+      if (latestTurnId !== null) {
+        const thread = yield* projectionThreadRepository.getById({
+          threadId: event.payload.threadId,
+        });
+        if (Option.isSome(thread)) {
+          yield* projectionThreadRepository.upsert({
+            ...thread.value,
+            latestTurnId,
+            updatedAt: event.occurredAt,
+          });
+        }
+      }
+      yield* refreshThreadShellSummary(event.payload.threadId);
+    });
+
     const projectors: ReadonlyArray<ProjectorDefinition> = [
       {
         name: ORCHESTRATION_PROJECTOR_NAMES.projects,
@@ -1634,6 +1816,10 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
       {
         name: ORCHESTRATION_PROJECTOR_NAMES.threads,
         apply: applyThreadsProjection,
+      },
+      {
+        name: ORCHESTRATION_PROJECTOR_NAMES.externalThreadImports,
+        apply: applyExternalThreadImportsProjection,
       },
     ];
 
