@@ -10,6 +10,7 @@ import {
   CheckpointRef,
   CommandId,
   EventId,
+  EnvironmentId,
   IsoDateTime,
   MessageId,
   NonNegativeInt,
@@ -22,6 +23,7 @@ import {
   TurnId,
 } from "./baseSchemas.ts";
 import { ProviderInstanceId } from "./providerInstance.ts";
+import { ExternalThreadImportProvenance } from "./externalThreadImport.ts";
 
 export const ORCHESTRATION_WS_METHODS = {
   dispatchCommand: "orchestration.dispatchCommand",
@@ -1037,7 +1039,29 @@ const ThreadTitleRegenerationCompleteCommand = Schema.Struct({
   title: Schema.optional(TrimmedNonEmptyString),
 });
 
+/** Server-only command. History is decoded against the bounded normalized schema by the server. */
+export const ThreadImportCommand = Schema.Struct({
+  type: Schema.Literal("thread.import"),
+  commandId: CommandId,
+  threadId: ThreadId,
+  projectId: ProjectId,
+  environmentId: EnvironmentId,
+  title: TrimmedNonEmptyString,
+  modelSelection: ModelSelection,
+  runtimeMode: RuntimeMode,
+  interactionMode: ProviderInteractionMode,
+  branch: Schema.NullOr(TrimmedNonEmptyString),
+  worktreePath: Schema.NullOr(TrimmedNonEmptyString),
+  originalCwd: TrimmedNonEmptyString,
+  normalizedHistory: Schema.Unknown,
+  provenance: ExternalThreadImportProvenance,
+  createdAt: IsoDateTime,
+  updatedAt: IsoDateTime,
+});
+export type ThreadImportCommand = typeof ThreadImportCommand.Type;
+
 const InternalOrchestrationCommand = Schema.Union([
+  ThreadImportCommand,
   ThreadSessionSetCommand,
   ThreadMessageAssistantDeltaCommand,
   ThreadMessageAssistantCompleteCommand,
@@ -1085,6 +1109,7 @@ export const OrchestrationEventType = Schema.Literals([
   "thread.proposed-plan-upserted",
   "thread.turn-diff-completed",
   "thread.activity-appended",
+  "thread.imported",
 ]);
 export type OrchestrationEventType = typeof OrchestrationEventType.Type;
 
@@ -1319,6 +1344,27 @@ export const ThreadActivityAppendedPayload = Schema.Struct({
   activity: OrchestrationThreadActivity,
 });
 
+const CurrentThreadImportedPayload = Schema.Struct({
+  threadId: ThreadId,
+  environmentId: EnvironmentId,
+  provenance: ExternalThreadImportProvenance,
+  modelSelection: ModelSelection,
+  runtimeMode: RuntimeMode,
+  normalizedHistory: Schema.Unknown,
+});
+
+const Migration33ThreadImportedPayload = Schema.Struct({
+  threadId: ThreadId,
+  provenance: ExternalThreadImportProvenance,
+  modelSelection: ModelSelection,
+  runtimeMode: RuntimeMode,
+});
+
+export const ThreadImportedPayload = Schema.Union([
+  CurrentThreadImportedPayload,
+  Migration33ThreadImportedPayload,
+]);
+
 export const OrchestrationEventMetadata = Schema.Struct({
   providerTurnId: Schema.optional(TrimmedNonEmptyString),
   providerItemId: Schema.optional(ProviderItemId),
@@ -1485,6 +1531,11 @@ export const OrchestrationEvent = Schema.Union([
     ...EventBaseFields,
     type: Schema.Literal("thread.activity-appended"),
     payload: ThreadActivityAppendedPayload,
+  }),
+  Schema.Struct({
+    ...EventBaseFields,
+    type: Schema.Literal("thread.imported"),
+    payload: ThreadImportedPayload,
   }),
 ]);
 export type OrchestrationEvent = typeof OrchestrationEvent.Type;

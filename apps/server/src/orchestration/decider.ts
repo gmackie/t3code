@@ -21,8 +21,13 @@ import {
   requireThreadNotArchived,
 } from "./commandInvariants.ts";
 import { projectEvent } from "./projector.ts";
+import { NormalizedThreadImportHistory } from "../threadImport/ThreadImportSource.ts";
+import * as Schema from "effect/Schema";
 
 const nowIso = Effect.map(DateTime.now, DateTime.formatIso);
+const decodeNormalizedThreadImportHistory = Schema.decodeUnknownEffect(
+  NormalizedThreadImportHistory,
+);
 
 // Session adoption takes seconds; a user message still unadopted after this
 // window is a failed/stale start, not pending work. Mirrors the client's
@@ -381,6 +386,76 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
           updatedAt: command.createdAt,
         },
       };
+    }
+
+    case "thread.import": {
+      yield* requireProject({ readModel, command, projectId: command.projectId });
+      yield* requireThreadAbsent({ readModel, command, threadId: command.threadId });
+      const history = yield* decodeNormalizedThreadImportHistory(command.normalizedHistory).pipe(
+        Effect.mapError(
+          (cause) =>
+            new OrchestrationCommandInvariantError({
+              commandType: command.type,
+              detail: "Imported thread history is invalid or exceeds resource limits.",
+              cause,
+            }),
+        ),
+      );
+      const events: PlannedOrchestrationEvent[] = [];
+      const eventBase = (occurredAt: string) =>
+        withEventBase({
+          aggregateKind: "thread" as const,
+          aggregateId: command.threadId,
+          occurredAt,
+          commandId: command.commandId,
+        });
+      events.push({
+        ...(yield* eventBase(command.createdAt)),
+        type: "thread.created",
+        payload: {
+          threadId: command.threadId,
+          projectId: command.projectId,
+          title: command.title,
+          modelSelection: command.modelSelection,
+          runtimeMode: command.runtimeMode,
+          interactionMode: command.interactionMode,
+          branch: command.branch,
+          worktreePath: command.worktreePath,
+          createdAt: command.createdAt,
+          updatedAt: command.updatedAt,
+        },
+      });
+
+      events.push({
+        ...(yield* eventBase(command.updatedAt)),
+        type: "thread.session-set",
+        payload: {
+          threadId: command.threadId,
+          session: {
+            threadId: command.threadId,
+            status: "idle",
+            providerName: command.provenance.provider.driver,
+            providerInstanceId: command.provenance.provider.instanceId,
+            runtimeMode: command.runtimeMode,
+            activeTurnId: null,
+            lastError: null,
+            updatedAt: command.updatedAt,
+          },
+        },
+      });
+      events.push({
+        ...(yield* eventBase(command.provenance.importedAt)),
+        type: "thread.imported",
+        payload: {
+          threadId: command.threadId,
+          environmentId: command.environmentId,
+          provenance: command.provenance,
+          modelSelection: command.modelSelection,
+          runtimeMode: command.runtimeMode,
+          normalizedHistory: history,
+        },
+      });
+      return events;
     }
 
     case "thread.delete": {
