@@ -4,6 +4,13 @@ import * as RpcGroup from "effect/unstable/rpc/RpcGroup";
 
 import { ExternalLauncherError, LaunchEditorInput } from "./editor.ts";
 import {
+  ExternalThreadImportBatchResult,
+  ExternalThreadImportDiscoveryInput,
+  ExternalThreadImportDiscoveryResult,
+  ExternalThreadImportRequestError,
+  ExternalThreadImportSelection,
+} from "./externalThreadImport.ts";
+import {
   AuthAccessStreamError,
   AuthAccessStreamEvent,
   EnvironmentAuthorizationError,
@@ -188,6 +195,9 @@ export const WS_METHODS = {
   projectsSearchEntries: "projects.searchEntries",
   projectsWriteFile: "projects.writeFile",
 
+  externalThreadsDiscover: "externalThreads.discover",
+  externalThreadsImport: "externalThreads.import",
+
   // Shell methods
   shellOpenInEditor: "shell.openInEditor",
 
@@ -283,6 +293,18 @@ export const WS_METHODS = {
   subscribeBackgroundPolicy: "subscribeBackgroundPolicy",
   subscribeResourceTelemetry: "subscribeResourceTelemetry",
 } as const;
+
+export const WsExternalThreadsDiscoverRpc = Rpc.make(WS_METHODS.externalThreadsDiscover, {
+  payload: ExternalThreadImportDiscoveryInput,
+  success: ExternalThreadImportDiscoveryResult,
+  error: Schema.Union([ExternalThreadImportRequestError, EnvironmentAuthorizationError]),
+});
+
+export const WsExternalThreadsImportRpc = Rpc.make(WS_METHODS.externalThreadsImport, {
+  payload: ExternalThreadImportSelection,
+  success: ExternalThreadImportBatchResult,
+  error: Schema.Union([ExternalThreadImportRequestError, EnvironmentAuthorizationError]),
+});
 
 export const WsServerUpsertKeybindingRpc = Rpc.make(WS_METHODS.serverUpsertKeybinding, {
   payload: ServerUpsertKeybindingInput,
@@ -857,6 +879,8 @@ export const WsSubscribeResourceTelemetryRpc = Rpc.make(WS_METHODS.subscribeReso
 
 export const WsRpcGroup = RpcGroup.make(
   WsServerProbeRpc,
+  WsExternalThreadsDiscoverRpc,
+  WsExternalThreadsImportRpc,
   WsServerGetConfigRpc,
   WsServerRefreshProvidersRpc,
   WsServerUpdateProviderRpc,
