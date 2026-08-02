@@ -30,6 +30,9 @@ describe("typography settings restore", () => {
         fontFamilyCode: "Fira Code",
       }),
     ).toEqual(["Interface font", "Code font"]);
+  });
+});
+
 describe("desktop update tracks", () => {
   it("includes and labels the GMACKO release lane", () => {
     expect(DESKTOP_UPDATE_CHANNEL_OPTIONS).toEqual([

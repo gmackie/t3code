@@ -7,6 +7,7 @@ import {
   DEFAULT_RUNTIME_MODE,
   ModelSelection,
   OrchestrationCommand,
+  ClientOrchestrationCommand,
   OrchestrationEvent,
   OrchestrationGetFullThreadDiffInput,
   OrchestrationGetTurnDiffInput,
@@ -51,8 +52,78 @@ function getOptionValue(
 }
 const decodeThreadCreatedPayload = Schema.decodeUnknownEffect(ThreadCreatedPayload);
 const decodeOrchestrationCommand = Schema.decodeUnknownEffect(OrchestrationCommand);
+const decodeClientOrchestrationCommand = Schema.decodeUnknownEffect(ClientOrchestrationCommand);
 const decodeOrchestrationEvent = Schema.decodeUnknownEffect(OrchestrationEvent);
 const decodeThreadMetaUpdatedPayload = Schema.decodeUnknownEffect(ThreadMetaUpdatedPayload);
+
+it.effect("accepts thread.import only on the internal orchestration contract", () =>
+  Effect.gen(function* () {
+    const command = {
+      type: "thread.import",
+      commandId: "cmd-import",
+      threadId: "thread-imported",
+      projectId: "project-1",
+      environmentId: "local",
+      title: "Imported thread",
+      modelSelection: { instanceId: "codex", model: "gpt-5" },
+      runtimeMode: "full-access",
+      interactionMode: "default",
+      branch: null,
+      worktreePath: null,
+      originalCwd: "/tmp/project",
+      normalizedHistory: [],
+      provenance: {
+        provider: { instanceId: "codex", driver: "codex" },
+        nativeThreadId: "native-1",
+        continuationGroup: "codex-home:/tmp/codex",
+        originalCwd: "/tmp/project",
+        resumeCursor: { threadId: "native-1" },
+        decoderVersion: "codex-v1",
+        importedAt: "2026-01-01T00:00:00.000Z",
+      },
+      createdAt: "2025-12-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    };
+
+    const decoded = yield* decodeOrchestrationCommand(command);
+    assert.strictEqual(decoded.type, "thread.import");
+    const clientExit = yield* Effect.exit(decodeClientOrchestrationCommand(command));
+    assert.strictEqual(clientExit._tag, "Failure");
+  }),
+);
+
+it.effect("decodes migration-33 thread.imported events", () =>
+  Effect.gen(function* () {
+    const decoded = yield* decodeOrchestrationEvent({
+      sequence: 3,
+      eventId: "event-old-import",
+      type: "thread.imported",
+      aggregateKind: "thread",
+      aggregateId: "thread-imported",
+      occurredAt: "2026-01-01T00:00:00.000Z",
+      commandId: "cmd-import",
+      causationEventId: null,
+      correlationId: null,
+      metadata: {},
+      payload: {
+        threadId: "thread-imported",
+        provenance: {
+          provider: { instanceId: "codex", driver: "codex" },
+          nativeThreadId: "native-1",
+          continuationGroup: "codex-home:/tmp/codex",
+          originalCwd: "/tmp/project",
+          resumeCursor: { threadId: "native-1" },
+          decoderVersion: "codex-v1",
+          importedAt: "2026-01-01T00:00:00.000Z",
+        },
+        modelSelection: { instanceId: "codex", model: "gpt-5" },
+        runtimeMode: "full-access",
+      },
+    });
+
+    assert.strictEqual(decoded.type, "thread.imported");
+  }),
+);
 
 it.effect("parses turn diff input when fromTurnCount <= toTurnCount", () =>
   Effect.gen(function* () {

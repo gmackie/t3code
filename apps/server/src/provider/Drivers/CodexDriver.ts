@@ -30,8 +30,10 @@ import * as Schema from "effect/Schema";
 import { HttpClient } from "effect/unstable/http";
 import { ChildProcessSpawner } from "effect/unstable/process";
 
-import { makeCodexTextGeneration } from "../../textGeneration/CodexTextGeneration.ts";
 import * as BackgroundPolicy from "../../background/BackgroundPolicy.ts";
+import { makeCodexTextGeneration } from "../../textGeneration/CodexTextGeneration.ts";
+import { makeCodexThreadImportClient } from "../../threadImport/provider/CodexThreadImportClient.ts";
+import { makeCodexThreadImportSource } from "../../threadImport/provider/CodexThreadImportSource.ts";
 import { ServerConfig } from "../../config.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
 import { ProviderDriverError } from "../Errors.ts";
@@ -161,6 +163,15 @@ export const CodexDriver: ProviderDriver<CodexSettings, CodexDriverEnv> = {
         ...(eventLoggers.native ? { nativeEventLogger: eventLoggers.native } : {}),
       });
       const textGeneration = yield* makeCodexTextGeneration(effectiveConfig, processEnv);
+      const threadImportSource = makeCodexThreadImportSource({
+        provider: { instanceId, driver: DRIVER_KIND },
+        client: makeCodexThreadImportClient({
+          spawner,
+          binaryPath: effectiveConfig.binaryPath,
+          ...(effectiveConfig.homePath ? { homePath: effectiveConfig.homePath } : {}),
+          environment: processEnv,
+        }),
+      });
 
       // Build a managed snapshot whose settings never change — mutations come
       // in as instance rebuilds from the registry rather than in-place
@@ -208,6 +219,7 @@ export const CodexDriver: ProviderDriver<CodexSettings, CodexDriverEnv> = {
         snapshot,
         adapter,
         textGeneration,
+        threadImportSource,
       } satisfies ProviderInstance;
     }),
 };
