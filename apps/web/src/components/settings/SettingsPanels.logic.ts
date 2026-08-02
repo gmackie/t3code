@@ -1,6 +1,7 @@
 import type {
   BackgroundActivityProfile,
   BackgroundActivitySettings,
+  DesktopUpdateChannel,
   ProviderDriverKind,
   ProviderInstanceConfig,
   ProviderInstanceId,
@@ -17,6 +18,15 @@ import {
 } from "@t3tools/shared/backgroundActivitySettings";
 import * as Duration from "effect/Duration";
 import * as Equal from "effect/Equal";
+
+export const DESKTOP_UPDATE_CHANNEL_OPTIONS = [
+  { value: "latest", label: "Stable" },
+  { value: "nightly", label: "Nightly" },
+  { value: "gmacko", label: "GMACKO" },
+] as const satisfies ReadonlyArray<{
+  readonly value: DesktopUpdateChannel;
+  readonly label: string;
+}>;
 
 export function isProjectGroupingEnabled(mode: SidebarProjectGroupingMode): boolean {
   return mode !== "separate";
