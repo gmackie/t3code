@@ -123,6 +123,10 @@ import {
 import { stackedThreadToast, toastManager } from "./ui/toast";
 import { formatRelativeTimeLabel } from "../timestampFormat";
 import { SettingsSidebarNav } from "./settings/SettingsSidebarNav";
+import {
+  ExternalThreadImportDialog,
+  type ExternalThreadImportTarget,
+} from "./ExternalThreadImportDialog";
 import { Kbd } from "./ui/kbd";
 import {
   getArm64IntelBuildWarningDescription,
@@ -1207,6 +1211,9 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
   const [projectRenameTitle, setProjectRenameTitle] = useState("");
   const [projectGroupingTarget, setProjectGroupingTarget] =
     useState<SidebarProjectGroupMember | null>(null);
+  const [threadImportTarget, setThreadImportTarget] = useState<ExternalThreadImportTarget | null>(
+    null,
+  );
   const [projectGroupingSelection, setProjectGroupingSelection] = useState<
     SidebarProjectGroupingMode | "inherit"
   >("inherit");
@@ -1624,7 +1631,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
 
         const actionHandlers = new Map<string, () => Promise<void> | void>();
         const makeLeaf = (
-          action: "rename" | "grouping" | "copy-path" | "delete",
+          action: "import-threads" | "rename" | "grouping" | "copy-path" | "delete",
           member: SidebarProjectGroupMember,
           options?: {
             destructive?: boolean;
@@ -1634,6 +1641,13 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
           const id = `${action}:${member.physicalProjectKey}`;
           actionHandlers.set(id, () => {
             switch (action) {
+              case "import-threads":
+                setThreadImportTarget({
+                  environmentId: member.environmentId,
+                  projectId: member.id,
+                  projectTitle: member.title,
+                });
+                return;
               case "rename":
                 openProjectRenameDialog(member);
                 return;
@@ -1657,7 +1671,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
         };
 
         const buildTargetedItem = (
-          action: "rename" | "grouping" | "copy-path" | "delete",
+          action: "import-threads" | "rename" | "grouping" | "copy-path" | "delete",
           label: string,
           options?: {
             destructive?: boolean;
@@ -1691,6 +1705,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
 
         const clicked = await api.contextMenu.show(
           [
+            buildTargetedItem("import-threads", "Import threads…"),
             buildTargetedItem("rename", "Rename"),
             buildTargetedItem("grouping", "Group into..."),
             buildTargetedItem("copy-path", "Copy Path"),
@@ -2523,6 +2538,14 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
           </DialogFooter>
         </DialogPopup>
       </Dialog>
+
+      <ExternalThreadImportDialog
+        target={threadImportTarget}
+        onClose={() => setThreadImportTarget(null)}
+        onOpenThread={(environmentId, threadId) =>
+          navigateToThread(scopeThreadRef(environmentId, threadId))
+        }
+      />
     </>
   );
 });
