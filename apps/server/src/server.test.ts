@@ -151,6 +151,7 @@ import * as NativeTelemetryClient from "./resourceTelemetry/NativeTelemetryClien
 import * as ResourceAttribution from "./resourceTelemetry/ResourceAttribution.ts";
 import * as ResourceTelemetry from "./resourceTelemetry/ResourceTelemetry.ts";
 import * as UsageService from "./usage/UsageService.ts";
+import * as ExternalThreadImportService from "./threadImport/ExternalThreadImportService.ts";
 import * as Data from "effect/Data";
 
 import { makeOrchestrationIntegrationHarness } from "../integration/OrchestrationEngineHarness.integration.ts";
