@@ -141,6 +141,7 @@ import {
 } from "./Sidebar.snooze";
 import { ProjectFavicon } from "./ProjectFavicon";
 import { ProviderInstanceIcon } from "./chat/ProviderInstanceIcon";
+import { ExternalThreadImportShelf } from "./ExternalThreadImportShelf";
 import { getTriggerDisplayModelLabel } from "./chat/providerIconUtils";
 import { deriveProviderInstanceEntries, type ProviderInstanceEntry } from "../providerInstances";
 import { primaryServerProvidersAtom } from "../state/server";
@@ -1485,6 +1486,10 @@ export default function SidebarV2() {
           ),
     [scopedProjectGroup],
   );
+  const externalThreadImportTargets = useMemo(
+    () => scopedProjectGroup?.memberProjectRefs ?? [],
+    [scopedProjectGroup],
+  );
   useEffect(() => {
     if (projectScopeKey !== null && scopedProjectGroup === null) {
       setProjectScopeKey(null);
@@ -1929,6 +1934,13 @@ export default function SidebarV2() {
       });
     },
     [clearSelection, isMobile, router, setOpenMobile, setSelectionAnchor],
+  );
+  const openImportedThread = useCallback(
+    (
+      environmentId: EnvironmentThreadShell["environmentId"],
+      threadId: EnvironmentThreadShell["id"],
+    ) => navigateToThread(scopeThreadRef(environmentId, threadId)),
+    [navigateToThread],
   );
 
   const clearThreadSearch = useCallback(() => {
@@ -3246,6 +3258,13 @@ export default function SidebarV2() {
                       Show {Math.min(hiddenSettledCount, SETTLED_TAIL_PAGE_COUNT)} more
                     </button>
                   </li>
+                ) : null}
+                {externalThreadImportTargets.length > 0 ? (
+                  <ExternalThreadImportShelf
+                    key={projectScopeKey}
+                    targets={externalThreadImportTargets}
+                    onOpenThread={openImportedThread}
+                  />
                 ) : null}
               </ul>
             </TooltipProvider>
