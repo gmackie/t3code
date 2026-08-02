@@ -107,6 +107,7 @@ import * as ProcessResourceMonitor from "./diagnostics/ProcessResourceMonitor.ts
 import * as ResourceTelemetry from "./resourceTelemetry/ResourceTelemetry.ts";
 import * as TraceDiagnostics from "./diagnostics/TraceDiagnostics.ts";
 import * as SourceControlDiscovery from "./sourceControl/SourceControlDiscovery.ts";
+import * as ExternalThreadImportService from "./threadImport/ExternalThreadImportService.ts";
 import * as SourceControlRepositoryService from "./sourceControl/SourceControlRepositoryService.ts";
 import * as AzureDevOpsCli from "./sourceControl/AzureDevOpsCli.ts";
 import * as BitbucketApi from "./sourceControl/BitbucketApi.ts";
@@ -394,6 +395,7 @@ const makeWsRpcLayer = (
       );
       const serverAuth = yield* EnvironmentAuth.EnvironmentAuth;
       const sourceControlDiscovery = yield* SourceControlDiscovery.SourceControlDiscovery;
+      const externalThreadImports = yield* ExternalThreadImportService.ExternalThreadImportService;
       const automaticGitFetchInterval = serverSettings.getSettings.pipe(
         Effect.map(
           (settings) => resolveServerBackgroundActivitySettings(settings).automaticGitFetchInterval,
@@ -1380,6 +1382,18 @@ const makeWsRpcLayer = (
           observeRpcEffect(WS_METHODS.serverGetConfig, loadServerConfig, {
             "rpc.aggregate": "server",
           }),
+        [WS_METHODS.externalThreadsDiscover]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.externalThreadsDiscover,
+            externalThreadImports.discover(input),
+            { "rpc.aggregate": "externalThreads" },
+          ),
+        [WS_METHODS.externalThreadsImport]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.externalThreadsImport,
+            externalThreadImports.importSelected(input),
+            { "rpc.aggregate": "externalThreads" },
+          ),
         [WS_METHODS.serverRefreshProviders]: (input) =>
           observeRpcEffect(
             WS_METHODS.serverRefreshProviders,
