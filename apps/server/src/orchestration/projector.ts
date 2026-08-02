@@ -1,14 +1,19 @@
 import type { OrchestrationEvent, OrchestrationReadModel, ThreadId } from "@t3tools/contracts";
 import {
   OrchestrationCheckpointSummary,
+  MessageId,
   OrchestrationMessage,
   OrchestrationSession,
   OrchestrationThread,
+  TurnId,
 } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
+import * as DateTime from "effect/DateTime";
 import * as Schema from "effect/Schema";
 
 import { toProjectorDecodeError, type OrchestrationProjectorDecodeError } from "./Errors.ts";
+import { NormalizedThreadImportHistory } from "../threadImport/ThreadImportSource.ts";
+import { projectImportedHistory } from "./importedHistoryProjection.ts";
 import {
   MessageSentPayloadSchema,
   ProjectCreatedPayload,
@@ -746,6 +751,64 @@ export function projectEvent(
             ...nextBase,
             threads: updateThread(nextBase.threads, payload.threadId, {
               activities,
+              updatedAt: event.occurredAt,
+            }),
+          };
+        }),
+      );
+
+    case "thread.imported":
+      if (!("normalizedHistory" in event.payload)) return Effect.succeed(nextBase);
+      return decodeForEvent(
+        NormalizedThreadImportHistory,
+        event.payload.normalizedHistory,
+        event.type,
+        "normalizedHistory",
+      ).pipe(
+        Effect.map((history) => {
+          const thread = nextBase.threads.find((entry) => entry.id === event.payload.threadId);
+          if (!thread) return nextBase;
+          const projected = projectImportedHistory({
+            threadId: event.payload.threadId,
+            createdAt: event.payload.provenance.importedAt,
+            history,
+          });
+          let latestAssistantMessageId: MessageId | null = null;
+          let latestTurn: OrchestrationThread["latestTurn"] = null;
+          for (const item of history) {
+            if (item._tag === "Message" && item.role === "assistant") {
+              latestAssistantMessageId = MessageId.make(
+                `import:${event.payload.threadId}:message:${item.sequence}`,
+              );
+              continue;
+            }
+            if (item._tag !== "TurnLifecycle") continue;
+            if (item.phase === "started") latestAssistantMessageId = null;
+            const occurredAt = DateTime.formatIso(
+              DateTime.add(DateTime.makeUnsafe(event.payload.provenance.importedAt), {
+                milliseconds: item.sequence,
+              }),
+            );
+            latestTurn = {
+              turnId: TurnId.make(`import:${event.payload.threadId}:turn:${item.turnId}`),
+              state:
+                item.phase === "completed"
+                  ? "completed"
+                  : item.phase === "failed"
+                    ? "error"
+                    : "interrupted",
+              requestedAt: occurredAt,
+              startedAt: occurredAt,
+              completedAt: occurredAt,
+              assistantMessageId: latestAssistantMessageId,
+            };
+          }
+          return {
+            ...nextBase,
+            threads: updateThread(nextBase.threads, event.payload.threadId, {
+              messages: projected.messages,
+              activities: projected.activities,
+              latestTurn,
               updatedAt: event.occurredAt,
             }),
           };
