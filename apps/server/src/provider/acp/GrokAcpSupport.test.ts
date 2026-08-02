@@ -1,4 +1,7 @@
+// @effect-diagnostics nodeBuiltinImport:off -- Runtime home path expectation uses the host home directory.
 import { describe, expect, it } from "@effect/vitest";
+import * as NodeOS from "node:os";
+import * as NodePath from "node:path";
 import * as Effect from "effect/Effect";
 import * as EffectAcpErrors from "effect-acp/errors";
 
@@ -29,9 +32,27 @@ describe("buildGrokAcpSpawnInput", () => {
       cwd: "/tmp/project",
       env: {
         XAI_API_KEY: "secret",
+        GROK_HOME: NodePath.join(NodeOS.homedir(), ".grok"),
         GROK_OAUTH2_REFERRER: "t3code",
       },
     });
+  });
+
+  it("sets GROK_HOME for a configured provider instance", () => {
+    const spawn = buildGrokAcpSpawnInput(
+      { binaryPath: "grok", homePath: " /tmp/grok-work " },
+      "/tmp/project",
+      { GROK_HOME: "/tmp/default" },
+    );
+    expect(spawn.env?.GROK_HOME).toBe("/tmp/grok-work");
+  });
+
+  it("uses and normalizes ambient GROK_HOME when the setting is empty", () => {
+    const spawn = buildGrokAcpSpawnInput({ binaryPath: "grok" }, "/tmp/project", {
+      HOME: "/Users/test",
+      GROK_HOME: "~/ambient",
+    });
+    expect(spawn.env?.GROK_HOME).toBe("/Users/test/ambient");
   });
 });
 
