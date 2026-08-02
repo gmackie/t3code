@@ -11,12 +11,23 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   backgroundActivitySharedPolicySettings,
   buildProviderInstanceUpdatePatch,
+  DESKTOP_UPDATE_CHANNEL_OPTIONS,
   formatDiagnosticsDescription,
   hasChangedBackgroundActivitySettings,
   isProjectGroupingEnabled,
   projectGroupingModeFromToggle,
   resolveBackgroundActivityProfileOption,
 } from "./SettingsPanels.logic";
+
+describe("desktop update tracks", () => {
+  it("includes and labels the GMACKO release lane", () => {
+    expect(DESKTOP_UPDATE_CHANNEL_OPTIONS).toEqual([
+      { value: "latest", label: "Stable" },
+      { value: "nightly", label: "Nightly" },
+      { value: "gmacko", label: "GMACKO" },
+    ]);
+  });
+});
 
 describe("background activity settings restore", () => {
   it("detects legacy interval values even when the structured setting is at its default", () => {
