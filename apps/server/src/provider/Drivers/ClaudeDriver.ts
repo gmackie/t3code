@@ -23,8 +23,9 @@ import * as Schema from "effect/Schema";
 import { HttpClient } from "effect/unstable/http";
 import { ChildProcessSpawner } from "effect/unstable/process";
 
-import { makeClaudeTextGeneration } from "../../textGeneration/ClaudeTextGeneration.ts";
 import * as BackgroundPolicy from "../../background/BackgroundPolicy.ts";
+import { makeClaudeTextGeneration } from "../../textGeneration/ClaudeTextGeneration.ts";
+import { makeClaudeThreadImportSource } from "../../threadImport/provider/ClaudeThreadImportSource.ts";
 import { ServerConfig } from "../../config.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
 import { ProviderDriverError } from "../Errors.ts";
@@ -150,6 +151,10 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv> = {
       };
       const adapter = yield* makeClaudeAdapter(effectiveConfig, adapterOptions);
       const textGeneration = yield* makeClaudeTextGeneration(effectiveConfig, processEnv);
+      const threadImportSource = yield* makeClaudeThreadImportSource({
+        provider: { instanceId, driver: DRIVER_KIND },
+        claudeSettings: effectiveConfig,
+      });
 
       // Per-instance capabilities cache: keyed on binary + resolved HOME so
       // account-specific probes never share auth metadata across instances.
@@ -216,6 +221,7 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv> = {
         snapshot,
         adapter,
         textGeneration,
+        threadImportSource,
       } satisfies ProviderInstance;
     }),
 };

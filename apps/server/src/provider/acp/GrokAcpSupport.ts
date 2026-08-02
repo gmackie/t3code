@@ -7,6 +7,7 @@ import * as ChildProcessSpawner from "effect/unstable/process/ChildProcessSpawne
 import * as EffectAcpErrors from "effect-acp/errors";
 import type * as EffectAcpSchema from "effect-acp/schema";
 import { normalizeModelSlug } from "@t3tools/shared/model";
+import { resolveEffectiveGrokHome } from "../Drivers/GrokHome.ts";
 
 import * as AcpSessionRuntime from "./AcpSessionRuntime.ts";
 import { makeXAiPromptCompletionRuntime } from "./XAiAcpExtension.ts";
@@ -18,7 +19,8 @@ const GROK_AUTH_METHOD_API_KEY = "xai.api_key";
 const GROK_AUTH_METHOD_CACHED_TOKEN = "cached_token";
 const GROK_DRIVER_KIND = ProviderDriverKind.make("grok");
 
-type GrokAcpRuntimeGrokSettings = Pick<GrokSettings, "binaryPath">;
+type GrokAcpRuntimeGrokSettings = Pick<GrokSettings, "binaryPath"> &
+  Partial<Pick<GrokSettings, "homePath">>;
 
 interface GrokAcpRuntimeInput extends Omit<
   AcpSessionRuntime.AcpSessionRuntimeOptions,
@@ -40,6 +42,12 @@ export function buildGrokAcpSpawnInput(
     cwd,
     env: {
       ...environment,
+      GROK_HOME: resolveEffectiveGrokHome({
+        ...(grokSettings?.homePath !== undefined
+          ? { configuredHomePath: grokSettings.homePath }
+          : {}),
+        ...(environment !== undefined ? { environment } : {}),
+      }),
       [GROK_OAUTH2_REFERRER_ENV]: T3_CODE_OAUTH_REFERRER,
     },
   };
