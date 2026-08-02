@@ -121,6 +121,7 @@ import * as DesktopTelemetryReceiver from "./resourceTelemetry/DesktopTelemetryR
 import * as NativeTelemetryClient from "./resourceTelemetry/NativeTelemetryClient.ts";
 import * as ResourceAttribution from "./resourceTelemetry/ResourceAttribution.ts";
 import * as ResourceTelemetry from "./resourceTelemetry/ResourceTelemetry.ts";
+import * as ExternalThreadImportService from "./threadImport/ExternalThreadImportService.ts";
 import * as Data from "effect/Data";
 
 const defaultProjectId = ProjectId.make("project-default");
@@ -363,6 +364,9 @@ const buildAppUnderTest = (options?: {
     nativeTelemetryClient?: Partial<NativeTelemetryClient.NativeTelemetryClient["Service"]>;
     desktopTelemetryReceiver?: Partial<
       DesktopTelemetryReceiver.DesktopTelemetryReceiver["Service"]
+    >;
+    externalThreadImportService?: Partial<
+      ExternalThreadImportService.ExternalThreadImportService["Service"]
     >;
   };
 }) =>
@@ -745,25 +749,35 @@ const buildAppUnderTest = (options?: {
           ...options?.layers?.projectionSnapshotQuery,
         }),
       ),
-      Layer.provide(
-        Layer.mock(CheckpointDiffQuery.CheckpointDiffQuery)({
-          getTurnDiff: () =>
-            Effect.succeed({
-              threadId: defaultThreadId,
-              fromTurnCount: 0,
-              toTurnCount: 0,
-              diff: "",
+      (layer) =>
+        layer.pipe(
+          Layer.provide(
+            Layer.mock(ExternalThreadImportService.ExternalThreadImportService)({
+              discover: () => Effect.succeed({ providerResults: [] }),
+              importSelected: () => Effect.succeed({ outcomes: [] }),
+              ...options?.layers?.externalThreadImportService,
             }),
-          getFullThreadDiff: () =>
-            Effect.succeed({
-              threadId: defaultThreadId,
-              fromTurnCount: 0,
-              toTurnCount: 0,
-              diff: "",
+          ),
+          Layer.provide(
+            Layer.mock(CheckpointDiffQuery.CheckpointDiffQuery)({
+              getTurnDiff: () =>
+                Effect.succeed({
+                  threadId: defaultThreadId,
+                  fromTurnCount: 0,
+                  toTurnCount: 0,
+                  diff: "",
+                }),
+              getFullThreadDiff: () =>
+                Effect.succeed({
+                  threadId: defaultThreadId,
+                  fromTurnCount: 0,
+                  toTurnCount: 0,
+                  diff: "",
+                }),
+              ...options?.layers?.checkpointDiffQuery,
             }),
-          ...options?.layers?.checkpointDiffQuery,
-        }),
-      ),
+          ),
+        ),
     );
 
     const appLayer = servedRoutesLayer.pipe(
@@ -3967,6 +3981,25 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
       yield* Deferred.await(discoveryInterrupted);
       assert.deepEqual(availableEditors, []);
     }),
+  );
+
+  it.effect("routes websocket rpc externalThreads.discover", () =>
+    Effect.gen(function* () {
+      yield* buildAppUnderTest();
+
+      const wsUrl = yield* getWsServerUrl("/ws");
+      const response = yield* Effect.scoped(
+        withWsRpcClient(wsUrl, (client) =>
+          client[WS_METHODS.externalThreadsDiscover]({
+            environmentId: testEnvironmentDescriptor.environmentId,
+            projectId: defaultProjectId,
+            limit: 25,
+          }),
+        ),
+      );
+
+      assert.deepEqual(response, { providerResults: [] });
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 
   it.effect(
