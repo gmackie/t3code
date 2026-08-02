@@ -11,6 +11,7 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   backgroundActivitySharedPolicySettings,
   buildProviderInstanceUpdatePatch,
+  DESKTOP_UPDATE_CHANNEL_OPTIONS,
   formatDiagnosticsDescription,
   getChangedTypographySettingLabels,
   hasChangedBackgroundActivitySettings,
@@ -29,6 +30,13 @@ describe("typography settings restore", () => {
         fontFamilyCode: "Fira Code",
       }),
     ).toEqual(["Interface font", "Code font"]);
+describe("desktop update tracks", () => {
+  it("includes and labels the GMACKO release lane", () => {
+    expect(DESKTOP_UPDATE_CHANNEL_OPTIONS).toEqual([
+      { value: "latest", label: "Stable" },
+      { value: "nightly", label: "Nightly" },
+      { value: "gmacko", label: "GMACKO" },
+    ]);
   });
 });
 
