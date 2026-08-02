@@ -71,9 +71,11 @@ const asThreadId = (value: string): ThreadId => ThreadId.make(value);
 const asTurnId = (value: string): TurnId => TurnId.make(value);
 const codexInstanceId = ProviderInstanceId.make("codex");
 const claudeAgentInstanceId = ProviderInstanceId.make("claudeAgent");
+const grokInstanceId = ProviderInstanceId.make("grok");
 const CODEX_DRIVER = ProviderDriverKind.make("codex");
 const CLAUDE_AGENT_DRIVER = ProviderDriverKind.make("claudeAgent");
 const CURSOR_DRIVER = ProviderDriverKind.make("cursor");
+const GROK_DRIVER = ProviderDriverKind.make("grok");
 
 type LegacyProviderRuntimeEvent = {
   readonly type: string;
@@ -275,10 +277,12 @@ function makeProviderServiceLayer() {
   const codex = makeFakeCodexAdapter();
   const claude = makeFakeCodexAdapter(CLAUDE_AGENT_DRIVER);
   const cursor = makeFakeCodexAdapter(CURSOR_DRIVER);
+  const grok = makeFakeCodexAdapter(GROK_DRIVER);
   const registry = makeAdapterRegistryMock({
     [ProviderDriverKind.make("codex")]: codex.adapter,
     [ProviderDriverKind.make("claudeAgent")]: claude.adapter,
     [ProviderDriverKind.make("cursor")]: cursor.adapter,
+    [GROK_DRIVER]: grok.adapter,
   });
 
   const providerAdapterLayer = Layer.succeed(
@@ -316,6 +320,7 @@ function makeProviderServiceLayer() {
     codex,
     claude,
     cursor,
+    grok,
     layer,
   };
 }
@@ -1271,6 +1276,83 @@ routing.layer("ProviderServiceLive routing", (it) => {
         assert.equal(startPayload.threadId, initial.threadId);
       }
       assert.equal(routing.claude.sendTurn.mock.calls.length, 1);
+    }),
+  );
+
+  it.effect("resumes imported native sessions on first send and again after runtime restart", () =>
+    Effect.gen(function* () {
+      const provider = yield* ProviderService.ProviderService;
+      const directory = yield* ProviderSessionDirectory.ProviderSessionDirectory;
+      const imported = [
+        {
+          driver: CODEX_DRIVER,
+          instanceId: codexInstanceId,
+          adapter: routing.codex,
+          threadId: asThreadId("imported-codex-thread"),
+          cwd: "/tmp/imported-codex",
+          resumeCursor: {
+            threadId: "native-codex-thread",
+            resumeRequired: true,
+          },
+        },
+        {
+          driver: CLAUDE_AGENT_DRIVER,
+          instanceId: claudeAgentInstanceId,
+          adapter: routing.claude,
+          threadId: asThreadId("imported-claude-thread"),
+          cwd: "/tmp/imported-claude",
+          resumeCursor: {
+            threadId: "native-claude-session",
+            resume: "00000000-0000-4000-8000-000000000001",
+          },
+        },
+        {
+          driver: GROK_DRIVER,
+          instanceId: grokInstanceId,
+          adapter: routing.grok,
+          threadId: asThreadId("imported-grok-thread"),
+          cwd: "/tmp/imported-grok",
+          resumeCursor: {
+            schemaVersion: 1,
+            sessionId: "00000000-0000-4000-8000-000000000002",
+          },
+        },
+      ] as const;
+
+      for (const entry of imported) {
+        yield* directory.upsert({
+          threadId: entry.threadId,
+          provider: entry.driver,
+          providerInstanceId: entry.instanceId,
+          runtimeMode: "full-access",
+          status: "stopped",
+          resumeCursor: entry.resumeCursor,
+          runtimePayload: { cwd: entry.cwd },
+        });
+        entry.adapter.startSession.mockClear();
+        entry.adapter.sendTurn.mockClear();
+
+        yield* provider.sendTurn({
+          threadId: entry.threadId,
+          input: "continue imported session",
+          attachments: [],
+        });
+        yield* entry.adapter.stopAll();
+        yield* provider.sendTurn({
+          threadId: entry.threadId,
+          input: "continue after provider restart",
+          attachments: [],
+        });
+
+        assert.equal(entry.adapter.startSession.mock.calls.length, 2);
+        for (const call of entry.adapter.startSession.mock.calls) {
+          const input = call[0];
+          assert.deepEqual(input.resumeCursor, entry.resumeCursor);
+          assert.equal(input.cwd, entry.cwd);
+        }
+        assert.equal(entry.adapter.sendTurn.mock.calls.length, 2);
+        yield* entry.adapter.stopAll();
+      }
     }),
   );
 
