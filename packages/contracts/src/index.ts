@@ -4,6 +4,7 @@ export * from "./auth.ts";
 export * from "./environment.ts";
 export * from "./environmentHttp.ts";
 export * from "./externalThreadImport.ts";
+export * from "./projectSessionImport.ts";
 export * from "./desktopBootstrap.ts";
 export * from "./remoteAccess.ts";
 export * from "./ipc.ts";
