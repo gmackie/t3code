@@ -150,6 +150,7 @@ import * as NativeTelemetryClient from "./resourceTelemetry/NativeTelemetryClien
 import * as ResourceAttribution from "./resourceTelemetry/ResourceAttribution.ts";
 import * as ResourceTelemetry from "./resourceTelemetry/ResourceTelemetry.ts";
 import * as ExternalThreadImportService from "./threadImport/ExternalThreadImportService.ts";
+import * as ProjectSessionImportService from "./projectImport/ProjectSessionImportService.ts";
 import * as Data from "effect/Data";
 
 import { makeOrchestrationIntegrationHarness } from "../integration/OrchestrationEngineHarness.integration.ts";
@@ -421,6 +422,9 @@ const buildAppUnderTest = (options?: {
     >;
     externalThreadImportService?: Partial<
       ExternalThreadImportService.ExternalThreadImportService["Service"]
+    >;
+    projectSessionImportService?: Partial<
+      ProjectSessionImportService.ProjectSessionImportService["Service"]
     >;
   };
 }) =>
@@ -808,6 +812,12 @@ const buildAppUnderTest = (options?: {
       ),
       (layer) =>
         layer.pipe(
+          Layer.provide(
+            Layer.mock(ProjectSessionImportService.ProjectSessionImportService)({
+              scan: () => Effect.succeed({ repositories: [], scannedDirectoryCount: 0 }),
+              ...options?.layers?.projectSessionImportService,
+            }),
+          ),
           Layer.provide(
             Layer.mock(ExternalThreadImportService.ExternalThreadImportService)({
               discover: () => Effect.succeed({ providerResults: [] }),
@@ -4056,6 +4066,38 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
       );
 
       assert.deepEqual(response, { providerResults: [] });
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
+  it.effect("routes websocket rpc projectSessionImports.scan", () =>
+    Effect.gen(function* () {
+      yield* buildAppUnderTest({
+        layers: {
+          projectSessionImportService: {
+            scan: () =>
+              Effect.succeed({
+                repositories: [{ root: "/Volumes/dev/t3code", name: "t3code" }],
+                scannedDirectoryCount: 4,
+              }),
+          },
+        },
+      });
+
+      const wsUrl = yield* getWsServerUrl("/ws");
+      const response = yield* Effect.scoped(
+        withWsRpcClient(wsUrl, (client) =>
+          client[WS_METHODS.projectSessionImportsScan]({
+            environmentId: testEnvironmentDescriptor.environmentId,
+            root: "/Volumes/dev",
+            limit: 25,
+          }),
+        ),
+      );
+
+      assert.deepEqual(response, {
+        repositories: [{ root: "/Volumes/dev/t3code", name: "t3code" }],
+        scannedDirectoryCount: 4,
+      });
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 

@@ -10,6 +10,7 @@ import * as Schema from "effect/Schema";
 
 import { resolveClaudeHomePath } from "../../provider/Drivers/ClaudeHome.ts";
 import {
+  BoundedThreadImportJson,
   NormalizedThreadImportHistory,
   ThreadImportDiscoveryError,
   ThreadImportLoadError,
@@ -111,6 +112,25 @@ async function listTranscriptLocations(
     }
   }
   return locations;
+}
+
+async function discoveryRevision(root: string): Promise<string> {
+  let canonicalRoot: string;
+  try {
+    canonicalRoot = await NodeFSP.realpath(root);
+  } catch {
+    return "missing";
+  }
+  const entries = await NodeFSP.readdir(canonicalRoot, { withFileTypes: true });
+  const parts = await Promise.all(
+    entries
+      .filter((entry) => entry.isDirectory() && !entry.isSymbolicLink())
+      .map(async (entry) => {
+        const stat = await NodeFSP.stat(NodePath.join(canonicalRoot, entry.name));
+        return `${entry.name}:${stat.mtimeMs}:${stat.size}`;
+      }),
+  );
+  return parts.sort().join("|");
 }
 
 async function readDiscoveryWindows(
@@ -459,6 +479,14 @@ function jsonValue(value: unknown, depth = 0): Schema.Json {
   return `[unsupported ${typeof value}]`;
 }
 
+const isBoundedThreadImportJson = Schema.is(BoundedThreadImportJson);
+const boundedToolJson = (value: unknown): Schema.Json => {
+  const normalized = jsonValue(value);
+  return isBoundedThreadImportJson(normalized)
+    ? normalized
+    : "[tool payload omitted: exceeds import limit]";
+};
+
 function textParts(content: unknown): string {
   if (typeof content === "string") return content;
   if (!Array.isArray(content)) return "";
@@ -527,7 +555,7 @@ function normalizeTranscript(records: ReadonlyArray<ClaudeRecord>, sessionId: st
               _tag: "ToolResult",
               sequence: next(),
               callId: normalizedCallId,
-              output: jsonValue(result.content ?? null),
+              output: boundedToolJson(result.content ?? null),
               isError: result.is_error === true,
             });
           } else if (part.type === "text" && typeof part.text === "string" && part.text) {
@@ -657,7 +685,7 @@ function normalizeTranscript(records: ReadonlyArray<ClaudeRecord>, sessionId: st
               sequence: history[existing.historyIndex]!.sequence,
               callId: existing.normalizedCallId,
               name: part.name,
-              input: jsonValue(part.input ?? {}),
+              input: boundedToolJson(part.input ?? {}),
             };
             continue;
           }
@@ -674,7 +702,7 @@ function normalizeTranscript(records: ReadonlyArray<ClaudeRecord>, sessionId: st
             sequence: next(),
             callId: normalizedCallId,
             name: part.name,
-            input: jsonValue(part.input ?? {}),
+            input: boundedToolJson(part.input ?? {}),
           });
           if (snapshotTools && record.uuid) {
             snapshotTools.set(part.id, { historyIndex, normalizedCallId });
@@ -769,6 +797,28 @@ export const makeClaudeThreadImportSource = Effect.fn("makeClaudeThreadImportSou
         code,
         retryable: true,
       });
+    let discoveryCache:
+      | {
+          readonly revision: string;
+          readonly promise: Promise<ReadonlyArray<ThreadImportCandidate>>;
+        }
+      | undefined;
+    const cachedCandidates = async () => {
+      const revision = await discoveryRevision(projectsRoot);
+      if (discoveryCache && discoveryCache.revision === revision) return discoveryCache.promise;
+      const promise = discoverCandidates(
+        projectsRoot,
+        options.provider,
+        options.onIndexRead,
+        options.onIndexEntry,
+      );
+      const entry = { revision, promise };
+      discoveryCache = entry;
+      void promise.catch(() => {
+        if (discoveryCache === entry) discoveryCache = undefined;
+      });
+      return promise;
+    };
 
     return {
       provider: options.provider,
@@ -789,13 +839,7 @@ export const makeClaudeThreadImportSource = Effect.fn("makeClaudeThreadImportSou
           return yield* discoveryError();
         }
         const candidates = yield* Effect.tryPromise({
-          try: () =>
-            discoverCandidates(
-              projectsRoot,
-              options.provider,
-              options.onIndexRead,
-              options.onIndexEntry,
-            ),
+          try: cachedCandidates,
           catch: discoveryError,
         });
         const remaining = keyset
