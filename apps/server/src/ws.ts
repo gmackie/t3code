@@ -112,6 +112,7 @@ import * as TraceDiagnostics from "./diagnostics/TraceDiagnostics.ts";
 import * as PullRequestService from "./pullRequest/PullRequestService.ts";
 import * as SourceControlDiscovery from "./sourceControl/SourceControlDiscovery.ts";
 import * as ExternalThreadImportService from "./threadImport/ExternalThreadImportService.ts";
+import * as ProjectSessionImportService from "./projectImport/ProjectSessionImportService.ts";
 import * as SourceControlRepositoryService from "./sourceControl/SourceControlRepositoryService.ts";
 import * as AzureDevOpsCli from "./sourceControl/AzureDevOpsCli.ts";
 import * as BitbucketApi from "./sourceControl/BitbucketApi.ts";
@@ -401,6 +402,7 @@ const makeWsRpcLayer = (
       const serverAuth = yield* EnvironmentAuth.EnvironmentAuth;
       const sourceControlDiscovery = yield* SourceControlDiscovery.SourceControlDiscovery;
       const externalThreadImports = yield* ExternalThreadImportService.ExternalThreadImportService;
+      const projectSessionImports = yield* ProjectSessionImportService.ProjectSessionImportService;
       const automaticGitFetchInterval = serverSettings.getSettings.pipe(
         Effect.map(
           (settings) => resolveServerBackgroundActivitySettings(settings).automaticGitFetchInterval,
@@ -1452,6 +1454,12 @@ const makeWsRpcLayer = (
             WS_METHODS.externalThreadsDiscover,
             externalThreadImports.discover(input),
             { "rpc.aggregate": "externalThreads" },
+          ),
+        [WS_METHODS.projectSessionImportsScan]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.projectSessionImportsScan,
+            projectSessionImports.scan(input),
+            { "rpc.aggregate": "projectSessionImports" },
           ),
         [WS_METHODS.externalThreadsImport]: (input) =>
           observeRpcEffect(
