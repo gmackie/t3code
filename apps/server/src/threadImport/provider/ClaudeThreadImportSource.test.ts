@@ -277,7 +277,9 @@ it.layer(NodeServices.layer)("ClaudeThreadImportSource", (it) => {
           },
         });
         const page = yield* source.discover({ ...scope, limit: 10 });
+        const repeated = yield* source.discover({ ...scope, limit: 10 });
         expect(page.candidates).toHaveLength(2);
+        expect(repeated.candidates).toHaveLength(2);
         expect(reads).toEqual([indexPath]);
         expect(entryVisits).toBe(2);
       }),
@@ -989,6 +991,38 @@ it.layer(NodeServices.layer)("ClaudeThreadImportSource", (it) => {
             output: "done",
             isError: false,
           },
+        ]);
+      }),
+    ),
+  );
+
+  it.effect("preserves the timeline while omitting an oversized tool result payload", () =>
+    withHome((home) =>
+      Effect.gen(function* () {
+        const transcript = [
+          user({ uuid: "u1", content: "inspect it" }),
+          assistant({
+            uuid: "a1",
+            parentUuid: "u1",
+            content: [{ type: "tool_use", id: "large", name: "Read", input: {} }],
+          }),
+          user({
+            uuid: "result",
+            content: [{ type: "tool_result", tool_use_id: "large", content: "x".repeat(600_000) }],
+          }),
+        ]
+          .map(line)
+          .join("");
+        yield* writeTranscript(home, "large-tool-result", session1, transcript);
+        const source = yield* makeClaudeThreadImportSource({
+          provider,
+          claudeSettings: { homePath: home },
+        });
+
+        const loaded = yield* source.load({ ...scope, nativeThreadId: session1 });
+
+        expect(loaded.normalizedHistory.filter((item) => item._tag === "ToolResult")).toEqual([
+          expect.objectContaining({ output: "[tool payload omitted: exceeds import limit]" }),
         ]);
       }),
     ),
