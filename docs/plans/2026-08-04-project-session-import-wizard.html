@@ -1,0 +1,630 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Project and Session Import Wizard — Implementation Plan</title>
+    <style>
+      :root {
+        --bg: #f3efe4;
+        --paper: #fffaf0;
+        --ink: #20251f;
+        --muted: #687064;
+        --line: #cfc8b7;
+        --green: #24735b;
+        --mint: #d8eee4;
+        --orange: #c65d31;
+        --gold: #f1c35b;
+        --blue: #2f678f;
+        --mono: Menlo, Consolas, monospace;
+        --display: "Avenir Next", "Segoe UI", sans-serif;
+        --body: Palatino, Georgia, serif;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        color: var(--ink);
+        background: var(--bg);
+        font: 17px/1.62 var(--body);
+        background-image:
+          linear-gradient(rgba(36, 115, 91, 0.04) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(36, 115, 91, 0.04) 1px, transparent 1px);
+        background-size: 28px 28px;
+      }
+      main,
+      .hero-inner {
+        max-width: 980px;
+        margin: auto;
+        padding-left: 1.5rem;
+        padding-right: 1.5rem;
+      }
+      main {
+        padding-bottom: 5rem;
+      }
+      .hero {
+        padding: 4.5rem 0 3rem;
+        background: linear-gradient(120deg, #193c32, #265b4b 60%, #a34d2c);
+        color: #fff8e9;
+        border-bottom: 6px solid var(--gold);
+      }
+      .kicker {
+        font: 800 0.75rem var(--display);
+        letter-spacing: 0.22em;
+        text-transform: uppercase;
+        color: #ffd978;
+      }
+      h1 {
+        font: 800 clamp(2.4rem, 6vw, 4.6rem)/1 var(--display);
+        letter-spacing: -0.045em;
+        max-width: 15ch;
+        margin: 0.7rem 0 1rem;
+      }
+      h2 {
+        font: 750 1.55rem var(--display);
+        margin: 3rem 0 0.8rem;
+        padding-bottom: 0.4rem;
+        border-bottom: 2px solid var(--line);
+      }
+      h3 {
+        font: 700 1.05rem var(--display);
+      }
+      .meta {
+        font: 0.9rem var(--display);
+        color: #d9e6df;
+      }
+      .meta span + span:before {
+        content: " / ";
+        opacity: 0.55;
+        padding: 0 0.4rem;
+      }
+      code {
+        font: 0.84em var(--mono);
+        background: #ebe5d8;
+        border: 1px solid var(--line);
+        border-radius: 5px;
+        padding: 0.1rem 0.32rem;
+      }
+      pre {
+        overflow: auto;
+        padding: 1rem;
+        background: #202a25;
+        color: #dcecdf;
+        border-radius: 10px;
+        font: 13px/1.55 var(--mono);
+      }
+      .badge {
+        display: inline-block;
+        border-radius: 99px;
+        padding: 0.14rem 0.58rem;
+        font: 700 0.7rem var(--display);
+        letter-spacing: 0.04em;
+        vertical-align: middle;
+      }
+      .approved,
+      .done {
+        background: var(--mint);
+        color: var(--green);
+      }
+      .todo {
+        background: #e4dfd3;
+        color: var(--muted);
+      }
+      .risk {
+        background: #fae6c0;
+        color: #784919;
+      }
+      .stats {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 0.8rem;
+        margin: 2rem 0;
+      }
+      .stat,
+      .card,
+      details,
+      figure {
+        background: rgba(255, 250, 240, 0.94);
+        border: 1px solid var(--line);
+        border-radius: 14px;
+      }
+      .stat {
+        padding: 1rem;
+      }
+      .stat b {
+        display: block;
+        font: 800 2rem/1 var(--display);
+        color: var(--green);
+      }
+      .stat span {
+        font: 700 0.72rem var(--display);
+        color: var(--muted);
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+      }
+      .progress {
+        display: flex;
+        gap: 4px;
+        height: 10px;
+        margin-bottom: 2rem;
+      }
+      .progress i {
+        flex: 1;
+        border-radius: 5px;
+        background: #d9d2c4;
+      }
+      .progress .active {
+        background: linear-gradient(90deg, var(--green), var(--orange));
+      }
+      .goals {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 1rem;
+      }
+      .card {
+        padding: 1rem 1.2rem;
+      }
+      ul {
+        padding-left: 1.3rem;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.9rem;
+        margin: 1rem 0 1.4rem;
+        background: rgba(255, 250, 240, 0.7);
+      }
+      th {
+        text-align: left;
+        font: 700 0.72rem var(--display);
+        text-transform: uppercase;
+        letter-spacing: 0.07em;
+        color: var(--muted);
+      }
+      th,
+      td {
+        padding: 0.65rem;
+        border-bottom: 1px solid var(--line);
+        vertical-align: top;
+      }
+      details {
+        padding: 0.7rem 1rem;
+        margin: 0.8rem 0;
+      }
+      summary {
+        cursor: pointer;
+        font: 700 1rem var(--display);
+      }
+      figure {
+        padding: 1.2rem;
+        overflow: auto;
+        text-align: center;
+      }
+      figure svg {
+        max-width: 100%;
+        height: auto;
+      }
+      figcaption {
+        color: var(--muted);
+        font: 0.82rem var(--display);
+        margin-top: 0.6rem;
+      }
+      .callout {
+        border-left: 4px solid var(--orange);
+        background: #fae9d9;
+        padding: 0.8rem 1rem;
+        border-radius: 0 10px 10px 0;
+      }
+      .timeline {
+        list-style: none;
+        border-left: 2px solid var(--green);
+        padding-left: 1.4rem;
+      }
+      .timeline li {
+        padding: 0 0 1rem;
+        position: relative;
+      }
+      .timeline li:before {
+        content: "";
+        position: absolute;
+        left: -1.72rem;
+        top: 0.35rem;
+        width: 0.58rem;
+        height: 0.58rem;
+        border: 2px solid var(--green);
+        border-radius: 50%;
+        background: var(--paper);
+      }
+      @media (max-width: 700px) {
+        .stats,
+        .goals {
+          grid-template-columns: 1fr 1fr;
+        }
+        table {
+          display: block;
+          overflow: auto;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header class="hero">
+      <div class="hero-inner">
+        <div class="kicker">Approved implementation plan</div>
+        <h1>Project + Session Import Wizard <span class="badge approved">Approved</span></h1>
+        <p class="meta">
+          <span>2026-08-04</span><span><code>t3code</code> @ <code>custom-local</code></span
+          ><span>author: Codex + Graham</span>
+        </p>
+      </div>
+    </header>
+    <main>
+      <div class="stats">
+        <div class="stat"><b>4</b><span>Phases</span></div>
+        <div class="stat"><b>12</b><span>TDD tasks</span></div>
+        <div class="stat"><b>3</b><span>Providers</span></div>
+        <div class="stat"><b>0</b><span>Writes during scan</span></div>
+      </div>
+      <div class="progress" aria-label="Plan progress">
+        <i class="active"></i><i></i><i></i><i></i>
+      </div>
+
+      <h2>Overview</h2>
+      <p>
+        Build a user-triggered wizard that defaults to scanning <code>~/</code>, accepts a
+        runtime-selected root such as <code>/Volumes/dev</code>, discovers Git repositories
+        recursively, correlates them with native Claude, Grok Build, and Codex histories, and
+        imports the selected projects and full session histories into T3 Code. Discovery is
+        read-only and incremental; all matching sessions are selected by default on a review screen;
+        execution reuses existing projects and is safe to retry.
+      </p>
+
+      <h2>Architecture</h2>
+      <figure class="diagram">
+        <svg viewBox="0 0 860 180" role="img" aria-label="Import wizard architecture">
+          <defs>
+            <marker id="a" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+              <path d="M0,0 L0,6 L7,3 z" fill="#687064" />
+            </marker>
+          </defs>
+          <g font-family="Avenir Next, sans-serif" font-size="14">
+            <rect x="20" y="55" width="150" height="70" rx="12" fill="#d8eee4" stroke="#24735b" />
+            <text x="95" y="83" text-anchor="middle" font-weight="700">Wizard UI</text>
+            <text x="95" y="105" text-anchor="middle">scan / review / import</text>
+            <rect x="245" y="25" width="185" height="130" rx="12" fill="#fffaf0" stroke="#2f678f" />
+            <text x="337" y="55" text-anchor="middle" font-weight="700">
+              Bulk Migration Service
+            </text>
+            <text x="337" y="82" text-anchor="middle">repository scanner</text>
+            <text x="337" y="105" text-anchor="middle">project correlation</text>
+            <text x="337" y="128" text-anchor="middle">idempotent executor</text>
+            <rect x="505" y="15" width="155" height="45" rx="10" fill="#fae9d9" stroke="#c65d31" />
+            <text x="582" y="43" text-anchor="middle">Filesystem / Git</text>
+            <rect x="505" y="70" width="155" height="45" rx="10" fill="#fae9d9" stroke="#c65d31" />
+            <text x="582" y="98" text-anchor="middle">Provider sources</text>
+            <rect x="505" y="125" width="155" height="45" rx="10" fill="#fae9d9" stroke="#c65d31" />
+            <text x="582" y="153" text-anchor="middle">Orchestration</text>
+            <rect x="735" y="55" width="105" height="70" rx="12" fill="#f9e8af" stroke="#9b7015" />
+            <text x="787" y="83" text-anchor="middle" font-weight="700">Durable</text>
+            <text x="787" y="105" text-anchor="middle">T3 state</text>
+            <path
+              d="M170 90H238M430 60H498M430 92H498M430 125H498M660 147H728"
+              stroke="#687064"
+              stroke-width="2"
+              marker-end="url(#a)"
+            />
+          </g>
+        </svg>
+        <figcaption>
+          The bulk service composes existing provider import and orchestration seams; React does not
+          traverse the filesystem.
+        </figcaption>
+      </figure>
+      <details class="mermaid-source">
+        <summary>Diagram source (mermaid)</summary>
+        <pre><code>flowchart LR
+  UI[Wizard UI: scan / review / import] --> S[Bulk Migration Service]
+  S --> F[Filesystem and Git scanner]
+  S --> P[Claude / Grok / Codex import sources]
+  S --> O[Existing project and thread orchestration]
+  O --> D[(Durable T3 state)]</code></pre>
+      </details>
+
+      <h2>Goals &amp; Non-goals</h2>
+      <div class="goals">
+        <div class="card">
+          <h3>Goals</h3>
+          <ul>
+            <li>Recursively discover real Git roots beneath a user-selected directory.</li>
+            <li>Stream repositories and sessions incrementally at large-corpus scale.</li>
+            <li>Create missing projects, reuse existing projects, and import full histories.</li>
+            <li>Make retries idempotent and failures local to each repository/session.</li>
+          </ul>
+        </div>
+        <div class="card">
+          <h3>Non-goals</h3>
+          <ul>
+            <li>No startup/background scans.</li>
+            <li>No mutation of native provider history.</li>
+            <li>No automatic model/provider migration.</li>
+            <li>No symlink traversal outside the chosen root.</li>
+          </ul>
+        </div>
+      </div>
+
+      <h2>Milestones</h2>
+      <ul class="timeline">
+        <li>
+          <b>Phase 1 — Scan safely</b><br />Repository traversal and contracts, proven with
+          filesystem fixtures.
+        </li>
+        <li>
+          <b>Phase 2 — Correlate and execute</b><br />Incremental provider discovery plus idempotent
+          project/session import.
+        </li>
+        <li>
+          <b>Phase 3 — Wizard UX</b><br />Root picker, scalable review list, progress, and
+          completion links.
+        </li>
+        <li>
+          <b>Phase 4 — Real migration proof</b><br />Scan <code>/Volumes/dev</code>, verify actual
+          Claude sessions, then release.
+        </li>
+      </ul>
+
+      <h2>Phase 1 — Repository discovery <span class="badge todo">Todo</span></h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Task</th>
+            <th>Files</th>
+            <th>Verification</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Define scan and result schemas first</td>
+            <td>
+              <code>packages/contracts/src/projectSessionImport.ts</code>,
+              <code>projectSessionImport.test.ts</code>, <code>rpc.ts</code>
+            </td>
+            <td>
+              <code>vp test packages/contracts/src/projectSessionImport.test.ts</code>; RED before
+              implementation
+            </td>
+            <td><span class="badge todo">Todo</span></td>
+          </tr>
+          <tr>
+            <td>Implement bounded recursive Git-root scanner</td>
+            <td>
+              <code>apps/server/src/projectImport/RepositoryScanner.ts</code>,
+              <code>RepositoryScanner.test.ts</code>
+            </td>
+            <td>
+              Fixtures prove pruning, nested roots, permissions, cancellation, and no symlink
+              following
+            </td>
+            <td><span class="badge todo">Todo</span></td>
+          </tr>
+          <tr>
+            <td>Expose cancellable incremental scan RPC</td>
+            <td>
+              <code>apps/server/src/projectImport/ProjectSessionImportService.ts</code>,
+              <code>apps/server/src/ws.ts</code>
+            </td>
+            <td>Service test observes first repository before slow traversal finishes</td>
+            <td><span class="badge todo">Todo</span></td>
+          </tr>
+        </tbody>
+      </table>
+      <details>
+        <summary>Scanner rules</summary>
+        <p>
+          Default root is the server user's home directory. The client may select
+          <code>/Volumes/dev</code> at runtime. Never follow directory symlinks. Prune
+          <code>.git</code>, dependency directories, caches, build outputs, trash, application
+          support, and vendored reference directories. Once a repository root is accepted, stop
+          ordinary descent, while explicitly recognizing nested Git roots and linked worktrees
+          through Git metadata rather than broad content traversal.
+        </p>
+      </details>
+
+      <h2>Phase 2 — Discovery and idempotent import <span class="badge todo">Todo</span></h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Task</th>
+            <th>Files</th>
+            <th>Verification</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Correlate scanned roots with active projects</td>
+            <td><code>ProjectSessionImportService.ts</code>, existing projection query services</td>
+            <td>Tests distinguish Create, Reuse, and inaccessible repository outcomes</td>
+            <td><span class="badge todo">Todo</span></td>
+          </tr>
+          <tr>
+            <td>Compose provider-neutral session discovery</td>
+            <td>
+              <code>ProjectSessionImportService.ts</code>, existing
+              <code>ExternalThreadImportService.ts</code>
+            </td>
+            <td>
+              Incremental tests cover Claude, Grok, Codex, provider failure, already imported status
+            </td>
+            <td><span class="badge todo">Todo</span></td>
+          </tr>
+          <tr>
+            <td>Execute selected project and token plan</td>
+            <td>
+              <code>ProjectSessionImportService.ts</code>,
+              <code>ProjectSessionImportService.test.ts</code>
+            </td>
+            <td>Retry test proves no duplicate project or thread after interruption</td>
+            <td><span class="badge todo">Todo</span></td>
+          </tr>
+        </tbody>
+      </table>
+      <details>
+        <summary>Execution invariants</summary>
+        <pre><code>scan(root)              // read-only, cancellable, incremental
+review.repositories[]   // all available sessions selected by default
+execute(selection)      // revalidate root + token, then create/reuse + import
+execute(selection)      // same request again => reused/skipped, never duplicated</code></pre>
+      </details>
+
+      <h2>Phase 3 — Web wizard <span class="badge todo">Todo</span></h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Task</th>
+            <th>Files</th>
+            <th>Verification</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Add wizard state and selection logic</td>
+            <td>
+              <code>apps/web/src/components/ProjectSessionImportWizard.logic.ts</code> and test
+            </td>
+            <td>
+              Tests cover selected-by-default, tri-state project selection, filters, and result
+              merging
+            </td>
+            <td><span class="badge todo">Todo</span></td>
+          </tr>
+          <tr>
+            <td>Build Scan / Review / Import dialog</td>
+            <td>
+              <code>ProjectSessionImportWizard.tsx</code>,
+              <code>apps/web/src/state/projectSessionImports.ts</code>
+            </td>
+            <td>Component behavior test plus keyboard/a11y inspection</td>
+            <td><span class="badge todo">Todo</span></td>
+          </tr>
+          <tr>
+            <td>Add “Import projects and sessions” entry point</td>
+            <td>
+              <code>apps/web/src/components/CommandPalette.tsx</code> and project sidebar action
+              owner
+            </td>
+            <td>
+              Entry opens wizard; default root displays <code>~/</code>; picker accepts
+              <code>/Volumes/dev</code>
+            </td>
+            <td><span class="badge todo">Todo</span></td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h2>Phase 4 — Verification and rollout <span class="badge todo">Todo</span></h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Task</th>
+            <th>Files</th>
+            <th>Verification</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Run focused and repository gates</td>
+            <td>All touched packages</td>
+            <td>
+              <code>vp check</code>, <code>vp run --no-cache typecheck</code>, focused tests,
+              <code>git diff --check</code>
+            </td>
+            <td><span class="badge todo">Todo</span></td>
+          </tr>
+          <tr>
+            <td>Prove real <code>/Volumes/dev</code> scan in web UI</td>
+            <td>Collaborative preview evidence</td>
+            <td>Multiple repositories show actual Claude sessions before full scan completion</td>
+            <td><span class="badge todo">Todo</span></td>
+          </tr>
+          <tr>
+            <td>Release only after browser proof</td>
+            <td>GMACKO release workflow</td>
+            <td>Exact-SHA workflow, artifacts, updater manifests, installed-app verification</td>
+            <td><span class="badge todo">Todo</span></td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h2>Risks &amp; Mitigations</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Risk</th>
+            <th>Severity</th>
+            <th>Mitigation</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Home scans traverse huge or sensitive trees</td>
+            <td><span class="badge risk">High</span></td>
+            <td>
+              Visible root, explicit start, strict pruning, cancellation, no symlink following, no
+              writes.
+            </td>
+          </tr>
+          <tr>
+            <td>Thousands of sessions overwhelm UI/server</td>
+            <td><span class="badge risk">High</span></td>
+            <td>Bounded concurrency, incremental pages, virtualized rows, provider filters.</td>
+          </tr>
+          <tr>
+            <td>Stale scan tokens import into wrong project</td>
+            <td><span class="badge risk">High</span></td>
+            <td>
+              Opaque scoped tokens and server-side repository/project revalidation at execution.
+            </td>
+          </tr>
+          <tr>
+            <td>Partial execution creates duplicates</td>
+            <td><span class="badge risk">Medium</span></td>
+            <td>
+              Reuse active workspace-root matches and existing external-import identities; itemized
+              retry outcomes.
+            </td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h2>Verification</h2>
+      <ul>
+        <li>
+          Every production function begins with a failing behavior test and completes a RED → GREEN
+          → REFACTOR cycle.
+        </li>
+        <li>
+          Provider history is imported in full through the existing normalized-history pipeline.
+        </li>
+        <li>
+          The browser acceptance run uses actual local histories and <code>/Volumes/dev</code>, not
+          mocks.
+        </li>
+        <li>
+          The unrelated change in <code>scripts/build-desktop-artifact.test.ts</code> remains
+          untouched and excluded from feature commits.
+        </li>
+      </ul>
+
+      <h2>Open Questions</h2>
+      <div class="callout">
+        <strong>None blocking.</strong> Approved defaults: <code>~/</code> initial root, runtime
+        directory selection, recursive Git discovery, reuse existing projects, and select all
+        available sessions by default with per-project/session controls.
+      </div>
+    </main>
+  </body>
+</html>
