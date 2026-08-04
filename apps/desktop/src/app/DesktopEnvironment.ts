@@ -194,6 +194,10 @@ const make = Effect.fn("desktop.environment.make")(function* (
     : runtimeIdentity.userDataDirName === "t3code-gmacko"
       ? runtimeIdentity.userDataDirName
       : "T3 Code (Alpha)";
+  const linuxApplicationsDir = path.join(
+    Option.getOrElse(config.xdgDataHome, () => path.join(homeDirectory, ".local", "share")),
+    "applications",
+  );
   const resourcesPath = input.resourcesPath;
 
   return DesktopEnvironment.of({
@@ -240,6 +244,8 @@ const make = Effect.fn("desktop.environment.make")(function* (
       ? "t3code-dev.desktop"
       : `${runtimeIdentity.packageName}.desktop`,
     linuxWmClass: isDevelopment ? "t3code-dev" : runtimeIdentity.packageName,
+    linuxApplicationsDir,
+    appImagePath: config.appImagePath,
     userDataDirName: runtimeIdentity.userDataDirName,
     legacyUserDataDirName,
     defaultDesktopSettings: DesktopAppSettings.resolveDefaultDesktopSettings(input.appVersion),
