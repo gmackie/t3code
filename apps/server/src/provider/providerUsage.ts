@@ -1,3 +1,5 @@
+// This adapter normalizes provider timestamps synchronously at the runtime boundary.
+// @effect-diagnostics globalDate:off
 import type { ProviderUsageSnapshot, ProviderUsageWindow } from "@t3tools/contracts";
 
 export type ProviderRateLimitWindow = {
