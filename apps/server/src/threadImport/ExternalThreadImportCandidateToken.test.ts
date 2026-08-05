@@ -33,8 +33,9 @@ const configLayer = ServerConfig.layerTest(process.cwd(), {
 const secretLayer = ServerSecretStore.layer.pipe(Layer.provide(configLayer));
 const tokenLayer = CandidateToken.layer.pipe(Layer.provide(secretLayer));
 const tokenAndSecretLayer = Layer.merge(tokenLayer, secretLayer);
-const decodeUnknownJson = Schema.decodeUnknownSync(Schema.UnknownFromJsonString);
-const encodeUnknownJson = Schema.encodeSync(Schema.UnknownFromJsonString);
+const UnknownJsonString = Schema.fromJsonString(Schema.Unknown);
+const decodeUnknownJson = Schema.decodeUnknownSync(UnknownJsonString);
+const encodeUnknownJson = Schema.encodeSync(UnknownJsonString);
 
 const decodePayload = (token: string): Record<string, unknown> => {
   const encodedPayload = token.split(".")[0];

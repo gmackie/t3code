@@ -1645,7 +1645,7 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
           }),
         { concurrency: 1, discard: true },
       );
-      const encodeJson = Schema.encodeEffect(Schema.UnknownFromJsonString);
+      const encodeJson = Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown));
       const resumeCursorJson =
         provenance.resumeCursor === undefined
           ? null
