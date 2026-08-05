@@ -1,0 +1,61 @@
+schemaVersion: 1
+sourceBranches:
+  customLocal:
+    path: /Users/mackieg/.config/superpowers/worktrees/t3code/custom-local
+    tip: 4e36b4170
+  bobPlanningIntegration:
+    path: /Users/mackieg/.config/superpowers/worktrees/t3code/bob-planning-integration
+    tip: 1faf146c6
+repositories:
+  bob:
+    path: /Volumes/dev/t3code/t3code-bob-plugin
+    role: primary-product-plugin
+    source: raw-git
+  linear:
+    path: /Volumes/dev/t3code/t3code-linear-plugin
+    role: standalone-reference-plugin
+    source: raw-git
+classifications:
+  t3-core:
+    - packages/contracts/src/issue.ts
+    - packages/shared/src/projectIssues.ts
+    - packages/client-runtime/src/bob-planning.ts
+  bob-plugin:
+    - packages/shared/src/bobPlanning.ts
+    - packages/shared/src/bobPlanningClient.ts
+    - packages/shared/src/bobPlanningConnection.ts
+    - packages/shared/src/bobPlanningLinks.ts
+    - apps/web/src/bob/bobCredentialStore.ts
+    - apps/web/src/bob/bobDispatchController.ts
+    - apps/web/src/bob/bobLinkRepository.ts
+    - apps/web/src/bob/bobPlanningController.ts
+    - apps/web/src/bob/bobPlanningHttpClient.ts
+    - apps/web/src/bob/bobWorkspaceRoutes.ts
+    - apps/web/src/components/bob/
+    - apps/mobile/src/features/bob/
+  linear-plugin:
+    - apps/server/src/issue/LinearIssueClient.ts
+    - apps/web/src/projectIssues.logic.ts
+    - apps/web/src/routes/settings.issues.tsx
+    - apps/web/src/components/ui/combobox.tsx
+    - apps/mobile/src/features/issues/
+  mobile-host:
+    - apps/mobile/src/Stack.tsx
+    - apps/mobile/src/features/settings/
+    - apps/mobile/src/features/layout/
+  compatibility-adapter:
+    - apps/web/src/routes/_chat.bob.tsx
+    - apps/web/src/routes/_chat.bob.*
+    - apps/web/src/routes/settings.bob.tsx
+  delete-or-archive:
+    - docs/plans/2026-07-14-bob-planning-workspace.html
+rules:
+  - Do not merge bobPlanningIntegration wholesale into refreshed main.
+  - Bob owns Bob-to-Linear mappings and Bob-to-T3 run/thread links.
+  - Linear remains independently installable and is not a Bob dependency.
+  - T3 core receives opaque external references and normalized work-item data only.
+  - Mobile remains a native thin host and imports no Bob or Linear implementation modules.
+nextSteps:
+  - Port Bob credentials, planning, dispatch, and link persistence into the Bob plugin.
+  - Port Linear auth, issue client, mapping, and issue provider into the Linear plugin.
+  - Keep legacy routes behind a removable compatibility flag until plugin parity.
