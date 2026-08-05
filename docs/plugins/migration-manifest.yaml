@@ -17,6 +17,18 @@ repositories:
     role: standalone-reference-plugin
     source: raw-git
     proofOfConceptCommit: 540b306
+  github:
+    path: /Volumes/dev/t3code/t3code-github-plugin
+    role: external-workflow-plugin-sample
+    proofOfConceptCommit: 0d1a6d5
+  sentry:
+    path: /Volumes/dev/t3code/t3code-sentry-plugin
+    role: monitoring-plugin-sample
+    proofOfConceptCommit: d9f10de
+  piEvents:
+    path: /Volumes/dev/t3code/t3code-pi-events-plugin
+    role: lifecycle-extension-sample
+    proofOfConceptCommit: e7cf42a
 classifications:
   t3-core:
     - packages/contracts/src/issue.ts
