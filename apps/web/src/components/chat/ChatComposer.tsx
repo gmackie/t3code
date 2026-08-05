@@ -109,12 +109,10 @@ import { buildExpandedImagePreview, type ExpandedImagePreview } from "./Expanded
 import { basenameOfPath } from "../../pierre-icons";
 import { cn, randomUUID } from "~/lib/utils";
 import { Separator } from "../ui/separator";
-import {
-  getComposerPromptLengthValidationMessage,
-  getComposerSubmissionValidationMessage,
-  submitComposerDraft,
-} from "./composerSubmission";
-import { ComposerPromptLengthValidation } from "./ComposerPromptLengthValidation";
+import { useAtomCommand } from "../../state/use-atom-command";
+import { providerUsage } from "../../state/providerUsage";
+import { useEnvironmentQuery } from "../../state/query";
+import { ProviderUsageStatus } from "./ProviderUsageStatus";
 
 type ComposerCommandMenuPosition = {
   bottom: number;
@@ -395,7 +393,10 @@ const ComposerFooterModeControls = memo(function ComposerFooterModeControls(prop
 const ComposerFooterPrimaryActions = memo(function ComposerFooterPrimaryActions(props: {
   compact: boolean;
   activeContextWindow: ReturnType<typeof deriveLatestContextWindowSnapshot>;
-  activeThreadModelDisplayName: string | null;
+  providerUsageSnapshot: import("@t3tools/contracts").ProviderUsageSnapshot | null;
+  isProviderUsageRefreshing: boolean;
+  onRefreshProviderUsage: () => void;
+  activeThreadProviderDisplayName: string | null;
   isPreparingWorktree: boolean;
   pendingAction: {
     questionIndex: number;
@@ -426,6 +427,13 @@ const ComposerFooterPrimaryActions = memo(function ComposerFooterPrimaryActions(
           modelDisplayName={props.activeThreadModelDisplayName}
         />
       ) : null}
+      <ProviderUsageStatus
+        snapshot={props.providerUsageSnapshot}
+        contextWindow={props.activeContextWindow}
+        providerDisplayName={props.activeThreadProviderDisplayName ?? "Provider"}
+        isRefreshing={props.isProviderUsageRefreshing}
+        onRefresh={props.onRefreshProviderUsage}
+      />
       {props.isPreparingWorktree ? (
         <span className="text-secondary-label text-xs">Preparing worktree...</span>
       ) : null}
@@ -828,6 +836,21 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     providerInstanceEntries,
     requestedDriverKind,
   ]);
+
+  const usageProviderInstanceId = activeThreadModelSelection?.instanceId ?? selectedInstanceId;
+  const providerUsageQuery = useEnvironmentQuery(
+    providerUsage.get({
+      environmentId,
+      input: { providerInstanceId: usageProviderInstanceId },
+    }),
+  );
+  const providerUsageEventsQuery = useEnvironmentQuery(
+    providerUsage.events({
+      environmentId,
+      input: { providerInstanceId: usageProviderInstanceId },
+    }),
+  );
+  const refreshProviderUsage = useAtomCommand(providerUsage.refresh, { reportFailure: false });
 
   // Resolve the active instance's snapshot by `instanceId` so a custom
   // instance gets its own slash commands, skills, and model list — not
@@ -3151,6 +3174,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                   </Button>
                 ) : (
                   <ProviderModelPicker
+                    environmentId={environmentId}
                     compact={isComposerFooterCompact}
                     activeInstanceId={selectedInstanceId}
                     model={selectedModelForPickerWithCustomFallback}
@@ -3215,7 +3239,18 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                 <ComposerFooterPrimaryActions
                   compact={isComposerPrimaryActionsCompact}
                   activeContextWindow={activeContextWindow}
-                  activeThreadModelDisplayName={activeThreadModelDisplayName}
+                  providerUsageSnapshot={providerUsageEventsQuery.data ?? providerUsageQuery.data}
+                  isProviderUsageRefreshing={
+                    providerUsageQuery.isPending || providerUsageEventsQuery.isPending
+                  }
+                  onRefreshProviderUsage={() => {
+                    void refreshProviderUsage({
+                      environmentId,
+                      input: { providerInstanceId: usageProviderInstanceId },
+                    });
+                    providerUsageQuery.refresh();
+                  }}
+                  activeThreadProviderDisplayName={activeThreadProviderDisplayName}
                   pendingAction={pendingPrimaryAction}
                   isRunning={phase === "running"}
                   showPlanFollowUpPrompt={pendingUserInputs.length === 0 && showPlanFollowUpPrompt}

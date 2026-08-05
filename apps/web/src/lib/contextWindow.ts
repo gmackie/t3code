@@ -52,6 +52,12 @@ export function deriveLatestContextWindowSnapshot(
 ): ContextWindowSnapshot | null {
   for (let index = activities.length - 1; index >= 0; index -= 1) {
     const activity = activities[index];
+    if (activity?.kind === "context-compaction") {
+      // A compaction invalidates the previous provider-reported context
+      // snapshot. Wait for the next token-usage event instead of presenting
+      // the pre-compaction number as current.
+      return null;
+    }
     if (!activity || activity.kind !== "context-window.updated") {
       continue;
     }

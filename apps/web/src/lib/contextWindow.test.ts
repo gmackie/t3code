@@ -61,6 +61,18 @@ describe("contextWindow", () => {
     });
   });
 
+  it("does not present pre-compaction usage as current", () => {
+    const snapshot = deriveLatestContextWindowSnapshot([
+      makeActivity("activity-1", "context-window.updated", {
+        usedTokens: 14_000,
+        maxTokens: 258_000,
+      }),
+      makeActivity("activity-2", "context-compaction", { state: "compacted" }),
+    ]);
+
+    expect(snapshot).toBeNull();
+  });
+
   it("formats compact token counts", () => {
     expect(formatContextWindowTokens(999)).toBe("999");
     expect(formatContextWindowTokens(1400)).toBe("1.4k");
