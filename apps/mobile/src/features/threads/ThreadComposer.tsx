@@ -882,6 +882,10 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
                     onPress={settingsSheetPresentation.open}
                   />
                 )}
+                <ProviderUsageIndicator
+                  environmentId={props.environmentId}
+                  providerInstanceId={currentModelSelection.instanceId}
+                />
                 {showStopAction ? (
                   <ComposerToolbarButton
                     accessibilityLabel="Stop"
