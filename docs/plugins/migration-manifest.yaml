@@ -11,10 +11,12 @@ repositories:
     path: /Volumes/dev/t3code/t3code-bob-plugin
     role: primary-product-plugin
     source: raw-git
+    proofOfConceptCommit: 7eaecb3
   linear:
     path: /Volumes/dev/t3code/t3code-linear-plugin
     role: standalone-reference-plugin
     source: raw-git
+    proofOfConceptCommit: 3bc5929
 classifications:
   t3-core:
     - packages/contracts/src/issue.ts
