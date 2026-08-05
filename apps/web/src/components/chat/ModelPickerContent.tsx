@@ -67,16 +67,17 @@ function ProviderUsagePickerHeader(props: {
   instanceId: ProviderInstanceId;
   displayName: string;
 }) {
-  const usage = useEnvironmentQuery(
+  const usageQuery = useEnvironmentQuery(
     providerUsage.get({
       environmentId: props.environmentId,
       input: { providerInstanceId: props.instanceId },
     }),
-  ).data;
-  if (!usage) return null;
+  );
+  const usage = usageQuery.data;
   const remaining = providerUsageRemainingPercent(usage);
-  const status =
-    usage.availability === "unavailable"
+  const status = !usage
+    ? "Loading quota…"
+    : usage.availability === "unavailable"
       ? "Quota unavailable"
       : usage.availability === "error"
         ? "Quota error"
@@ -87,7 +88,7 @@ function ProviderUsagePickerHeader(props: {
             : remaining === null
               ? "Quota available"
               : `${Math.round(remaining)}% quota left`;
-  const reset = usage.windows.find((window) => window.resetsAt)?.resetsAt;
+  const reset = usage?.windows.find((window) => window.resetsAt)?.resetsAt;
   return (
     <div className="mx-2 mb-1 rounded-md border border-border/70 bg-background/40 px-2.5 py-2">
       <div className="flex items-center justify-between gap-3">
