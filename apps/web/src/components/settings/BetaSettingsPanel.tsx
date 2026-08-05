@@ -6,7 +6,9 @@ import {
   useUpdateClientSettings,
 } from "../../hooks/useSettings";
 import { Input } from "../ui/input";
+import { Button } from "../ui/button";
 import { Switch } from "../ui/switch";
+import { ProjectSessionImportWizard } from "../ProjectSessionImportWizard";
 import { SettingsPageContainer, SettingsRow, SettingsSection } from "./settingsLayout";
 import { searchableSetting } from "./settingsSearch";
 
@@ -56,6 +58,7 @@ function AutoSettleDaysInput({
 }
 
 export function BetaSettingsPanel() {
+  const [projectSessionImportOpen, setProjectSessionImportOpen] = useState(false);
   const sidebarV2Enabled = useSidebarV2Enabled();
   const sidebarAutoSettleAfterDays = useClientSettings(
     (settings) => settings.sidebarAutoSettleAfterDays,
@@ -65,6 +68,20 @@ export function BetaSettingsPanel() {
   return (
     <SettingsPageContainer>
       <SettingsSection title="Beta features">
+        <SettingsRow
+          {...searchableSetting("project-session-import")}
+          description="Scan a folder for Git projects, then import existing Claude, Codex, and Grok sessions with their full history."
+          control={
+            <Button
+              type="button"
+              variant="outline"
+              aria-label="Open project and session import wizard"
+              onClick={() => setProjectSessionImportOpen(true)}
+            >
+              Open import wizard
+            </Button>
+          }
+        />
         <SettingsRow
           {...searchableSetting("sidebar-v2")}
           description="One flat thread list in creation order. Active work renders as rich cards; settled threads collapse to compact rows. Settling requires an up-to-date server — on older servers threads simply stay active. Switch back any time."
@@ -115,6 +132,10 @@ export function BetaSettingsPanel() {
           </>
         ) : null}
       </SettingsSection>
+      <ProjectSessionImportWizard
+        open={projectSessionImportOpen}
+        onOpenChange={setProjectSessionImportOpen}
+      />
     </SettingsPageContainer>
   );
 }
