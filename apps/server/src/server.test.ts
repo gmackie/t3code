@@ -85,6 +85,7 @@ import * as ProjectionSnapshotQuery from "./orchestration/Services/ProjectionSna
 import { SqlitePersistenceMemory } from "./persistence/Layers/Sqlite.ts";
 import { PersistenceSqlError } from "./persistence/Errors.ts";
 import * as ProviderRegistry from "./provider/Services/ProviderRegistry.ts";
+import * as ProviderService from "./provider/Services/ProviderService.ts";
 import { makeManualOnlyProviderMaintenanceCapabilities } from "./provider/providerMaintenance.ts";
 import * as ServerLifecycleEvents from "./serverLifecycleEvents.ts";
 import * as ServerRuntimeStartup from "./serverRuntimeStartup.ts";
@@ -755,6 +756,24 @@ const buildAppUnderTest = (options?: {
       ),
       (layer) =>
         layer.pipe(
+          Layer.provide(
+            Layer.succeed(ProviderService.ProviderService, {
+              startSession: () => Effect.die("ProviderService is not available in router tests"),
+              sendTurn: () => Effect.die("ProviderService is not available in router tests"),
+              interruptTurn: () => Effect.die("ProviderService is not available in router tests"),
+              respondToRequest: () =>
+                Effect.die("ProviderService is not available in router tests"),
+              respondToUserInput: () =>
+                Effect.die("ProviderService is not available in router tests"),
+              stopSession: () => Effect.die("ProviderService is not available in router tests"),
+              listSessions: () => Effect.succeed([]),
+              getCapabilities: () => Effect.die("ProviderService is not available in router tests"),
+              getInstanceInfo: () => Effect.die("ProviderService is not available in router tests"),
+              rollbackConversation: () =>
+                Effect.die("ProviderService is not available in router tests"),
+              streamEvents: Stream.empty,
+            } satisfies ProviderService.ProviderService["Service"]),
+          ),
           Layer.provide(
             Layer.mock(ProjectSessionImportService.ProjectSessionImportService)({
               scan: () => Effect.succeed({ repositories: [], scannedDirectoryCount: 0 }),
