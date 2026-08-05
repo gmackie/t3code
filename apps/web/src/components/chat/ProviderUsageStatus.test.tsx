@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { statusLabel } from "./ProviderUsageStatus.tsx";
+import { providerUsageDisplayLabel, statusLabel } from "./ProviderUsageStatus.tsx";
 
 const base = {
   environmentId: "env-1" as never,
@@ -26,5 +26,10 @@ describe("statusLabel", () => {
       "Quota unavailable",
     );
     expect(statusLabel({ ...base, availability: "available", windows: [] })).toBe("Provider quota");
+  });
+
+  it("keeps the status visible while the usage query is pending", () => {
+    expect(providerUsageDisplayLabel(null, true)).toBe("Loading quota…");
+    expect(providerUsageDisplayLabel(null, false)).toBe("Quota unavailable");
   });
 });
