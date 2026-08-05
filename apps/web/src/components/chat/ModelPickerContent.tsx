@@ -1,4 +1,5 @@
 import {
+  type EnvironmentId,
   type ProviderInstanceId,
   type ProviderDriverKind,
   type ResolvedKeybindingsConfig,
@@ -34,6 +35,13 @@ import {
 import { useClientSettings, useUpdateClientSettings } from "~/hooks/useSettings";
 import { cn } from "~/lib/utils";
 import { TooltipProvider } from "../ui/tooltip";
+import { useEnvironmentQuery } from "../../state/query";
+import { providerUsage } from "../../state/providerUsage";
+import {
+  isProviderUsageBlocking,
+  isProviderUsageStale,
+  providerUsageRemainingPercent,
+} from "@t3tools/client-runtime/state/provider-usage";
 import {
   isProviderInstancePickerReady,
   isProviderInstancePickerVisible,
@@ -54,6 +62,49 @@ type ModelPickerItem = {
   isLegacy?: boolean | undefined;
 };
 
+function ProviderUsagePickerHeader(props: {
+  environmentId: EnvironmentId;
+  instanceId: ProviderInstanceId;
+  displayName: string;
+}) {
+  const usage = useEnvironmentQuery(
+    providerUsage.get({
+      environmentId: props.environmentId,
+      input: { providerInstanceId: props.instanceId },
+    }),
+  ).data;
+  if (!usage) return null;
+  const remaining = providerUsageRemainingPercent(usage);
+  const status =
+    usage.availability === "unavailable"
+      ? "Quota unavailable"
+      : usage.availability === "error"
+        ? "Quota error"
+        : isProviderUsageStale(usage)
+          ? "Quota stale"
+          : isProviderUsageBlocking(usage)
+            ? "Limit reached"
+            : remaining === null
+              ? "Quota available"
+              : `${Math.round(remaining)}% quota left`;
+  const reset = usage.windows.find((window) => window.resetsAt)?.resetsAt;
+  return (
+    <div className="mx-2 mb-1 rounded-md border border-border/70 bg-background/40 px-2.5 py-2">
+      <div className="flex items-center justify-between gap-3">
+        <span className="text-[11px] font-medium text-muted-foreground">
+          {props.displayName} quota
+        </span>
+        <span className="text-[11px] font-semibold tabular-nums text-foreground">{status}</span>
+      </div>
+      {reset ? (
+        <div className="mt-1 text-[10px] text-muted-foreground/65">
+          Resets {new Date(reset).toLocaleString()}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 const EMPTY_MODEL_JUMP_LABELS = new Map<string, string>();
 
 function ModelListSeparator() {
@@ -61,6 +112,7 @@ function ModelListSeparator() {
 }
 
 export const ModelPickerContent = memo(function ModelPickerContent(props: {
+  environmentId?: EnvironmentId;
   /** The instance currently selected in the composer (combobox "value"). */
   activeInstanceId: ProviderInstanceId;
   model: string;
@@ -655,6 +707,18 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
             )}
           >
             {/* Search bar */}
+            {props.environmentId ? (
+              <ProviderUsagePickerHeader
+                environmentId={props.environmentId}
+                instanceId={
+                  selectedInstanceId === "favorites" ? props.activeInstanceId : selectedInstanceId
+                }
+                displayName={
+                  instanceEntries.find((entry) => entry.instanceId === selectedInstanceId)
+                    ?.displayName ?? "Provider"
+                }
+              />
+            ) : null}
             <div className="px-2 pt-2">
               <div className="border-b border-border/70 pb-2.5 transition-colors focus-within:border-ring">
                 <ComboboxInput
