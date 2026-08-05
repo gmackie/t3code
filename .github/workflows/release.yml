@@ -2,6 +2,8 @@ name: Release
 
 on:
   push:
+    branches:
+      - custom-local
     tags:
       - "v*.*.*-gmacko.*"
   workflow_dispatch:
@@ -25,6 +27,7 @@ permissions:
 jobs:
   preflight:
     name: Preflight
+    if: github.event_name != 'push' || github.actor != 'github-actions[bot]'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     outputs:
@@ -71,29 +74,34 @@ jobs:
             exit 1
           fi
 
-          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
-            if [[ "$WORKFLOW_REPOSITORY" != "gmackie/t3code" ]]; then
-              echo "workflow_dispatch gmacko releases must run in gmackie/t3code." >&2
-              exit 1
-            fi
-
-            if [[ "${GITHUB_REF_NAME}" != "custom-local" ]]; then
-              echo "workflow_dispatch gmacko releases must run from custom-local." >&2
-              exit 1
-            fi
-
-            raw="${DISPATCH_VERSION}"
-            if [[ -n "$raw" ]]; then
-              version="${raw#v}"
-              if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+-gmacko\.[0-9]+$ ]]; then
-                echo "Invalid gmacko release version: $raw" >&2
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" || ( "${GITHUB_EVENT_NAME}" == "push" && "${GITHUB_REF_NAME}" == "custom-local" ) ]]; then
+            if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
+              if [[ "$WORKFLOW_REPOSITORY" != "gmackie/t3code" ]]; then
+                echo "workflow_dispatch gmacko releases must run in gmackie/t3code." >&2
                 exit 1
               fi
 
-              echo "version=$version" >> "$GITHUB_OUTPUT"
-              echo "tag=v$version" >> "$GITHUB_OUTPUT"
-              echo "name=T3 Code (gmacko) $version" >> "$GITHUB_OUTPUT"
-            else
+              if [[ "${GITHUB_REF_NAME}" != "custom-local" ]]; then
+                echo "workflow_dispatch gmacko releases must run from custom-local." >&2
+                exit 1
+              fi
+
+              raw="${DISPATCH_VERSION}"
+              if [[ -n "$raw" ]]; then
+                version="${raw#v}"
+                if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+-gmacko\.[0-9]+$ ]]; then
+                  echo "Invalid gmacko release version: $raw" >&2
+                  exit 1
+                fi
+
+                echo "version=$version" >> "$GITHUB_OUTPUT"
+                echo "tag=v$version" >> "$GITHUB_OUTPUT"
+                echo "name=T3 Code (gmacko) $version" >> "$GITHUB_OUTPUT"
+                release_source="manual dispatch"
+              fi
+            fi
+
+            if [[ -z "${version:-}" ]]; then
               if [[ -n "$GMACKO_DATE" ]]; then
                 gmacko_stamp="$(date -u -d "$GMACKO_DATE" +%Y%m%d%H%M)"
               else
@@ -102,7 +110,9 @@ jobs:
               node scripts/resolve-gmacko-release.ts \
                 --stamp "$gmacko_stamp" \
                 --github-output
+              release_source="custom-local push"
             fi
+            echo "Release source: ${release_source:-custom-local push}"
           elif [[ "${GITHUB_REF_NAME#v}" =~ ^[0-9]+\.[0-9]+\.[0-9]+-gmacko\.[0-9]+$ ]]; then
             if [[ "$WORKFLOW_REPOSITORY" != "gmackie/t3code" ]]; then
               echo "tag-triggered gmacko releases must run in gmackie/t3code." >&2
