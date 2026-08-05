@@ -172,6 +172,11 @@ export const SETTINGS_SEARCH_ITEMS = [
     to: "/settings/connections",
   },
   {
+    id: "project-session-import",
+    title: "Project and session import",
+    to: "/settings/beta",
+  },
+  {
     id: "sidebar-v2",
     title: "Sidebar v2",
     to: "/settings/beta",
