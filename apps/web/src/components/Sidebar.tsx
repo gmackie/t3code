@@ -5,7 +5,6 @@ import {
   CloudIcon,
   ContainerIcon,
   FolderPlusIcon,
-  FolderSearchIcon,
   Globe2Icon,
   LoaderIcon,
   SearchIcon,
@@ -128,7 +127,6 @@ import {
   ExternalThreadImportDialog,
   type ExternalThreadImportTarget,
 } from "./ExternalThreadImportDialog";
-import { ProjectSessionImportWizard } from "./ProjectSessionImportWizard";
 import { Kbd } from "./ui/kbd";
 import {
   getArm64IntelBuildWarningDescription,
@@ -2807,7 +2805,6 @@ interface SidebarProjectsContentProps {
   threadPreviewCount: SidebarThreadPreviewCount;
   updateSettings: ReturnType<typeof useUpdateClientSettings>;
   openAddProject: () => void;
-  openProjectSessionImport: () => void;
   isManualProjectSorting: boolean;
   projectDnDSensors: ReturnType<typeof useSensors>;
   projectCollisionDetection: CollisionDetection;
@@ -2848,7 +2845,6 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
     threadPreviewCount,
     updateSettings,
     openAddProject,
-    openProjectSessionImport,
     isManualProjectSorting,
     projectDnDSensors,
     projectCollisionDetection,
@@ -2960,21 +2956,6 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
               onThreadSortOrderChange={handleThreadSortOrderChange}
               onThreadPreviewCountChange={handleThreadPreviewCountChange}
             />
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <button
-                    type="button"
-                    aria-label="Import projects and sessions"
-                    className="inline-flex h-6 min-w-6 cursor-pointer items-center justify-center rounded-md px-[calc(--spacing(1)-1px)] text-muted-foreground/60 transition-colors hover:bg-accent hover:text-foreground"
-                    onClick={openProjectSessionImport}
-                  />
-                }
-              >
-                <FolderSearchIcon className="size-3.5" />
-              </TooltipTrigger>
-              <TooltipPopup side="right">Import projects and sessions</TooltipPopup>
-            </Tooltip>
             <Tooltip>
               <TooltipTrigger
                 render={
@@ -3114,7 +3095,6 @@ export default function Sidebar() {
     () => openCommandPalette({ open: "add-project" }),
     [],
   );
-  const [projectSessionImportOpen, setProjectSessionImportOpen] = useState(false);
   const [expandedThreadListsByProject, setExpandedThreadListsByProject] = useState<
     ReadonlySet<string>
   >(() => new Set());
@@ -3695,7 +3675,6 @@ export default function Sidebar() {
             threadPreviewCount={sidebarThreadPreviewCount}
             updateSettings={updateSettings}
             openAddProject={openAddProjectCommandPalette}
-            openProjectSessionImport={() => setProjectSessionImportOpen(true)}
             isManualProjectSorting={isManualProjectSorting}
             projectDnDSensors={projectDnDSensors}
             projectCollisionDetection={projectCollisionDetection}
@@ -3722,10 +3701,6 @@ export default function Sidebar() {
             projectsLength={projects.length}
           />
           <SidebarChromeFooter />
-          <ProjectSessionImportWizard
-            open={projectSessionImportOpen}
-            onOpenChange={setProjectSessionImportOpen}
-          />
         </>
       )}
     </>
