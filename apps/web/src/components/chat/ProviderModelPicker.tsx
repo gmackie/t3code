@@ -1,4 +1,5 @@
 import {
+  type EnvironmentId,
   type ProviderInstanceId,
   type ProviderDriverKind,
   type ResolvedKeybindingsConfig,
@@ -20,6 +21,7 @@ import type { ProviderInstanceEntry } from "../../providerInstances";
 import { ComposerControl, ComposerControlChevron } from "./ComposerControl";
 
 export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
+  environmentId?: EnvironmentId;
   /**
    * The instance currently selected in the composer. Drives the trigger
    * icon, label and the default-highlighted combobox row.
@@ -192,6 +194,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
         viewportClassName="rounded-lg !overflow-hidden p-0"
       >
         <ModelPickerContent
+          {...(props.environmentId ? { environmentId: props.environmentId } : {})}
           activeInstanceId={activeInstanceId}
           model={props.model}
           lockedProvider={props.lockedProvider}
