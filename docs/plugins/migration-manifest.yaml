@@ -44,6 +44,11 @@ repositories:
     role: local-ipc-composer-plugin-sample
     source: raw-git
     proofOfConceptCommit: b3b03e7
+  mcpInventory:
+    path: /Volumes/dev/t3code/t3code-mcp-inventory-plugin
+    role: read-only-configuration-plugin-sample
+    source: raw-git
+    proofOfConceptCommit: 2881f6c
 classifications:
   t3-core:
     - packages/contracts/src/issue.ts
