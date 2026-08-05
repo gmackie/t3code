@@ -29,6 +29,21 @@ repositories:
     path: /Volumes/dev/t3code/t3code-pi-events-plugin
     role: lifecycle-extension-sample
     proofOfConceptCommit: e7cf42a
+  kimi:
+    path: /Volumes/dev/t3code/t3code-kimi-plugin
+    role: optional-acp-provider-sample
+    source: raw-git
+    proofOfConceptCommit: cf311b1
+  gitbutler:
+    path: /Volumes/dev/t3code/t3code-gitbutler-plugin
+    role: source-control-plugin-sample
+    source: raw-git
+    proofOfConceptCommit: 354e755
+  voicebud:
+    path: /Volumes/dev/t3code/t3code-voicebud-plugin
+    role: local-ipc-composer-plugin-sample
+    source: raw-git
+    proofOfConceptCommit: b3b03e7
 classifications:
   t3-core:
     - packages/contracts/src/issue.ts
