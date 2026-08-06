@@ -146,7 +146,7 @@ jobs:
               --repo "$GITHUB_REPOSITORY" \
               --workflow release.yml \
               --branch custom-local \
-              --event workflow_dispatch \
+              --event push \
               --commit "$EXPECTED_SHA" \
               --limit 100 \
               --json databaseId \
@@ -156,11 +156,6 @@ jobs:
             exit 1
           fi
 
-          gh workflow run release.yml \
-            --repo "$GITHUB_REPOSITORY" \
-            --ref custom-local \
-            -f channel=gmacko
-
           release_run_id=""
           for attempt in $(seq 1 12); do
             if ! release_candidates="$(
@@ -168,7 +163,7 @@ jobs:
                 --repo "$GITHUB_REPOSITORY" \
                 --workflow release.yml \
                 --branch custom-local \
-                --event workflow_dispatch \
+                --event push \
                 --commit "$EXPECTED_SHA" \
                 --limit 20 \
                 --json databaseId \
@@ -193,7 +188,7 @@ jobs:
           done
 
           if [[ -z "$release_run_id" ]]; then
-            echo "Dispatched release run was not found for $EXPECTED_SHA." >&2
+            echo "Push-triggered release run was not found for $EXPECTED_SHA." >&2
             exit 1
           fi
 
