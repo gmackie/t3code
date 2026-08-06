@@ -348,13 +348,23 @@ function assertWorkflowSupportsGmackoForkReleases(): void {
   );
   assertContains(
     gmackoSyncWorkflow,
+    "--event push",
+    "Gmacko sync workflow does not wait for the automatic custom-local push release.",
+  );
+  assertContains(
+    gmackoSyncWorkflow,
+    "Push-triggered release run",
+    "Gmacko sync workflow does not describe the push-triggered release it awaits.",
+  );
+  assertNotContains(
+    gmackoSyncWorkflow,
     "gh workflow run release.yml",
-    "Gmacko sync workflow does not publish an updater release after merging.",
+    "Gmacko sync workflow still manually dispatches a duplicate release.",
   );
   assertContains(
     gmackoSyncWorkflow,
     'retry_gh_read run view "$release_run_id"',
-    "Gmacko sync workflow does not wait for the dispatched release result.",
+    "Gmacko sync workflow does not wait for the push-triggered release result.",
   );
 }
 

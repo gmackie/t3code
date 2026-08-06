@@ -8,7 +8,7 @@ const workflowPath = NodeURL.fileURLToPath(
 );
 
 describe("gmacko upstream sync workflow", () => {
-  it("automatically rebases custom-local onto upstream and dispatches a release", () => {
+  it("automatically rebases custom-local and waits for its push-triggered release", () => {
     const workflow = NodeFS.readFileSync(workflowPath, "utf8");
 
     expect(workflow).toContain("git rebase --force-rebase -X theirs upstream/main");
@@ -24,9 +24,9 @@ describe("gmacko upstream sync workflow", () => {
     expect(workflow).not.toContain("git push --force origin");
     expect(workflow).not.toContain("gh pr create");
     expect(workflow).toContain('--repo "$GITHUB_REPOSITORY"');
-    expect(workflow).toContain("gh workflow run release.yml");
-    expect(workflow).toContain("--ref custom-local");
-    expect(workflow).toContain("-f channel=gmacko");
+    expect(workflow).not.toContain("gh workflow run release.yml");
+    expect(workflow).toContain("--event push");
+    expect(workflow).toContain("Push-triggered release run");
     expect(workflow).toContain('--commit "$EXPECTED_SHA"');
     expect(workflow).toContain('retry_gh_read run view "$release_run_id"');
     expect(workflow).toContain('[[ "$release_conclusion" == "success" ]]');
