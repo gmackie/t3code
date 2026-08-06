@@ -54,6 +54,7 @@ classifications:
     - packages/contracts/src/issue.ts
     - packages/shared/src/projectIssues.ts
     - packages/client-runtime/src/bob-planning.ts
+    - apps/server/src/plugins/stateStore.ts
   bob-plugin:
     - packages/shared/src/bobPlanning.ts
     - packages/shared/src/bobPlanningClient.ts
