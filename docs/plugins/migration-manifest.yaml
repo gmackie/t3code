@@ -24,16 +24,16 @@ repositories:
   sentry:
     path: /Volumes/dev/t3code/t3code-sentry-plugin
     role: monitoring-plugin-sample
-    proofOfConceptCommit: d9f10de
+    proofOfConceptCommit: b06b4f1
   piEvents:
     path: /Volumes/dev/t3code/t3code-pi-events-plugin
     role: lifecycle-extension-sample
-    proofOfConceptCommit: e7cf42a
+    proofOfConceptCommit: ca2c948
   kimi:
     path: /Volumes/dev/t3code/t3code-kimi-plugin
     role: optional-acp-provider-sample
     source: raw-git
-    proofOfConceptCommit: cf311b1
+    proofOfConceptCommit: 9caeca4
   gitbutler:
     path: /Volumes/dev/t3code/t3code-gitbutler-plugin
     role: source-control-plugin-sample
@@ -48,13 +48,15 @@ repositories:
     path: /Volumes/dev/t3code/t3code-mcp-inventory-plugin
     role: read-only-configuration-plugin-sample
     source: raw-git
-    proofOfConceptCommit: 2881f6c
+    proofOfConceptCommit: 1f5787f
 classifications:
   t3-core:
     - packages/contracts/src/issue.ts
     - packages/shared/src/projectIssues.ts
     - packages/client-runtime/src/bob-planning.ts
     - apps/server/src/plugins/stateStore.ts
+    - apps/server/src/plugins/runtimeHost.ts
+    - apps/server/src/plugins/runtimeSupervisor.ts
   bob-plugin:
     - packages/shared/src/bobPlanning.ts
     - packages/shared/src/bobPlanningClient.ts
