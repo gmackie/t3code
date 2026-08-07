@@ -49,6 +49,11 @@ repositories:
     role: read-only-configuration-plugin-sample
     source: raw-git
     proofOfConceptCommit: 1f5787f
+  terminalSettings:
+    path: /Volumes/dev/t3code/t3code-terminal-settings-plugin
+    role: client-customization-plugin
+    source: raw-git
+    proofOfConceptCommit: 8aa4261
 classifications:
   t3-core:
     - packages/contracts/src/issue.ts
