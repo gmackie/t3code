@@ -10,6 +10,7 @@ import {
 } from "./model.ts";
 import { ModelSelection } from "./orchestration.ts";
 import { ProviderInstanceConfig, ProviderInstanceId } from "./providerInstance.ts";
+import { ProjectSource } from "./projectSessionImport.ts";
 
 // ── Client Settings (local-only) ───────────────────────────────
 
@@ -583,6 +584,9 @@ export const TerminalSettings = Schema.Struct({
 export type TerminalSettings = typeof TerminalSettings.Type;
 
 export const ServerSettings = Schema.Struct({
+  enableLegacyTokenStreaming: Schema.Boolean.pipe(
+    Schema.withDecodingDefaultKey(Effect.succeed(false)),
+  ),
   enableAssistantStreaming: Schema.Boolean.pipe(
     Schema.withDecodingDefaultKey(Effect.succeed(false)),
   ),
@@ -612,6 +616,9 @@ export const ServerSettings = Schema.Struct({
     Schema.withDecodingDefault(Effect.succeed(true)),
   ),
   addProjectBaseDirectory: TrimmedString.pipe(Schema.withDecodingDefaultKey(Effect.succeed(""))),
+  projectSources: Schema.Array(ProjectSource).pipe(
+    Schema.withDecodingDefaultKey(Effect.succeed([])),
+  ),
   textGenerationModelSelection: ModelSelection.pipe(
     Schema.withDecodingDefaultKey(
       Effect.succeed({
@@ -794,6 +801,7 @@ export const ServerSettingsPatch = Schema.Struct({
   defaultThreadEnvMode: Schema.optionalKey(ThreadEnvMode),
   newWorktreesStartFromOrigin: Schema.optionalKey(Schema.Boolean),
   addProjectBaseDirectory: Schema.optionalKey(TrimmedString),
+  projectSources: Schema.optionalKey(Schema.Array(ProjectSource)),
   textGenerationModelSelection: Schema.optionalKey(ModelSelectionPatch),
   sourceControlWritingStyle: Schema.optionalKey(
     Schema.Struct({

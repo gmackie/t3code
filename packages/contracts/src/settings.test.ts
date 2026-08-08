@@ -175,6 +175,26 @@ describe("ServerSettings.providerInstances (slice-2 invariant)", () => {
   });
 });
 
+describe("ServerSettings.projectSources", () => {
+  const source = {
+    id: "source-volumes-dev",
+    root: "/Volumes/dev",
+    label: "Development",
+    lastScanCompletedAt: null,
+    lastRepositoryCount: 0,
+  };
+
+  it("defaults legacy settings to no remembered project sources", () => {
+    expect(decodeServerSettings({}).projectSources).toEqual([]);
+  });
+
+  it("accepts whole-list replacement in settings patches", () => {
+    expect(decodeServerSettingsPatch({ projectSources: [source] }).projectSources).toEqual([
+      source,
+    ]);
+  });
+});
+
 describe("ServerSettings worktree defaults", () => {
   it("defaults start-from-origin on for legacy configs", () => {
     expect(decodeServerSettings({}).newWorktreesStartFromOrigin).toBe(true);

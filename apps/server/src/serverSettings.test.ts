@@ -1,6 +1,7 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import {
   DEFAULT_SERVER_SETTINGS,
+  ProjectSourceId,
   ProviderDriverKind,
   ProviderInstanceId,
   ServerSettings,
@@ -201,6 +202,31 @@ it.layer(NodeServices.layer)("server settings", (it) => {
             { id: "fastMode", value: false },
           ],
         ),
+      );
+    }).pipe(Effect.provide(makeServerSettingsLayer())),
+  );
+
+  it.effect("persists remembered project sources as server-owned settings", () =>
+    Effect.gen(function* () {
+      const serverSettings = yield* ServerSettingsModule.ServerSettingsService;
+      const serverConfig = yield* ServerConfig.ServerConfig;
+      const fileSystem = yield* FileSystem.FileSystem;
+      const source = {
+        id: ProjectSourceId.make("source:%2FVolumes%2Fdev"),
+        root: "/Volumes/dev",
+        label: "dev",
+        lastScanCompletedAt: null,
+        lastRepositoryCount: 42,
+      } as const;
+
+      const next = yield* serverSettings.updateSettings({ projectSources: [source] });
+      assert.deepEqual(next.projectSources, [source]);
+
+      const raw = yield* fileSystem.readFileString(serverConfig.settingsPath);
+      assert.deepEqual(
+        // @effect-diagnostics-next-line preferSchemaOverJson:off
+        JSON.parse(raw).projectSources,
+        [source],
       );
     }).pipe(Effect.provide(makeServerSettingsLayer())),
   );

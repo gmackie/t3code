@@ -3,10 +3,33 @@ import * as Schema from "effect/Schema";
 
 import {
   PROJECT_SESSION_IMPORT_MAX_PAGE_SIZE,
+  ProjectSource,
   ProjectSessionImportRepository,
   ProjectSessionImportScanInput,
   ProjectSessionImportScanResult,
 } from "./projectSessionImport.ts";
+
+describe("ProjectSource", () => {
+  const decode = Schema.decodeUnknownSync(ProjectSource);
+
+  it("represents a persistent repository discovery root", () => {
+    expect(
+      decode({
+        id: "source-volumes-dev",
+        root: "/Volumes/dev",
+        label: "Development",
+        lastScanCompletedAt: null,
+        lastRepositoryCount: 0,
+      }),
+    ).toEqual({
+      id: "source-volumes-dev",
+      root: "/Volumes/dev",
+      label: "Development",
+      lastScanCompletedAt: null,
+      lastRepositoryCount: 0,
+    });
+  });
+});
 
 describe("ProjectSessionImportScanInput", () => {
   const decode = Schema.decodeUnknownSync(ProjectSessionImportScanInput);

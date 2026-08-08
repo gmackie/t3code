@@ -58,6 +58,46 @@ it.layer(NodeServices.layer)("RepositoryScanner", (it) => {
     ),
   );
 
+  it.effect("stops descending after finding a repository boundary", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const fileSystem = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        const root = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3-project-import-" });
+        yield* makeRepository(path.join(root, "parent"));
+        yield* makeRepository(path.join(root, "parent", "nested"));
+
+        const result = yield* scanRepositoryPage(yield* createRepositoryScan(root), {
+          repositoryLimit: 20,
+          directoryLimit: 100,
+        });
+
+        expect(result.repositories.map((repository) => repository.name)).toEqual(["parent"]);
+      }),
+    ),
+  );
+
+  it.effect("treats a Git worktree marker file as a repository boundary", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const fileSystem = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        const root = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3-project-import-" });
+        const worktree = path.join(root, "worktree");
+        yield* fileSystem.makeDirectory(worktree, { recursive: true });
+        yield* fileSystem.writeFileString(path.join(worktree, ".git"), "gitdir: /tmp/example");
+        yield* makeRepository(path.join(worktree, "nested"));
+
+        const result = yield* scanRepositoryPage(yield* createRepositoryScan(root), {
+          repositoryLimit: 20,
+          directoryLimit: 100,
+        });
+
+        expect(result.repositories.map((repository) => repository.name)).toEqual(["worktree"]);
+      }),
+    ),
+  );
+
   it.effect("returns bounded incremental pages", () =>
     Effect.scoped(
       Effect.gen(function* () {

@@ -7,7 +7,7 @@ import type {
 } from "@t3tools/contracts";
 import { DEFAULT_MODEL, ProviderInstanceId } from "@t3tools/contracts";
 import { FolderSearchIcon, LoaderIcon } from "lucide-react";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { readLocalApi } from "../localApi";
 import { inferProjectTitleFromPath } from "../lib/projectPaths";
@@ -54,6 +54,8 @@ export function mergeExternalThreadImportCandidates(
 export function ProjectSessionImportWizard(props: {
   readonly open: boolean;
   readonly onOpenChange: (open: boolean) => void;
+  readonly initialRoot?: string;
+  readonly onScanComplete?: (repositoryCount: number) => void;
 }) {
   const environmentId = usePrimaryEnvironmentId();
   const projects = useProjects();
@@ -97,6 +99,10 @@ export function ProjectSessionImportWizard(props: {
     [selectedTokens, sessionRows],
   );
 
+  useEffect(() => {
+    if (props.open && props.initialRoot) setRoot(props.initialRoot);
+  }, [props.initialRoot, props.open]);
+
   const chooseRoot = useCallback(async () => {
     const picked = await readLocalApi()
       ?.dialogs.pickFolder({ initialPath: root })
@@ -119,6 +125,7 @@ export function ProjectSessionImportWizard(props: {
     setSelectedTokens(new Set());
     setImportedCount(0);
     let cursor: ProjectSessionImportScanResult["nextCursor"];
+    let repositoryCount = 0;
     do {
       const result = await scan({
         environmentId,
@@ -131,6 +138,7 @@ export function ProjectSessionImportWizard(props: {
         return;
       }
       setRepositories((current) => [...current, ...result.value.repositories]);
+      repositoryCount += result.value.repositories.length;
       setSelectedRoots((current) => {
         const next = new Set(current);
         for (const repository of result.value.repositories) next.add(repository.root);
@@ -140,7 +148,8 @@ export function ProjectSessionImportWizard(props: {
       cursor = result.value.nextCursor;
     } while (cursor);
     setScanning(false);
-  }, [environmentId, root, scan]);
+    props.onScanComplete?.(repositoryCount);
+  }, [environmentId, props.onScanComplete, root, scan]);
 
   const reviewSessions = useCallback(async () => {
     if (!environmentId) return;
@@ -307,7 +316,18 @@ export function ProjectSessionImportWizard(props: {
                       }
                     />
                     <span className="min-w-0">
-                      <span className="block text-sm font-medium">{repository.name}</span>
+                      <span className="flex items-center gap-2 text-sm font-medium">
+                        {repository.name}
+                        <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-normal text-muted-foreground">
+                          {projects.some(
+                            (project) =>
+                              project.environmentId === environmentId &&
+                              project.workspaceRoot === repository.root,
+                          )
+                            ? "In T3 Code"
+                            : "New"}
+                        </span>
+                      </span>
                       <span className="block truncate text-xs text-muted-foreground">
                         {repository.root}
                       </span>
