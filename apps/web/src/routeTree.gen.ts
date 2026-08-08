@@ -9,6 +9,7 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as UsageRouteImport } from './routes/usage'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as PairRouteImport } from './routes/pair'
 import { Route as ConnectRouteImport } from './routes/connect'
@@ -28,6 +29,11 @@ import { Route as ChatDraftDraftIdRouteImport } from './routes/_chat.draft.$draf
 import { Route as ChatEnvironmentIdThreadIdRouteImport } from './routes/_chat.$environmentId.$threadId'
 import { Route as ChatProjectEnvironmentIdProjectIdRouteImport } from './routes/_chat.project.$environmentId.$projectId'
 
+const UsageRoute = UsageRouteImport.update({
+  id: '/usage',
+  path: '/usage',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SettingsRoute = SettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
@@ -125,6 +131,7 @@ export interface FileRoutesByFullPath {
   '/connect': typeof ConnectRoute
   '/pair': typeof PairRoute
   '/settings': typeof SettingsRouteWithChildren
+  '/usage': typeof UsageRoute
   '/connect/callback': typeof ConnectCallbackRoute
   '/settings/appearance': typeof SettingsAppearanceRoute
   '/settings/archived': typeof SettingsArchivedRoute
@@ -143,6 +150,7 @@ export interface FileRoutesByTo {
   '/connect': typeof ConnectRoute
   '/pair': typeof PairRoute
   '/settings': typeof SettingsRouteWithChildren
+  '/usage': typeof UsageRoute
   '/connect/callback': typeof ConnectCallbackRoute
   '/settings/appearance': typeof SettingsAppearanceRoute
   '/settings/archived': typeof SettingsArchivedRoute
@@ -164,6 +172,7 @@ export interface FileRoutesById {
   '/connect': typeof ConnectRoute
   '/pair': typeof PairRoute
   '/settings': typeof SettingsRouteWithChildren
+  '/usage': typeof UsageRoute
   '/connect_/callback': typeof ConnectCallbackRoute
   '/settings/appearance': typeof SettingsAppearanceRoute
   '/settings/archived': typeof SettingsArchivedRoute
@@ -186,6 +195,7 @@ export interface FileRouteTypes {
     | '/connect'
     | '/pair'
     | '/settings'
+    | '/usage'
     | '/connect/callback'
     | '/settings/appearance'
     | '/settings/archived'
@@ -204,6 +214,7 @@ export interface FileRouteTypes {
     | '/connect'
     | '/pair'
     | '/settings'
+    | '/usage'
     | '/connect/callback'
     | '/settings/appearance'
     | '/settings/archived'
@@ -224,6 +235,7 @@ export interface FileRouteTypes {
     | '/connect'
     | '/pair'
     | '/settings'
+    | '/usage'
     | '/connect_/callback'
     | '/settings/appearance'
     | '/settings/archived'
@@ -245,11 +257,19 @@ export interface RootRouteChildren {
   ConnectRoute: typeof ConnectRoute
   PairRoute: typeof PairRoute
   SettingsRoute: typeof SettingsRouteWithChildren
+  UsageRoute: typeof UsageRoute
   ConnectCallbackRoute: typeof ConnectCallbackRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/usage': {
+      id: '/usage'
+      path: '/usage'
+      fullPath: '/usage'
+      preLoaderRoute: typeof UsageRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/settings': {
       id: '/settings'
       path: '/settings'
@@ -429,6 +449,7 @@ const rootRouteChildren: RootRouteChildren = {
   ConnectRoute: ConnectRoute,
   PairRoute: PairRoute,
   SettingsRoute: SettingsRouteWithChildren,
+  UsageRoute: UsageRoute,
   ConnectCallbackRoute: ConnectCallbackRoute,
 }
 export const routeTree = rootRouteImport
