@@ -11,17 +11,17 @@ repositories:
     path: /Volumes/dev/t3code/t3code-bob-plugin
     role: primary-product-plugin
     source: raw-git
-    proofOfConceptCommit: e682277
+    proofOfConceptCommit: 2d1ae00
   linear:
     path: /Volumes/dev/t3code/t3code-linear-plugin
     role: standalone-reference-plugin
     source: raw-git
-    proofOfConceptCommit: bdcf548
+    proofOfConceptCommit: 69ac1b1
   forgegraph:
     path: /Volumes/dev/t3code/t3code-forgegraph-plugin
     role: delivery-tracking-plugin
     source: raw-git
-    proofOfConceptCommit: d3ad287
+    proofOfConceptCommit: faf8ead
   github:
     path: /Volumes/dev/t3code/t3code-github-plugin
     role: external-workflow-plugin-sample
