@@ -7,7 +7,7 @@ import type {
 } from "@t3tools/contracts";
 import { DEFAULT_MODEL, ProviderInstanceId } from "@t3tools/contracts";
 import { FolderSearchIcon, LoaderIcon } from "lucide-react";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { readLocalApi } from "../localApi";
 import { inferProjectTitleFromPath } from "../lib/projectPaths";
@@ -30,6 +30,10 @@ import {
   DialogTitle,
 } from "./ui/dialog";
 import { Input } from "./ui/input";
+import {
+  providerDisplayName,
+  setAvailableCandidateSelection,
+} from "./ExternalThreadImportDialog.logic";
 
 const errorMessage = (error: unknown) =>
   error instanceof Error ? error.message : "Repository discovery failed.";
@@ -51,9 +55,30 @@ export function mergeExternalThreadImportCandidates(
   return [...merged.values()];
 }
 
+export function groupExternalThreadImportCandidates(
+  candidates: readonly ExternalThreadImportCandidate[],
+) {
+  const groups = new Map<
+    string,
+    {
+      readonly provider: ExternalThreadImportCandidate["provider"];
+      readonly candidates: ExternalThreadImportCandidate[];
+    }
+  >();
+  for (const candidate of candidates) {
+    const key = `${candidate.provider.driver}:${candidate.provider.instanceId}`;
+    const group = groups.get(key);
+    if (group) group.candidates.push(candidate);
+    else groups.set(key, { provider: candidate.provider, candidates: [candidate] });
+  }
+  return [...groups.values()];
+}
+
 export function ProjectSessionImportWizard(props: {
   readonly open: boolean;
   readonly onOpenChange: (open: boolean) => void;
+  readonly initialRoot?: string;
+  readonly onScanComplete?: (repositoryCount: number) => void;
 }) {
   const environmentId = usePrimaryEnvironmentId();
   const projects = useProjects();
@@ -97,6 +122,10 @@ export function ProjectSessionImportWizard(props: {
     [selectedTokens, sessionRows],
   );
 
+  useEffect(() => {
+    if (props.open && props.initialRoot) setRoot(props.initialRoot);
+  }, [props.initialRoot, props.open]);
+
   const chooseRoot = useCallback(async () => {
     const picked = await readLocalApi()
       ?.dialogs.pickFolder({ initialPath: root })
@@ -119,6 +148,7 @@ export function ProjectSessionImportWizard(props: {
     setSelectedTokens(new Set());
     setImportedCount(0);
     let cursor: ProjectSessionImportScanResult["nextCursor"];
+    let repositoryCount = 0;
     do {
       const result = await scan({
         environmentId,
@@ -131,6 +161,7 @@ export function ProjectSessionImportWizard(props: {
         return;
       }
       setRepositories((current) => [...current, ...result.value.repositories]);
+      repositoryCount += result.value.repositories.length;
       setSelectedRoots((current) => {
         const next = new Set(current);
         for (const repository of result.value.repositories) next.add(repository.root);
@@ -140,7 +171,8 @@ export function ProjectSessionImportWizard(props: {
       cursor = result.value.nextCursor;
     } while (cursor);
     setScanning(false);
-  }, [environmentId, root, scan]);
+    props.onScanComplete?.(repositoryCount);
+  }, [environmentId, props.onScanComplete, root, scan]);
 
   const reviewSessions = useCallback(async () => {
     if (!environmentId) return;
@@ -261,8 +293,8 @@ export function ProjectSessionImportWizard(props: {
         <DialogHeader>
           <DialogTitle>Import projects and sessions</DialogTitle>
           <DialogDescription>
-            Scan a folder for Git projects, then choose the Claude, Codex, and Grok sessions to
-            bring into T3 Code.
+            Scan a folder for Git projects, then choose the Claude and Grok sessions to bring into
+            T3 Code.
           </DialogDescription>
         </DialogHeader>
         <DialogPanel className="space-y-4 overflow-y-auto">
@@ -307,7 +339,18 @@ export function ProjectSessionImportWizard(props: {
                       }
                     />
                     <span className="min-w-0">
-                      <span className="block text-sm font-medium">{repository.name}</span>
+                      <span className="flex items-center gap-2 text-sm font-medium">
+                        {repository.name}
+                        <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-normal text-muted-foreground">
+                          {projects.some(
+                            (project) =>
+                              project.environmentId === environmentId &&
+                              project.workspaceRoot === repository.root,
+                          )
+                            ? "In T3 Code"
+                            : "New"}
+                        </span>
+                      </span>
                       <span className="block truncate text-xs text-muted-foreground">
                         {repository.root}
                       </span>
@@ -316,45 +359,109 @@ export function ProjectSessionImportWizard(props: {
                 ))
               : sessionRows.map((row) => (
                   <div key={row.repository.root} className="rounded-md border p-3">
-                    <div className="mb-2 text-sm font-medium">{row.repository.name}</div>
+                    <div className="mb-2 flex items-center justify-between gap-2">
+                      <div className="text-sm font-medium">{row.repository.name}</div>
+                      {row.candidates.some((candidate) => candidate.status._tag === "Available") ? (
+                        <div className="flex gap-1">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() =>
+                              setSelectedTokens((current) =>
+                                setAvailableCandidateSelection(current, row.candidates, true),
+                              )
+                            }
+                          >
+                            Select project
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() =>
+                              setSelectedTokens((current) =>
+                                setAvailableCandidateSelection(current, row.candidates, false),
+                              )
+                            }
+                          >
+                            Clear
+                          </Button>
+                        </div>
+                      ) : null}
+                    </div>
                     {row.candidates.length === 0 ? (
                       <p className="text-xs text-muted-foreground">
                         No matching provider sessions found.
                       </p>
                     ) : (
-                      row.candidates.map((candidate) => (
-                        <label
-                          key={candidate.token}
-                          className="flex items-start gap-3 rounded-md px-2 py-2 hover:bg-accent"
-                        >
-                          <Checkbox
-                            checked={selectedTokens.has(candidate.token)}
-                            disabled={reviewing || candidate.status._tag === "AlreadyImported"}
-                            onCheckedChange={(checked) =>
-                              setSelectedTokens((current) => {
-                                const next = new Set(current);
-                                if (checked) next.add(candidate.token);
-                                else next.delete(candidate.token);
-                                return next;
-                              })
-                            }
-                          />
-                          <span className="min-w-0">
-                            <span className="block truncate text-sm">
-                              {candidate.title ??
-                                candidate.firstPromptPreview ??
-                                candidate.nativeThreadId ??
-                                "Untitled thread"}
+                      groupExternalThreadImportCandidates(row.candidates).map((group) => (
+                        <section key={`${group.provider.driver}:${group.provider.instanceId}`}>
+                          <div className="flex items-center justify-between gap-2 px-2 py-1">
+                            <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                              {providerDisplayName(group.provider.driver)}
                             </span>
-                            <span className="block text-xs text-muted-foreground">
-                              {candidate.provider.driver} ·{" "}
-                              {candidate.messageCount ?? candidate.turnCount ?? 0} messages
-                              {candidate.status._tag === "AlreadyImported"
-                                ? " · already imported"
-                                : ""}
-                            </span>
-                          </span>
-                        </label>
+                            <div className="flex gap-1">
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() =>
+                                  setSelectedTokens((current) =>
+                                    setAvailableCandidateSelection(current, group.candidates, true),
+                                  )
+                                }
+                              >
+                                Select provider
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() =>
+                                  setSelectedTokens((current) =>
+                                    setAvailableCandidateSelection(
+                                      current,
+                                      group.candidates,
+                                      false,
+                                    ),
+                                  )
+                                }
+                              >
+                                Clear
+                              </Button>
+                            </div>
+                          </div>
+                          {group.candidates.map((candidate) => (
+                            <label
+                              key={candidate.token}
+                              className="flex items-start gap-3 rounded-md px-2 py-2 hover:bg-accent"
+                            >
+                              <Checkbox
+                                checked={selectedTokens.has(candidate.token)}
+                                disabled={reviewing || candidate.status._tag === "AlreadyImported"}
+                                onCheckedChange={(checked) =>
+                                  setSelectedTokens((current) => {
+                                    const next = new Set(current);
+                                    if (checked) next.add(candidate.token);
+                                    else next.delete(candidate.token);
+                                    return next;
+                                  })
+                                }
+                              />
+                              <span className="min-w-0">
+                                <span className="block truncate text-sm">
+                                  {candidate.title ??
+                                    candidate.firstPromptPreview ??
+                                    candidate.nativeThreadId ??
+                                    "Untitled thread"}
+                                </span>
+                                <span className="block text-xs text-muted-foreground">
+                                  {candidate.messageCount ?? candidate.turnCount ?? 0} messages
+                                  {candidate.status._tag === "AlreadyImported"
+                                    ? " · already imported"
+                                    : ""}
+                                </span>
+                              </span>
+                            </label>
+                          ))}
+                        </section>
                       ))
                     )}
                   </div>

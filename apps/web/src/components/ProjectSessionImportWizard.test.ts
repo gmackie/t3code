@@ -1,7 +1,10 @@
 import type { ExternalThreadImportCandidate } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
-import { mergeExternalThreadImportCandidates } from "./ProjectSessionImportWizard.tsx";
+import {
+  groupExternalThreadImportCandidates,
+  mergeExternalThreadImportCandidates,
+} from "./ProjectSessionImportWizard.tsx";
 
 const candidate = (token: string, nativeThreadId: string) =>
   ({
@@ -26,5 +29,20 @@ describe("mergeExternalThreadImportCandidates", () => {
     } as ExternalThreadImportCandidate;
 
     expect(mergeExternalThreadImportCandidates([original], [duplicate])).toEqual([duplicate]);
+  });
+});
+
+describe("groupExternalThreadImportCandidates", () => {
+  it("groups a project's conversations by provider instance", () => {
+    const claude = candidate("claude-token", "claude-session");
+    const grok = {
+      ...candidate("grok-token", "grok-session"),
+      provider: { driver: "grok", instanceId: "grok-work" },
+    } as ExternalThreadImportCandidate;
+
+    expect(groupExternalThreadImportCandidates([claude, grok])).toEqual([
+      { provider: claude.provider, candidates: [claude] },
+      { provider: grok.provider, candidates: [grok] },
+    ]);
   });
 });

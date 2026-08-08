@@ -70,6 +70,7 @@ import {
 } from "../../hooks/useTheme";
 import { useLocalStorage } from "../../hooks/useLocalStorage";
 import { usePrimarySettings, useUpdatePrimarySettings } from "../../hooks/useSettings";
+import { usePrimaryEnvironment } from "../../state/environments";
 import { useThreadActions } from "../../hooks/useThreadActions";
 import { useDesktopUpdateState } from "../../state/desktopUpdate";
 import {
@@ -119,6 +120,7 @@ import {
   backgroundActivitySharedPolicySettings,
   buildProviderInstanceUpdatePatch,
   DESKTOP_UPDATE_CHANNEL_OPTIONS,
+  durationToSeconds,
   formatDiagnosticsDescription,
   normalizeIntervalSeconds,
   PROVIDER_HEALTH_INTERVAL_STEP_SECONDS,
@@ -145,6 +147,12 @@ const ENVIRONMENT_IDENTIFICATION_LABELS: Record<EnvironmentIdentificationMode, s
   pill: "Version pill",
   none: "None",
 };
+
+const THEME_OPTIONS = [
+  { value: "system", label: "System" },
+  { value: "light", label: "Light" },
+  { value: "dark", label: "Dark" },
+] as const;
 
 const TIMESTAMP_FORMAT_LABELS = {
   locale: "System default",
@@ -1384,6 +1392,29 @@ export function TerminalSettingsPanel() {
         />
       </SettingsSection>
     </SettingsPageContainer>
+  );
+}
+
+function LegacyFeaturesSection() {
+  const settings = usePrimarySettings();
+  const updateSettings = useUpdatePrimarySettings();
+
+  return (
+    <SettingsSection title="Legacy features">
+      <SettingsRow
+        {...searchableSetting("legacy-token-streaming")}
+        description="Paint assistant output token by token instead of in complete chunks. This compatibility mode is slower than buffered output."
+        control={
+          <Switch
+            checked={settings.enableLegacyTokenStreaming}
+            onCheckedChange={(checked) =>
+              updateSettings({ enableLegacyTokenStreaming: Boolean(checked) })
+            }
+            aria-label="Stream token by token (legacy)"
+          />
+        }
+      />
+    </SettingsSection>
   );
 }
 

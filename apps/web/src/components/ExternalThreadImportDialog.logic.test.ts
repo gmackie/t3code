@@ -14,6 +14,7 @@ import {
   selectedAvailableTokens,
   openImportedThread,
   retryImportDiscovery,
+  setAvailableCandidateSelection,
 } from "./ExternalThreadImportDialog.logic";
 
 const provider = (driver: string, instanceId = driver) =>
@@ -73,6 +74,33 @@ describe("external thread import picker logic", () => {
     expect(selectedAvailableTokens(new Set(["new", "old"]), [candidate("new"), imported])).toEqual([
       "new",
     ]);
+  });
+
+  it("bulk selects and deselects every available conversation in a project or provider", () => {
+    const imported = candidate("old", {
+      status: { _tag: "AlreadyImported", threadId: "thread-old" as never },
+    });
+    const claude = candidate("claude", {
+      provider: provider("claudeAgent"),
+    });
+    const grok = candidate("grok", { provider: provider("grok") });
+
+    const projectSelected = setAvailableCandidateSelection(
+      new Set(["unrelated"]),
+      [claude, grok, imported],
+      true,
+    );
+    expect([...projectSelected]).toEqual(["unrelated", "claude", "grok"]);
+
+    const claudeCleared = setAvailableCandidateSelection(projectSelected, [claude], false);
+    expect([...claudeCleared]).toEqual(["unrelated", "grok"]);
+
+    const projectCleared = setAvailableCandidateSelection(
+      claudeCleared,
+      [claude, grok, imported],
+      false,
+    );
+    expect([...projectCleared]).toEqual(["unrelated"]);
   });
 
   it("keeps partial import outcomes attached to their candidate rows", () => {

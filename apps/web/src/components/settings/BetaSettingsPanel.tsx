@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "@tanstack/react-router";
 
 import {
   useClientSettings,
@@ -8,7 +9,6 @@ import {
 import { Input } from "../ui/input";
 import { Button } from "../ui/button";
 import { Switch } from "../ui/switch";
-import { ProjectSessionImportWizard } from "../ProjectSessionImportWizard";
 import { SettingsPageContainer, SettingsRow, SettingsSection } from "./settingsLayout";
 import { searchableSetting } from "./settingsSearch";
 
@@ -58,7 +58,7 @@ function AutoSettleDaysInput({
 }
 
 export function BetaSettingsPanel() {
-  const [projectSessionImportOpen, setProjectSessionImportOpen] = useState(false);
+  const navigate = useNavigate();
   const sidebarV2Enabled = useSidebarV2Enabled();
   const sidebarAutoSettleAfterDays = useClientSettings(
     (settings) => settings.sidebarAutoSettleAfterDays,
@@ -76,9 +76,9 @@ export function BetaSettingsPanel() {
               type="button"
               variant="outline"
               aria-label="Open project and session import wizard"
-              onClick={() => setProjectSessionImportOpen(true)}
+              onClick={() => void navigate({ to: "/projects" })}
             >
-              Open import wizard
+              Open Projects
             </Button>
           }
         />
@@ -132,10 +132,6 @@ export function BetaSettingsPanel() {
           </>
         ) : null}
       </SettingsSection>
-      <ProjectSessionImportWizard
-        open={projectSessionImportOpen}
-        onOpenChange={setProjectSessionImportOpen}
-      />
     </SettingsPageContainer>
   );
 }

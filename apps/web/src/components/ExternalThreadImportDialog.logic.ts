@@ -56,6 +56,20 @@ export function selectedAvailableTokens(
   );
 }
 
+export function setAvailableCandidateSelection(
+  selected: ReadonlySet<string>,
+  candidates: ReadonlyArray<ExternalThreadImportCandidate>,
+  checked: boolean,
+): Set<string> {
+  const next = new Set(selected);
+  for (const candidate of candidates) {
+    if (candidate.status._tag !== "Available") continue;
+    if (checked) next.add(candidate.token);
+    else next.delete(candidate.token);
+  }
+  return next;
+}
+
 export function mergeImportGroups(
   current: ReadonlyArray<ExternalThreadImportProviderDiscoveryResult>,
   incoming: ReadonlyArray<ExternalThreadImportProviderDiscoveryResult>,

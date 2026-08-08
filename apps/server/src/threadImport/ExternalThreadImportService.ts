@@ -103,6 +103,7 @@ const requestError = (code: string, message: string, retryable?: boolean) =>
   });
 
 const sourceKey = (provider: ProviderInstanceRef) => `${provider.driver}:${provider.instanceId}`;
+const isExternalImportSource = (source: ThreadImportSource) => source.provider.driver !== "codex";
 
 type CursorState = Readonly<Record<string, BoundedThreadImportJson>>;
 interface CursorEntry {
@@ -151,7 +152,7 @@ export const makeExternalThreadImportService = (dependencies: Dependencies) => {
         return yield* requestError("invalid_cursor", "The discovery cursor is invalid.");
       }
       const cursorState = cursorEntry?.state ?? {};
-      const sources = yield* dependencies.listSources;
+      const sources = (yield* dependencies.listSources).filter(isExternalImportSource);
       const nextState: Record<string, BoundedThreadImportJson> = {};
       let remainingBudget = input.limit;
       let remainingActiveSources = sources.filter(
@@ -299,7 +300,7 @@ export const makeExternalThreadImportService = (dependencies: Dependencies) => {
             matches: (candidateCwd: string) =>
               dependencies.matchesProject(projectRoot, candidateCwd),
           };
-      const sources = yield* dependencies.listSources;
+      const sources = (yield* dependencies.listSources).filter(isExternalImportSource);
       const byProvider = new Map(sources.map((source) => [sourceKey(source.provider), source]));
       const outcomes = yield* Effect.forEach(input.tokens, (token) =>
         Effect.gen(function* () {

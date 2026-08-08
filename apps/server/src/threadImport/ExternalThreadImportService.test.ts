@@ -22,6 +22,55 @@ const provider = {
 };
 
 describe("ExternalThreadImportService", () => {
+  it.effect("never exposes Codex sessions because T3 Code already owns that history", () =>
+    Effect.gen(function* () {
+      const codexProvider = {
+        instanceId: ProviderInstanceId.make("codex"),
+        driver: ProviderDriverKind.make("codex"),
+      };
+      let codexDiscoveries = 0;
+      const codexSource: ThreadImportSource = {
+        provider: codexProvider,
+        discover: () => {
+          codexDiscoveries += 1;
+          return Effect.succeed({ candidates: [] });
+        },
+        load: () => Effect.die("Codex imports must remain unavailable"),
+      };
+      const service = makeExternalThreadImportService({
+        getEnvironmentId: Effect.succeed(environmentId),
+        getProjectRoot: () => Effect.succeed("/work/project"),
+        listSources: Effect.succeed([codexSource]),
+        issueToken: () => Effect.die("Codex candidates must not be signed"),
+        verifyToken: () =>
+          Effect.succeed({
+            environmentId,
+            projectId,
+            provider: codexProvider,
+            nativeThreadId: "native-codex",
+          }),
+        findImportedThread: () => Effect.succeed(undefined),
+        dispatchImport: () => Effect.die("Codex imports must not be dispatched"),
+        randomId: Effect.succeed("unused"),
+        now: Effect.succeed(0),
+        matchesProject: () => Effect.succeed(true),
+      });
+
+      const discovery = yield* service.discover({ environmentId, projectId, limit: 10 });
+      const imported = yield* service.importSelected({
+        environmentId,
+        projectId,
+        tokens: ["codex-token" as never],
+      });
+
+      expect(codexDiscoveries).toBe(0);
+      expect(discovery.providerResults).toEqual([]);
+      expect(imported.outcomes).toEqual([
+        expect.objectContaining({ _tag: "Failed", code: "provider_unavailable" }),
+      ]);
+    }),
+  );
+
   it.effect("discovers provider pages, signs opaque identities, and marks existing imports", () =>
     Effect.gen(function* () {
       let loadCalls = 0;
@@ -195,12 +244,12 @@ describe("ExternalThreadImportService", () => {
         },
         load: () => Effect.die("not used"),
       };
-      const codexProvider = {
-        instanceId: ProviderInstanceId.make("codex"),
-        driver: ProviderDriverKind.make("codex"),
+      const grokProvider = {
+        instanceId: ProviderInstanceId.make("grok"),
+        driver: ProviderDriverKind.make("grok"),
       };
       const continuing: ThreadImportSource = {
-        provider: codexProvider,
+        provider: grokProvider,
         discover: () => {
           continuingCalls += 1;
           return Effect.succeed({
@@ -242,8 +291,8 @@ describe("ExternalThreadImportService", () => {
       const sources = [
         provider,
         {
-          instanceId: ProviderInstanceId.make("codex"),
-          driver: ProviderDriverKind.make("codex"),
+          instanceId: ProviderInstanceId.make("grok"),
+          driver: ProviderDriverKind.make("grok"),
         },
       ].map(
         (sourceProvider): ThreadImportSource => ({

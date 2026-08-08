@@ -34,6 +34,7 @@ import {
   providerDisplayName,
   retryImportDiscovery,
   selectedAvailableTokens,
+  setAvailableCandidateSelection,
 } from "./ExternalThreadImportDialog.logic";
 
 export interface ExternalThreadImportTarget {
@@ -148,6 +149,9 @@ export function ExternalThreadImportDialog({
   const rows = buildImportRows(candidates, outcomes);
   const outcomeByToken = new Map(rows.map((row) => [row.candidate.token, row.outcome]));
   const tokens = selectedAvailableTokens(selected, candidates);
+  const availableCandidates = candidates.filter(
+    (candidate) => candidate.status._tag === "Available" && !outcomeByToken.has(candidate.token),
+  );
 
   const submit = useCallback(async () => {
     if (!target || tokens.length === 0) return;
@@ -201,8 +205,7 @@ export function ExternalThreadImportDialog({
         <DialogHeader>
           <DialogTitle>Import threads</DialogTitle>
           <DialogDescription>
-            Continue Claude, Codex, or Grok Build sessions in{" "}
-            {target?.projectTitle ?? "this project"}.
+            Continue Claude or Grok Build sessions in {target?.projectTitle ?? "this project"}.
           </DialogDescription>
         </DialogHeader>
         <DialogPanel className="space-y-3">
@@ -216,6 +219,46 @@ export function ExternalThreadImportDialog({
               onChange={(event) => setQuery(event.target.value)}
             />
           </div>
+
+          {availableCandidates.length > 0 ? (
+            <div className="flex items-center justify-between gap-3 rounded-md border bg-muted/20 px-3 py-2">
+              <p className="text-xs text-muted-foreground">
+                {availableCandidates.length} importable conversation
+                {availableCandidates.length === 1 ? "" : "s"}
+                {nextCursor ? " loaded" : ""}
+              </p>
+              <div className="flex gap-1">
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() =>
+                    setDiscovery((current) => ({
+                      ...current,
+                      selected: setAvailableCandidateSelection(
+                        current.selected,
+                        availableCandidates,
+                        true,
+                      ),
+                    }))
+                  }
+                >
+                  Select {nextCursor ? "loaded" : "all"}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() =>
+                    setDiscovery((current) => ({
+                      ...current,
+                      selected: setAvailableCandidateSelection(current.selected, candidates, false),
+                    }))
+                  }
+                >
+                  Clear
+                </Button>
+              </div>
+            </div>
+          ) : null}
 
           {error ? (
             <div
@@ -238,7 +281,7 @@ export function ExternalThreadImportDialog({
             ) : null}
             {!loading && groups.length === 0 && !error ? (
               <p className="py-12 text-center text-sm text-muted-foreground">
-                No Claude, Codex, or Grok Build sessions were found for this project.
+                No Claude or Grok Build sessions were found for this project.
               </p>
             ) : null}
             {groups.length > 0 && filteredGroups.length === 0 ? (
@@ -251,12 +294,51 @@ export function ExternalThreadImportDialog({
                 key={`${group.provider.driver}:${group.provider.instanceId}:${group._tag}`}
                 className="space-y-2"
               >
-                <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  {providerDisplayName(group.provider.driver)}
-                  {String(group.provider.instanceId) !== String(group.provider.driver)
-                    ? ` · ${group.provider.instanceId}`
-                    : ""}
-                </h3>
+                <div className="flex items-center justify-between gap-2">
+                  <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    {providerDisplayName(group.provider.driver)}
+                    {String(group.provider.instanceId) !== String(group.provider.driver)
+                      ? ` · ${group.provider.instanceId}`
+                      : ""}
+                  </h3>
+                  {group._tag === "Success" &&
+                  group.candidates.some((candidate) => candidate.status._tag === "Available") ? (
+                    <div className="flex gap-1">
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() =>
+                          setDiscovery((current) => ({
+                            ...current,
+                            selected: setAvailableCandidateSelection(
+                              current.selected,
+                              group.candidates,
+                              true,
+                            ),
+                          }))
+                        }
+                      >
+                        Select provider
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() =>
+                          setDiscovery((current) => ({
+                            ...current,
+                            selected: setAvailableCandidateSelection(
+                              current.selected,
+                              group.candidates,
+                              false,
+                            ),
+                          }))
+                        }
+                      >
+                        Clear
+                      </Button>
+                    </div>
+                  ) : null}
+                </div>
                 {group._tag === "Failure" ? (
                   <div className="rounded-md border border-destructive/30 p-3 text-sm">
                     <p>{group.message}</p>
