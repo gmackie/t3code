@@ -21,7 +21,7 @@ repositories:
     path: /Volumes/dev/t3code/t3code-forgegraph-plugin
     role: delivery-tracking-plugin
     source: raw-git
-    proofOfConceptCommit: 6511b78
+    proofOfConceptCommit: 91eee7e
   github:
     path: /Volumes/dev/t3code/t3code-github-plugin
     role: external-workflow-plugin-sample
@@ -63,22 +63,22 @@ repositories:
     path: /Volumes/dev/t3code/t3code-bizpulse-plugin
     role: portfolio-operations-plugin
     source: raw-git
-    proofOfConceptCommit: 0f71709
+    proofOfConceptCommit: 2962ff0
   preflight:
     path: /Volumes/dev/t3code/t3code-preflight-plugin
     role: release-readiness-plugin
     source: raw-git
-    proofOfConceptCommit: bdf9780
+    proofOfConceptCommit: 3d1b897
   veritas:
     path: /Volumes/dev/t3code/t3code-veritas-plugin
     role: verification-runs-plugin
     source: raw-git
-    proofOfConceptCommit: 24fc1c6
+    proofOfConceptCommit: ff27ff8
   fabforge:
     path: /Volumes/dev/t3code/t3code-fabforge-plugin
     role: fabrication-tracking-plugin
     source: raw-git
-    proofOfConceptCommit: 1c74f48
+    proofOfConceptCommit: 965efbb
 classifications:
   t3-core:
     - packages/contracts/src/issue.ts
