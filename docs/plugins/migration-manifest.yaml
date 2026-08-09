@@ -63,12 +63,12 @@ repositories:
     path: /Volumes/dev/t3code/t3code-bizpulse-plugin
     role: portfolio-operations-plugin
     source: raw-git
-    proofOfConceptCommit: e111947
+    proofOfConceptCommit: 0f71709
   preflight:
     path: /Volumes/dev/t3code/t3code-preflight-plugin
     role: release-readiness-plugin
     source: raw-git
-    proofOfConceptCommit: fa78365
+    proofOfConceptCommit: bdf9780
   veritas:
     path: /Volumes/dev/t3code/t3code-veritas-plugin
     role: verification-runs-plugin
