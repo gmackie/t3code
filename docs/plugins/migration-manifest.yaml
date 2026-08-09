@@ -73,12 +73,12 @@ repositories:
     path: /Volumes/dev/t3code/t3code-veritas-plugin
     role: verification-runs-plugin
     source: raw-git
-    proofOfConceptCommit: ebf8d61
+    proofOfConceptCommit: 2a31930
   fabforge:
     path: /Volumes/dev/t3code/t3code-fabforge-plugin
     role: fabrication-tracking-plugin
     source: raw-git
-    proofOfConceptCommit: c7ebfd3
+    proofOfConceptCommit: babe89b
 classifications:
   t3-core:
     - packages/contracts/src/issue.ts
