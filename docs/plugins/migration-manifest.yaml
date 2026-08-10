@@ -11,7 +11,7 @@ repositories:
     path: /Volumes/dev/t3code/t3code-bob-plugin
     role: primary-product-plugin
     source: raw-git
-    proofOfConceptCommit: b4b4433
+    proofOfConceptCommit: 7edb82f
   linear:
     path: /Volumes/dev/t3code/t3code-linear-plugin
     role: standalone-reference-plugin
