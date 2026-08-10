@@ -21,7 +21,7 @@ repositories:
     path: /Volumes/dev/t3code/t3code-forgegraph-plugin
     role: delivery-tracking-plugin
     source: raw-git
-    proofOfConceptCommit: 1c2ed0d
+    proofOfConceptCommit: 94ab0ff
   github:
     path: /Volumes/dev/t3code/t3code-github-plugin
     role: external-workflow-plugin-sample
@@ -68,7 +68,7 @@ repositories:
     path: /Volumes/dev/t3code/t3code-preflight-plugin
     role: release-readiness-plugin
     source: raw-git
-    proofOfConceptCommit: f02c116
+    proofOfConceptCommit: 7a9b082
   veritas:
     path: /Volumes/dev/t3code/t3code-veritas-plugin
     role: verification-runs-plugin
