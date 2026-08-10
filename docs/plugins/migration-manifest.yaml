@@ -25,7 +25,7 @@ repositories:
   github:
     path: /Volumes/dev/t3code/t3code-github-plugin
     role: external-workflow-plugin-sample
-    proofOfConceptCommit: 0d1a6d5
+    proofOfConceptCommit: e7d0b57
   sentry:
     path: /Volumes/dev/t3code/t3code-sentry-plugin
     role: monitoring-plugin-sample
