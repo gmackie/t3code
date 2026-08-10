@@ -16,7 +16,7 @@ repositories:
     path: /Volumes/dev/t3code/t3code-linear-plugin
     role: standalone-reference-plugin
     source: raw-git
-    proofOfConceptCommit: 69ac1b1
+    proofOfConceptCommit: 455c061
   forgegraph:
     path: /Volumes/dev/t3code/t3code-forgegraph-plugin
     role: delivery-tracking-plugin
