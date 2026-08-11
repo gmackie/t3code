@@ -78,7 +78,7 @@ repositories:
     path: /Volumes/dev/t3code/t3code-fabforge-plugin
     role: fabrication-tracking-plugin
     source: raw-git
-    proofOfConceptCommit: 7a19558
+    proofOfConceptCommit: 30e302c
 classifications:
   t3-core:
     - packages/contracts/src/issue.ts
