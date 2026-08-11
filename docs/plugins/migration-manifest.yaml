@@ -83,7 +83,7 @@ repositories:
     path: /Volumes/dev/t3code/t3code-creator-plugin
     role: creator-command-center-plugin
     source: raw-git
-    proofOfConceptCommit: ef70451
+    proofOfConceptCommit: 431e57f
 classifications:
   t3-core:
     - packages/contracts/src/issue.ts
