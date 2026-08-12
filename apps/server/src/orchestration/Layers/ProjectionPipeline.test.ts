@@ -27,6 +27,7 @@ import { OrchestrationEventStore } from "../../persistence/Services/Orchestratio
 import * as RepositoryIdentityResolver from "../../project/RepositoryIdentityResolver.ts";
 import { OrchestrationEngineLive } from "./OrchestrationEngine.ts";
 import {
+  activityCanChangePendingUserInputCount,
   ORCHESTRATION_PROJECTOR_NAMES,
   OrchestrationProjectionPipelineLive,
 } from "./ProjectionPipeline.ts";
@@ -53,6 +54,44 @@ const exists = (filePath: string) =>
 const BaseTestLayer = makeProjectionPipelinePrefixedTestLayer("t3-projection-pipeline-test-");
 
 it.layer(BaseTestLayer)("OrchestrationProjectionPipeline", (it) => {
+  it.effect("does not rescan activity history for unrelated activity kinds", () =>
+    Effect.sync(() => {
+      assert.isFalse(
+        activityCanChangePendingUserInputCount({
+          kind: "tool.completed",
+          payload: { requestId: "request-1" },
+        }),
+      );
+      assert.isTrue(
+        activityCanChangePendingUserInputCount({
+          kind: "user-input.requested",
+          payload: { requestId: "request-1" },
+        }),
+      );
+      assert.isTrue(
+        activityCanChangePendingUserInputCount({
+          kind: "user-input.resolved",
+          payload: { requestId: "request-1" },
+        }),
+      );
+      assert.isTrue(
+        activityCanChangePendingUserInputCount({
+          kind: "provider.user-input.respond.failed",
+          payload: {
+            requestId: "request-1",
+            detail: "Unknown pending Codex user input request",
+          },
+        }),
+      );
+      assert.isFalse(
+        activityCanChangePendingUserInputCount({
+          kind: "provider.user-input.respond.failed",
+          payload: { requestId: "request-1", detail: "Network unavailable" },
+        }),
+      );
+    }),
+  );
+
   it.effect("bootstraps all projection states and writes projection rows", () =>
     Effect.gen(function* () {
       const projectionPipeline = yield* OrchestrationProjectionPipeline;
