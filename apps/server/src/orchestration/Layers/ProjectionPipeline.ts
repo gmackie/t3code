@@ -185,6 +185,30 @@ function derivePendingUserInputCountFromActivities(
   return openRequestIds.size;
 }
 
+export function activityCanChangePendingUserInputCount(
+  activity: Pick<ProjectionThreadActivity, "kind" | "payload">,
+): boolean {
+  if (activity.kind === "user-input.requested" || activity.kind === "user-input.resolved") {
+    return true;
+  }
+  if (activity.kind !== "provider.user-input.respond.failed") {
+    return false;
+  }
+
+  const payload =
+    typeof activity.payload === "object" && activity.payload !== null
+      ? (activity.payload as Record<string, unknown>)
+      : null;
+  const detail = typeof payload?.detail === "string" ? payload.detail.toLowerCase() : null;
+  return (
+    detail !== null &&
+    (detail.includes("stale pending user-input request") ||
+      detail.includes("unknown pending user-input request") ||
+      detail.includes("unknown pending user input request") ||
+      detail.includes("unknown pending codex user input request"))
+  );
+}
+
 function deriveHasActionableProposedPlan(input: {
   readonly latestTurnId: string | null;
   readonly proposedPlans: ReadonlyArray<ProjectionThreadProposedPlan>;
@@ -861,7 +885,6 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
 
         case "thread.message-sent":
         case "thread.proposed-plan-upserted":
-        case "thread.activity-appended":
         case "thread.approval-response-requested":
         case "thread.user-input-response-requested": {
           const existingRow = yield* projectionThreadRepository.getById({
@@ -875,6 +898,23 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
             updatedAt: event.occurredAt,
           });
           yield* refreshThreadShellSummary(event.payload.threadId);
+          return;
+        }
+
+        case "thread.activity-appended": {
+          const existingRow = yield* projectionThreadRepository.getById({
+            threadId: event.payload.threadId,
+          });
+          if (Option.isNone(existingRow)) {
+            return;
+          }
+          yield* projectionThreadRepository.upsert({
+            ...existingRow.value,
+            updatedAt: event.occurredAt,
+          });
+          if (activityCanChangePendingUserInputCount(event.payload.activity)) {
+            yield* refreshThreadShellSummary(event.payload.threadId);
+          }
           return;
         }
 
