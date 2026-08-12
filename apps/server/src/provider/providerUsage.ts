@@ -1,4 +1,5 @@
 import type { ProviderUsageSnapshot, ProviderUsageWindow } from "@t3tools/contracts";
+import * as DateTime from "effect/DateTime";
 
 export type ProviderRateLimitWindow = {
   readonly id: string;
@@ -16,8 +17,8 @@ function finiteNumber(value: unknown): number | undefined {
 function resetTimestamp(value: unknown): string | undefined {
   const seconds = finiteNumber(value);
   if (seconds === undefined) return undefined;
-  const date = new Date(seconds * 1000);
-  return Number.isNaN(date.getTime()) ? undefined : date.toISOString();
+  const date = DateTime.make(seconds * 1000);
+  return date._tag === "None" ? undefined : DateTime.formatIso(date.value);
 }
 
 function normalizeWindow(id: string, value: unknown): ProviderRateLimitWindow | undefined {
@@ -126,7 +127,7 @@ export function toProviderUsageSnapshot(input: {
     driverKind: input.driverKind as ProviderUsageSnapshot["driverKind"],
     availability: input.source === "unavailable" ? "unavailable" : "available",
     windows: input.windows,
-    lastUpdatedAt: input.updatedAt ?? new Date().toISOString(),
+    lastUpdatedAt: input.updatedAt ?? DateTime.formatIso(DateTime.nowUnsafe()),
     source: input.source,
   };
 }
@@ -139,7 +140,7 @@ export class ProviderUsageCache {
 
   constructor(
     environmentId: string,
-    now: () => string = () => new Date().toISOString(),
+    now: () => string = () => DateTime.formatIso(DateTime.nowUnsafe()),
     freshnessMs = DEFAULT_FRESHNESS_MS,
   ) {
     this.environmentId = environmentId;
