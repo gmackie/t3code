@@ -629,39 +629,40 @@ const buildAppUnderTest = (options?: {
         }),
       ),
       Layer.provide(
-        Layer.mock(ProviderRegistry.ProviderRegistry)({
-          getProviders: Effect.succeed([]),
-          refresh: () => Effect.succeed([]),
-          refreshInstance: () => Effect.succeed([]),
-          getProviderMaintenanceCapabilitiesForInstance: (_instanceId, provider) =>
-            Effect.succeed(
-              makeManualOnlyProviderMaintenanceCapabilities({ provider, packageName: null }),
-            ),
-          setProviderMaintenanceActionState: () => Effect.succeed([]),
-          streamChanges: Stream.empty,
-          ...options?.layers?.providerRegistry,
-        }),
-      ),
-      Layer.provide(
-        Layer.mock(ProviderService.ProviderService)({
-          startSession: () => Effect.die("ProviderService.startSession not stubbed in this test"),
-          sendTurn: () => Effect.die("ProviderService.sendTurn not stubbed in this test"),
-          interruptTurn: () => Effect.die("ProviderService.interruptTurn not stubbed in this test"),
-          respondToRequest: () =>
-            Effect.die("ProviderService.respondToRequest not stubbed in this test"),
-          respondToUserInput: () =>
-            Effect.die("ProviderService.respondToUserInput not stubbed in this test"),
-          stopSession: () => Effect.die("ProviderService.stopSession not stubbed in this test"),
-          listSessions: () => Effect.succeed([]),
-          getCapabilities: () =>
-            Effect.die("ProviderService.getCapabilities not stubbed in this test"),
-          getInstanceInfo: () =>
-            Effect.die("ProviderService.getInstanceInfo not stubbed in this test"),
-          rollbackConversation: () =>
-            Effect.die("ProviderService.rollbackConversation not stubbed in this test"),
-          streamEvents: Stream.empty,
-          ...options?.layers?.providerService,
-        }),
+        Layer.mergeAll(
+          Layer.mock(ProviderRegistry.ProviderRegistry)({
+            getProviders: Effect.succeed([]),
+            refresh: () => Effect.succeed([]),
+            refreshInstance: () => Effect.succeed([]),
+            getProviderMaintenanceCapabilitiesForInstance: (_instanceId, provider) =>
+              Effect.succeed(
+                makeManualOnlyProviderMaintenanceCapabilities({ provider, packageName: null }),
+              ),
+            setProviderMaintenanceActionState: () => Effect.succeed([]),
+            streamChanges: Stream.empty,
+            ...options?.layers?.providerRegistry,
+          }),
+          Layer.mock(ProviderService.ProviderService)({
+            startSession: () => Effect.die("ProviderService.startSession not stubbed in this test"),
+            sendTurn: () => Effect.die("ProviderService.sendTurn not stubbed in this test"),
+            interruptTurn: () =>
+              Effect.die("ProviderService.interruptTurn not stubbed in this test"),
+            respondToRequest: () =>
+              Effect.die("ProviderService.respondToRequest not stubbed in this test"),
+            respondToUserInput: () =>
+              Effect.die("ProviderService.respondToUserInput not stubbed in this test"),
+            stopSession: () => Effect.die("ProviderService.stopSession not stubbed in this test"),
+            listSessions: () => Effect.succeed([]),
+            getCapabilities: () =>
+              Effect.die("ProviderService.getCapabilities not stubbed in this test"),
+            getInstanceInfo: () =>
+              Effect.die("ProviderService.getInstanceInfo not stubbed in this test"),
+            rollbackConversation: () =>
+              Effect.die("ProviderService.rollbackConversation not stubbed in this test"),
+            streamEvents: Stream.empty,
+            ...options?.layers?.providerService,
+          }),
+        ),
       ),
       Layer.provide(
         Layer.mock(ServerSettings.ServerSettingsService)({
