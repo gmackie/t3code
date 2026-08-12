@@ -86,8 +86,8 @@ type StageWorkspaceConfig = typeof StageWorkspaceConfig.Type;
 const RepoRoot = Effect.service(Path.Path).pipe(
   Effect.flatMap((path) => path.fromFileUrl(new URL("..", import.meta.url))),
 );
-const encodeJsonString = Schema.encodeEffect(Schema.UnknownFromJsonString);
-const decodeJsonString = Schema.decodeEffect(Schema.UnknownFromJsonString);
+const encodeJsonString = Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown));
+const decodeJsonString = Schema.decodeEffect(Schema.fromJsonString(Schema.Unknown));
 const decodeWorkspaceConfig = Schema.decodeEffect(fromYaml(WorkspaceConfig));
 const decodeNodePtyManifest = Schema.decodeUnknownEffect(
   Schema.fromJsonString(Schema.Struct({ version: Schema.String })),
@@ -687,13 +687,11 @@ const resolveGitCommitHash = Effect.fn("resolveGitCommitHash")(function* (repoRo
       cwd: repoRoot,
     }),
   ).pipe(
-    Effect.catch(() =>
-      Effect.succeed({
-        stdout: "",
-        stderr: "",
-        exitCode: 1,
-      }),
-    ),
+    Effect.orElseSucceed(() => ({
+      stdout: "",
+      stderr: "",
+      exitCode: 1,
+    })),
   );
 
   if (result.exitCode !== 0) {
@@ -737,13 +735,11 @@ const resolvePythonForNodeGyp = Effect.fn("resolvePythonForNodeGyp")(function* (
   const probe = yield* spawnAndCollectOutput(
     ChildProcess.make("python", ["-c", "import sys;print(sys.executable)"]),
   ).pipe(
-    Effect.catch(() =>
-      Effect.succeed({
-        stdout: "",
-        stderr: "",
-        exitCode: 1,
-      }),
-    ),
+    Effect.orElseSucceed(() => ({
+      stdout: "",
+      stderr: "",
+      exitCode: 1,
+    })),
   );
 
   if (probe.exitCode !== 0) {
