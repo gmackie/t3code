@@ -209,6 +209,26 @@ export function activityCanChangePendingUserInputCount(
   );
 }
 
+function activityCanChangeThreadShellSummary(
+  activity: Pick<ProjectionThreadActivity, "kind" | "payload">,
+): boolean {
+  if (activityCanChangePendingUserInputCount(activity)) {
+    return true;
+  }
+  if (activity.kind === "approval.requested" || activity.kind === "approval.resolved") {
+    return true;
+  }
+  if (activity.kind !== "provider.approval.respond.failed") {
+    return false;
+  }
+  const payload =
+    typeof activity.payload === "object" && activity.payload !== null
+      ? (activity.payload as Record<string, unknown>)
+      : null;
+  const detail = typeof payload?.detail === "string" ? payload.detail.toLowerCase() : null;
+  return isStalePendingApprovalFailureDetail(detail);
+}
+
 function deriveHasActionableProposedPlan(input: {
   readonly latestTurnId: string | null;
   readonly proposedPlans: ReadonlyArray<ProjectionThreadProposedPlan>;
@@ -884,7 +904,7 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
             ...existingRow.value,
             updatedAt: event.occurredAt,
           });
-          if (activityCanChangePendingUserInputCount(event.payload.activity)) {
+          if (activityCanChangeThreadShellSummary(event.payload.activity)) {
             yield* refreshThreadShellSummary(event.payload.threadId);
           }
           return;
