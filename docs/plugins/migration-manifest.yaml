@@ -88,7 +88,7 @@ repositories:
     path: /Volumes/dev/t3code/t3code-jujutsu-plugin
     role: read-only-vcs-companion-plugin
     source: raw-git
-    proofOfConceptCommit: f69be61
+    proofOfConceptCommit: 6f0f015
 classifications:
   t3-core:
     - packages/contracts/src/issue.ts
