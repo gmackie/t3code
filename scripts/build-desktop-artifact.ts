@@ -2128,6 +2128,22 @@ export function resolveDesktopBuildAppId(version: string): string {
   }).appId;
 }
 
+export function assertMacDesktopArtifactSignature(input: {
+  readonly appPath: string;
+  readonly expectedAppId: string;
+  readonly bundleIdentifier: string;
+  readonly codesignOutput: string;
+}): void {
+  if (input.bundleIdentifier !== input.expectedAppId) {
+    throw new Error(`expected bundle id ${input.expectedAppId}, got ${input.bundleIdentifier}`);
+  }
+  if (!/Authority=(?:Developer ID Application|Apple Distribution):/u.test(input.codesignOutput)) {
+    throw new Error(
+      `${input.appPath} must be signed with an Apple Developer ID or Apple Distribution identity`,
+    );
+  }
+}
+
 export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
   platform: typeof BuildPlatform.Type,
   target: string,
