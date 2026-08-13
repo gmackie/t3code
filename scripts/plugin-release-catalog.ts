@@ -39,7 +39,10 @@ export function validatePluginReleaseCatalog(catalog: PluginReleaseCatalog): voi
     if (!plugin.id.startsWith("com.t3code.") || plugin.id.length <= "com.t3code.".length) {
       throw new Error("invalid plugin id: " + plugin.id);
     }
-    if (!plugin.source.url.startsWith("https://github.com/gmackie/t3code-") || !plugin.source.url.endsWith("-plugin.git")) {
+    if (
+      !plugin.source.url.startsWith("https://github.com/gmackie/t3code-") ||
+      !plugin.source.url.endsWith("-plugin.git")
+    ) {
       throw new Error("plugin source must be an immutable GMACKO GitHub repository: " + plugin.id);
     }
     if (!/^[0-9a-f]{40}$/u.test(plugin.source.commit)) {
