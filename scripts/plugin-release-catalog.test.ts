@@ -48,11 +48,11 @@ it("rejects duplicate ids and mutable sources", () => {
 });
 
 it("stages a normalized catalog into desktop resources", () => {
-  const root = \`/tmp/t3code-plugin-catalog-\${process.pid}\`;
+  const root = `/tmp/t3code-plugin-catalog-${process.pid}`;
   const destination = stagePluginReleaseCatalog({
     repoRoot: process.cwd(),
     stageResourcesDir: root,
   });
-  assert.equal(destination, \`\${root}/plugins/release-catalog.json\`);
+  assert.equal(destination, `${root}/plugins/release-catalog.json`);
   assert.isTrue(Bun.file(destination).size > 0);
 });
