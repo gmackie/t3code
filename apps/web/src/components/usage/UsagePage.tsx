@@ -130,15 +130,15 @@ export function UsagePage() {
         )}
 
         <ScrollArea className="min-h-0 flex-1">
-          <div className="mx-auto flex w-full max-w-6xl flex-col gap-8 px-6 py-6">
-            <div className="flex flex-wrap items-center justify-between gap-4">
+          <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-4 py-5 sm:gap-8 sm:px-6 sm:py-6">
+            <div className="flex flex-col items-start gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-4">
               <p className="text-sm text-muted-foreground">
                 {isPast24Hours && window.sinceTime !== undefined && window.untilTime !== undefined
                   ? `${formatDateTimeShort(window.sinceTime, window.timeZone)} to ${formatDateTimeShort(window.untilTime, window.timeZone)}`
                   : `${formatDayShort(window.sinceDay)} to ${formatDayShort(window.untilDay)}`}
               </p>
-              <div className="flex items-center gap-2">
-                <div className="flex rounded-md border border-border">
+              <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
+                <div className="flex min-w-0 flex-1 rounded-md border border-border sm:flex-none">
                   {WINDOW_OPTIONS.map((option) => (
                     <button
                       key={option.days}
@@ -146,7 +146,7 @@ export function UsagePage() {
                       aria-pressed={option.days === windowDays}
                       onClick={() => selectWindow(option.days)}
                       className={cn(
-                        "relative cursor-pointer px-3 py-1.5 text-xs outline-none first:rounded-s-[calc(var(--radius-md)-1px)] last:rounded-e-[calc(var(--radius-md)-1px)] focus-visible:z-10 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background",
+                        "relative min-w-0 flex-1 cursor-pointer px-2 py-1.5 text-xs whitespace-nowrap outline-none first:rounded-s-[calc(var(--radius-md)-1px)] last:rounded-e-[calc(var(--radius-md)-1px)] focus-visible:z-10 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background sm:flex-none sm:px-3",
                         option.days === windowDays
                           ? "bg-muted text-foreground"
                           : "text-muted-foreground hover:text-foreground",
