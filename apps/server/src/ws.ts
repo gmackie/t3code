@@ -1,3 +1,4 @@
+// @effect-diagnostics nodeBuiltinImport:off - plugin state paths are resolved at the server boundary.
 import * as Cause from "effect/Cause";
 import * as Crypto from "effect/Crypto";
 import * as DateTime from "effect/DateTime";
@@ -13,6 +14,8 @@ import * as NodePath from "node:path";
 import {
   DEFAULT_AUTOMATIC_GIT_FETCH_INTERVAL,
   AuthAccessStreamError,
+  AuthOrchestrationOperateScope,
+  AuthOrchestrationReadScope,
   type AuthAccessStreamEvent,
   type AuthEnvironmentScope,
   AuthSessionId,
