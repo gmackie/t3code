@@ -78,7 +78,7 @@ export function PluginSettingsForm({
 
   useEffect(() => {
     if (scope === "client") {
-      setDraft({ ...defaultPluginSettings(panelSettings), ...(clientValues ?? {}) });
+      setDraft({ ...defaultPluginSettings(panelSettings), ...clientValues });
     } else if (settingsQuery.data) {
       setDraft({ ...defaultPluginSettings(panelSettings), ...settingsQuery.data.values });
     }
