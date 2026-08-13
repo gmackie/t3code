@@ -447,6 +447,25 @@ export const WsServerRefreshProvidersRpc = Rpc.make(WS_METHODS.serverRefreshProv
   error: EnvironmentAuthorizationError,
 });
 
+export const WsProviderUsageGetRpc = Rpc.make(WS_METHODS.providerUsageGet, {
+  payload: ProviderUsageGetInput,
+  success: ProviderUsageSnapshot,
+  error: EnvironmentAuthorizationError,
+});
+
+export const WsProviderUsageRefreshRpc = Rpc.make(WS_METHODS.providerUsageRefresh, {
+  payload: ProviderUsageGetInput,
+  success: ProviderUsageRefreshResult,
+  error: EnvironmentAuthorizationError,
+});
+
+export const WsProviderUsageSubscribeRpc = Rpc.make(WS_METHODS.providerUsageSubscribe, {
+  payload: ProviderUsageSubscribeInput,
+  success: ProviderUsageSnapshot,
+  error: EnvironmentAuthorizationError,
+  stream: true,
+});
+
 export const WsServerUpdateProviderRpc = Rpc.make(WS_METHODS.serverUpdateProvider, {
   payload: ServerProviderUpdateInput,
   success: ServerProviderUpdatedPayload,
