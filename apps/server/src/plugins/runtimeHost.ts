@@ -16,6 +16,11 @@ import {
 import { PluginLifecycle } from "./lifecycle.ts";
 import { PluginRuntimeSupervisor } from "./runtimeSupervisor.ts";
 
+const decodePluginSurfaceModel = Schema.decodeUnknownSync(PluginSurfaceModel);
+const decodePluginPanelModel = Schema.decodeUnknownSync(PluginPanelModel);
+const decodePluginWorkflowModel = Schema.decodeUnknownSync(PluginWorkflowModel);
+const decodePluginActionResult = Schema.decodeUnknownSync(PluginActionResult);
+
 export class PluginRuntimeHost {
   readonly #lifecycle: PluginLifecycle;
   readonly #supervisor: PluginRuntimeSupervisor;
@@ -58,31 +63,29 @@ export class PluginRuntimeHost {
   }
 
   async surface(input: PluginSurfaceGetInputType): Promise<PluginSurfaceModelType> {
-    return Schema.decodeUnknownSync(PluginSurfaceModel)(
+    return decodePluginSurfaceModel(
       await this.#request(input.pluginId, "surface.get", input, "surface"),
     );
   }
 
   async panel(input: PluginPanelGetInput): Promise<PluginPanelModel> {
-    return Schema.decodeUnknownSync(PluginPanelModel)(
-      await this.#request(input.pluginId, "panel.get", input, "panel"),
-    );
+    return decodePluginPanelModel(await this.#request(input.pluginId, "panel.get", input, "panel"));
   }
 
   async workflow(input: PluginWorkflowGetInput): Promise<PluginWorkflowModel> {
-    return Schema.decodeUnknownSync(PluginWorkflowModel)(
+    return decodePluginWorkflowModel(
       await this.#request(input.pluginId, "workflow.get", input, "workflow"),
     );
   }
 
   async workflowAction(input: PluginWorkflowActionInput): Promise<PluginActionResult> {
-    return Schema.decodeUnknownSync(PluginActionResult)(
+    return decodePluginActionResult(
       await this.#request(input.pluginId, "action.execute", input, "action"),
     );
   }
 
   async action(input: PluginActionInput): Promise<PluginActionResult> {
-    return Schema.decodeUnknownSync(PluginActionResult)(
+    return decodePluginActionResult(
       await this.#request(input.pluginId, "action.execute", input, "action"),
     );
   }

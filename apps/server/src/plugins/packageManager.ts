@@ -1,12 +1,14 @@
 // @effect-diagnostics nodeBuiltinImport:off - package installation is a server-side Node boundary.
 import * as Schema from "effect/Schema";
 import * as NodeChildProcess from "node:child_process";
-import * as NodeFileSystem from "node:fs/promises";
+import * as NodeFSP from "node:fs/promises";
 import * as NodePath from "node:path";
-import { promisify } from "node:util";
+import * as NodeUtil from "node:util";
 
 import type { PluginManifest, PluginPackageSource } from "@t3tools/contracts";
 import { PluginManifest as PluginManifestSchema } from "@t3tools/contracts";
+
+const decodePluginManifest = Schema.decodeUnknownSync(PluginManifestSchema);
 
 export type PluginCheckout = {
   directory: string;
@@ -43,9 +45,7 @@ export class PluginPackageManager {
     if (source.kind === "git" && checkout.commit !== source.commit) {
       throw new Error(`resolved commit differs from requested pin: ${checkout.commit}`);
     }
-    const manifest = Schema.decodeUnknownSync(PluginManifestSchema)(
-      await this.#reader.readManifest(checkout.directory),
-    );
+    const manifest = decodePluginManifest(await this.#reader.readManifest(checkout.directory));
     return { ...checkout, pluginId: manifest.id, source, manifest };
   }
 
@@ -76,24 +76,21 @@ export function createLocalPluginPackageReader(
       if (source.kind !== "git") {
         throw new Error("catalog package checkout requires a catalog source adapter");
       }
-      await NodeFileSystem.mkdir(root, { recursive: true });
-      const directory = await NodeFileSystem.mkdtemp(NodePath.join(root, "checkout-"));
+      await NodeFSP.mkdir(root, { recursive: true });
+      const directory = await NodeFSP.mkdtemp(NodePath.join(root, "checkout-"));
       await runGit(["clone", "--no-checkout", source.url, directory]);
       await runGit(["-C", directory, "checkout", "--detach", source.commit]);
       const commit = (await runGit(["-C", directory, "rev-parse", "HEAD"])).trim();
       return { directory, commit };
     },
     async readManifest(directory) {
-      const contents = await NodeFileSystem.readFile(
-        NodePath.join(directory, "t3-plugin.json"),
-        "utf8",
-      );
+      const contents = await NodeFSP.readFile(NodePath.join(directory, "t3-plugin.json"), "utf8");
       return JSON.parse(contents) as unknown;
     },
   };
 }
 
-const execFile = promisify(NodeChildProcess.execFile);
+const execFile = NodeUtil.promisify(NodeChildProcess.execFile);
 
 const defaultGitCommandRunner: GitCommandRunner = async (args, options) => {
   const result = await execFile("git", [...args], { cwd: options?.cwd });
