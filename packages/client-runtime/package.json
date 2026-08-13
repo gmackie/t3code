@@ -3,6 +3,14 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./plugins": {
+      "types": "./src/plugins/index.ts",
+      "default": "./src/plugins/index.ts"
+    },
+    "./state/plugins": {
+      "types": "./src/state/plugins.ts",
+      "default": "./src/state/plugins.ts"
+    },
     "./connection": {
       "types": "./src/connection/index.ts",
       "default": "./src/connection/index.ts"
