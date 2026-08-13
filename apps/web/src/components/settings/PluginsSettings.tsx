@@ -173,7 +173,9 @@ export function PluginsSettingsPanel() {
                                 }).then(() => refreshPlugins());
                               }}
                             >
-                              {granted ? `Granted: ${capability.kind}` : `Grant: ${capability.kind}`}
+                              {granted
+                                ? `Granted: ${capability.kind}`
+                                : `Grant: ${capability.kind}`}
                             </Button>
                           );
                         })}

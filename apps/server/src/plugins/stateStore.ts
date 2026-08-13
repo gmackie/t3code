@@ -1,5 +1,5 @@
 // @effect-diagnostics nodeBuiltinImport:off - plugin registry persistence is a server-side Node boundary.
-import * as NodeFileSystem from "node:fs";
+import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 import * as Schema from "effect/Schema";
 
@@ -12,6 +12,7 @@ const PersistedPluginRecord = Schema.Struct({
   directory: Schema.optional(Schema.String),
 });
 const PersistedPluginState = Schema.Array(PersistedPluginRecord);
+const decodePersistedPluginState = Schema.decodeUnknownSync(PersistedPluginState);
 
 export type PersistedPluginRecord = typeof PersistedPluginRecord.Type;
 
@@ -24,8 +25,8 @@ export class PluginStateStore {
 
   load(): readonly PersistedPluginRecord[] {
     try {
-      const contents = NodeFileSystem.readFileSync(this.#path, "utf8");
-      return Schema.decodeUnknownSync(PersistedPluginState)(JSON.parse(contents));
+      const contents = NodeFS.readFileSync(this.#path, "utf8");
+      return decodePersistedPluginState(JSON.parse(contents));
     } catch {
       return [];
     }
@@ -33,9 +34,9 @@ export class PluginStateStore {
 
   save(records: readonly PersistedPluginRecord[]): void {
     const directory = NodePath.dirname(this.#path);
-    NodeFileSystem.mkdirSync(directory, { recursive: true });
+    NodeFS.mkdirSync(directory, { recursive: true });
     const temporaryPath = `${this.#path}.tmp-${process.pid}`;
-    NodeFileSystem.writeFileSync(temporaryPath, `${JSON.stringify(records, null, 2)}\n`, "utf8");
-    NodeFileSystem.renameSync(temporaryPath, this.#path);
+    NodeFS.writeFileSync(temporaryPath, `${JSON.stringify(records, null, 2)}\n`, "utf8");
+    NodeFS.renameSync(temporaryPath, this.#path);
   }
 }
