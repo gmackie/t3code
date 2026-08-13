@@ -1,6 +1,5 @@
 import * as React from "react";
-import { defaultAnimateLayoutChanges, type AnimateLayoutChanges } from "@dnd-kit/sortable";
-import type { ContextMenuItem } from "@t3tools/contracts";
+import type { ContextMenuItem, IssueItem } from "@t3tools/contracts";
 import type { SidebarProjectSortOrder, SidebarThreadSortOrder } from "@t3tools/contracts/settings";
 import {
   getThreadSortTimestamp,
@@ -24,11 +23,29 @@ export const THREAD_JUMP_HINT_SHOW_DELAY_MS = 100;
 // it small; cold opens still render instantly from the cached snapshot.
 export const SIDEBAR_THREAD_PREWARM_LIMIT = 3;
 
-// The list already reaches its destination through sortable transforms while
-// the pointer is down. dnd-kit's default also animates the committed DOM order
-// after release, replaying the same movement across every affected row.
-export const animatePinnedLayoutChanges: AnimateLayoutChanges = (args) =>
-  args.isSorting ? defaultAnimateLayoutChanges(args) : false;
+export function buildIssueThreadDraftPrompt(issue: IssueItem): string {
+  const lines = [
+    `Please start a new thread for ${issue.provider === "linear" ? "Linear" : "linked"} issue ${issue.key}.`,
+    "",
+    `Title: ${issue.title}`,
+    `State: ${issue.state}`,
+    `URL: ${issue.url}`,
+  ];
+
+  if (issue.assigneeName) {
+    lines.push(`Assignee: ${issue.assigneeName}`);
+  }
+
+  if (issue.labels.length > 0) {
+    lines.push(`Labels: ${issue.labels.join(", ")}`);
+  }
+
+  if (issue.descriptionMarkdown && issue.descriptionMarkdown.trim().length > 0) {
+    lines.push("", "Issue description:", issue.descriptionMarkdown.trim());
+  }
+
+  return lines.join("\n");
+}
 
 type SidebarProject = {
   id: string;
