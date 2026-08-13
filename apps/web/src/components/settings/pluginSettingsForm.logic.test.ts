@@ -10,7 +10,10 @@ const settings: readonly PluginSettingContribution[] = [
 
 describe("plugin settings form logic", () => {
   it("fills missing values from plugin-declared defaults", () => {
-    expect(getPluginSettingsDraft(settings, { name: "Custom" })).toEqual({ name: "Custom", enabled: true });
+    expect(getPluginSettingsDraft(settings, { name: "Custom" })).toEqual({
+      name: "Custom",
+      enabled: true,
+    });
   });
 
   it("returns a field error without throwing on invalid draft values", () => {

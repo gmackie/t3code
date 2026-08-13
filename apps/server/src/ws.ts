@@ -136,7 +136,10 @@ import { PluginLifecycle } from "./plugins/lifecycle.ts";
 import { PluginStateStore } from "./plugins/stateStore.ts";
 import { PluginSettingsStore } from "./plugins/settingsStore.ts";
 import { PluginRuntimeHost } from "./plugins/runtimeHost.ts";
-import { createNodeManagedPluginLauncher, PluginRuntimeSupervisor } from "./plugins/runtimeSupervisor.ts";
+import {
+  createNodeManagedPluginLauncher,
+  PluginRuntimeSupervisor,
+} from "./plugins/runtimeSupervisor.ts";
 const isOrchestrationDispatchCommandError = Schema.is(OrchestrationDispatchCommandError);
 
 const nowIso = Effect.map(DateTime.now, DateTime.formatIso);
@@ -157,7 +160,10 @@ const pluginRegistryEntry = (plugin: ReturnType<PluginLifecycle["snapshot"]>[num
 });
 const isSecretContribution = (item: import("@t3tools/contracts").PluginSettingContribution) =>
   item.field.kind === "text" && item.field.secret === true;
-const pluginManifest = (pluginId: string, plugins: readonly ReturnType<PluginLifecycle["snapshot"]>[number][]) => {
+const pluginManifest = (
+  pluginId: string,
+  plugins: readonly ReturnType<PluginLifecycle["snapshot"]>[number][],
+) => {
   const plugin = plugins.find((entry) => entry.manifest.id === pluginId);
   if (!plugin) throw new Error(`plugin not installed: ${pluginId}`);
   return plugin.manifest;
@@ -1516,44 +1522,250 @@ const makeWsRpcLayer = (
             { "rpc.aggregate": "externalThreads" },
           ),
         [WS_METHODS.pluginList]: (_input) =>
-          observeRpcEffect(WS_METHODS.pluginList, Effect.succeed(pluginLifecycle.snapshot().map(pluginRegistryEntry)), { "rpc.aggregate": "plugins" }),
+          observeRpcEffect(
+            WS_METHODS.pluginList,
+            Effect.succeed(pluginLifecycle.snapshot().map(pluginRegistryEntry)),
+            { "rpc.aggregate": "plugins" },
+          ),
         [WS_METHODS.pluginInstall]: (input) =>
-          observeRpcEffect(WS_METHODS.pluginInstall, Effect.tryPromise({
-            try: async () => {
-              const packageInfo = input.manifest ? { manifest: input.manifest, source: input.source } : await pluginPackageManager.install(input.source);
-              pluginLifecycle.install(packageInfo);
-              const plugin = pluginLifecycle.snapshot().find((entry) => entry.manifest.id === packageInfo.manifest.id);
-              if (!plugin) throw new Error("plugin install did not register");
-              return pluginRegistryEntry(plugin);
-            },
-            catch: (error) => new EnvironmentAuthorizationError({ message: error instanceof Error ? error.message : "Plugin installation failed.", requiredScope: AuthOrchestrationOperateScope }),
-          }), { "rpc.aggregate": "plugins" }),
+          observeRpcEffect(
+            WS_METHODS.pluginInstall,
+            Effect.tryPromise({
+              try: async () => {
+                const packageInfo = input.manifest
+                  ? { manifest: input.manifest, source: input.source }
+                  : await pluginPackageManager.install(input.source);
+                pluginLifecycle.install(packageInfo);
+                const plugin = pluginLifecycle
+                  .snapshot()
+                  .find((entry) => entry.manifest.id === packageInfo.manifest.id);
+                if (!plugin) throw new Error("plugin install did not register");
+                return pluginRegistryEntry(plugin);
+              },
+              catch: (error) =>
+                new EnvironmentAuthorizationError({
+                  message: error instanceof Error ? error.message : "Plugin installation failed.",
+                  requiredScope: AuthOrchestrationOperateScope,
+                }),
+            }),
+            { "rpc.aggregate": "plugins" },
+          ),
         [WS_METHODS.pluginEnable]: (input) =>
-          observeRpcEffect(WS_METHODS.pluginEnable, Effect.tryPromise({ try: () => pluginRuntimeHost.enable(input.pluginId), catch: (error) => new EnvironmentAuthorizationError({ message: error instanceof Error ? error.message : "Plugin enable failed.", requiredScope: AuthOrchestrationOperateScope }) }), { "rpc.aggregate": "plugins" }),
+          observeRpcEffect(
+            WS_METHODS.pluginEnable,
+            Effect.tryPromise({
+              try: () => pluginRuntimeHost.enable(input.pluginId),
+              catch: (error) =>
+                new EnvironmentAuthorizationError({
+                  message: error instanceof Error ? error.message : "Plugin enable failed.",
+                  requiredScope: AuthOrchestrationOperateScope,
+                }),
+            }),
+            { "rpc.aggregate": "plugins" },
+          ),
         [WS_METHODS.pluginDisable]: (input) =>
-          observeRpcEffect(WS_METHODS.pluginDisable, Effect.tryPromise({ try: () => pluginRuntimeHost.disable(input.pluginId), catch: (error) => new EnvironmentAuthorizationError({ message: error instanceof Error ? error.message : "Plugin disable failed.", requiredScope: AuthOrchestrationOperateScope }) }), { "rpc.aggregate": "plugins" }),
+          observeRpcEffect(
+            WS_METHODS.pluginDisable,
+            Effect.tryPromise({
+              try: () => pluginRuntimeHost.disable(input.pluginId),
+              catch: (error) =>
+                new EnvironmentAuthorizationError({
+                  message: error instanceof Error ? error.message : "Plugin disable failed.",
+                  requiredScope: AuthOrchestrationOperateScope,
+                }),
+            }),
+            { "rpc.aggregate": "plugins" },
+          ),
         [WS_METHODS.pluginGrant]: (input) =>
-          observeRpcEffect(WS_METHODS.pluginGrant, Effect.try({ try: () => { pluginLifecycle.grant(input.pluginId, input.capability); return pluginLifecycle.health(input.pluginId); }, catch: (error) => new EnvironmentAuthorizationError({ message: error instanceof Error ? error.message : "Plugin capability grant failed.", requiredScope: AuthOrchestrationOperateScope }) }), { "rpc.aggregate": "plugins" }),
+          observeRpcEffect(
+            WS_METHODS.pluginGrant,
+            Effect.try({
+              try: () => {
+                pluginLifecycle.grant(input.pluginId, input.capability);
+                return pluginLifecycle.health(input.pluginId);
+              },
+              catch: (error) =>
+                new EnvironmentAuthorizationError({
+                  message:
+                    error instanceof Error ? error.message : "Plugin capability grant failed.",
+                  requiredScope: AuthOrchestrationOperateScope,
+                }),
+            }),
+            { "rpc.aggregate": "plugins" },
+          ),
         [WS_METHODS.pluginRevoke]: (input) =>
-          observeRpcEffect(WS_METHODS.pluginRevoke, Effect.try({ try: () => { pluginLifecycle.revoke(input.pluginId, input.capability); return pluginLifecycle.health(input.pluginId); }, catch: (error) => new EnvironmentAuthorizationError({ message: error instanceof Error ? error.message : "Plugin capability revoke failed.", requiredScope: AuthOrchestrationOperateScope }) }), { "rpc.aggregate": "plugins" }),
+          observeRpcEffect(
+            WS_METHODS.pluginRevoke,
+            Effect.try({
+              try: () => {
+                pluginLifecycle.revoke(input.pluginId, input.capability);
+                return pluginLifecycle.health(input.pluginId);
+              },
+              catch: (error) =>
+                new EnvironmentAuthorizationError({
+                  message:
+                    error instanceof Error ? error.message : "Plugin capability revoke failed.",
+                  requiredScope: AuthOrchestrationOperateScope,
+                }),
+            }),
+            { "rpc.aggregate": "plugins" },
+          ),
         [WS_METHODS.pluginHealth]: (input) =>
-          observeRpcEffect(WS_METHODS.pluginHealth, Effect.try({ try: () => pluginRuntimeHost.health(input.pluginId), catch: (error) => new EnvironmentAuthorizationError({ message: error instanceof Error ? error.message : "Plugin health lookup failed.", requiredScope: AuthOrchestrationReadScope }) }), { "rpc.aggregate": "plugins" }),
+          observeRpcEffect(
+            WS_METHODS.pluginHealth,
+            Effect.try({
+              try: () => pluginRuntimeHost.health(input.pluginId),
+              catch: (error) =>
+                new EnvironmentAuthorizationError({
+                  message: error instanceof Error ? error.message : "Plugin health lookup failed.",
+                  requiredScope: AuthOrchestrationReadScope,
+                }),
+            }),
+            { "rpc.aggregate": "plugins" },
+          ),
         [WS_METHODS.pluginSurfaceGet]: (input) =>
-          observeRpcEffect(WS_METHODS.pluginSurfaceGet, Effect.tryPromise({ try: () => pluginRuntimeHost.surface(input), catch: (error) => new EnvironmentAuthorizationError({ message: error instanceof Error ? error.message : "Plugin surface lookup failed.", requiredScope: AuthOrchestrationReadScope }) }), { "rpc.aggregate": "plugins" }),
+          observeRpcEffect(
+            WS_METHODS.pluginSurfaceGet,
+            Effect.tryPromise({
+              try: () => pluginRuntimeHost.surface(input),
+              catch: (error) =>
+                new EnvironmentAuthorizationError({
+                  message: error instanceof Error ? error.message : "Plugin surface lookup failed.",
+                  requiredScope: AuthOrchestrationReadScope,
+                }),
+            }),
+            { "rpc.aggregate": "plugins" },
+          ),
         [WS_METHODS.pluginPanelGet]: (input) =>
-          observeRpcEffect(WS_METHODS.pluginPanelGet, Effect.tryPromise({ try: () => pluginRuntimeHost.panel(input), catch: (error) => new EnvironmentAuthorizationError({ message: error instanceof Error ? error.message : "Plugin panel lookup failed.", requiredScope: AuthOrchestrationReadScope }) }), { "rpc.aggregate": "plugins" }),
+          observeRpcEffect(
+            WS_METHODS.pluginPanelGet,
+            Effect.tryPromise({
+              try: () => pluginRuntimeHost.panel(input),
+              catch: (error) =>
+                new EnvironmentAuthorizationError({
+                  message: error instanceof Error ? error.message : "Plugin panel lookup failed.",
+                  requiredScope: AuthOrchestrationReadScope,
+                }),
+            }),
+            { "rpc.aggregate": "plugins" },
+          ),
         [WS_METHODS.pluginWorkflowGet]: (input) =>
-          observeRpcEffect(WS_METHODS.pluginWorkflowGet, Effect.tryPromise({ try: () => pluginRuntimeHost.workflow(input), catch: (error) => new EnvironmentAuthorizationError({ message: error instanceof Error ? error.message : "Plugin workflow lookup failed.", requiredScope: AuthOrchestrationReadScope }) }), { "rpc.aggregate": "plugins" }),
+          observeRpcEffect(
+            WS_METHODS.pluginWorkflowGet,
+            Effect.tryPromise({
+              try: () => pluginRuntimeHost.workflow(input),
+              catch: (error) =>
+                new EnvironmentAuthorizationError({
+                  message:
+                    error instanceof Error ? error.message : "Plugin workflow lookup failed.",
+                  requiredScope: AuthOrchestrationReadScope,
+                }),
+            }),
+            { "rpc.aggregate": "plugins" },
+          ),
         [WS_METHODS.pluginWorkflowAction]: (input) =>
-          observeRpcEffect(WS_METHODS.pluginWorkflowAction, Effect.tryPromise({ try: () => pluginRuntimeHost.workflowAction(input), catch: (error) => new EnvironmentAuthorizationError({ message: error instanceof Error ? error.message : "Plugin workflow action failed.", requiredScope: AuthOrchestrationOperateScope }) }), { "rpc.aggregate": "plugins" }),
+          observeRpcEffect(
+            WS_METHODS.pluginWorkflowAction,
+            Effect.tryPromise({
+              try: () => pluginRuntimeHost.workflowAction(input),
+              catch: (error) =>
+                new EnvironmentAuthorizationError({
+                  message:
+                    error instanceof Error ? error.message : "Plugin workflow action failed.",
+                  requiredScope: AuthOrchestrationOperateScope,
+                }),
+            }),
+            { "rpc.aggregate": "plugins" },
+          ),
         [WS_METHODS.pluginAction]: (input) =>
-          observeRpcEffect(WS_METHODS.pluginAction, Effect.tryPromise({ try: () => pluginRuntimeHost.action(input), catch: (error) => new EnvironmentAuthorizationError({ message: error instanceof Error ? error.message : "Plugin action failed.", requiredScope: AuthOrchestrationOperateScope }) }), { "rpc.aggregate": "plugins" }),
+          observeRpcEffect(
+            WS_METHODS.pluginAction,
+            Effect.tryPromise({
+              try: () => pluginRuntimeHost.action(input),
+              catch: (error) =>
+                new EnvironmentAuthorizationError({
+                  message: error instanceof Error ? error.message : "Plugin action failed.",
+                  requiredScope: AuthOrchestrationOperateScope,
+                }),
+            }),
+            { "rpc.aggregate": "plugins" },
+          ),
         [WS_METHODS.pluginSettingsGet]: (input) =>
-          observeRpcEffect(WS_METHODS.pluginSettingsGet, Effect.try({ try: () => { const contributions = pluginManifest(input.pluginId, pluginLifecycle.snapshot()).contributes.settings ?? []; return { pluginId: input.pluginId, ...(input.projectId !== undefined ? { projectId: input.projectId } : {}), values: pluginSettingsStore.get(input.pluginId, input.projectId, contributions), redacted: contributions.filter(isSecretContribution).map((item) => item.id) }; }, catch: (error) => new EnvironmentAuthorizationError({ message: error instanceof Error ? error.message : "Plugin settings lookup failed.", requiredScope: AuthOrchestrationReadScope }) }), { "rpc.aggregate": "plugins" }),
+          observeRpcEffect(
+            WS_METHODS.pluginSettingsGet,
+            Effect.try({
+              try: () => {
+                const contributions =
+                  pluginManifest(input.pluginId, pluginLifecycle.snapshot()).contributes.settings ??
+                  [];
+                return {
+                  pluginId: input.pluginId,
+                  ...(input.projectId !== undefined ? { projectId: input.projectId } : {}),
+                  values: pluginSettingsStore.get(input.pluginId, input.projectId, contributions),
+                  redacted: contributions.filter(isSecretContribution).map((item) => item.id),
+                };
+              },
+              catch: (error) =>
+                new EnvironmentAuthorizationError({
+                  message:
+                    error instanceof Error ? error.message : "Plugin settings lookup failed.",
+                  requiredScope: AuthOrchestrationReadScope,
+                }),
+            }),
+            { "rpc.aggregate": "plugins" },
+          ),
         [WS_METHODS.pluginSettingsUpdate]: (input) =>
-          observeRpcEffect(WS_METHODS.pluginSettingsUpdate, Effect.try({ try: () => { const contributions = pluginManifest(input.pluginId, pluginLifecycle.snapshot()).contributes.settings ?? []; return { pluginId: input.pluginId, ...(input.projectId !== undefined ? { projectId: input.projectId } : {}), values: pluginSettingsStore.update(input.pluginId, input.projectId, contributions, input.values), redacted: contributions.filter(isSecretContribution).map((item) => item.id) }; }, catch: (error) => new EnvironmentAuthorizationError({ message: error instanceof Error ? error.message : "Plugin settings update failed.", requiredScope: AuthOrchestrationOperateScope }) }), { "rpc.aggregate": "plugins" }),
+          observeRpcEffect(
+            WS_METHODS.pluginSettingsUpdate,
+            Effect.try({
+              try: () => {
+                const contributions =
+                  pluginManifest(input.pluginId, pluginLifecycle.snapshot()).contributes.settings ??
+                  [];
+                return {
+                  pluginId: input.pluginId,
+                  ...(input.projectId !== undefined ? { projectId: input.projectId } : {}),
+                  values: pluginSettingsStore.update(
+                    input.pluginId,
+                    input.projectId,
+                    contributions,
+                    input.values,
+                  ),
+                  redacted: contributions.filter(isSecretContribution).map((item) => item.id),
+                };
+              },
+              catch: (error) =>
+                new EnvironmentAuthorizationError({
+                  message:
+                    error instanceof Error ? error.message : "Plugin settings update failed.",
+                  requiredScope: AuthOrchestrationOperateScope,
+                }),
+            }),
+            { "rpc.aggregate": "plugins" },
+          ),
         [WS_METHODS.pluginSettingsReset]: (input) =>
-          observeRpcEffect(WS_METHODS.pluginSettingsReset, Effect.try({ try: () => { const contributions = pluginManifest(input.pluginId, pluginLifecycle.snapshot()).contributes.settings ?? []; return { pluginId: input.pluginId, ...(input.projectId !== undefined ? { projectId: input.projectId } : {}), values: pluginSettingsStore.reset(input.pluginId, input.projectId, contributions), redacted: [] }; }, catch: (error) => new EnvironmentAuthorizationError({ message: error instanceof Error ? error.message : "Plugin settings reset failed.", requiredScope: AuthOrchestrationOperateScope }) }), { "rpc.aggregate": "plugins" }),
+          observeRpcEffect(
+            WS_METHODS.pluginSettingsReset,
+            Effect.try({
+              try: () => {
+                const contributions =
+                  pluginManifest(input.pluginId, pluginLifecycle.snapshot()).contributes.settings ??
+                  [];
+                return {
+                  pluginId: input.pluginId,
+                  ...(input.projectId !== undefined ? { projectId: input.projectId } : {}),
+                  values: pluginSettingsStore.reset(input.pluginId, input.projectId, contributions),
+                  redacted: [],
+                };
+              },
+              catch: (error) =>
+                new EnvironmentAuthorizationError({
+                  message: error instanceof Error ? error.message : "Plugin settings reset failed.",
+                  requiredScope: AuthOrchestrationOperateScope,
+                }),
+            }),
+            { "rpc.aggregate": "plugins" },
+          ),
 
         [WS_METHODS.serverRefreshProviders]: (input) =>
           observeRpcEffect(

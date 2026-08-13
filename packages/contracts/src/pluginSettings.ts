@@ -129,8 +129,10 @@ function validateValue(contribution: PluginSettingContribution, value: PluginSet
     if (typeof value !== "number" || !Number.isFinite(value)) {
       throw new Error(`expected number for ${contribution.id}`);
     }
-    if (field.min !== undefined && value < field.min) throw new Error(`setting ${contribution.id} is below minimum`);
-    if (field.max !== undefined && value > field.max) throw new Error(`setting ${contribution.id} is above maximum`);
+    if (field.min !== undefined && value < field.min)
+      throw new Error(`setting ${contribution.id} is below minimum`);
+    if (field.max !== undefined && value > field.max)
+      throw new Error(`setting ${contribution.id} is above maximum`);
     return;
   }
   if (field.kind === "boolean") {
