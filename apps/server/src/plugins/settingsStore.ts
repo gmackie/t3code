@@ -1,5 +1,5 @@
 // @effect-diagnostics nodeBuiltinImport:off - plugin settings persistence is a server-side boundary.
-import * as NodeFileSystem from "node:fs";
+import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 
 import {
@@ -62,7 +62,7 @@ export class PluginSettingsStore {
     );
     const stored = this.#load();
     const current = stored[pluginId] ?? { server: {}, projects: {} };
-    const existing = projectId === undefined ? current.server : current.projects[projectId] ?? {};
+    const existing = projectId === undefined ? current.server : (current.projects[projectId] ?? {});
     const publicValues = Object.fromEntries(
       Object.entries(values).filter(([id]) => {
         const contribution = contributions.find((item) => item.id === id);
@@ -99,7 +99,7 @@ export class PluginSettingsStore {
 
   #load(): StoredSettings {
     try {
-      const value: unknown = JSON.parse(NodeFileSystem.readFileSync(this.#path, "utf8"));
+      const value: unknown = JSON.parse(NodeFS.readFileSync(this.#path, "utf8"));
       if (!value || typeof value !== "object" || Array.isArray(value)) return {};
       return value as StoredSettings;
     } catch {
@@ -108,9 +108,9 @@ export class PluginSettingsStore {
   }
 
   #save(value: StoredSettings): void {
-    NodeFileSystem.mkdirSync(NodePath.dirname(this.#path), { recursive: true });
+    NodeFS.mkdirSync(NodePath.dirname(this.#path), { recursive: true });
     const temporaryPath = `${this.#path}.tmp-${process.pid}`;
-    NodeFileSystem.writeFileSync(temporaryPath, `${JSON.stringify(value, null, 2)}\n`, "utf8");
-    NodeFileSystem.renameSync(temporaryPath, this.#path);
+    NodeFS.writeFileSync(temporaryPath, `${JSON.stringify(value, null, 2)}\n`, "utf8");
+    NodeFS.renameSync(temporaryPath, this.#path);
   }
 }
