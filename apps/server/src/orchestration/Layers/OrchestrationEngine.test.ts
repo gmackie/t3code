@@ -1206,7 +1206,7 @@ describe("OrchestrationEngine", () => {
     await system.dispose();
   });
 
-  it.effect("upgrades and reopens migration-36 imported thread history", () =>
+  it.effect("upgrades and reopens migration-41 imported thread history", () =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;
       const path = yield* Path.Path;
@@ -1214,7 +1214,7 @@ describe("OrchestrationEngine", () => {
       const dbPath = path.join(tempDirectory, "orchestration.sqlite");
       yield* Effect.gen(function* () {
         const sql = yield* SqlClient.SqlClient;
-        yield* runMigrations({ toMigrationInclusive: 36 });
+        yield* runMigrations({ toMigrationInclusive: 41 });
         const now = "2026-01-01T00:00:00.000Z";
         const insertEvent = (input: {
           eventId: string;
