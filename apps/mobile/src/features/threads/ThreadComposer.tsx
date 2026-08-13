@@ -40,7 +40,7 @@ import { scopedThreadKey } from "../../lib/scopedEntities";
 
 import { AppText as Text } from "../../components/AppText";
 import { ComposerAttachmentStrip } from "../../components/ComposerAttachmentStrip";
-import { GlassSurface } from "../../components/GlassSurface";
+import { ProviderUsageIndicator } from "../../components/ProviderUsageIndicator";
 import {
   ComposerEditor,
   type ComposerEditorHandle,

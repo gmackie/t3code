@@ -10,6 +10,20 @@ import { EXTERNAL_THREAD_IMPORT_MAX_OPAQUE_VALUE_LENGTH } from "./externalThread
 
 export const PROJECT_SESSION_IMPORT_MAX_PAGE_SIZE = 200;
 
+export const ProjectSourceId = TrimmedNonEmptyString.check(
+  Schema.isMaxLength(EXTERNAL_THREAD_IMPORT_MAX_OPAQUE_VALUE_LENGTH),
+).pipe(Schema.brand("ProjectSourceId"));
+export type ProjectSourceId = typeof ProjectSourceId.Type;
+
+export const ProjectSource = Schema.Struct({
+  id: ProjectSourceId,
+  root: TrimmedNonEmptyString,
+  label: TrimmedNonEmptyString,
+  lastScanCompletedAt: Schema.NullOr(Schema.DateTimeUtc),
+  lastRepositoryCount: NonNegativeInt,
+});
+export type ProjectSource = typeof ProjectSource.Type;
+
 export const ProjectSessionImportScanCursor = TrimmedNonEmptyString.check(
   Schema.isMaxLength(EXTERNAL_THREAD_IMPORT_MAX_OPAQUE_VALUE_LENGTH),
 ).pipe(Schema.brand("ProjectSessionImportScanCursor"));

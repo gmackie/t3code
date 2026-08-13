@@ -1,6 +1,7 @@
 import {
   ArrowLeftIcon,
   ChartNoAxesColumnIcon,
+  FolderGit2Icon,
   GitPullRequestIcon,
   SettingsIcon,
 } from "lucide-react";
@@ -28,9 +29,33 @@ import {
   SidebarTrigger,
   useSidebar,
 } from "../ui/sidebar";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { SidebarProviderUpdatePill } from "./SidebarProviderUpdatePill";
 import { SidebarUpdateArchitectureWarning, SidebarUpdatePill } from "./SidebarUpdatePill";
+
+export type SidebarFooterNavigationItem = "projects" | "usage" | "pull-requests" | "settings";
+
+export function resolveSidebarFooterNavigation(input: {
+  currentPage: "projects" | "usage" | "pull-requests" | "settings" | null;
+  pullRequestsSupported: boolean;
+}): readonly SidebarFooterNavigationItem[] {
+  const items: SidebarFooterNavigationItem[] = ["projects", "usage"];
+  if (input.pullRequestsSupported) items.push("pull-requests");
+  items.push("settings");
+  return items;
+}
+
+function sidebarFooterItemLabel(item: SidebarFooterNavigationItem): string {
+  switch (item) {
+    case "projects":
+      return "Projects";
+    case "usage":
+      return "Usage";
+    case "pull-requests":
+      return "Pull Requests";
+    case "settings":
+      return "Settings";
+  }
+}
 
 export const SidebarChromeHeader = memo(function SidebarChromeHeader({
   isElectron,
@@ -149,13 +174,15 @@ export const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
   const { isMobile, setOpenMobile } = useSidebar();
   const currentFooterPage = useLocation({
     select: (location) =>
-      /^\/settings(?:\/|$)/.test(location.pathname)
-        ? "settings"
-        : location.pathname === "/usage"
-          ? "usage"
-          : location.pathname === "/pull-requests"
-            ? "pull-requests"
-            : null,
+      location.pathname === "/usage"
+        ? "usage"
+        : location.pathname === "/pull-requests"
+          ? "pull-requests"
+          : location.pathname === "/projects" || location.pathname.startsWith("/projects/")
+            ? "projects"
+            : location.pathname === "/settings" || location.pathname.startsWith("/settings/")
+              ? "settings"
+              : null,
   });
   const { environments } = useEnvironments();
   // The page reads every connected server, so one of them offering pull requests is enough for
@@ -183,6 +210,11 @@ export const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
     }
     void navigate({ to: "/usage" });
   }, [isMobile, navigate, setOpenMobile]);
+
+  const handleProjectsClick = useCallback(() => {
+    closeMobileSidebar();
+    void navigate({ to: "/projects" });
+  }, [closeMobileSidebar, navigate]);
 
   const handleBackClick = useCallback(() => {
     closeMobileSidebar();
@@ -233,7 +265,50 @@ export const SidebarChromeFooter = memo(function SidebarChromeFooter() {
     <SidebarFooter className="p-[var(--sidebar-content-inset)]">
       <SidebarProviderUpdatePill />
       <SidebarUpdateArchitectureWarning />
-      <SidebarUtilityMenu />
+      <SidebarMenu>
+        {currentFooterPage !== null ? (
+          <SidebarMenuItem>
+            <SidebarMenuButton aria-label="Back to threads" onClick={handleBackClick}>
+              <ArrowLeftIcon />
+              <span>Back to threads</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        ) : null}
+        {resolveSidebarFooterNavigation({
+          currentPage: currentFooterPage,
+          pullRequestsSupported,
+        }).map((item) => {
+          const isActive = item === currentFooterPage;
+          const label = sidebarFooterItemLabel(item);
+          const icon =
+            item === "projects" ? (
+              <FolderGit2Icon />
+            ) : item === "usage" ? (
+              <ChartNoAxesColumnIcon />
+            ) : item === "pull-requests" ? (
+              <GitPullRequestIcon />
+            ) : (
+              <SettingsIcon />
+            );
+          const onClick =
+            item === "projects"
+              ? handleProjectsClick
+              : item === "usage"
+                ? handleUsageClick
+                : item === "pull-requests"
+                  ? handlePullRequestsClick
+                  : handleSettingsClick;
+          return (
+            <SidebarMenuItem key={item}>
+              <SidebarMenuButton aria-label={label} isActive={isActive} onClick={onClick}>
+                {icon}
+                <span>{label}</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          );
+        })}
+        <SidebarUpdatePill />
+      </SidebarMenu>
     </SidebarFooter>
   );
 });
