@@ -68,5 +68,5 @@ export function stagePluginReleaseCatalog(input: {
 if (import.meta.main) {
   const repoRoot = NodePath.resolve(NodePath.dirname(new URL(import.meta.url).pathname), "..");
   const catalog = readPluginReleaseCatalog(repoRoot);
-  console.log("validated " + catalog.plugins.length + " plugin release entries");
+  process.stdout.write("validated " + catalog.plugins.length + " plugin release entries\n");
 }
