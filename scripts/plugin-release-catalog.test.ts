@@ -1,5 +1,6 @@
 // @effect-diagnostics nodeBuiltinImport:off - the test checks the staged resource file.
 import * as NodeFS from "node:fs";
+import * as NodeURL from "node:url";
 
 import { assert, it } from "@effect/vitest";
 
@@ -10,7 +11,8 @@ import {
 } from "./plugin-release-catalog.ts";
 
 it("validates the checked-in release catalog", () => {
-  const catalog = readPluginReleaseCatalog(process.cwd());
+  const repoRoot = NodeURL.fileURLToPath(new URL("../", import.meta.url));
+  const catalog = readPluginReleaseCatalog(repoRoot);
   assert.isAtLeast(catalog.plugins.length, 10);
   assert.isTrue(catalog.plugins.some((plugin) => plugin.id === "com.t3code.bob"));
   assert.isTrue(catalog.plugins.some((plugin) => plugin.id === "com.t3code.jujutsu"));
@@ -53,7 +55,7 @@ it("rejects duplicate ids and mutable sources", () => {
 it("stages a normalized catalog into desktop resources", () => {
   const root = `/tmp/t3code-plugin-catalog-${process.pid}`;
   const destination = stagePluginReleaseCatalog({
-    repoRoot: process.cwd(),
+    repoRoot: NodeURL.fileURLToPath(new URL("../", import.meta.url)),
     stageResourcesDir: root,
   });
   assert.equal(destination, `${root}/plugins/release-catalog.json`);
