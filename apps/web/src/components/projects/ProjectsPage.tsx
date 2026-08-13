@@ -38,7 +38,7 @@ export function ProjectsPage() {
 
   return (
     <ScrollArea className="h-full">
-      <main className="mx-auto flex w-full max-w-6xl flex-col gap-7 px-6 py-8">
+      <main className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-4 py-6 sm:gap-7 sm:px-6 sm:py-8">
         <header>
           <h1 className="text-2xl font-semibold text-foreground">Projects</h1>
           <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
@@ -90,7 +90,7 @@ export function ProjectsPage() {
               {sources.map((source) => (
                 <div
                   key={source.id}
-                  className="flex items-center gap-4 border-b px-4 py-3 last:border-b-0"
+                  className="flex flex-col items-stretch gap-3 border-b px-4 py-3 last:border-b-0 sm:flex-row sm:items-center sm:gap-4"
                 >
                   <FolderGit2Icon className="size-5 shrink-0 text-muted-foreground" />
                   <div className="min-w-0 flex-1">
@@ -102,7 +102,12 @@ export function ProjectsPage() {
                       ? `${source.lastRepositoryCount} repositories last found`
                       : "Ready to scan"}
                   </div>
-                  <Button size="sm" variant="outline" onClick={() => setActiveSource(source)}>
+                  <Button
+                    className="w-full sm:w-auto"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setActiveSource(source)}
+                  >
                     <RefreshCwIcon /> Scan & import
                   </Button>
                   <Button

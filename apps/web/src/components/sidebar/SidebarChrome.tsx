@@ -268,7 +268,11 @@ export const SidebarChromeFooter = memo(function SidebarChromeFooter() {
       <SidebarMenu>
         {currentFooterPage !== null ? (
           <SidebarMenuItem>
-            <SidebarMenuButton aria-label="Back to threads" onClick={handleBackClick}>
+            <SidebarMenuButton
+              aria-label="Back to threads"
+              onClick={handleBackClick}
+              tooltip="Back to threads"
+            >
               <ArrowLeftIcon />
               <span>Back to threads</span>
             </SidebarMenuButton>
@@ -300,7 +304,12 @@ export const SidebarChromeFooter = memo(function SidebarChromeFooter() {
                   : handleSettingsClick;
           return (
             <SidebarMenuItem key={item}>
-              <SidebarMenuButton aria-label={label} isActive={isActive} onClick={onClick}>
+              <SidebarMenuButton
+                aria-label={label}
+                isActive={isActive}
+                onClick={onClick}
+                tooltip={label}
+              >
                 {icon}
                 <span>{label}</span>
               </SidebarMenuButton>
