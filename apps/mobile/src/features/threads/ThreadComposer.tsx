@@ -41,6 +41,7 @@ import { scopedThreadKey } from "../../lib/scopedEntities";
 
 import { AppText as Text } from "../../components/AppText";
 import { ComposerAttachmentStrip } from "../../components/ComposerAttachmentStrip";
+import { ProviderUsageIndicator } from "../../components/ProviderUsageIndicator";
 import {
   ComposerEditor,
   type ComposerEditorHandle,

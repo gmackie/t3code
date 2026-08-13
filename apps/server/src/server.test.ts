@@ -79,6 +79,26 @@ const decodeTransferThreadSnapshot = Schema.decodeUnknownEffect(
   Schema.fromJsonString(OrchestrationThreadDetailSnapshot),
 );
 
+const unavailableExternalThreadImportService: ExternalThreadImportService.ExternalThreadImportService["Service"] =
+  {
+    discover: () =>
+      Effect.die("ExternalThreadImportService not stubbed in this test") as ReturnType<
+        ExternalThreadImportService.ExternalThreadImportService["Service"]["discover"]
+      >,
+    importSelected: () =>
+      Effect.die("ExternalThreadImportService not stubbed in this test") as ReturnType<
+        ExternalThreadImportService.ExternalThreadImportService["Service"]["importSelected"]
+      >,
+  };
+
+const unavailableProjectSessionImportService: ProjectSessionImportService.ProjectSessionImportService["Service"] =
+  {
+    scan: () =>
+      Effect.die("ProjectSessionImportService not stubbed in this test") as ReturnType<
+        ProjectSessionImportService.ProjectSessionImportService["Service"]["scan"]
+      >,
+  };
+
 const collectQueueUntil = Effect.fn("TransferBudget.collectQueueUntil")(function* <A>(
   queue: Queue.Queue<A>,
   predicate: (value: A) => boolean,
@@ -152,6 +172,7 @@ import * as ResourceAttribution from "./resourceTelemetry/ResourceAttribution.ts
 import * as ResourceTelemetry from "./resourceTelemetry/ResourceTelemetry.ts";
 import * as UsageService from "./usage/UsageService.ts";
 import * as ExternalThreadImportService from "./threadImport/ExternalThreadImportService.ts";
+import * as ProjectSessionImportService from "./projectImport/ProjectSessionImportService.ts";
 import * as Data from "effect/Data";
 
 import { makeOrchestrationIntegrationHarness } from "../integration/OrchestrationEngineHarness.integration.ts";
@@ -662,6 +683,14 @@ const buildAppUnderTest = (options?: {
             streamEvents: Stream.empty,
             ...options?.layers?.providerService,
           }),
+          Layer.succeed(
+            ExternalThreadImportService.ExternalThreadImportService,
+            unavailableExternalThreadImportService,
+          ),
+          Layer.succeed(
+            ProjectSessionImportService.ProjectSessionImportService,
+            unavailableProjectSessionImportService,
+          ),
         ),
       ),
       Layer.provide(
