@@ -11,6 +11,7 @@ import {
 } from "./model.ts";
 import { ModelSelection } from "./orchestration.ts";
 import { ProviderInstanceConfig, ProviderInstanceId } from "./providerInstance.ts";
+import { ProjectSource } from "./projectSessionImport.ts";
 
 // ── Client Settings (local-only) ───────────────────────────────
 
@@ -565,6 +566,27 @@ export const BackgroundActivitySettings = Schema.Struct({
 }).pipe(Schema.withDecodingDefault(Effect.succeed({})));
 export type BackgroundActivitySettings = typeof BackgroundActivitySettings.Type;
 
+const TerminalProfileEnvKey = Schema.String.check(
+  Schema.isPattern(/^[A-Za-z_][A-Za-z0-9_]*$/),
+).check(Schema.isMaxLength(128));
+const TerminalProfileEnvValue = Schema.String.check(Schema.isMaxLength(8_192));
+
+export const TerminalProfileSettings = Schema.Struct({
+  shellPath: TrimmedString.pipe(Schema.withDecodingDefaultKey(Effect.succeed(""))),
+  shellArgs: Schema.Array(TrimmedString).pipe(Schema.withDecodingDefaultKey(Effect.succeed([]))),
+  env: Schema.Record(TerminalProfileEnvKey, TerminalProfileEnvValue).pipe(
+    Schema.withDecodingDefaultKey(Effect.succeed({})),
+  ),
+});
+export type TerminalProfileSettings = typeof TerminalProfileSettings.Type;
+
+export const TerminalSettings = Schema.Struct({
+  environmentVariablesText: Schema.String.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
+  zshStartupDirectory: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
+  profile: TerminalProfileSettings.pipe(Schema.withDecodingDefaultKey(Effect.succeed({}))),
+});
+export type TerminalSettings = typeof TerminalSettings.Type;
+
 export const ServerSettings = Schema.Struct({
   // Legacy token-by-token assistant output. Deliberately a fresh key (was
   // `enableAssistantStreaming`): decoding drops the old key, so everyone,
@@ -596,6 +618,9 @@ export const ServerSettings = Schema.Struct({
     Schema.withDecodingDefault(Effect.succeed(true)),
   ),
   addProjectBaseDirectory: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
+  projectSources: Schema.Array(ProjectSource).pipe(
+    Schema.withDecodingDefaultKey(Effect.succeed([])),
+  ),
   textGenerationModelSelection: ModelSelection.pipe(
     Schema.withDecodingDefault(
       Effect.succeed({
@@ -642,6 +667,7 @@ export const ServerSettings = Schema.Struct({
     linear: LinearIssueSettings.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
   }).pipe(Schema.withDecodingDefault(Effect.succeed({}))),
   observability: ObservabilitySettings.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
+  terminal: TerminalSettings.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
 });
 export type ServerSettings = typeof ServerSettings.Type;
 
@@ -736,6 +762,12 @@ const OpenCodeSettingsPatch = Schema.Struct({
   customModels: Schema.optionalKey(Schema.Array(Schema.String)),
 });
 
+const TerminalProfileSettingsPatch = Schema.Struct({
+  shellPath: Schema.optionalKey(Schema.String),
+  shellArgs: Schema.optionalKey(Schema.Array(Schema.String)),
+  env: Schema.optionalKey(Schema.Record(TerminalProfileEnvKey, TerminalProfileEnvValue)),
+});
+
 const LinearIssueSettingsPatch = Schema.Struct({
   enabled: Schema.optionalKey(Schema.Boolean),
   apiToken: Schema.optionalKey(TrimmedString),
@@ -771,6 +803,7 @@ export const ServerSettingsPatch = Schema.Struct({
   defaultThreadEnvMode: Schema.optionalKey(ThreadEnvMode),
   newWorktreesStartFromOrigin: Schema.optionalKey(Schema.Boolean),
   addProjectBaseDirectory: Schema.optionalKey(TrimmedString),
+  projectSources: Schema.optionalKey(Schema.Array(ProjectSource)),
   textGenerationModelSelection: Schema.optionalKey(ModelSelectionPatch),
   sourceControlWritingStyle: Schema.optionalKey(
     Schema.Struct({
@@ -803,6 +836,13 @@ export const ServerSettingsPatch = Schema.Struct({
   issues: Schema.optionalKey(
     Schema.Struct({
       linear: Schema.optionalKey(LinearIssueSettingsPatch),
+    }),
+  ),
+  terminal: Schema.optionalKey(
+    Schema.Struct({
+      environmentVariablesText: Schema.optionalKey(Schema.String),
+      zshStartupDirectory: Schema.optionalKey(Schema.String),
+      profile: Schema.optionalKey(TerminalProfileSettingsPatch),
     }),
   ),
 });
