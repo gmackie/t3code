@@ -4,7 +4,6 @@ import * as Option from "effect/Option";
 import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
 
-import * as NetService from "@t3tools/shared/Net";
 import * as Crypto from "effect/Crypto";
 import * as ElectronApp from "../electron/ElectronApp.ts";
 import * as ElectronDialog from "../electron/ElectronDialog.ts";
@@ -28,6 +27,7 @@ import * as DesktopShellEnvironment from "../shell/DesktopShellEnvironment.ts";
 import * as DesktopState from "./DesktopState.ts";
 import * as DesktopUpdates from "../updates/DesktopUpdates.ts";
 import * as DesktopWslBackend from "../wsl/DesktopWslBackend.ts";
+import { findDesktopBackendPort } from "./DesktopBackendPort.ts";
 
 const DEFAULT_DESKTOP_BACKEND_PORT = 3773;
 const MAX_TCP_PORT = 65_535;
@@ -76,23 +76,13 @@ const resolveDesktopBackendPort = Effect.fn("resolveDesktopBackendPort")(functio
     } as const;
   }
 
-  const net = yield* NetService.NetService;
-  for (let port = DEFAULT_DESKTOP_BACKEND_PORT; port <= MAX_TCP_PORT; port += 1) {
-    let availableOnEveryHost = true;
-
-    for (const host of DESKTOP_BACKEND_PORT_PROBE_HOSTS) {
-      if (!(yield* net.canListenOnHost(port, host))) {
-        availableOnEveryHost = false;
-        break;
-      }
-    }
-
-    if (availableOnEveryHost) {
-      return {
-        port,
-        selectedByScan: true,
-      } as const;
-    }
+  const port = yield* findDesktopBackendPort({
+    startPort: DEFAULT_DESKTOP_BACKEND_PORT,
+    maxPort: MAX_TCP_PORT,
+    hosts: DESKTOP_BACKEND_PORT_PROBE_HOSTS,
+  });
+  if (Option.isSome(port)) {
+    return { port: port.value, selectedByScan: true } as const;
   }
 
   return yield* new DesktopBackendPortUnavailableError({
