@@ -11,6 +11,10 @@ import * as FileSystem from "effect/FileSystem";
 import { ServerConfig } from "../config.ts";
 import * as ResourceMonitorBinary from "./ResourceMonitorBinary.ts";
 
+function rejectLinuxLibcDetection(): ReturnType<typeof process.report.getReport> {
+  throw new Error("Linux libc detection must not run on Windows");
+}
+
 describe("ResourceMonitorBinary", () => {
   afterEach(() => {
     vi.restoreAllMocks();
@@ -18,9 +22,9 @@ describe("ResourceMonitorBinary", () => {
 
   it.effect("skips Linux libc detection on Windows", () =>
     Effect.gen(function* () {
-      const getReport = vi.spyOn(process.report, "getReport").mockImplementation(() => {
-        throw new Error("Linux libc detection must not run on Windows");
-      });
+      const getReport = vi
+        .spyOn(process.report, "getReport")
+        .mockImplementation(rejectLinuxLibcDetection);
       const fileSystem = yield* FileSystem.FileSystem;
       const baseDir = yield* fileSystem.makeTempDirectoryScoped({
         prefix: "t3-resource-monitor-binary-",
