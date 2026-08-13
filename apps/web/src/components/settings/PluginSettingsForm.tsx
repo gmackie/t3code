@@ -43,7 +43,10 @@ export function PluginSettingsForm({
   onClientValuesChange,
 }: Props) {
   const panelSettings = useMemo(
-    () => (settingIds ? plugin.settings.filter((setting) => settingIds.includes(setting.id)) : plugin.settings),
+    () =>
+      settingIds
+        ? plugin.settings.filter((setting) => settingIds.includes(setting.id))
+        : plugin.settings,
     [plugin.settings, settingIds],
   );
   const hasProjectSettings = panelSettings.some((setting) => setting.scope === "project");
@@ -75,7 +78,7 @@ export function PluginSettingsForm({
 
   useEffect(() => {
     if (scope === "client") {
-      setDraft({ ...defaultPluginSettings(panelSettings), ...(clientValues ?? {}) });
+      setDraft({ ...defaultPluginSettings(panelSettings), ...clientValues });
     } else if (settingsQuery.data) {
       setDraft({ ...defaultPluginSettings(panelSettings), ...settingsQuery.data.values });
     }
@@ -153,11 +156,22 @@ export function PluginSettingsForm({
       title={title}
       headerAction={
         <div className="flex items-center gap-1.5">
-          <Button type="button" size="xs" variant="ghost" disabled={saving} onClick={() => void reset()}>
+          <Button
+            type="button"
+            size="xs"
+            variant="ghost"
+            disabled={saving}
+            onClick={() => void reset()}
+          >
             <RotateCcwIcon className="size-3.5" />
             Reset
           </Button>
-          <Button type="button" size="xs" disabled={saving || validationError !== null} onClick={() => void save()}>
+          <Button
+            type="button"
+            size="xs"
+            disabled={saving || validationError !== null}
+            onClick={() => void save()}
+          >
             <SaveIcon className="size-3.5" />
             {saving ? "Saving…" : "Save"}
           </Button>
@@ -172,15 +186,24 @@ export function PluginSettingsForm({
           control={
             <Select
               value={scope}
-              onValueChange={(value) => { if (value !== null) setScope(value as "client" | "server" | "project"); }}
+              onValueChange={(value) => {
+                if (value !== null) setScope(value as "client" | "server" | "project");
+              }}
             >
               <SelectTrigger size="sm" aria-label="Plugin settings scope">
                 <SelectValue />
               </SelectTrigger>
               <SelectPopup>
                 {hasClientSettings ? <SelectItem value="client">This device</SelectItem> : null}
-                <SelectItem value="server" disabled={!panelSettings.some((setting) => setting.scope === "server")}>Server</SelectItem>
-                <SelectItem value="project" disabled={projectOptions.length === 0}>Project</SelectItem>
+                <SelectItem
+                  value="server"
+                  disabled={!panelSettings.some((setting) => setting.scope === "server")}
+                >
+                  Server
+                </SelectItem>
+                <SelectItem value="project" disabled={projectOptions.length === 0}>
+                  Project
+                </SelectItem>
               </SelectPopup>
             </Select>
           }
@@ -188,13 +211,18 @@ export function PluginSettingsForm({
           {scope === "project" ? (
             <div className="mb-2 flex items-center gap-2 px-1 text-xs text-muted-foreground">
               <span>Project</span>
-              <Select value={projectId ?? ""} onValueChange={(value) => setProjectId(value ?? undefined)}>
+              <Select
+                value={projectId ?? ""}
+                onValueChange={(value) => setProjectId(value ?? undefined)}
+              >
                 <SelectTrigger size="sm" aria-label="Plugin settings project">
                   <SelectValue placeholder="Choose a project" />
                 </SelectTrigger>
                 <SelectPopup>
                   {projectOptions.map((project) => (
-                    <SelectItem key={project.id} value={project.id}>{project.title}</SelectItem>
+                    <SelectItem key={project.id} value={project.id}>
+                      {project.title}
+                    </SelectItem>
                   ))}
                 </SelectPopup>
               </Select>
@@ -203,7 +231,9 @@ export function PluginSettingsForm({
         </SettingsRow>
       ) : null}
       {settingsQuery.error ? (
-        <p role="alert" className="px-4 py-2 text-xs text-destructive">{settingsQuery.error}</p>
+        <p role="alert" className="px-4 py-2 text-xs text-destructive">
+          {settingsQuery.error}
+        </p>
       ) : null}
       {editableSettings.map((setting) => (
         <PluginSettingRow
@@ -214,7 +244,9 @@ export function PluginSettingsForm({
         />
       ))}
       {error || validationError ? (
-        <p role="alert" className="px-4 py-2 text-xs text-destructive">{error ?? validationError}</p>
+        <p role="alert" className="px-4 py-2 text-xs text-destructive">
+          {error ?? validationError}
+        </p>
       ) : null}
     </SettingsSection>
   );
@@ -232,12 +264,31 @@ function PluginSettingRow({
   const field = setting.field;
   let control: ReactNode;
   if (field.kind === "boolean") {
-    control = <Switch checked={value === true} onCheckedChange={(checked) => onChange(checked === true)} aria-label={setting.title} />;
+    control = (
+      <Switch
+        checked={value === true}
+        onCheckedChange={(checked) => onChange(checked === true)}
+        aria-label={setting.title}
+      />
+    );
   } else if (field.kind === "select") {
     control = (
-      <Select value={typeof value === "string" ? value : ""} onValueChange={(next) => { if (next !== null) onChange(next); }}>
-        <SelectTrigger size="sm" aria-label={setting.title}><SelectValue /></SelectTrigger>
-        <SelectPopup>{field.options.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}</SelectPopup>
+      <Select
+        value={typeof value === "string" ? value : ""}
+        onValueChange={(next) => {
+          if (next !== null) onChange(next);
+        }}
+      >
+        <SelectTrigger size="sm" aria-label={setting.title}>
+          <SelectValue />
+        </SelectTrigger>
+        <SelectPopup>
+          {field.options.map((option) => (
+            <SelectItem key={option.value} value={option.value}>
+              {option.label}
+            </SelectItem>
+          ))}
+        </SelectPopup>
       </Select>
     );
   } else {
@@ -251,14 +302,21 @@ function PluginSettingRow({
         max={field.kind === "number" ? field.max : undefined}
         step={field.kind === "number" ? field.step : undefined}
         aria-label={setting.title}
-        onChange={(event) => onChange(field.kind === "number" ? Number(event.currentTarget.value) : event.currentTarget.value)}
+        onChange={(event) =>
+          onChange(
+            field.kind === "number" ? Number(event.currentTarget.value) : event.currentTarget.value,
+          )
+        }
       />
     );
   }
   return (
     <SettingsRow
       title={setting.title}
-      description={setting.description ?? (field.kind === "text" && field.secret ? "Stored securely by T3 Code." : "")}
+      description={
+        setting.description ??
+        (field.kind === "text" && field.secret ? "Stored securely by T3 Code." : "")
+      }
       control={control}
     />
   );
