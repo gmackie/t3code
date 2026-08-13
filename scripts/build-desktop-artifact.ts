@@ -35,6 +35,7 @@ import {
 import { loadRepoEnv } from "./lib/public-config.ts";
 import { resolveDesktopAppDisplayName } from "./lib/desktopAppIdentity.ts";
 import { resolveCatalogDependencies } from "./lib/resolve-catalog.ts";
+import { stagePluginReleaseCatalog } from "./plugin-release-catalog.ts";
 
 import * as NodeRuntime from "@effect/platform-node/NodeRuntime";
 import * as NodeServices from "@effect/platform-node/NodeServices";
@@ -839,6 +840,10 @@ export const DESKTOP_EXTRA_RESOURCES = [
   {
     from: "apps/desktop/prod-resources/resource-monitor",
     to: "resource-monitor",
+  },
+  {
+    from: "apps/desktop/prod-resources/plugins",
+    to: "plugins",
   },
 ] as const;
 
@@ -2942,6 +2947,10 @@ const buildDesktopArtifact = Effect.fn("buildDesktopArtifact")(function* (
     platform: options.platform,
     arch: options.arch,
     verbose: options.verbose,
+  });
+  stagePluginReleaseCatalog({
+    repoRoot,
+    stageResourcesDir,
   });
 
   yield* assertPlatformBuildResources(
