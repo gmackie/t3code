@@ -13,7 +13,7 @@ import { ChildProcessSpawner } from "effect/unstable/process";
 import {
   assertMacPasskeyProvisioningProfile,
   BuildCommandFailedError,
-  DesktopDmgBackgroundSourceMissingError,
+  assertMacDesktopArtifactSignature,
   createStageWorkspaceConfig,
   createStagePatchedDependencies,
   createBuildConfig,
@@ -165,6 +165,57 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
   it("switches desktop packaging bundle ids for gmacko builds", () => {
     assert.equal(resolveDesktopBuildAppId("0.0.17"), "com.t3tools.t3code");
     assert.equal(resolveDesktopBuildAppId("0.0.20-gmacko.202604170930"), "com.gmacko.t3code");
+  });
+
+  it("rejects ad-hoc signed gmacko mac artifacts", () => {
+    assert.throws(
+      () =>
+        assertMacDesktopArtifactSignature({
+          appPath: "/tmp/T3 Code (gmacko).app",
+          expectedAppId: "com.gmacko.t3code",
+          bundleIdentifier: "com.gmacko.t3code",
+          codesignOutput: [
+            "Identifier=com.gmacko.t3code",
+            "Format=app bundle with Mach-O universal (x86_64 arm64)",
+            "Signature=adhoc",
+            "TeamIdentifier=not set",
+          ].join("\n"),
+        }),
+      /must be signed with an Apple Developer ID or Apple Distribution identity/u,
+    );
+  });
+
+  it("rejects legacy bundle ids for gmacko mac artifacts", () => {
+    assert.throws(
+      () =>
+        assertMacDesktopArtifactSignature({
+          appPath: "/tmp/T3 Code (gmacko).app",
+          expectedAppId: "com.gmacko.t3code",
+          bundleIdentifier: "com.t3tools.t3code.gmacko",
+          codesignOutput: [
+            "Identifier=com.t3tools.t3code.gmacko",
+            "Authority=Developer ID Application: Gmacko LLC (ABCDE12345)",
+            "TeamIdentifier=ABCDE12345",
+          ].join("\n"),
+        }),
+      /expected bundle id com\.gmacko\.t3code, got com\.t3tools\.t3code\.gmacko/u,
+    );
+  });
+
+  it("accepts Developer ID-signed gmacko mac artifacts", () => {
+    assert.doesNotThrow(() =>
+      assertMacDesktopArtifactSignature({
+        appPath: "/tmp/T3 Code (gmacko).app",
+        expectedAppId: "com.gmacko.t3code",
+        bundleIdentifier: "com.gmacko.t3code",
+        codesignOutput: [
+          "Identifier=com.gmacko.t3code",
+          "Authority=Developer ID Application: Gmacko LLC (ABCDE12345)",
+          "Authority=Developer ID Certification Authority",
+          "TeamIdentifier=ABCDE12345",
+        ].join("\n"),
+      }),
+    );
   });
 
   it("switches desktop packaging icons to the nightly artwork for nightly versions", () => {
@@ -1206,6 +1257,10 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
       {
         from: "apps/desktop/prod-resources/resource-monitor",
         to: "resource-monitor",
+      },
+      {
+        from: "apps/desktop/prod-resources/plugins",
+        to: "plugins",
       },
     ]);
     assert.deepStrictEqual(resolveResourceMonitorRustTargets("mac", "universal"), [
