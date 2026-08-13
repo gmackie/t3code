@@ -35,7 +35,7 @@ describe("MobilePluginBridge", () => {
           pluginId: "veritas",
           navigationId: "veritas.overview",
           title: "Verification cockpit",
-          refreshedAt: new Date().toISOString(),
+          refreshedAt: "2036-04-07T00:00:00.000Z",
           cards: [{ kind: "metric", id: "active-runs", title: "Active runs", value: "1" }],
         },
       }),
@@ -61,7 +61,7 @@ describe("MobilePluginBridge", () => {
                 panelId: "veritas.thread-run",
                 title: "Verification",
                 kind: "verification",
-                refreshedAt: new Date().toISOString(),
+                refreshedAt: "2036-04-07T00:00:00.000Z",
                 content: {
                   kind: "verification",
                   status: "passed",
