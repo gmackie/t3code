@@ -14,6 +14,7 @@ import {
   GitBranchIcon,
   KeyboardIcon,
   Link2Icon,
+  PuzzleIcon,
   PaletteIcon,
   SearchIcon,
   Settings2Icon,
@@ -52,6 +53,7 @@ const SETTINGS_SECTION_ICONS: Readonly<
   "/settings/source-control": GitBranchIcon,
   "/settings/connections": Link2Icon,
   "/settings/archived": ArchiveIcon,
+  "/settings/plugins": PuzzleIcon,
 };
 
 export const SETTINGS_NAV_ITEMS: ReadonlyArray<{
