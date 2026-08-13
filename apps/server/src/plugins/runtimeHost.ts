@@ -1,3 +1,4 @@
+// @effect-diagnostics globalFetch:off - attached plugin endpoints are an explicit server boundary.
 import * as Schema from "effect/Schema";
 import {
   PluginSurfaceModel,
