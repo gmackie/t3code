@@ -5,7 +5,8 @@ export type SettingsPath =
   | "/settings/providers"
   | "/settings/source-control"
   | "/settings/connections"
-  | "/settings/archived";
+  | "/settings/archived"
+  | "/settings/plugins";
 
 export interface SettingsSearchItem {
   readonly id: string;
@@ -26,6 +27,7 @@ export const SETTINGS_SECTION_LABELS: Readonly<Record<SettingsPath, string>> = {
   "/settings/source-control": "Source Control",
   "/settings/connections": "Connections",
   "/settings/archived": "Archive",
+  "/settings/plugins": "Plugins",
 };
 
 /**
@@ -198,6 +200,11 @@ export const SETTINGS_SEARCH_ITEMS = [
     id: "archive",
     title: "Archived threads",
     to: "/settings/archived",
+  },
+  {
+    id: "plugins",
+    title: "Plugins",
+    to: "/settings/plugins",
   },
 ] as const satisfies ReadonlyArray<SettingsSearchItem>;
 
