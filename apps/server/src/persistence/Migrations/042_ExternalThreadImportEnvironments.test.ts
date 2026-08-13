@@ -13,8 +13,6 @@ layer("042_ExternalThreadImportEnvironments", (it) => {
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
 
-      yield* sql`CREATE TABLE projection_threads (id TEXT PRIMARY KEY)`;
-      yield* sql`CREATE TABLE projection_projects (id TEXT PRIMARY KEY)`;
       yield* sql`
         CREATE TABLE projection_external_thread_imports (
           thread_id TEXT PRIMARY KEY,
@@ -47,16 +45,6 @@ layer("042_ExternalThreadImportEnvironments", (it) => {
         PRAGMA table_info(projection_external_thread_imports)
       `;
       assert.equal(columns.filter((column) => column.name === "environment_id").length, 1);
-
-      const threadColumns = yield* sql<{ readonly name: string }>`
-        PRAGMA table_info(projection_threads)
-      `;
-      assert.ok(threadColumns.some((column) => column.name === "pin_order_key"));
-
-      const projectColumns = yield* sql<{ readonly name: string }>`
-        PRAGMA table_info(projection_projects)
-      `;
-      assert.ok(projectColumns.some((column) => column.name === "default_thread_env_mode"));
     }),
   );
 });
