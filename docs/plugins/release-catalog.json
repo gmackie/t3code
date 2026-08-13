@@ -1,22 +1,192 @@
 {
   "schemaVersion": 1,
   "plugins": [
-    {"id":"com.t3code.bizpulse","displayName":"BizPulse portfolio operations","version":"0.3.0","source":{"kind":"git","url":"https://github.com/gmackie/t3code-bizpulse-plugin.git","commit":"5127ba5477eda042bea08fc13afea9f9e8fd8341"},"manifestPath":"t3-plugin.json"},
-    {"id":"com.t3code.bob","displayName":"Bob","version":"0.1.0","source":{"kind":"git","url":"https://github.com/gmackie/t3code-bob-plugin.git","commit":"405bb5faa287da6ff04f52e8c364606bf952e00d"},"manifestPath":"t3-plugin.json"},
-    {"id":"com.t3code.creator","displayName":"Creator command center","version":"0.1.0","source":{"kind":"git","url":"https://github.com/gmackie/t3code-creator-plugin.git","commit":"7e0bf79e9d501725249f8cff2c0eebd00ac5a608"},"manifestPath":"t3-plugin.json"},
-    {"id":"com.t3code.fabforge","displayName":"FabForge manufacturing IDE","version":"0.3.0","source":{"kind":"git","url":"https://github.com/gmackie/t3code-fabforge-plugin.git","commit":"23a96040e64c6357208b2b6ef830bfd07da36fe7"},"manifestPath":"t3-plugin.json"},
-    {"id":"com.t3code.forgegraph","displayName":"ForgeGraph delivery tracking","version":"0.1.0","source":{"kind":"git","url":"https://github.com/gmackie/t3code-forgegraph-plugin.git","commit":"616bc665f18c655d3d456a542c2b6155a22428a2"},"manifestPath":"t3-plugin.json"},
-    {"id":"com.t3code.gitbutler","displayName":"GitButler source control","version":"0.1.0","source":{"kind":"git","url":"https://github.com/gmackie/t3code-gitbutler-plugin.git","commit":"9425f5d92c6cc7d39cff1ec4abf8542a02261d10"},"manifestPath":"t3-plugin.json"},
-    {"id":"com.t3code.github","displayName":"GitHub workflow and pull requests","version":"0.1.0","source":{"kind":"git","url":"https://github.com/gmackie/t3code-github-plugin.git","commit":"6415faa72d69f9048934548fd48f109c1327818f"},"manifestPath":"t3-plugin.json"},
-    {"id":"com.t3code.jujutsu","displayName":"Jujutsu","version":"0.1.0","source":{"kind":"git","url":"https://github.com/gmackie/t3code-jujutsu-plugin.git","commit":"2356ccdda631f99e795dfce91861a8a36bdb6734"},"manifestPath":"t3-plugin.json"},
-    {"id":"com.t3code.kimi","displayName":"Kimi Code ACP provider","version":"0.1.0","source":{"kind":"git","url":"https://github.com/gmackie/t3code-kimi-plugin.git","commit":"cb296dea6e43ce21cea950ba72be8299598d5485"},"manifestPath":"t3-plugin.json"},
-    {"id":"com.t3code.linear","displayName":"Linear","version":"0.1.0","source":{"kind":"git","url":"https://github.com/gmackie/t3code-linear-plugin.git","commit":"b24ef7d9ed819e4e0daf8194e3d637a0070dbcce"},"manifestPath":"t3-plugin.json"},
-    {"id":"com.t3code.mcp-inventory","displayName":"MCP server inventory","version":"0.1.0","source":{"kind":"git","url":"https://github.com/gmackie/t3code-mcp-inventory-plugin.git","commit":"9b63472eeebe998794b8525c4f6bd639938d2430"},"manifestPath":"t3-plugin.json"},
-    {"id":"com.t3code.pi-events","displayName":"Lifecycle status and notifications","version":"0.1.0","source":{"kind":"git","url":"https://github.com/gmackie/t3code-pi-events-plugin.git","commit":"4c9c19b0785b3a448724e6382d64bd6d1341e73a"},"manifestPath":"t3-plugin.json"},
-    {"id":"com.t3code.preflight","displayName":"Preflight release cockpit","version":"0.2.0","source":{"kind":"git","url":"https://github.com/gmackie/t3code-preflight-plugin.git","commit":"dd1a7d124a3c7e2573e55855e9e91e3956e37935"},"manifestPath":"t3-plugin.json"},
-    {"id":"com.t3code.sentry","displayName":"Sentry agent monitoring","version":"0.1.0","source":{"kind":"git","url":"https://github.com/gmackie/t3code-sentry-plugin.git","commit":"989908d3addb4411efaeae026910a970916adba9"},"manifestPath":"t3-plugin.json"},
-    {"id":"com.t3code.terminal-settings","displayName":"Terminal appearance","version":"0.1.0","source":{"kind":"git","url":"https://github.com/gmackie/t3code-terminal-settings-plugin.git","commit":"55de24b8d21ce91d04db828ac222fc00ed2003b5"},"manifestPath":"t3-plugin.json"},
-    {"id":"com.t3code.veritas","displayName":"Veritas verification cockpit","version":"0.2.0","source":{"kind":"git","url":"https://github.com/gmackie/t3code-veritas-plugin.git","commit":"c880fe1c51d36dffe33160be6eca8770bf4f0cc4"},"manifestPath":"t3-plugin.json"},
-    {"id":"com.t3code.voicebud","displayName":"VoiceBud composer bridge","version":"0.1.0","source":{"kind":"git","url":"https://github.com/gmackie/t3code-voicebud-plugin.git","commit":"6a81e2776473b687704a809788a55ba0b5d0bb36"},"manifestPath":"t3-plugin.json"}
+    {
+      "id": "com.t3code.bizpulse",
+      "displayName": "BizPulse portfolio operations",
+      "version": "0.3.0",
+      "source": {
+        "kind": "git",
+        "url": "https://github.com/gmackie/t3code-bizpulse-plugin.git",
+        "commit": "5127ba5477eda042bea08fc13afea9f9e8fd8341"
+      },
+      "manifestPath": "t3-plugin.json"
+    },
+    {
+      "id": "com.t3code.bob",
+      "displayName": "Bob",
+      "version": "0.1.0",
+      "source": {
+        "kind": "git",
+        "url": "https://github.com/gmackie/t3code-bob-plugin.git",
+        "commit": "405bb5faa287da6ff04f52e8c364606bf952e00d"
+      },
+      "manifestPath": "t3-plugin.json"
+    },
+    {
+      "id": "com.t3code.creator",
+      "displayName": "Creator command center",
+      "version": "0.1.0",
+      "source": {
+        "kind": "git",
+        "url": "https://github.com/gmackie/t3code-creator-plugin.git",
+        "commit": "7e0bf79e9d501725249f8cff2c0eebd00ac5a608"
+      },
+      "manifestPath": "t3-plugin.json"
+    },
+    {
+      "id": "com.t3code.fabforge",
+      "displayName": "FabForge manufacturing IDE",
+      "version": "0.3.0",
+      "source": {
+        "kind": "git",
+        "url": "https://github.com/gmackie/t3code-fabforge-plugin.git",
+        "commit": "23a96040e64c6357208b2b6ef830bfd07da36fe7"
+      },
+      "manifestPath": "t3-plugin.json"
+    },
+    {
+      "id": "com.t3code.forgegraph",
+      "displayName": "ForgeGraph delivery tracking",
+      "version": "0.1.0",
+      "source": {
+        "kind": "git",
+        "url": "https://github.com/gmackie/t3code-forgegraph-plugin.git",
+        "commit": "616bc665f18c655d3d456a542c2b6155a22428a2"
+      },
+      "manifestPath": "t3-plugin.json"
+    },
+    {
+      "id": "com.t3code.gitbutler",
+      "displayName": "GitButler source control",
+      "version": "0.1.0",
+      "source": {
+        "kind": "git",
+        "url": "https://github.com/gmackie/t3code-gitbutler-plugin.git",
+        "commit": "9425f5d92c6cc7d39cff1ec4abf8542a02261d10"
+      },
+      "manifestPath": "t3-plugin.json"
+    },
+    {
+      "id": "com.t3code.github",
+      "displayName": "GitHub workflow and pull requests",
+      "version": "0.1.0",
+      "source": {
+        "kind": "git",
+        "url": "https://github.com/gmackie/t3code-github-plugin.git",
+        "commit": "6415faa72d69f9048934548fd48f109c1327818f"
+      },
+      "manifestPath": "t3-plugin.json"
+    },
+    {
+      "id": "com.t3code.jujutsu",
+      "displayName": "Jujutsu",
+      "version": "0.1.0",
+      "source": {
+        "kind": "git",
+        "url": "https://github.com/gmackie/t3code-jujutsu-plugin.git",
+        "commit": "2356ccdda631f99e795dfce91861a8a36bdb6734"
+      },
+      "manifestPath": "t3-plugin.json"
+    },
+    {
+      "id": "com.t3code.kimi",
+      "displayName": "Kimi Code ACP provider",
+      "version": "0.1.0",
+      "source": {
+        "kind": "git",
+        "url": "https://github.com/gmackie/t3code-kimi-plugin.git",
+        "commit": "cb296dea6e43ce21cea950ba72be8299598d5485"
+      },
+      "manifestPath": "t3-plugin.json"
+    },
+    {
+      "id": "com.t3code.linear",
+      "displayName": "Linear",
+      "version": "0.1.0",
+      "source": {
+        "kind": "git",
+        "url": "https://github.com/gmackie/t3code-linear-plugin.git",
+        "commit": "b24ef7d9ed819e4e0daf8194e3d637a0070dbcce"
+      },
+      "manifestPath": "t3-plugin.json"
+    },
+    {
+      "id": "com.t3code.mcp-inventory",
+      "displayName": "MCP server inventory",
+      "version": "0.1.0",
+      "source": {
+        "kind": "git",
+        "url": "https://github.com/gmackie/t3code-mcp-inventory-plugin.git",
+        "commit": "9b63472eeebe998794b8525c4f6bd639938d2430"
+      },
+      "manifestPath": "t3-plugin.json"
+    },
+    {
+      "id": "com.t3code.pi-events",
+      "displayName": "Lifecycle status and notifications",
+      "version": "0.1.0",
+      "source": {
+        "kind": "git",
+        "url": "https://github.com/gmackie/t3code-pi-events-plugin.git",
+        "commit": "4c9c19b0785b3a448724e6382d64bd6d1341e73a"
+      },
+      "manifestPath": "t3-plugin.json"
+    },
+    {
+      "id": "com.t3code.preflight",
+      "displayName": "Preflight release cockpit",
+      "version": "0.2.0",
+      "source": {
+        "kind": "git",
+        "url": "https://github.com/gmackie/t3code-preflight-plugin.git",
+        "commit": "dd1a7d124a3c7e2573e55855e9e91e3956e37935"
+      },
+      "manifestPath": "t3-plugin.json"
+    },
+    {
+      "id": "com.t3code.sentry",
+      "displayName": "Sentry agent monitoring",
+      "version": "0.1.0",
+      "source": {
+        "kind": "git",
+        "url": "https://github.com/gmackie/t3code-sentry-plugin.git",
+        "commit": "989908d3addb4411efaeae026910a970916adba9"
+      },
+      "manifestPath": "t3-plugin.json"
+    },
+    {
+      "id": "com.t3code.terminal-settings",
+      "displayName": "Terminal appearance",
+      "version": "0.1.0",
+      "source": {
+        "kind": "git",
+        "url": "https://github.com/gmackie/t3code-terminal-settings-plugin.git",
+        "commit": "55de24b8d21ce91d04db828ac222fc00ed2003b5"
+      },
+      "manifestPath": "t3-plugin.json"
+    },
+    {
+      "id": "com.t3code.veritas",
+      "displayName": "Veritas verification cockpit",
+      "version": "0.2.0",
+      "source": {
+        "kind": "git",
+        "url": "https://github.com/gmackie/t3code-veritas-plugin.git",
+        "commit": "c880fe1c51d36dffe33160be6eca8770bf4f0cc4"
+      },
+      "manifestPath": "t3-plugin.json"
+    },
+    {
+      "id": "com.t3code.voicebud",
+      "displayName": "VoiceBud composer bridge",
+      "version": "0.1.0",
+      "source": {
+        "kind": "git",
+        "url": "https://github.com/gmackie/t3code-voicebud-plugin.git",
+        "commit": "6a81e2776473b687704a809788a55ba0b5d0bb36"
+      },
+      "manifestPath": "t3-plugin.json"
+    }
   ]
 }

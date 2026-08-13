@@ -91,8 +91,28 @@ import {
   OrchestrationGetWorkflowScriptError,
 } from "./orchestration.ts";
 import { ProviderInstanceId } from "./providerInstance.ts";
-import { PluginCapabilityGrantInput, PluginActionInput, PluginActionResult, PluginHealth, PluginIdInput, PluginInstallInput, PluginRegistryEntry, PluginSurfaceGetInput, PluginSurfaceModel, PluginPanelGetInput, PluginPanelModel, PluginWorkflowGetInput, PluginWorkflowActionInput, PluginWorkflowModel } from "./pluginProtocol.ts";
-import { PluginSettingsGetInput, PluginSettingsResetInput, PluginSettingsSnapshot, PluginSettingsUpdateInput } from "./pluginSettings.ts";
+import {
+  PluginCapabilityGrantInput,
+  PluginActionInput,
+  PluginActionResult,
+  PluginHealth,
+  PluginIdInput,
+  PluginInstallInput,
+  PluginRegistryEntry,
+  PluginSurfaceGetInput,
+  PluginSurfaceModel,
+  PluginPanelGetInput,
+  PluginPanelModel,
+  PluginWorkflowGetInput,
+  PluginWorkflowActionInput,
+  PluginWorkflowModel,
+} from "./pluginProtocol.ts";
+import {
+  PluginSettingsGetInput,
+  PluginSettingsResetInput,
+  PluginSettingsSnapshot,
+  PluginSettingsUpdateInput,
+} from "./pluginSettings.ts";
 import {
   PullRequestActionInput,
   PullRequestActivity,
@@ -432,23 +452,81 @@ export const WsServerUpdateProviderRpc = Rpc.make(WS_METHODS.serverUpdateProvide
   error: Schema.Union([ServerProviderUpdateError, EnvironmentAuthorizationError]),
 });
 
-export const WsPluginListRpc = Rpc.make(WS_METHODS.pluginList, { payload: Schema.Struct({}), success: Schema.Array(PluginRegistryEntry), error: EnvironmentAuthorizationError });
-export const WsPluginInstallRpc = Rpc.make(WS_METHODS.pluginInstall, { payload: PluginInstallInput, success: PluginRegistryEntry, error: EnvironmentAuthorizationError });
-export const WsPluginEnableRpc = Rpc.make(WS_METHODS.pluginEnable, { payload: PluginIdInput, success: PluginHealth, error: EnvironmentAuthorizationError });
-export const WsPluginDisableRpc = Rpc.make(WS_METHODS.pluginDisable, { payload: PluginIdInput, success: PluginHealth, error: EnvironmentAuthorizationError });
-export const WsPluginGrantRpc = Rpc.make(WS_METHODS.pluginGrant, { payload: PluginCapabilityGrantInput, success: PluginHealth, error: EnvironmentAuthorizationError });
-export const WsPluginRevokeRpc = Rpc.make(WS_METHODS.pluginRevoke, { payload: PluginCapabilityGrantInput, success: PluginHealth, error: EnvironmentAuthorizationError });
-export const WsPluginHealthRpc = Rpc.make(WS_METHODS.pluginHealth, { payload: PluginIdInput, success: PluginHealth, error: EnvironmentAuthorizationError });
-export const WsPluginSurfaceGetRpc = Rpc.make(WS_METHODS.pluginSurfaceGet, { payload: PluginSurfaceGetInput, success: PluginSurfaceModel, error: EnvironmentAuthorizationError });
-export const WsPluginPanelGetRpc = Rpc.make(WS_METHODS.pluginPanelGet, { payload: PluginPanelGetInput, success: PluginPanelModel, error: EnvironmentAuthorizationError });
-export const WsPluginWorkflowGetRpc = Rpc.make(WS_METHODS.pluginWorkflowGet, { payload: PluginWorkflowGetInput, success: PluginWorkflowModel, error: EnvironmentAuthorizationError });
-export const WsPluginWorkflowActionRpc = Rpc.make(WS_METHODS.pluginWorkflowAction, { payload: PluginWorkflowActionInput, success: PluginActionResult, error: EnvironmentAuthorizationError });
-export const WsPluginActionRpc = Rpc.make(WS_METHODS.pluginAction, { payload: PluginActionInput, success: PluginActionResult, error: EnvironmentAuthorizationError });
-export const WsPluginSettingsGetRpc = Rpc.make(WS_METHODS.pluginSettingsGet, { payload: PluginSettingsGetInput, success: PluginSettingsSnapshot, error: EnvironmentAuthorizationError });
-export const WsPluginSettingsUpdateRpc = Rpc.make(WS_METHODS.pluginSettingsUpdate, { payload: PluginSettingsUpdateInput, success: PluginSettingsSnapshot, error: EnvironmentAuthorizationError });
-export const WsPluginSettingsResetRpc = Rpc.make(WS_METHODS.pluginSettingsReset, { payload: PluginSettingsResetInput, success: PluginSettingsSnapshot, error: EnvironmentAuthorizationError });
-
-
+export const WsPluginListRpc = Rpc.make(WS_METHODS.pluginList, {
+  payload: Schema.Struct({}),
+  success: Schema.Array(PluginRegistryEntry),
+  error: EnvironmentAuthorizationError,
+});
+export const WsPluginInstallRpc = Rpc.make(WS_METHODS.pluginInstall, {
+  payload: PluginInstallInput,
+  success: PluginRegistryEntry,
+  error: EnvironmentAuthorizationError,
+});
+export const WsPluginEnableRpc = Rpc.make(WS_METHODS.pluginEnable, {
+  payload: PluginIdInput,
+  success: PluginHealth,
+  error: EnvironmentAuthorizationError,
+});
+export const WsPluginDisableRpc = Rpc.make(WS_METHODS.pluginDisable, {
+  payload: PluginIdInput,
+  success: PluginHealth,
+  error: EnvironmentAuthorizationError,
+});
+export const WsPluginGrantRpc = Rpc.make(WS_METHODS.pluginGrant, {
+  payload: PluginCapabilityGrantInput,
+  success: PluginHealth,
+  error: EnvironmentAuthorizationError,
+});
+export const WsPluginRevokeRpc = Rpc.make(WS_METHODS.pluginRevoke, {
+  payload: PluginCapabilityGrantInput,
+  success: PluginHealth,
+  error: EnvironmentAuthorizationError,
+});
+export const WsPluginHealthRpc = Rpc.make(WS_METHODS.pluginHealth, {
+  payload: PluginIdInput,
+  success: PluginHealth,
+  error: EnvironmentAuthorizationError,
+});
+export const WsPluginSurfaceGetRpc = Rpc.make(WS_METHODS.pluginSurfaceGet, {
+  payload: PluginSurfaceGetInput,
+  success: PluginSurfaceModel,
+  error: EnvironmentAuthorizationError,
+});
+export const WsPluginPanelGetRpc = Rpc.make(WS_METHODS.pluginPanelGet, {
+  payload: PluginPanelGetInput,
+  success: PluginPanelModel,
+  error: EnvironmentAuthorizationError,
+});
+export const WsPluginWorkflowGetRpc = Rpc.make(WS_METHODS.pluginWorkflowGet, {
+  payload: PluginWorkflowGetInput,
+  success: PluginWorkflowModel,
+  error: EnvironmentAuthorizationError,
+});
+export const WsPluginWorkflowActionRpc = Rpc.make(WS_METHODS.pluginWorkflowAction, {
+  payload: PluginWorkflowActionInput,
+  success: PluginActionResult,
+  error: EnvironmentAuthorizationError,
+});
+export const WsPluginActionRpc = Rpc.make(WS_METHODS.pluginAction, {
+  payload: PluginActionInput,
+  success: PluginActionResult,
+  error: EnvironmentAuthorizationError,
+});
+export const WsPluginSettingsGetRpc = Rpc.make(WS_METHODS.pluginSettingsGet, {
+  payload: PluginSettingsGetInput,
+  success: PluginSettingsSnapshot,
+  error: EnvironmentAuthorizationError,
+});
+export const WsPluginSettingsUpdateRpc = Rpc.make(WS_METHODS.pluginSettingsUpdate, {
+  payload: PluginSettingsUpdateInput,
+  success: PluginSettingsSnapshot,
+  error: EnvironmentAuthorizationError,
+});
+export const WsPluginSettingsResetRpc = Rpc.make(WS_METHODS.pluginSettingsReset, {
+  payload: PluginSettingsResetInput,
+  success: PluginSettingsSnapshot,
+  error: EnvironmentAuthorizationError,
+});
 
 export const WsServerUpdateServerRpc = Rpc.make(WS_METHODS.serverUpdateServer, {
   payload: ServerSelfUpdateInput,
