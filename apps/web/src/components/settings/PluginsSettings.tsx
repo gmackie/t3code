@@ -165,10 +165,11 @@ export function PluginsSettingsPanel() {
                               key={JSON.stringify(capability)}
                               size="xs"
                               variant={granted ? "outline" : "secondary"}
-                              disabled={granted}
+                              disabled={!environment || granted}
                               onClick={() => {
+                                if (!environment) return;
                                 void grant({
-                                  environmentId: environment?.environmentId ?? "",
+                                  environmentId: environment.environmentId,
                                   input: { pluginId: plugin.pluginId, capability },
                                 }).then(() => refreshPlugins());
                               }}
