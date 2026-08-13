@@ -1,3 +1,6 @@
+// @effect-diagnostics nodeBuiltinImport:off - the test checks the staged resource file.
+import * as NodeFS from "node:fs";
+
 import { assert, it } from "@effect/vitest";
 
 import {
@@ -54,5 +57,5 @@ it("stages a normalized catalog into desktop resources", () => {
     stageResourcesDir: root,
   });
   assert.equal(destination, `${root}/plugins/release-catalog.json`);
-  assert.isTrue(Bun.file(destination).size > 0);
+  assert.isTrue(NodeFS.statSync(destination).size > 0);
 });
