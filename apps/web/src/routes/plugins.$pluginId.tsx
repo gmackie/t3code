@@ -32,11 +32,21 @@ function PluginWorkspaceRoute() {
   const plugins = useEnvironmentQuery(target ? pluginEnvironment.list(target) : null);
   const plugin = plugins.data?.find((entry) => entry.pluginId === pluginId);
   const navigation = plugin?.navigation ?? [];
-  const currentPath = new URLSearchParams(location.search).get("section") || "/";
+  const readSearchParam = (name: string): string | null => {
+    if (typeof location.search === "string") {
+      return new URLSearchParams(location.search).get(name);
+    }
+    if (location.search !== null && typeof location.search === "object") {
+      const value = (location.search as Record<string, unknown>)[name];
+      return typeof value === "string" ? value : null;
+    }
+    return null;
+  };
+  const currentPath = readSearchParam("section") || "/";
   const navigationItem =
     navigation.find((item) => (item.path || "/") === currentPath) ?? navigation[0];
-  const requestedPanelId = new URLSearchParams(location.search).get("panel");
-  const requestedWorkflowId = new URLSearchParams(location.search).get("workflow");
+  const requestedPanelId = readSearchParam("panel");
+  const requestedWorkflowId = readSearchParam("workflow");
   const selectedPanel = plugin?.panels.find((panel) => panel.id === requestedPanelId);
   const selectedWorkflow = plugin?.workflows.find(
     (workflow) => workflow.id === requestedWorkflowId,
