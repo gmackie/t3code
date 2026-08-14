@@ -2362,6 +2362,17 @@ projectionSnapshotLayer("ProjectionSnapshotQuery windowed thread detail", (it) =
             'user-input-tied-a-resolution', 'thread-w', NULL, 'info', 'user-input.resolved',
             'Tied open question', '{"requestId":"input-tied-open"}', NULL,
             '2026-03-01T00:00:05.000Z'
+          ),
+          (
+            'user-input-stale-request', 'thread-w', NULL, 'approval', 'user-input.requested',
+            'Stale question', '{"requestId":"input-stale"}', NULL,
+            '2026-03-01T00:00:06.000Z'
+          ),
+          (
+            'user-input-stale-failure', 'thread-w', NULL, 'error',
+            'provider.user-input.respond.failed', 'Stale question',
+            '{"requestId":"input-stale","detail":"Unknown pending Codex user input request"}',
+            NULL, '2026-03-01T00:00:07.000Z'
           )
       `;
       yield* sql`
@@ -2388,6 +2399,7 @@ projectionSnapshotLayer("ProjectionSnapshotQuery windowed thread detail", (it) =
         assert.equal(ids.includes(asEventId("user-input-old")), true);
         assert.equal(ids.includes(asEventId("user-input-closed")), false);
         assert.equal(ids.includes(asEventId("user-input-tied-z-request")), true);
+        assert.equal(ids.includes(asEventId("user-input-stale-request")), false);
       }
 
       const windowWithPinnedRequests = yield* snapshotQuery.getThreadDetailSnapshot(threadW, {
@@ -2401,6 +2413,7 @@ projectionSnapshotLayer("ProjectionSnapshotQuery windowed thread detail", (it) =
         assert.equal(ids.includes(asEventId("user-input-old")), true);
         assert.equal(ids.includes(asEventId("user-input-closed")), false);
         assert.equal(ids.includes(asEventId("user-input-tied-z-request")), true);
+        assert.equal(ids.includes(asEventId("user-input-stale-request")), false);
       }
     }),
   );
