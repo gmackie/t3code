@@ -2516,22 +2516,20 @@ describe("ProviderRuntimeIngestion", () => {
     const harness = await createHarness({ serverSettings: { enableLegacyTokenStreaming: true } });
     const now = "2026-01-01T00:00:00.000Z";
 
-    await Effect.runPromise(
-      harness.engine.dispatch({
-        type: "thread.turn.start",
-        commandId: CommandId.make("cmd-turn-start-streaming-mode"),
-        threadId: ThreadId.make("thread-1"),
-        message: {
-          messageId: asMessageId("message-streaming-mode"),
-          role: "user",
-          text: "stream please",
-          attachments: [],
-        },
-        interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
-        runtimeMode: "approval-required",
-        createdAt: now,
-      }),
-    );
+    await harness.dispatch({
+      type: "thread.turn.start",
+      commandId: CommandId.make("cmd-turn-start-streaming-mode"),
+      threadId: ThreadId.make("thread-1"),
+      message: {
+        messageId: asMessageId("message-streaming-mode"),
+        role: "user",
+        text: "stream please",
+        attachments: [],
+      },
+      interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+      runtimeMode: "approval-required",
+      createdAt: now,
+    });
     await harness.drain();
 
     harness.emit({
@@ -2734,6 +2732,7 @@ describe("ProviderRuntimeIngestion", () => {
         ),
     );
 
+    // oxlint-disable-next-line t3code/no-manual-effect-runtime-in-tests -- This legacy async harness exposes the engine directly; converting the full suite to it.effect is separate work.
     const events = await Effect.runPromise(
       Stream.runCollect(harness.engine.readEvents(0)).pipe(
         Effect.map((chunk) => Array.from(chunk)),
