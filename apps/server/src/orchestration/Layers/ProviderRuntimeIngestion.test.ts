@@ -99,6 +99,7 @@ function isLegacyTurnCompletedEvent(
 function createProviderServiceHarness() {
   const runtimeEventPubSub = Effect.runSync(PubSub.unbounded<ProviderRuntimeEvent>());
   const runtimeSessions: ProviderSession[] = [];
+  let listSessionSnapshots: ReadonlyArray<ReadonlyArray<ProviderSession>> = [];
 
   const unsupported = () => Effect.die(new Error("Unsupported provider call in test")) as never;
   const service: ProviderServiceShape = {
@@ -108,7 +109,12 @@ function createProviderServiceHarness() {
     respondToRequest: () => unsupported(),
     respondToUserInput: () => unsupported(),
     stopSession: () => unsupported(),
-    listSessions: () => Effect.succeed([...runtimeSessions]),
+    listSessions: () =>
+      Effect.sync(() => {
+        const [snapshot, ...remaining] = listSessionSnapshots;
+        listSessionSnapshots = remaining;
+        return snapshot === undefined ? [...runtimeSessions] : [...snapshot];
+      }),
     getCapabilities: () => Effect.succeed({ sessionModelSwitch: "in-session" }),
     getInstanceInfo: (instanceId) => {
       const driverKind = ProviderDriverKind.make(String(instanceId));
@@ -138,6 +144,16 @@ function createProviderServiceHarness() {
     runtimeSessions.push(session);
   };
 
+  const clearSessions = (): void => {
+    runtimeSessions.length = 0;
+  };
+
+  const setListSessionSnapshots = (
+    snapshots: ReadonlyArray<ReadonlyArray<ProviderSession>>,
+  ): void => {
+    listSessionSnapshots = snapshots;
+  };
+
   const normalizeLegacyEvent = (event: LegacyProviderRuntimeEvent): ProviderRuntimeEvent => {
     if (isLegacyTurnCompletedEvent(event)) {
       const normalized: Extract<ProviderRuntimeEvent, { type: "turn.completed" }> = {
@@ -161,6 +177,8 @@ function createProviderServiceHarness() {
     service,
     emit,
     setSession,
+    clearSessions,
+    setListSessionSnapshots,
   };
 }
 
@@ -311,6 +329,17 @@ describe("ProviderRuntimeIngestion", () => {
       createdAt,
       updatedAt: createdAt,
     });
+    const restartIngestion = async () => {
+      if (scope) {
+        await Effect.runPromise(Scope.close(scope, Exit.void));
+      }
+      scope = await Effect.runPromise(Scope.make("sequential"));
+      await Effect.runPromise(ingestion.start().pipe(Scope.provide(scope)));
+      await Effect.runPromise(
+        Effect.forEach(Array.from({ length: 10 }), () => Effect.yieldNow, { discard: true }),
+      );
+      await drain();
+    };
 
     return {
       engine,
@@ -318,6 +347,9 @@ describe("ProviderRuntimeIngestion", () => {
       readModel: () => Effect.runPromise(snapshotQuery.getSnapshot()),
       emit: provider.emit,
       setProviderSession: provider.setSession,
+      clearProviderSessions: provider.clearSessions,
+      setListSessionSnapshots: provider.setListSessionSnapshots,
+      restartIngestion,
       drain,
     };
   }
@@ -362,6 +394,108 @@ describe("ProviderRuntimeIngestion", () => {
     );
     expect(thread.session?.status).toBe("error");
     expect(thread.session?.lastError).toBe("turn failed");
+  });
+
+  it("interrupts projected running turns that have no live provider session after restart", async () => {
+    const harness = await createHarness();
+    const threadId = asThreadId("thread-1");
+    const turnId = asTurnId("turn-orphaned-after-restart");
+
+    harness.emit({
+      type: "turn.started",
+      eventId: asEventId("evt-turn-orphaned-after-restart"),
+      provider: ProviderDriverKind.make("codex"),
+      threadId,
+      createdAt: "2026-01-01T00:00:01.000Z",
+      turnId,
+    });
+    await waitForThread(
+      harness.readModel,
+      (thread) => thread.session?.status === "running" && thread.session.activeTurnId === turnId,
+    );
+    harness.clearProviderSessions();
+
+    await harness.restartIngestion();
+
+    const thread = (await harness.readModel()).threads.find((entry) => entry.id === threadId);
+    expect(thread?.session?.status).toBe("interrupted");
+    expect(thread?.session?.activeTurnId).toBeNull();
+    expect(thread?.latestTurn?.turnId).toBe(turnId);
+    expect(thread?.latestTurn?.state).toBe("interrupted");
+  });
+
+  it("preserves a projected running turn when its provider session appears on recheck", async () => {
+    const harness = await createHarness();
+    const threadId = asThreadId("thread-1");
+    const turnId = asTurnId("turn-live-on-recheck");
+    const runningSession: ProviderSession = {
+      provider: ProviderDriverKind.make("codex"),
+      status: "running",
+      runtimeMode: "approval-required",
+      threadId,
+      activeTurnId: turnId,
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:01.000Z",
+    };
+
+    harness.emit({
+      type: "turn.started",
+      eventId: asEventId("evt-turn-live-on-recheck"),
+      provider: ProviderDriverKind.make("codex"),
+      threadId,
+      createdAt: "2026-01-01T00:00:01.000Z",
+      turnId,
+    });
+    await waitForThread(
+      harness.readModel,
+      (thread) => thread.session?.status === "running" && thread.session.activeTurnId === turnId,
+    );
+    harness.clearProviderSessions();
+    harness.setListSessionSnapshots([[], [runningSession]]);
+
+    await harness.restartIngestion();
+
+    const thread = (await harness.readModel()).threads.find((entry) => entry.id === threadId);
+    expect(thread?.session?.status).toBe("running");
+    expect(thread?.session?.activeTurnId).toBe(turnId);
+    expect(thread?.latestTurn?.state).toBe("running");
+  });
+
+  it("preserves a projected running turn when its provider session appears on the final recheck", async () => {
+    const harness = await createHarness();
+    const threadId = asThreadId("thread-1");
+    const turnId = asTurnId("turn-live-on-final-recheck");
+    const runningSession: ProviderSession = {
+      provider: ProviderDriverKind.make("codex"),
+      status: "running",
+      runtimeMode: "approval-required",
+      threadId,
+      activeTurnId: turnId,
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:01.000Z",
+    };
+
+    harness.emit({
+      type: "turn.started",
+      eventId: asEventId("evt-turn-live-on-final-recheck"),
+      provider: ProviderDriverKind.make("codex"),
+      threadId,
+      createdAt: "2026-01-01T00:00:01.000Z",
+      turnId,
+    });
+    await waitForThread(
+      harness.readModel,
+      (thread) => thread.session?.status === "running" && thread.session.activeTurnId === turnId,
+    );
+    harness.clearProviderSessions();
+    harness.setListSessionSnapshots([[], [], [runningSession]]);
+
+    await harness.restartIngestion();
+
+    const thread = (await harness.readModel()).threads.find((entry) => entry.id === threadId);
+    expect(thread?.session?.status).toBe("running");
+    expect(thread?.session?.activeTurnId).toBe(turnId);
+    expect(thread?.latestTurn?.state).toBe("running");
   });
 
   it("applies provider session.state.changed transitions directly", async () => {
