@@ -40,6 +40,7 @@ import { scopedThreadKey } from "../../lib/scopedEntities";
 
 import { AppText as Text } from "../../components/AppText";
 import { ComposerAttachmentStrip } from "../../components/ComposerAttachmentStrip";
+import { GlassSurface } from "../../components/GlassSurface";
 import { ProviderUsageIndicator } from "../../components/ProviderUsageIndicator";
 import {
   ComposerEditor,
@@ -855,31 +856,16 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
                   onPress={() => void props.onPickDraftImages()}
                   showChevron={false}
                 />
-                {settingsMenu ? (
-                  <ControlPillMenu
-                    actions={settingsMenu.actions}
-                    onPressAction={({ nativeEvent }) => handleSettingsMenuAction(nativeEvent.event)}
-                  >
-                    <ComposerToolbarTrigger
-                      accessibilityLabel="Thread settings"
-                      iconNode={
-                        <ProviderIcon provider={currentModelOption?.providerDriver} size={16} />
-                      }
-                      label={settingsSummaryLabel}
-                      maxWidth={320}
-                    />
-                  </ControlPillMenu>
-                ) : (
-                  <ComposerToolbarTrigger
-                    accessibilityLabel="Thread settings"
-                    iconNode={
-                      <ProviderIcon provider={currentModelOption?.providerDriver} size={16} />
-                    }
-                    label={settingsSummaryLabel}
-                    maxWidth={320}
-                    onPress={settingsSheetPresentation.open}
-                  />
-                )}
+                <ComposerInlineControl
+                  accessibilityLabel="Model and reasoning settings"
+                  emphasized
+                  iconNode={
+                    <ProviderIcon provider={currentModelOption?.providerDriver} size={16} />
+                  }
+                  label={currentModelOption?.label ?? currentModelSelection.model}
+                  maxWidth={152}
+                  onPress={openSettings}
+                />
                 <ProviderUsageIndicator
                   environmentId={props.environmentId}
                   providerInstanceId={currentModelSelection.instanceId}
