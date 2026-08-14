@@ -48,6 +48,7 @@
   "devDependencies": {
     "@babel/plugin-transform-react-jsx": "7.28.6",
     "@effect/tsgo": "catalog:",
+    "@electron/asar": "3.4.1",
     "@oxlint/plugins": "^1.63.0",
     "@types/node": "catalog:",
     "@typescript/native-preview": "catalog:",
