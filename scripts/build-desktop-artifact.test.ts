@@ -12,6 +12,7 @@ import { ChildProcessSpawner } from "effect/unstable/process";
 
 import {
   assertMacPasskeyProvisioningProfile,
+  BundleNotSelfContainedError,
   BuildCommandFailedError,
   assertMacDesktopArtifactSignature,
   createStageWorkspaceConfig,
@@ -518,9 +519,13 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
           from: "apps/desktop/prod-resources/resource-monitor",
           to: "resource-monitor",
         },
+        {
+          from: "apps/desktop/prod-resources/plugins",
+          to: "plugins",
+        },
         ...WINDOWS_SERVER_EXTRA_RESOURCES,
       ]);
-      assert.deepStrictEqual(win.nsis, { differentialPackage: true });
+      assert.notProperty(win, "nsis");
       // Native binaries and helper executables cannot load from inside an
       // asar; everything else stays packed. The Claude SDK platform packages
       // and .bin shims never ship.
@@ -664,7 +669,11 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
         });
 
         assert.isFalse(
-          commands.some((command) => command.options.env?.ELECTRON_RUN_AS_NODE === "1"),
+          commands.some(
+            (command) =>
+              command.command !== process.execPath &&
+              command.options.env?.ELECTRON_RUN_AS_NODE === "1",
+          ),
         );
         assert.isTrue(
           commands.some(
