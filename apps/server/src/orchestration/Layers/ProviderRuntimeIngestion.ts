@@ -17,11 +17,13 @@ import {
   type OrchestrationProposedPlan,
   type OrchestrationThread,
   type OrchestrationThreadActivity,
+  type ProviderSession,
   type ProviderRuntimeEvent,
 } from "@t3tools/contracts";
 import * as Cache from "effect/Cache";
 import * as Cause from "effect/Cause";
 import * as Crypto from "effect/Crypto";
+import * as DateTime from "effect/DateTime";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -2053,6 +2055,128 @@ const make = Effect.gen(function* () {
 
   const worker = yield* makeDrainableWorker(processInputSafely);
 
+  const runtimeSessionMatchesProjection = (
+    projected: NonNullable<OrchestrationThread["session"]>,
+    runtime: ProviderSession,
+  ) =>
+    runtime.threadId === projected.threadId &&
+    (projected.providerName === null || runtime.provider === projected.providerName) &&
+    (projected.providerInstanceId === undefined ||
+      runtime.providerInstanceId === projected.providerInstanceId);
+
+  const pendingTurnStartMatches = (
+    initial: Option.Option<{
+      readonly messageId: MessageId;
+      readonly requestedAt: string;
+    }>,
+    current: Option.Option<{
+      readonly messageId: MessageId;
+      readonly requestedAt: string;
+    }>,
+  ) =>
+    Option.match(initial, {
+      onNone: () => Option.isNone(current),
+      onSome: (left) =>
+        Option.match(current, {
+          onNone: () => false,
+          onSome: (right) =>
+            left.messageId === right.messageId && left.requestedAt === right.requestedAt,
+        }),
+    });
+
+  const reconcileOrphanedProjectedSessions = Effect.fn(
+    "ProviderRuntimeIngestion.reconcileOrphanedProjectedSessions",
+  )(function* () {
+    const shellSnapshot = yield* projectionSnapshotQuery.getShellSnapshot();
+    const candidates = yield* Effect.forEach(
+      shellSnapshot.threads.filter(
+        (thread) => thread.session?.status === "starting" || thread.session?.status === "running",
+      ),
+      (thread) =>
+        projectionTurnRepository
+          .getPendingTurnStartByThreadId({ threadId: thread.id })
+          .pipe(Effect.map((pendingTurnStart) => ({ thread, pendingTurnStart }))),
+      { concurrency: 4 },
+    );
+    if (candidates.length === 0) return;
+
+    const firstRuntimeSessions = yield* providerService.listSessions();
+    yield* Effect.yieldNow;
+    const secondRuntimeSessions = yield* providerService.listSessions();
+
+    yield* Effect.forEach(
+      candidates,
+      ({ thread: initialThread, pendingTurnStart: initialPendingTurnStart }) =>
+        Effect.gen(function* () {
+          const initialSession = initialThread.session;
+          if (initialSession === null) return;
+          if (
+            firstRuntimeSessions.some((runtime) =>
+              runtimeSessionMatchesProjection(initialSession, runtime),
+            ) ||
+            secondRuntimeSessions.some((runtime) =>
+              runtimeSessionMatchesProjection(initialSession, runtime),
+            )
+          ) {
+            return;
+          }
+
+          const [currentThread, currentPendingTurnStart, finalRuntimeSessions] = yield* Effect.all([
+            resolveThreadShell(initialThread.id),
+            projectionTurnRepository.getPendingTurnStartByThreadId({
+              threadId: initialThread.id,
+            }),
+            providerService.listSessions(),
+          ]);
+          const currentSession = currentThread?.session;
+          if (
+            currentSession === undefined ||
+            currentSession === null ||
+            (currentSession.status !== "starting" && currentSession.status !== "running") ||
+            currentSession.providerName !== initialSession.providerName ||
+            currentSession.providerInstanceId !== initialSession.providerInstanceId ||
+            currentSession.activeTurnId !== initialSession.activeTurnId ||
+            currentSession.updatedAt !== initialSession.updatedAt ||
+            !pendingTurnStartMatches(initialPendingTurnStart, currentPendingTurnStart) ||
+            finalRuntimeSessions.some((runtime) =>
+              runtimeSessionMatchesProjection(currentSession, runtime),
+            )
+          ) {
+            return;
+          }
+
+          const interruptedAt = DateTime.formatIso(yield* DateTime.now);
+          const commandUuid = yield* crypto.randomUUIDv4;
+          yield* orchestrationEngine.dispatch({
+            type: "thread.session.set",
+            commandId: CommandId.make(
+              `startup:orphaned-session:${initialThread.id}:${commandUuid}`,
+            ),
+            threadId: initialThread.id,
+            session: {
+              ...currentSession,
+              status: "interrupted",
+              activeTurnId: null,
+              lastError: null,
+              updatedAt: interruptedAt,
+            },
+            createdAt: interruptedAt,
+          });
+          yield* clearTurnStateForSession(initialThread.id);
+          threadBackgroundLiveness.clearThreadLiveness(initialThread.id);
+          threadPlanProgress.clearThreadPlanProgress(initialThread.id);
+          yield* Effect.logInfo("reconciled orphaned projected provider session", {
+            threadId: initialThread.id,
+            providerName: currentSession.providerName,
+            providerInstanceId: currentSession.providerInstanceId,
+            previousStatus: currentSession.status,
+            activeTurnId: currentSession.activeTurnId,
+          });
+        }),
+      { concurrency: 1, discard: true },
+    );
+  });
+
   const start: ProviderRuntimeIngestionShape["start"] = () =>
     Effect.gen(function* () {
       yield* forkParked(
@@ -2067,6 +2191,13 @@ const make = Effect.gen(function* () {
           }
           return worker.enqueue({ source: "domain", event });
         }),
+      );
+      yield* reconcileOrphanedProjectedSessions().pipe(
+        Effect.catchCause((cause) =>
+          Effect.logWarning("provider runtime startup reconciliation failed", {
+            cause: Cause.pretty(cause),
+          }),
+        ),
       );
     });
 
