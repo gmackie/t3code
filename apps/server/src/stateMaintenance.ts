@@ -1,7 +1,7 @@
 // @effect-diagnostics nodeBuiltinImport:off globalDate:off - Offline SQLite maintenance is an explicit Node boundary.
-import { existsSync, mkdirSync, readFileSync, statSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { DatabaseSync } from "node:sqlite";
+import * as NodeFS from "node:fs";
+import * as NodePath from "node:path";
+import * as NodeSqlite from "node:sqlite";
 
 export interface ActivityRetentionInspection {
   readonly databasePath: string;
@@ -104,7 +104,7 @@ const validateRetainPerThread = (retainPerThread: number) => {
   }
 };
 
-const countActivities = (database: DatabaseSync, retainPerThread: number) => {
+const countActivities = (database: NodeSqlite.DatabaseSync, retainPerThread: number) => {
   const total = database
     .prepare("SELECT COUNT(*) AS count FROM projection_thread_activities")
     .get()?.count;
@@ -124,9 +124,11 @@ const isProcessAlive = (pid: number) => {
 };
 
 const assertServerStopped = (runtimeStatePath: string) => {
-  if (!existsSync(runtimeStatePath)) return;
+  if (!NodeFS.existsSync(runtimeStatePath)) return;
   try {
-    const state = JSON.parse(readFileSync(runtimeStatePath, "utf8")) as { readonly pid?: unknown };
+    const state = JSON.parse(NodeFS.readFileSync(runtimeStatePath, "utf8")) as {
+      readonly pid?: unknown;
+    };
     if (typeof state.pid === "number" && isProcessAlive(state.pid)) {
       throw new Error(
         `Refusing activity retention while the running server process ${state.pid} owns this state directory.`,
@@ -134,7 +136,12 @@ const assertServerStopped = (runtimeStatePath: string) => {
     }
   } catch (cause) {
     if (cause instanceof SyntaxError) {
-      throw new Error(`Refusing activity retention because ${runtimeStatePath} is not valid JSON.`);
+      throw new Error(
+        `Refusing activity retention because ${runtimeStatePath} is not valid JSON.`,
+        {
+          cause,
+        },
+      );
     }
     throw cause;
   }
@@ -142,8 +149,8 @@ const assertServerStopped = (runtimeStatePath: string) => {
 
 const defaultBackupPath = (databasePath: string) => {
   const timestamp = new Date().toISOString().replaceAll(":", "-");
-  return join(
-    dirname(databasePath),
+  return NodePath.join(
+    NodePath.dirname(databasePath),
     "backups",
     `state-before-activity-retention-${timestamp}.sqlite`,
   );
@@ -154,13 +161,13 @@ export const inspectActivityRetention = ({
   retainPerThread,
 }: ActivityRetentionOptions): ActivityRetentionInspection => {
   validateRetainPerThread(retainPerThread);
-  const database = new DatabaseSync(databasePath, { readOnly: true });
+  const database = new NodeSqlite.DatabaseSync(databasePath, { readOnly: true });
   try {
     return {
       databasePath,
       retainPerThread,
       ...countActivities(database, retainPerThread),
-      databaseBytes: statSync(databasePath).size,
+      databaseBytes: NodeFS.statSync(databasePath).size,
     };
   } finally {
     database.close();
@@ -171,15 +178,15 @@ export const applyActivityRetention = async ({
   databasePath,
   retainPerThread,
   backupPath = defaultBackupPath(databasePath),
-  runtimeStatePath = join(dirname(databasePath), "server-runtime.json"),
+  runtimeStatePath = NodePath.join(NodePath.dirname(databasePath), "server-runtime.json"),
 }: ApplyActivityRetentionOptions): Promise<ActivityRetentionResult> => {
   validateRetainPerThread(retainPerThread);
   assertServerStopped(runtimeStatePath);
-  if (existsSync(backupPath)) throw new Error(`Backup already exists at ${backupPath}.`);
-  mkdirSync(dirname(backupPath), { recursive: true });
+  if (NodeFS.existsSync(backupPath)) throw new Error(`Backup already exists at ${backupPath}.`);
+  NodeFS.mkdirSync(NodePath.dirname(backupPath), { recursive: true });
 
-  const databaseBytes = statSync(databasePath).size;
-  const database = new DatabaseSync(databasePath, { timeout: 1_000 });
+  const databaseBytes = NodeFS.statSync(databasePath).size;
+  const database = new NodeSqlite.DatabaseSync(databasePath, { timeout: 1_000 });
   try {
     database.exec("PRAGMA locking_mode = EXCLUSIVE; BEGIN EXCLUSIVE; COMMIT;");
     assertServerStopped(runtimeStatePath);
@@ -216,7 +223,7 @@ export const applyActivityRetention = async ({
       databaseBytes,
       deletedActivities,
       backupPath,
-      compactedDatabaseBytes: statSync(databasePath).size,
+      compactedDatabaseBytes: NodeFS.statSync(databasePath).size,
     };
   } finally {
     database.close();
