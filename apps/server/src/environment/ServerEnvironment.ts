@@ -134,6 +134,12 @@ export const make = Effect.gen(function* () {
     desktopManaged: serverConfig.mode === "desktop",
     launcherManaged: launcher.managed,
   });
+  // Static is correct: the control fd is known at bootstrap, and the desktop
+  // app and its bundled server ship in one artifact, so a present fd means
+  // the app speaks the requestDesktopUpdate protocol. WSL backends never get
+  // the fd and correctly do not advertise.
+  const desktopAppUpdate =
+    serverSelfUpdate === "desktop-managed" && serverConfig.desktopTelemetryControlFd !== undefined;
 
   const descriptor: ExecutionEnvironmentDescriptor = {
     environmentId,
@@ -153,7 +159,10 @@ export const make = Effect.gen(function* () {
       threadPinReorder: true,
       threadTitleRegeneration: true,
       ...(serverSelfUpdate === null ? {} : { serverSelfUpdate }),
-      ...(serverSelfUpdate === "boot-service" ? { serverSelfUpdateProgress: true } : {}),
+      ...(serverSelfUpdate === "boot-service" || desktopAppUpdate
+        ? { serverSelfUpdateProgress: true }
+        : {}),
+      ...(desktopAppUpdate ? { desktopAppUpdate: true } : {}),
     },
   };
 
