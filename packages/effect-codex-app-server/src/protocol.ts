@@ -33,6 +33,7 @@ export interface CodexAppServerIncomingRequest {
 
 export interface CodexAppServerPatchedProtocolOptions {
   readonly stdio: Stdio.Stdio;
+  readonly maxIncomingFrameCharacters?: number;
   readonly terminationError?: Effect.Effect<CodexError.CodexAppServerError>;
   readonly logIncoming?: boolean;
   readonly logOutgoing?: boolean;
@@ -71,6 +72,60 @@ interface CodexAppServerPendingRequest {
   readonly deferred: Deferred.Deferred<unknown, CodexError.CodexAppServerError>;
   readonly method: string;
 }
+
+const DEFAULT_MAX_INCOMING_FRAME_CHARACTERS = 64 * 1024 * 1024;
+const FRAGMENT_BATCH_SIZE = 1024;
+
+export const makeJsonLineFramer = (options: { readonly maxFrameCharacters: number }) => {
+  const maximumCharacters = Math.max(1, Math.floor(options.maxFrameCharacters));
+  const blocks: Array<string> = [];
+  const fragments: Array<string> = [];
+  let pendingCharacters = 0;
+
+  const append = (fragment: string) => {
+    if (fragment.length === 0) return;
+    const observedCharacters = pendingCharacters + fragment.length;
+    if (observedCharacters > maximumCharacters) {
+      throw new CodexError.CodexAppServerIncomingFrameTooLargeError({
+        maximumCharacters,
+        observedCharacters,
+      });
+    }
+    pendingCharacters = observedCharacters;
+    fragments.push(fragment);
+    if (fragments.length >= FRAGMENT_BATCH_SIZE) {
+      blocks.push(fragments.join(""));
+      fragments.length = 0;
+    }
+  };
+
+  const takePending = () => {
+    const line =
+      blocks.length === 0 ? fragments.join("") : [...blocks, fragments.join("")].join("");
+    blocks.length = 0;
+    fragments.length = 0;
+    pendingCharacters = 0;
+    return line.replace(/\r$/, "");
+  };
+
+  return {
+    push(chunk: string): ReadonlyArray<string> {
+      const lines: Array<string> = [];
+      let start = 0;
+      for (;;) {
+        const newline = chunk.indexOf("\n", start);
+        if (newline === -1) {
+          append(chunk.slice(start));
+          return lines;
+        }
+        append(chunk.slice(start, newline));
+        lines.push(takePending());
+        start = newline + 1;
+      }
+    },
+    finish: takePending,
+  };
+};
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -157,7 +212,10 @@ export const makeCodexAppServerPatchedProtocol = Effect.fn("makeCodexAppServerPa
     const incomingRequests = yield* Queue.unbounded<CodexAppServerIncomingRequest>();
     const pending = yield* Ref.make(new Map<string, CodexAppServerPendingRequest>());
     const nextRequestId = yield* Ref.make(1);
-    const remainder = yield* Ref.make("");
+    const lineFramer = makeJsonLineFramer({
+      maxFrameCharacters:
+        options.maxIncomingFrameCharacters ?? DEFAULT_MAX_INCOMING_FRAME_CHARACTERS,
+    });
     const terminationHandled = yield* Ref.make(false);
 
     const logProtocol = (event: CodexAppServerProtocolLogEvent) => {
@@ -354,11 +412,9 @@ export const makeCodexAppServerPatchedProtocol = Effect.fn("makeCodexAppServerPa
     yield* options.stdio.stdin.pipe(
       Stream.decodeText(),
       Stream.runForEach((chunk) =>
-        Ref.modify(remainder, (current) => {
-          const combined = current + chunk;
-          const lines = combined.split("\n");
-          const nextRemainder = lines.pop() ?? "";
-          return [lines.map((line) => line.replace(/\r$/, "")), nextRemainder] as const;
+        Effect.try({
+          try: () => lineFramer.push(chunk),
+          catch: (error) => normalizeIncomingError(error, "read-input-stream"),
         }).pipe(Effect.flatMap((lines) => Effect.forEach(lines, handleLine, { discard: true }))),
       ),
       Effect.matchEffect({
@@ -367,7 +423,10 @@ export const makeCodexAppServerPatchedProtocol = Effect.fn("makeCodexAppServerPa
             Effect.succeed(normalizeIncomingError(error, "read-input-stream")),
           ),
         onSuccess: () =>
-          Ref.get(remainder).pipe(
+          Effect.try({
+            try: () => lineFramer.finish(),
+            catch: (error) => normalizeIncomingError(error, "read-input-stream"),
+          }).pipe(
             Effect.flatMap((line) => (line.trim().length === 0 ? Effect.void : handleLine(line))),
             Effect.matchEffect({
               onFailure: (error) => handleTermination(() => Effect.succeed(error)),
