@@ -191,6 +191,11 @@ describe("DesktopBackendConfiguration", () => {
             Layer.provideMerge(serverExposureLayer),
             Layer.provideMerge(DesktopAppSettings.layerTest()),
             Layer.provideMerge(
+              DesktopWslServerTree.layerTest({
+                result: { ok: true, root: path.join(baseDir, "app.asar.unpacked") },
+              }),
+            ),
+            Layer.provideMerge(
               DesktopWslEnvironment.layerTest({
                 isAvailable: true,
                 distros: [
@@ -254,6 +259,11 @@ describe("DesktopBackendConfiguration", () => {
             DesktopBackendConfiguration.layer.pipe(
               Layer.provideMerge(serverExposureLayer),
               Layer.provideMerge(DesktopAppSettings.layerTest()),
+              Layer.provideMerge(
+                DesktopWslServerTree.layerTest({
+                  result: { ok: true, root: path.join(baseDir, "app.asar.unpacked") },
+                }),
+              ),
               Layer.provideMerge(
                 DesktopWslEnvironment.layerTest({
                   isAvailable: true,
