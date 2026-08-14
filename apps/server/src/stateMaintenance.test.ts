@@ -1,16 +1,16 @@
 // @effect-diagnostics nodeBuiltinImport:off
-import { mkdtemp, readFile, stat, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { DatabaseSync } from "node:sqlite";
+import * as NodeFSP from "node:fs/promises";
+import * as NodeOS from "node:os";
+import * as NodePath from "node:path";
+import * as NodeSqlite from "node:sqlite";
 import { describe, expect, it } from "vitest";
 
 import { applyActivityRetention, inspectActivityRetention } from "./stateMaintenance.ts";
 
 const makeFixture = async () => {
-  const directory = await mkdtemp(join(tmpdir(), "t3-activity-retention-"));
-  const databasePath = join(directory, "state.sqlite");
-  const database = new DatabaseSync(databasePath);
+  const directory = await NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "t3-activity-retention-"));
+  const databasePath = NodePath.join(directory, "state.sqlite");
+  const database = new NodeSqlite.DatabaseSync(databasePath);
   database.exec(`
     CREATE TABLE projection_thread_activities (
       activity_id TEXT PRIMARY KEY,
@@ -63,7 +63,7 @@ const makeFixture = async () => {
 };
 
 const listActivityIds = (databasePath: string) => {
-  const database = new DatabaseSync(databasePath, { readOnly: true });
+  const database = new NodeSqlite.DatabaseSync(databasePath, { readOnly: true });
   const rows = database
     .prepare("SELECT activity_id FROM projection_thread_activities ORDER BY sequence")
     .all() as Array<{ activity_id: string }>;
@@ -83,7 +83,7 @@ describe("activity projection retention", () => {
 
   it("backs up the whole database before deleting candidates", async () => {
     const { directory, databasePath } = await makeFixture();
-    const backupPath = join(directory, "backups", "before-retention.sqlite");
+    const backupPath = NodePath.join(directory, "backups", "before-retention.sqlite");
 
     const result = await applyActivityRetention({
       databasePath,
@@ -92,7 +92,7 @@ describe("activity projection retention", () => {
     });
 
     expect(result).toMatchObject({ deletedActivities: 5, backupPath });
-    expect((await stat(backupPath)).size).toBeGreaterThan(0);
+    expect((await NodeFSP.stat(backupPath)).size).toBeGreaterThan(0);
     expect(listActivityIds(backupPath)).toHaveLength(9);
     expect(listActivityIds(databasePath)).toEqual([
       "approval-old",
@@ -104,8 +104,8 @@ describe("activity projection retention", () => {
 
   it("refuses to mutate a database owned by a running server", async () => {
     const { directory, databasePath } = await makeFixture();
-    const runtimeStatePath = join(directory, "server-runtime.json");
-    await writeFile(
+    const runtimeStatePath = NodePath.join(directory, "server-runtime.json");
+    await NodeFSP.writeFile(
       runtimeStatePath,
       JSON.stringify({ version: 1, pid: process.pid, port: 0, origin: "", startedAt: "" }),
     );
@@ -113,7 +113,7 @@ describe("activity projection retention", () => {
     await expect(
       applyActivityRetention({ databasePath, retainPerThread: 2, runtimeStatePath }),
     ).rejects.toThrow(/running server/i);
-    expect(JSON.parse(await readFile(runtimeStatePath, "utf8"))).toMatchObject({
+    expect(JSON.parse(await NodeFSP.readFile(runtimeStatePath, "utf8"))).toMatchObject({
       pid: process.pid,
     });
     expect(listActivityIds(databasePath)).toHaveLength(9);
