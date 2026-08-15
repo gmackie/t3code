@@ -120,6 +120,12 @@ import { useAtomCommand } from "../../state/use-atom-command";
 import { providerUsage } from "../../state/providerUsage";
 import { useEnvironmentQuery } from "../../state/query";
 import { ProviderUsageStatus } from "./ProviderUsageStatus";
+import {
+  getComposerPromptLengthValidationMessage,
+  getComposerSubmissionValidationMessage,
+  submitComposerDraft,
+} from "./composerSubmission";
+import { ComposerPromptLengthValidation } from "./ComposerPromptLengthValidation";
 
 type ComposerCommandMenuPosition = {
   bottom: number;
@@ -420,6 +426,7 @@ const ComposerFooterPrimaryActions = memo(function ComposerFooterPrimaryActions(
   providerUsageSnapshot: import("@t3tools/contracts").ProviderUsageSnapshot | null;
   isProviderUsageRefreshing: boolean;
   onRefreshProviderUsage: () => void;
+  activeThreadModelDisplayName: string | null;
   activeThreadProviderDisplayName: string | null;
   isPreparingWorktree: boolean;
   pendingAction: {
@@ -880,6 +887,12 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     }),
   );
   const refreshProviderUsage = useAtomCommand(providerUsage.refresh, { reportFailure: false });
+  const activeThreadProviderDisplayName = useMemo(
+    () =>
+      providerInstanceEntries.find((entry) => entry.instanceId === usageProviderInstanceId)
+        ?.displayName ?? null,
+    [providerInstanceEntries, usageProviderInstanceId],
+  );
 
   // Resolve the active instance's snapshot by `instanceId` so a custom
   // instance gets its own slash commands, skills, and model list — not
@@ -3545,6 +3558,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     });
                     providerUsageQuery.refresh();
                   }}
+                  activeThreadModelDisplayName={activeThreadModelDisplayName}
                   activeThreadProviderDisplayName={activeThreadProviderDisplayName}
                   pendingAction={pendingPrimaryAction}
                   isRunning={phase === "running"}
