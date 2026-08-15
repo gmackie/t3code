@@ -2709,6 +2709,120 @@ it.effect("restores pending turn-start metadata across projection pipeline resta
   ),
 );
 
+it.effect("refreshes thread shell summaries without decoding unrelated activity history", () =>
+  Effect.gen(function* () {
+    const projectionPipeline = yield* OrchestrationProjectionPipeline;
+    const eventStore = yield* OrchestrationEventStore;
+    const sql = yield* SqlClient.SqlClient;
+    const now = "2026-08-15T12:00:00.000Z";
+    const appendAndProject = (event: Parameters<typeof eventStore.append>[0]) =>
+      eventStore
+        .append(event)
+        .pipe(Effect.flatMap((savedEvent) => projectionPipeline.projectEvent(savedEvent)));
+
+    yield* appendAndProject({
+      type: "project.created",
+      eventId: EventId.make("evt-summary-bounded-1"),
+      aggregateKind: "project",
+      aggregateId: ProjectId.make("project-summary-bounded"),
+      occurredAt: now,
+      commandId: CommandId.make("cmd-summary-bounded-1"),
+      causationEventId: null,
+      correlationId: CorrelationId.make("cmd-summary-bounded-1"),
+      metadata: {},
+      payload: {
+        projectId: ProjectId.make("project-summary-bounded"),
+        title: "Project Summary Bounded",
+        workspaceRoot: "/tmp/project-summary-bounded",
+        defaultModelSelection: null,
+        scripts: [],
+        createdAt: now,
+        updatedAt: now,
+      },
+    });
+
+    yield* appendAndProject({
+      type: "thread.created",
+      eventId: EventId.make("evt-summary-bounded-2"),
+      aggregateKind: "thread",
+      aggregateId: ThreadId.make("thread-summary-bounded"),
+      occurredAt: now,
+      commandId: CommandId.make("cmd-summary-bounded-2"),
+      causationEventId: null,
+      correlationId: CorrelationId.make("cmd-summary-bounded-2"),
+      metadata: {},
+      payload: {
+        threadId: ThreadId.make("thread-summary-bounded"),
+        projectId: ProjectId.make("project-summary-bounded"),
+        title: "Thread Summary Bounded",
+        modelSelection: {
+          instanceId: ProviderInstanceId.make("codex"),
+          model: "gpt-5-codex",
+        },
+        runtimeMode: "full-access",
+        interactionMode: "default",
+        branch: null,
+        worktreePath: null,
+        createdAt: now,
+        updatedAt: now,
+      },
+    });
+
+    yield* sql`
+        INSERT INTO projection_thread_activities (
+          activity_id,
+          thread_id,
+          turn_id,
+          tone,
+          kind,
+          summary,
+          payload_json,
+          sequence,
+          created_at
+        ) VALUES (
+          'activity-summary-unrelated',
+          'thread-summary-bounded',
+          NULL,
+          'not-a-valid-tone',
+          'tool.completed',
+          'Old unrelated activity',
+          '{}',
+          1,
+          ${now}
+        )
+      `;
+
+    yield* appendAndProject({
+      type: "thread.message-sent",
+      eventId: EventId.make("evt-summary-bounded-3"),
+      aggregateKind: "thread",
+      aggregateId: ThreadId.make("thread-summary-bounded"),
+      occurredAt: "2026-08-15T12:00:01.000Z",
+      commandId: CommandId.make("cmd-summary-bounded-3"),
+      causationEventId: null,
+      correlationId: CorrelationId.make("cmd-summary-bounded-3"),
+      metadata: {},
+      payload: {
+        threadId: ThreadId.make("thread-summary-bounded"),
+        messageId: MessageId.make("message-summary-bounded"),
+        role: "user",
+        text: "Continue",
+        turnId: null,
+        streaming: false,
+        createdAt: "2026-08-15T12:00:01.000Z",
+        updatedAt: "2026-08-15T12:00:01.000Z",
+      },
+    });
+
+    const messages = yield* sql<{ readonly messageId: string }>`
+        SELECT message_id AS "messageId"
+        FROM projection_thread_messages
+        WHERE thread_id = 'thread-summary-bounded'
+      `;
+    assert.deepEqual(messages, [{ messageId: "message-summary-bounded" }]);
+  }).pipe(Effect.provide(BaseTestLayer)),
+);
+
 const engineLayer = it.layer(
   OrchestrationEngineLive.pipe(
     Layer.provide(OrchestrationProjectionSnapshotQueryLive),

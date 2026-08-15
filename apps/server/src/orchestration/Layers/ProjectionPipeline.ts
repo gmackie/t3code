@@ -139,46 +139,41 @@ function isStalePendingApprovalFailureDetail(detail: string | null): boolean {
   );
 }
 
-function derivePendingUserInputCountFromActivities(
-  activities: ReadonlyArray<ProjectionThreadActivity>,
+interface PendingUserInputStateChange {
+  readonly kind: string;
+  readonly requestId: string | null;
+  readonly detail: string | null;
+}
+
+function derivePendingUserInputCountFromStateChanges(
+  activities: ReadonlyArray<PendingUserInputStateChange>,
 ): number {
   const openRequestIds = new Set<string>();
-  const ordered = [...activities].toSorted(
-    (left, right) =>
-      left.createdAt.localeCompare(right.createdAt) ||
-      left.activityId.localeCompare(right.activityId),
-  );
 
-  for (const activity of ordered) {
-    const requestId = extractActivityRequestId(activity.payload);
-    if (requestId === null) {
+  for (const activity of activities) {
+    if (activity.requestId === null) {
       continue;
     }
-    const payload =
-      typeof activity.payload === "object" && activity.payload !== null
-        ? (activity.payload as Record<string, unknown>)
-        : null;
-    const detail = typeof payload?.detail === "string" ? payload.detail.toLowerCase() : null;
 
     if (activity.kind === "user-input.requested") {
-      openRequestIds.add(requestId);
+      openRequestIds.add(activity.requestId);
       continue;
     }
 
     if (activity.kind === "user-input.resolved") {
-      openRequestIds.delete(requestId);
+      openRequestIds.delete(activity.requestId);
       continue;
     }
 
     if (
       activity.kind === "provider.user-input.respond.failed" &&
-      detail !== null &&
-      (detail.includes("stale pending user-input request") ||
-        detail.includes("unknown pending user-input request") ||
-        detail.includes("unknown pending user input request") ||
-        detail.includes("unknown pending codex user input request"))
+      activity.detail !== null &&
+      (activity.detail.includes("stale pending user-input request") ||
+        activity.detail.includes("unknown pending user-input request") ||
+        activity.detail.includes("unknown pending user input request") ||
+        activity.detail.includes("unknown pending codex user input request"))
     ) {
-      openRequestIds.delete(requestId);
+      openRequestIds.delete(activity.requestId);
     }
   }
 
@@ -227,33 +222,6 @@ function activityCanChangeThreadShellSummary(
       : null;
   const detail = typeof payload?.detail === "string" ? payload.detail.toLowerCase() : null;
   return isStalePendingApprovalFailureDetail(detail);
-}
-
-function deriveHasActionableProposedPlan(input: {
-  readonly latestTurnId: string | null;
-  readonly proposedPlans: ReadonlyArray<ProjectionThreadProposedPlan>;
-}): boolean {
-  const sorted = [...input.proposedPlans].toSorted(
-    (left, right) =>
-      left.updatedAt.localeCompare(right.updatedAt) || left.planId.localeCompare(right.planId),
-  );
-
-  let latestForTurn: ProjectionThreadProposedPlan | null = null;
-  if (input.latestTurnId !== null) {
-    for (let index = sorted.length - 1; index >= 0; index -= 1) {
-      const plan = sorted[index];
-      if (plan?.turnId === input.latestTurnId) {
-        latestForTurn = plan;
-        break;
-      }
-    }
-  }
-  if (latestForTurn !== null) {
-    return latestForTurn.implementedAt === null;
-  }
-
-  const latestPlan = sorted.at(-1) ?? null;
-  return latestPlan !== null && latestPlan.implementedAt === null;
 }
 
 function retainProjectionMessagesAfterRevert(
@@ -605,50 +573,90 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
       }
     });
 
-    const refreshThreadShellSummary = Effect.fn("refreshThreadShellSummary")(function* (
-      threadId: ThreadId,
-    ) {
-      const existingRow = yield* projectionThreadRepository.getById({
-        threadId,
-      });
-      if (Option.isNone(existingRow)) {
-        return;
-      }
-
-      const [messages, proposedPlans, activities, pendingApprovals] = yield* Effect.all([
-        projectionThreadMessageRepository.listByThreadId({ threadId }),
-        projectionThreadProposedPlanRepository.listByThreadId({ threadId }),
-        projectionThreadActivityRepository.listByThreadId({ threadId }),
-        projectionPendingApprovalRepository.listByThreadId({ threadId }),
-      ]);
-
-      let latestUserMessageAt: string | null = null;
-      for (const message of messages) {
-        if (
-          message.role === "user" &&
-          (latestUserMessageAt === null || message.createdAt > latestUserMessageAt)
-        ) {
-          latestUserMessageAt = message.createdAt;
+    const refreshThreadShellSummary = Effect.fn("refreshThreadShellSummary")(
+      function* (threadId: ThreadId) {
+        const existingRow = yield* projectionThreadRepository.getById({
+          threadId,
+        });
+        if (Option.isNone(existingRow)) {
+          return;
         }
-      }
 
-      const pendingApprovalCount = pendingApprovals.filter(
-        (approval) => approval.status === "pending",
-      ).length;
-      const pendingUserInputCount = derivePendingUserInputCountFromActivities(activities);
-      const hasActionableProposedPlan = deriveHasActionableProposedPlan({
-        latestTurnId: existingRow.value.latestTurnId,
-        proposedPlans,
-      });
+        const [latestUserMessageRows, pendingApprovalRows, pendingUserInputRows, proposedPlanRows] =
+          yield* Effect.all([
+            sql<{ readonly latestUserMessageAt: string | null }>`
+            SELECT MAX(created_at) AS "latestUserMessageAt"
+            FROM projection_thread_messages
+            WHERE thread_id = ${threadId}
+              AND role = 'user'
+          `,
+            sql<{ readonly count: number }>`
+            SELECT COUNT(*) AS count
+            FROM projection_pending_approvals
+            WHERE thread_id = ${threadId}
+              AND status = 'pending'
+          `,
+            sql<PendingUserInputStateChange>`
+            SELECT
+              kind,
+              CASE
+                WHEN json_valid(payload_json)
+                  AND json_type(payload_json, '$.requestId') = 'text'
+                THEN json_extract(payload_json, '$.requestId')
+                ELSE NULL
+              END AS "requestId",
+              CASE
+                WHEN json_valid(payload_json)
+                  AND json_type(payload_json, '$.detail') = 'text'
+                THEN lower(json_extract(payload_json, '$.detail'))
+                ELSE NULL
+              END AS detail
+            FROM projection_thread_activities
+            WHERE thread_id = ${threadId}
+              AND kind IN (
+                'user-input.requested',
+                'user-input.resolved',
+                'provider.user-input.respond.failed'
+              )
+            ORDER BY created_at ASC, activity_id ASC
+          `,
+            sql<{ readonly implementedAt: string | null }>`
+            SELECT implemented_at AS "implementedAt"
+            FROM projection_thread_proposed_plans
+            WHERE thread_id = ${threadId}
+            ORDER BY
+              CASE
+                WHEN ${existingRow.value.latestTurnId} IS NOT NULL
+                  AND turn_id = ${existingRow.value.latestTurnId}
+                THEN 0
+                ELSE 1
+              END ASC,
+              updated_at DESC,
+              plan_id DESC
+            LIMIT 1
+          `,
+          ]);
 
-      yield* projectionThreadRepository.upsert({
-        ...existingRow.value,
-        latestUserMessageAt,
-        pendingApprovalCount,
-        pendingUserInputCount,
-        hasActionableProposedPlan: hasActionableProposedPlan ? 1 : 0,
-      });
-    });
+        const latestUserMessageAt = latestUserMessageRows[0]?.latestUserMessageAt ?? null;
+        const pendingApprovalCount = pendingApprovalRows[0]?.count ?? 0;
+        const pendingUserInputCount =
+          derivePendingUserInputCountFromStateChanges(pendingUserInputRows);
+        const hasActionableProposedPlan = proposedPlanRows[0]?.implementedAt === null;
+
+        yield* projectionThreadRepository.upsert({
+          ...existingRow.value,
+          latestUserMessageAt,
+          pendingApprovalCount,
+          pendingUserInputCount,
+          hasActionableProposedPlan: hasActionableProposedPlan ? 1 : 0,
+        });
+      },
+      Effect.catchTag("SqlError", (sqlError) =>
+        Effect.fail(
+          toPersistenceSqlError("ProjectionPipeline.refreshThreadShellSummary:query")(sqlError),
+        ),
+      ),
+    );
 
     const applyThreadsProjection: ProjectorDefinition["apply"] = Effect.fn(
       "applyThreadsProjection",
