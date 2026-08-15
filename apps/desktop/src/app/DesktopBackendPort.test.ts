@@ -19,6 +19,7 @@ it.effect("skips a default port that already has a listener", () =>
     Effect.provide(
       Layer.succeed(NetService.NetService, {
         canListenOnHost: () => Effect.succeed(true),
+        hasListenerOnHost: () => Effect.succeed(false),
         isPortAvailableOnLoopback: (port) => Effect.succeed(port !== 3_773),
         reserveLoopbackPort: () => Effect.succeed(3_774),
         findAvailablePort: () => Effect.succeed(3_774),
