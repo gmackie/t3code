@@ -21,6 +21,7 @@ import {
   DESKTOP_ELECTRON_LANGUAGES,
   DESKTOP_FILE_EXCLUSIONS,
   DESKTOP_EXTRA_RESOURCES,
+  DesktopDmgBackgroundSourceMissingError,
   InvalidMacPasskeyRpDomainError,
   InvalidMacPasskeyPublishableKeyError,
   InvalidMockUpdateServerPortError,
@@ -38,6 +39,7 @@ import {
   resolveBuildOptions,
   resolveDesktopBuildAppId,
   resolveDesktopBuildIconAssets,
+  resolveDesktopDmgBackgroundChannel,
   resolveDesktopProductName,
   resolveDesktopUpdateChannel,
   resolveDesktopWebAssetBrand,
@@ -1238,6 +1240,26 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
       assert.equal(
         (config.dmg as Record<string, unknown>).background,
         "dmg/dmg-background-nightly.png",
+      );
+    }).pipe(Effect.provide(ConfigProvider.layer(ConfigProvider.fromEnv({ env: {} })))),
+  );
+
+  it.effect("reuses the stable DMG background for gmacko macOS builds", () =>
+    Effect.gen(function* () {
+      assert.equal(resolveDesktopDmgBackgroundChannel("gmacko"), "latest");
+      const config = yield* createBuildConfig(
+        "mac",
+        "dmg",
+        "0.0.33-gmacko.202608152004",
+        false,
+        false,
+        undefined,
+        undefined,
+      );
+
+      assert.equal(
+        (config.dmg as Record<string, unknown>).background,
+        "dmg/dmg-background-latest.png",
       );
     }).pipe(Effect.provide(ConfigProvider.layer(ConfigProvider.fromEnv({ env: {} })))),
   );

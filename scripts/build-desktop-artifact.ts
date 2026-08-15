@@ -2063,6 +2063,12 @@ export function resolveDesktopUpdateChannel(version: string): "latest" | "nightl
   return "latest";
 }
 
+export function resolveDesktopDmgBackgroundChannel(
+  updateChannel: "latest" | "nightly" | "gmacko",
+): "latest" | "nightly" {
+  return updateChannel === "nightly" ? "nightly" : "latest";
+}
+
 export function resolveDesktopWebAssetBrand(version: string): WebAssetBrand {
   return resolveWebAssetBrandForChannel(resolveDesktopUpdateChannel(version));
 }
@@ -2219,12 +2225,13 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
   }
 
   if (platform === "mac" && target === "dmg") {
+    const dmgBackgroundChannel = resolveDesktopDmgBackgroundChannel(updateChannel);
     buildConfig.dmg = {
       // Give the themed installer its own Finder volume name. Finder caches
       // DMG window backgrounds by volume name, so reusing a generic name can
       // make a newly built background look unchanged during testing.
       title: `${resolveDesktopProductName(version)} ${version} Installer`,
-      background: `dmg/dmg-background-${updateChannel}.png`,
+      background: `dmg/dmg-background-${dmgBackgroundChannel}.png`,
       window: {
         width: 540,
         // Finder counts its 32px title bar in the window bounds. The themed
@@ -2948,7 +2955,7 @@ const buildDesktopArtifact = Effect.fn("buildDesktopArtifact")(function* (
   if (options.platform === "mac" && options.target === "dmg") {
     yield* stageDesktopDmgBackground(
       stageResourcesDir,
-      resolveDesktopUpdateChannel(appVersion),
+      resolveDesktopDmgBackgroundChannel(resolveDesktopUpdateChannel(appVersion)),
       options.verbose,
     );
   }
