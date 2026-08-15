@@ -82,6 +82,7 @@ import * as SourceControlRepositoryService from "./sourceControl/SourceControlRe
 import * as ProjectSetupScriptRunner from "./project/ProjectSetupScriptRunner.ts";
 import { ObservabilityLive } from "./observability/Layers/Observability.ts";
 import * as ServerEnvironment from "./environment/ServerEnvironment.ts";
+import * as RemoteOpenTargets from "./environment/RemoteOpenTargets.ts";
 import * as ExternalThreadImportService from "./threadImport/ExternalThreadImportService.ts";
 import * as ExternalThreadImportCandidateToken from "./threadImport/ExternalThreadImportCandidateToken.ts";
 import * as ProjectSessionImportService from "./projectImport/ProjectSessionImportService.ts";
