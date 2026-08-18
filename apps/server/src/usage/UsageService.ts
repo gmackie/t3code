@@ -13,6 +13,7 @@
  */
 import * as NodeOS from "node:os";
 
+import { HostProcessPlatform } from "@t3tools/shared/hostProcess";
 import {
   USAGE_CONTRACT_VERSION,
   type UsageProviderKind,
@@ -31,7 +32,7 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
-import { HttpClient, HttpClientResponse } from "effect/unstable/http";
+import { HttpClient, HttpClientRequest, HttpClientResponse } from "effect/unstable/http";
 
 import { ServerConfig } from "../config.ts";
 import * as ServerSettings from "../serverSettings.ts";
@@ -52,6 +53,12 @@ import {
   type ScanCache,
 } from "./usageScanCache.ts";
 import type { UsageRecord } from "./usageTranscripts.ts";
+import {
+  CURSOR_USAGE_EVENTS_URL,
+  cursorAccountId,
+  parseCursorUsageEventsPage,
+  resolveCursorAccessToken,
+} from "./cursorUsageApi.ts";
 
 const LITELLM_RATES_URL =
   "https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json";
@@ -68,6 +75,12 @@ const MAX_HOURLY_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 /** Longest window the UI offers, plus slack. Older entries are pruned. */
 const CACHE_RETENTION_DAYS = 90;
+
+const CURSOR_PAGE_SIZE = 200;
+/** ~10k events; far beyond a month of real use, but bounds a runaway loop. */
+const CURSOR_MAX_PAGES = 50;
+/** Absorbs rapid window switches on the usage page without refetching. */
+const CURSOR_FETCH_TTL_MS = 60_000;
 
 /** On-disk shape of the rate snapshot. */
 const RatesCacheFile = Schema.Struct({
@@ -222,6 +235,9 @@ export const make = Effect.gen(function* () {
     return [
       { provider: "claude" as const, dir: claudeDir },
       { provider: "codex" as const, dir: path.join(codexLayout.sharedHomePath, "sessions") },
+      // The Grok CLI offers no home override; sessions always live under
+      // `~/.grok/sessions/<encoded-cwd>/<session-id>/updates.jsonl`.
+      { provider: "grok" as const, dir: path.join(NodeOS.homedir(), ".grok", "sessions") },
     ];
   });
 
@@ -289,6 +305,106 @@ export const make = Effect.gen(function* () {
       cacheDirty = true;
       return records;
     });
+
+  interface CursorFetchResult {
+    readonly records: readonly UsageRecord[];
+    readonly status: UsageSource["status"];
+    readonly message: string | null;
+    /** Events the API returned, including ones without usable token data. */
+    readonly eventCount: number;
+    readonly skippedEvents: number;
+    readonly accountId: string | null;
+  }
+
+  let cursorMemo: { key: string; atMs: number; result: CursorFetchResult } | null = null;
+
+  /**
+   * Fetches Cursor usage events for the window from the account API.
+   *
+   * Cursor's CLI keeps no token data on disk (chats are content-only protobuf
+   * blobs), so this is the only complete source. Requires the CLI login; with
+   * none the source reports `missing` and the page simply shows no Cursor
+   * usage. Fetch failures degrade to `partial`/`failed` rather than erroring
+   * the whole summary.
+   */
+  const fetchCursorUsage = Effect.fn("UsageService.fetchCursorUsage")(function* (window: {
+    readonly startMs: number;
+    readonly endMs: number;
+  }): Effect.fn.Return<CursorFetchResult, never, never> {
+    const platform = yield* HostProcessPlatform;
+    const token = yield* Effect.promise(() => resolveCursorAccessToken(platform));
+    if (token === null) {
+      return {
+        records: [],
+        status: "missing",
+        message: "No Cursor CLI login on this environment.",
+        eventCount: 0,
+        skippedEvents: 0,
+        accountId: null,
+      };
+    }
+
+    const memoKey = `${window.startMs}:${window.endMs}`;
+    const now = yield* Clock.currentTimeMillis;
+    if (
+      cursorMemo !== null &&
+      cursorMemo.key === memoKey &&
+      now - cursorMemo.atMs < CURSOR_FETCH_TTL_MS
+    ) {
+      return cursorMemo.result;
+    }
+
+    const accountId = cursorAccountId(token);
+    const records: UsageRecord[] = [];
+    let eventCount = 0;
+    let totalCount = 0;
+    let failed = false;
+
+    for (let page = 1; page <= CURSOR_MAX_PAGES; page += 1) {
+      const response = yield* HttpClientRequest.post(CURSOR_USAGE_EVENTS_URL).pipe(
+        HttpClientRequest.bearerToken(token),
+        HttpClientRequest.setHeader("accept", "application/json"),
+        HttpClientRequest.bodyJsonUnsafe({
+          startDate: String(window.startMs),
+          endDate: String(window.endMs),
+          page,
+          pageSize: CURSOR_PAGE_SIZE,
+        }),
+        httpClient.execute,
+        Effect.flatMap(HttpClientResponse.filterStatusOk),
+        Effect.flatMap((httpResponse) => httpResponse.json),
+        Effect.timeout(15_000),
+        Effect.catchCause(() => Effect.succeed(null)),
+      );
+      if (response === null) {
+        failed = true;
+        break;
+      }
+      const parsed = parseCursorUsageEventsPage(response);
+      records.push(...parsed.records);
+      eventCount += parsed.eventCount;
+      totalCount = parsed.totalCount;
+      if (parsed.eventCount === 0 || eventCount >= totalCount) break;
+    }
+
+    const truncated = !failed && eventCount < totalCount;
+    const result: CursorFetchResult = {
+      records,
+      accountId,
+      status: failed ? (eventCount > 0 ? "partial" : "failed") : truncated ? "partial" : "ok",
+      message: failed
+        ? "The Cursor usage API could not be reached; usage may be incomplete."
+        : truncated
+          ? `Fetched ${eventCount} of ${totalCount} Cursor usage events.`
+          : null,
+      eventCount,
+      skippedEvents: eventCount - records.length,
+    };
+    // A failed fetch must not be memoised: the next page load should retry
+    // rather than serve an hour of known-incomplete data.
+    if (!failed) cursorMemo = { key: memoKey, atMs: now, result };
+    return result;
+  });
 
   const readSummary = Effect.fn("UsageService.readSummary")(function* (input: UsageSummaryInput) {
     if (input.sinceDay > input.untilDay) {
@@ -407,6 +523,37 @@ export const make = Effect.gen(function* () {
         message: null,
       });
     }
+
+    // Cursor is API-backed rather than a transcript directory. Events after
+    // the requested window (the end bound is "now" for historical windows)
+    // are dropped by the aggregator like any other out-of-window record.
+    const cursor = yield* fetchCursorUsage({
+      startMs: windowStartMs,
+      endMs: hourlyWindow?.untilTimeMs ?? startedAtMs,
+    });
+    const cursorSessionIds = new Set<string>();
+    for (const record of cursor.records) {
+      if (aggregator.add(record) && record.sessionId.length > 0) {
+        cursorSessionIds.add(record.sessionId);
+      }
+    }
+    sources.push({
+      fingerprint: {
+        // Account-scoped: the API returns identical data from every machine,
+        // so two environments on one Cursor account must collapse to a single
+        // source client-side instead of double counting.
+        hostId: cursor.accountId === null ? hostId : `cursor-account:${cursor.accountId}`,
+        provider: "cursor",
+        resolvedHomePath: CURSOR_USAGE_EVENTS_URL,
+        volumeId: cursor.accountId ?? "",
+      },
+      status: cursor.status,
+      scannedFiles: cursor.eventCount,
+      skippedFiles: cursor.skippedEvents,
+      malformedRecords: 0,
+      distinctSessions: cursorSessionIds.size,
+      message: cursor.message,
+    });
 
     const pruned = pruneScanCache(fileCache, {
       livePaths,

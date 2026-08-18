@@ -66,9 +66,21 @@ export function totalTokens(totals: UsageTokenTotals): number {
  * Transcripts are mostly tool output; only a minority of lines carry usage. On
  * a 30-day window this skips roughly half the lines outright and is worth about
  * an order of magnitude.
+ *
+ * Cursor has no local transcripts (its usage comes from the account API), so
+ * its gate matches nothing.
  */
 export function mightCarryUsage(line: string, provider: UsageProviderKind): boolean {
-  return provider === "claude" ? line.includes('"usage"') : line.includes('"token_count"');
+  switch (provider) {
+    case "claude":
+      return line.includes('"usage"');
+    case "codex":
+      return line.includes('"token_count"');
+    case "grok":
+      return line.includes('"turn_completed"');
+    case "cursor":
+      return false;
+  }
 }
 
 /* -------------------------------------------------------------------------- */
@@ -295,6 +307,106 @@ export function parseCodexLine(line: string, state: CodexScanState): UsageRecord
     // rollout, so they need no global dedup.
     dedupeKey: null,
   };
+}
+
+/* -------------------------------------------------------------------------- */
+/* Grok                                                                       */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Parses one line of a Grok session `updates.jsonl`.
+ *
+ * The Grok CLI appends every ACP `session/update` it emits; `turn_completed`
+ * updates carry the finished turn's usage with a per-model breakdown under
+ * `usage.modelUsage` (each entry already scoped to that turn, not cumulative
+ * for the session), so one line yields one record per model.
+ *
+ * `costUsdTicks` is denominated in nano-USD: observed turns reconcile with
+ * xAI's published per-token API rates at 1e-9 USD per tick and are off by an
+ * order of magnitude at any neighbouring scale.
+ */
+export function parseGrokLine(line: string): readonly UsageRecord[] {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(line);
+  } catch {
+    return [];
+  }
+  if (typeof parsed !== "object" || parsed === null) return [];
+  const record = parsed as Record<string, unknown>;
+
+  const params = record["params"];
+  if (typeof params !== "object" || params === null) return [];
+  const paramsRecord = params as Record<string, unknown>;
+
+  const update = paramsRecord["update"];
+  if (typeof update !== "object" || update === null) return [];
+  const updateRecord = update as Record<string, unknown>;
+  if (updateRecord["sessionUpdate"] !== "turn_completed") return [];
+
+  const usage = updateRecord["usage"];
+  if (typeof usage !== "object" || usage === null) return [];
+  const modelUsage = (usage as Record<string, unknown>)["modelUsage"];
+  if (typeof modelUsage !== "object" || modelUsage === null) return [];
+
+  const meta =
+    typeof paramsRecord["_meta"] === "object" && paramsRecord["_meta"] !== null
+      ? (paramsRecord["_meta"] as Record<string, unknown>)
+      : null;
+  // The top-level `timestamp` is epoch seconds; `_meta.agentTimestampMs` is the
+  // agent's millisecond clock and preferred when present.
+  const agentTimestampMs = meta?.["agentTimestampMs"];
+  const topTimestamp = record["timestamp"];
+  const timestampMs =
+    typeof agentTimestampMs === "number" && Number.isFinite(agentTimestampMs)
+      ? agentTimestampMs
+      : typeof topTimestamp === "number" && Number.isFinite(topTimestamp)
+        ? topTimestamp * 1000
+        : null;
+  if (timestampMs === null) return [];
+
+  const sessionId = typeof paramsRecord["sessionId"] === "string" ? paramsRecord["sessionId"] : "";
+  const eventId = typeof meta?.["eventId"] === "string" ? meta["eventId"] : null;
+
+  const records: UsageRecord[] = [];
+  for (const [model, perModel] of Object.entries(modelUsage as Record<string, unknown>)) {
+    if (model.length === 0 || typeof perModel !== "object" || perModel === null) continue;
+    const usageRecord = perModel as Record<string, unknown>;
+
+    const inputTokens = int(usageRecord["inputTokens"]);
+    const cachedInputTokens = int(usageRecord["cachedReadTokens"]);
+    const cacheCreationTokens = int(usageRecord["cacheCreationTokens"]);
+    const outputTokens = int(usageRecord["outputTokens"]);
+
+    const totals: UsageTokenTotals = {
+      // Grok reports `inputTokens` inclusive of both cached portions.
+      uncachedInputTokens: Math.max(0, inputTokens - cachedInputTokens - cacheCreationTokens),
+      cachedInputTokens,
+      cacheCreationTokens,
+      outputTokens,
+      // Reported inside outputTokens, surfaced separately for the token mix.
+      reasoningTokens: Math.min(outputTokens, int(usageRecord["reasoningTokens"])),
+    };
+    if (totalTokens(totals) === 0) continue;
+
+    const costTicks = usageRecord["costUsdTicks"];
+    records.push({
+      provider: "grok",
+      timestampMs,
+      model,
+      sessionId,
+      totals,
+      reportedCostUsd:
+        typeof costTicks === "number" && Number.isFinite(costTicks) && costTicks > 0
+          ? costTicks * 1e-9
+          : null,
+      // A resumed session can replay updates into the same file; the CLI's
+      // per-session event counter makes `eventId` the stable identity. One
+      // event fans out to one record per model, so the model joins the key.
+      dedupeKey: eventId === null ? null : `${eventId}:${model}`,
+    });
+  }
+  return records;
 }
 
 export { EMPTY_TOTALS };
