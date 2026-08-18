@@ -2,8 +2,10 @@ import { describe, expect, it } from "@effect/vitest";
 
 import {
   initialCodexScanState,
+  mightCarryUsage,
   parseClaudeLine,
   parseCodexLine,
+  parseGrokLine,
   totalTokens,
 } from "./usageTranscripts.ts";
 
@@ -247,5 +249,133 @@ describe("totalTokens", () => {
         reasoningTokens: 25,
       }),
     ).toBe(100);
+  });
+});
+
+/** Shaped after a real Grok CLI `updates.jsonl` turn_completed line. */
+function grokTurnCompletedLine(overrides?: {
+  modelUsage?: Record<string, unknown>;
+  eventId?: string | null;
+  agentTimestampMs?: number;
+}): string {
+  const meta: Record<string, unknown> = {
+    agentTimestampMs: overrides?.agentTimestampMs ?? 1786740997507,
+  };
+  if (overrides?.eventId !== null) {
+    meta["eventId"] = overrides?.eventId ?? "01a0020a-3d49-71e2-9f1a-aa4bae463035-18792";
+  }
+  return JSON.stringify({
+    timestamp: 1786740997,
+    method: "_x.ai/session/update",
+    params: {
+      sessionId: "01a0020a-3d49-71e2-9f1a-aa4bae463035",
+      update: {
+        sessionUpdate: "turn_completed",
+        prompt_id: "01a0020a-50e0-7e22-a1f6-fd83a2eb7340",
+        stop_reason: "end_turn",
+        usage: {
+          inputTokens: 772858,
+          outputTokens: 19424,
+          totalTokens: 792282,
+          modelUsage: overrides?.modelUsage ?? {
+            "grok-4.6-build": {
+              inputTokens: 772858,
+              outputTokens: 19424,
+              totalTokens: 792282,
+              cachedReadTokens: 695040,
+              cacheCreationTokens: 0,
+              reasoningTokens: 15898,
+              modelCalls: 17,
+              apiDurationMs: 347178,
+              costUsdTicks: 1053490000,
+            },
+          },
+          numTurns: 17,
+        },
+      },
+      _meta: meta,
+    },
+  });
+}
+
+describe("parseGrokLine", () => {
+  it("extracts per-model totals, nano-USD cost, and a per-model dedupe key", () => {
+    const records = parseGrokLine(grokTurnCompletedLine());
+    expect(records).toHaveLength(1);
+    const record = records[0];
+    expect(record).toMatchObject({
+      provider: "grok",
+      timestampMs: 1786740997507,
+      model: "grok-4.6-build",
+      sessionId: "01a0020a-3d49-71e2-9f1a-aa4bae463035",
+      totals: {
+        uncachedInputTokens: 772858 - 695040,
+        cachedInputTokens: 695040,
+        cacheCreationTokens: 0,
+        outputTokens: 19424,
+        reasoningTokens: 15898,
+      },
+      dedupeKey: "01a0020a-3d49-71e2-9f1a-aa4bae463035-18792:grok-4.6-build",
+    });
+    expect(record?.reportedCostUsd).toBeCloseTo(1.05349, 5);
+  });
+
+  it("emits one record per model in the breakdown", () => {
+    const records = parseGrokLine(
+      grokTurnCompletedLine({
+        modelUsage: {
+          "grok-4.6": { inputTokens: 100, outputTokens: 10, costUsdTicks: 5000000 },
+          "grok-4.5": { inputTokens: 200, outputTokens: 20 },
+        },
+      }),
+    );
+    expect(records.map((record) => record.model)).toEqual(["grok-4.6", "grok-4.5"]);
+    expect(records[0]?.reportedCostUsd).toBeCloseTo(0.005, 6);
+    expect(records[1]?.reportedCostUsd).toBeNull();
+  });
+
+  it("falls back to the epoch-seconds timestamp and skips zero-token models", () => {
+    const line = JSON.stringify({
+      timestamp: 1786740997,
+      params: {
+        sessionId: "s-1",
+        update: {
+          sessionUpdate: "turn_completed",
+          usage: {
+            modelUsage: {
+              "grok-4.6": { inputTokens: 50, outputTokens: 5 },
+              "grok-4.5": {},
+            },
+          },
+        },
+        _meta: {},
+      },
+    });
+    const records = parseGrokLine(line);
+    expect(records).toHaveLength(1);
+    expect(records[0]).toMatchObject({
+      model: "grok-4.6",
+      timestampMs: 1786740997000,
+      dedupeKey: null,
+    });
+  });
+
+  it("ignores non-turn-completed updates and malformed lines", () => {
+    expect(
+      parseGrokLine(
+        JSON.stringify({
+          params: { update: { sessionUpdate: "agent_message_chunk" }, sessionId: "s" },
+        }),
+      ),
+    ).toEqual([]);
+    expect(parseGrokLine("not json")).toEqual([]);
+  });
+});
+
+describe("mightCarryUsage", () => {
+  it("gates each provider on its own marker", () => {
+    expect(mightCarryUsage(grokTurnCompletedLine(), "grok")).toBe(true);
+    expect(mightCarryUsage('{"sessionUpdate":"tool_call"}', "grok")).toBe(false);
+    expect(mightCarryUsage('{"anything":true}', "cursor")).toBe(false);
   });
 });
