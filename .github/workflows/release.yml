@@ -429,10 +429,20 @@ jobs:
       - name: Install ImageMagick
         if: matrix.platform == 'linux'
         shell: bash
+        # A flaky Ubuntu mirror once stalled `apt-get update` for 29 minutes
+        # until the job timeout cancelled the whole build. Install from the
+        # runner's baked package lists first; only refresh the lists when that
+        # fails, with transfer timeouts so a bad mirror fails in seconds.
+        timeout-minutes: 5
         run: |
           if ! command -v magick >/dev/null 2>&1 && ! command -v convert >/dev/null 2>&1; then
-              sudo apt-get update
-              sudo apt-get install -y imagemagick
+              sudo apt-get install -y imagemagick || {
+                  sudo apt-get update \
+                    -o Acquire::Retries=3 \
+                    -o Acquire::http::Timeout=30 \
+                    -o Acquire::https::Timeout=30
+                  sudo apt-get install -y imagemagick
+              }
           fi
 
           if command -v magick >/dev/null 2>&1; then
