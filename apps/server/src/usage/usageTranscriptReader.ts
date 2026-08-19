@@ -91,6 +91,33 @@ export async function readDirectoryVolumeId(path: string): Promise<string> {
 }
 
 /**
+ * Whether a Grok transcript belongs to a spawned subagent session.
+ *
+ * A parent turn's `turn_completed` usage already includes the model calls its
+ * subagents made (per-call input arithmetic on real sessions only reconciles
+ * with the child calls folded in), yet each subagent also writes its own
+ * session directory with its own `turn_completed`. Counting both would double
+ * count, so subagent transcripts are skipped in favour of the parent's total.
+ * The marker lives in the sibling `summary.json` (`session_kind: "subagent"`,
+ * or `"subagent_resume"` for resumed ones); sessions from CLI versions
+ * predating the field scan normally.
+ */
+async function isGrokSubagentTranscript(filePath: string): Promise<boolean> {
+  try {
+    const raw = await NodeFSP.readFile(
+      NodePath.join(NodePath.dirname(filePath), "summary.json"),
+      "utf8",
+    );
+    const parsed: unknown = JSON.parse(raw);
+    if (typeof parsed !== "object" || parsed === null) return false;
+    const kind = (parsed as Record<string, unknown>)["session_kind"];
+    return typeof kind === "string" && kind.startsWith("subagent");
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Streams one transcript and returns the usage records it contains, or `null`
  * when the file could not be read.
  *
@@ -107,6 +134,10 @@ export async function readTranscriptRecords(
   filePath: string,
   provider: UsageProviderKind,
 ): Promise<readonly UsageRecord[] | null> {
+  // A subagent's usage is already inside its parent's turn totals; an empty
+  // result here is a stable fact of the session, so it is safe to memoise.
+  if (provider === "grok" && (await isGrokSubagentTranscript(filePath))) return [];
+
   const records: UsageRecord[] = [];
   const codexState = initialCodexScanState();
 
