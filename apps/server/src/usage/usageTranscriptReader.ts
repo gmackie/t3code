@@ -35,6 +35,11 @@ export interface TranscriptFile {
 /**
  * Lists `.jsonl` transcripts under `root` last modified at or after `sinceMs`.
  *
+ * `fileName` narrows the walk to one exact basename before any stat happens.
+ * Grok session directories hold several sibling `.jsonl` streams
+ * (chat_history, events, rewind_points) that can never carry usage; skipping
+ * them here roughly halves the bytes and stats of a cold Grok scan.
+ *
  * Errors on individual entries are swallowed: session files rotate and get
  * removed while the walk is in flight, and a partial listing is far better than
  * failing the page.
@@ -42,8 +47,10 @@ export interface TranscriptFile {
 export async function listTranscriptFiles(
   root: string,
   sinceMs: number,
+  options?: { readonly fileName?: string },
 ): Promise<readonly TranscriptFile[]> {
   const found: TranscriptFile[] = [];
+  const fileName = options?.fileName;
 
   const walk = async (dir: string): Promise<void> => {
     let entries;
@@ -58,7 +65,9 @@ export async function listTranscriptFiles(
         await walk(child);
         continue;
       }
-      if (!entry.name.endsWith(".jsonl")) continue;
+      if (fileName === undefined ? !entry.name.endsWith(".jsonl") : entry.name !== fileName) {
+        continue;
+      }
       try {
         const stats = await NodeFSP.stat(child);
         if (stats.mtimeMs >= sinceMs) {
@@ -117,6 +126,73 @@ async function isGrokSubagentTranscript(filePath: string): Promise<boolean> {
   }
 }
 
+const GROK_USAGE_MARKER = Buffer.from('"turn_completed"');
+const GROK_SCAN_CHUNK_BYTES = 4 * 1024 * 1024;
+const NEWLINE = 0x0a;
+
+/**
+ * Scans a Grok `updates.jsonl` by marker search instead of line iteration.
+ *
+ * These files are dominated by tool-call spam — millions of short lines with
+ * at most a few dozen `turn_completed` lines among them — and per-line
+ * iteration was the cold scan's bottleneck (~76 MB/s). `Buffer.indexOf` over
+ * large chunks runs at raw read speed; only the rare line containing the
+ * marker is materialised and JSON-parsed.
+ *
+ * A carry buffer holds the bytes after each chunk's last newline so a line
+ * spanning a chunk boundary is seen whole; memory stays bounded by the
+ * longest single line.
+ */
+async function readGrokTranscriptRecords(filePath: string): Promise<UsageRecord[] | null> {
+  const records: UsageRecord[] = [];
+  let handle;
+  try {
+    handle = await NodeFSP.open(filePath, "r");
+  } catch {
+    return null;
+  }
+  try {
+    const chunk = Buffer.allocUnsafe(GROK_SCAN_CHUNK_BYTES);
+    let carry = Buffer.alloc(0);
+    for (;;) {
+      const { bytesRead } = await handle.read(chunk, 0, chunk.length, null);
+      if (bytesRead === 0) break;
+      const window =
+        carry.length === 0
+          ? chunk.subarray(0, bytesRead)
+          : Buffer.concat([carry, chunk.subarray(0, bytesRead)]);
+      const lastNewline = window.lastIndexOf(NEWLINE);
+      // No newline yet: the current line is still growing; keep accumulating.
+      // `subarray` would alias `chunk`, which the next read overwrites.
+      if (lastNewline === -1) {
+        carry = Buffer.from(window);
+        continue;
+      }
+      const complete = window.subarray(0, lastNewline + 1);
+      carry = Buffer.from(window.subarray(lastNewline + 1));
+
+      let searchFrom = 0;
+      for (;;) {
+        const hit = complete.indexOf(GROK_USAGE_MARKER, searchFrom);
+        if (hit === -1) break;
+        const lineStart = complete.lastIndexOf(NEWLINE, hit) + 1;
+        const lineEnd = complete.indexOf(NEWLINE, hit);
+        records.push(...parseGrokLine(complete.subarray(lineStart, lineEnd).toString("utf8")));
+        searchFrom = lineEnd + 1;
+      }
+    }
+    // A final line without a trailing newline can still carry the last turn.
+    if (carry.includes(GROK_USAGE_MARKER)) {
+      records.push(...parseGrokLine(carry.toString("utf8")));
+    }
+  } catch {
+    return null;
+  } finally {
+    await handle.close().catch(() => {});
+  }
+  return records;
+}
+
 /**
  * Streams one transcript and returns the usage records it contains, or `null`
  * when the file could not be read.
@@ -134,9 +210,12 @@ export async function readTranscriptRecords(
   filePath: string,
   provider: UsageProviderKind,
 ): Promise<readonly UsageRecord[] | null> {
-  // A subagent's usage is already inside its parent's turn totals; an empty
-  // result here is a stable fact of the session, so it is safe to memoise.
-  if (provider === "grok" && (await isGrokSubagentTranscript(filePath))) return [];
+  if (provider === "grok") {
+    // A subagent's usage is already inside its parent's turn totals; an empty
+    // result here is a stable fact of the session, so it is safe to memoise.
+    if (await isGrokSubagentTranscript(filePath)) return [];
+    return await readGrokTranscriptRecords(filePath);
+  }
 
   const records: UsageRecord[] = [];
   const codexState = initialCodexScanState();
@@ -162,10 +241,6 @@ export async function readTranscriptRecords(
       }
 
       if (!mightCarryUsage(line, provider)) continue;
-      if (provider === "grok") {
-        records.push(...parseGrokLine(line));
-        continue;
-      }
       const record = parseClaudeLine(line);
       if (record !== null) records.push(record);
     }
