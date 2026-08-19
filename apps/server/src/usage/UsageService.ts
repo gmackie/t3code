@@ -489,7 +489,15 @@ export const make = Effect.gen(function* () {
       }
 
       walkedRoots.push(dir);
-      const files = yield* Effect.promise(() => listTranscriptFiles(dir, windowStartMs));
+      // Grok session directories hold several `.jsonl` streams; only
+      // `updates.jsonl` carries usage, so the walk skips the rest outright.
+      const files = yield* Effect.promise(() =>
+        listTranscriptFiles(
+          dir,
+          windowStartMs,
+          provider === "grok" ? { fileName: "updates.jsonl" } : undefined,
+        ),
+      );
       let scannedFiles = 0;
       let skippedFiles = 0;
       // Distinct per directory. Buckets carry per-cell session counts, but a
