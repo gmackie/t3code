@@ -379,3 +379,37 @@ describe("mightCarryUsage", () => {
     expect(mightCarryUsage('{"anything":true}', "cursor")).toBe(false);
   });
 });
+
+describe("grok subagent transcript skipping", () => {
+  it("skips transcripts whose session is marked as a spawned subagent", async () => {
+    const { mkdtemp, mkdir, writeFile } = await import("node:fs/promises");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const { readTranscriptRecords } = await import("./usageTranscriptReader.ts");
+
+    const root = await mkdtemp(join(tmpdir(), "t3-grok-usage-"));
+    const line = grokTurnCompletedLine();
+
+    const makeSession = async (name: string, summary: Record<string, unknown> | null) => {
+      const dir = join(root, name);
+      await mkdir(dir, { recursive: true });
+      await writeFile(join(dir, "updates.jsonl"), `${line}\n`);
+      if (summary !== null) {
+        await writeFile(join(dir, "summary.json"), JSON.stringify(summary));
+      }
+      return join(dir, "updates.jsonl");
+    };
+
+    // A parent turn's usage already includes its subagents' calls, so the
+    // children's own transcripts must not count again.
+    const subagent = await makeSession("child", { session_kind: "subagent" });
+    const resumed = await makeSession("resumed", { session_kind: "subagent_resume" });
+    const topLevel = await makeSession("parent", { agent_name: "grok-build-plan" });
+    const unmarked = await makeSession("legacy", null);
+
+    expect(await readTranscriptRecords(subagent, "grok")).toEqual([]);
+    expect(await readTranscriptRecords(resumed, "grok")).toEqual([]);
+    expect(await readTranscriptRecords(topLevel, "grok")).toHaveLength(1);
+    expect(await readTranscriptRecords(unmarked, "grok")).toHaveLength(1);
+  });
+});
