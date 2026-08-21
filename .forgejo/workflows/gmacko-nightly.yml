@@ -255,7 +255,7 @@ jobs:
         run: pnpm vp run typecheck
 
       - name: Test
-        run: pnpm vp run test
+        run: pnpm vp run test -- --maxWorkers=4
 
   promote:
     name: Promote lane to GitHub
