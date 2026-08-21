@@ -256,7 +256,8 @@ async function createJavascriptReviewDiffHighlighter(): Promise<NativeReviewDiff
       cache: null,
       regexConstructor: (pattern) => {
         const compiled =
-          compiledPatterns.get(pattern) ?? defaultJavaScriptRegexConstructor(pattern);
+          compiledPatterns.get(pattern) ??
+          defaultJavaScriptRegexConstructor(pattern, { lazyCompileLength: Infinity });
         compiledPatterns.set(pattern, compiled);
         return new RegExp(compiled.source, compiled.flags);
       },
