@@ -44,6 +44,7 @@ import {
   resolveDesktopUpdateChannel,
   resolveDesktopWebAssetBrand,
   resolveResourceMonitorRustTargets,
+  resolveResourceMonitorCargoInvocation,
   resourceMonitorExecutableName,
   resolveGitHubPublishConfig,
   resolveMockUpdateServerPort,
@@ -1304,6 +1305,14 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
     assert.deepStrictEqual(resolveResourceMonitorRustTargets("win", "arm64"), [
       "aarch64-pc-windows-msvc",
     ]);
+    assert.deepStrictEqual(resolveResourceMonitorCargoInvocation("win", "darwin"), {
+      command: "cargo",
+      args: ["xwin", "build"],
+    });
+    assert.deepStrictEqual(resolveResourceMonitorCargoInvocation("win", "win32"), {
+      command: "cargo",
+      args: ["build"],
+    });
     assert.equal(resourceMonitorExecutableName("mac"), "t3-resource-monitor");
     assert.equal(resourceMonitorExecutableName("win"), "t3-resource-monitor.exe");
   });

@@ -141,6 +141,16 @@ export function resourceMonitorExecutableName(platform: typeof BuildPlatform.Typ
   return platform === "win" ? "t3-resource-monitor.exe" : "t3-resource-monitor";
 }
 
+export function resolveResourceMonitorCargoInvocation(
+  platform: typeof BuildPlatform.Type,
+  hostPlatform: NodeJS.Platform = process.platform,
+): { readonly command: string; readonly args: ReadonlyArray<string> } {
+  if (platform === "win" && hostPlatform !== "win32") {
+    return { command: "cargo", args: ["xwin", "build"] };
+  }
+  return { command: "cargo", args: ["build"] };
+}
+
 const PLATFORM_CONFIG: Record<typeof BuildPlatform.Type, PlatformConfig> = {
   mac: {
     cliFlag: "--mac",
@@ -1836,8 +1846,9 @@ const stageResourceMonitor = Effect.fn("stageResourceMonitor")(function* (input:
   const builtBinaries: string[] = [];
 
   for (const rustTarget of rustTargets) {
-    const spawnCommand = yield* resolveSpawnCommand("cargo", [
-      "build",
+    const cargoInvocation = resolveResourceMonitorCargoInvocation(input.platform);
+    const spawnCommand = yield* resolveSpawnCommand(cargoInvocation.command, [
+      ...cargoInvocation.args,
       "--locked",
       "--release",
       "--manifest-path",

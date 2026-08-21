@@ -518,6 +518,11 @@ jobs:
           "$HOME/.cargo/bin/rustup" target add "${{ matrix.rust_target }}" || true
           "$HOME/.cargo/bin/rustc" --version
 
+      - name: Install Windows MSVC cross-linker
+        if: matrix.platform == 'win'
+        shell: bash
+        run: cargo install cargo-xwin --version 0.23.1 --locked
+
       - name: Install Linux packaging dependencies
         if: matrix.platform == 'linux'
         shell: bash
