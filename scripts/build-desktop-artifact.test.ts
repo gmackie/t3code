@@ -56,6 +56,7 @@ import {
   ancestorNodeModulesPaths,
   copyDirectoryPreservingSymlinks,
   validateWindowsPackagedPayload,
+  verifyPackagedBundleIsSelfContained,
   WindowsPrimaryNativeProbeError,
   WindowsPackagedPayloadValidationError,
   WINDOWS_PACKAGED_PAYLOAD_FILE_LIMIT,
@@ -659,7 +660,7 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
     );
   });
 
-  it.effect("skips the primary native probe for cross-architecture Windows payloads", () => {
+  it.effect("skips executable probes for cross-architecture Windows payloads", () => {
     const commands: Array<{
       readonly command: string;
       readonly options: {
@@ -690,7 +691,7 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
               command.options.env?.ELECTRON_RUN_AS_NODE === "1",
           ),
         );
-        assert.isTrue(
+        assert.isFalse(
           commands.some(
             (command) =>
               command.command === process.execPath && command.options.env?.NODE_PATH === "",
@@ -827,10 +828,9 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
           copyUnpackedNatives: true,
           serverEntrySource: 'import "t3code-deliberately-missing-package";\n',
         });
-        const error = yield* validateWindowsPackagedPayload({
-          stageDistDir: fixture.stageDistDir,
-          appExecutableName: fixture.appExecutableName,
-          targetArch: "x64",
+        const error = yield* verifyPackagedBundleIsSelfContained({
+          asarPath: fixture.generatedAsarPath,
+          verbose: false,
         }).pipe(Effect.flip);
 
         assert.instanceOf(error, BundleNotSelfContainedError);
