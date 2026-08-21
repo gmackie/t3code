@@ -1,8 +1,5 @@
 import { createHighlighterCore, type HighlighterCore } from "@shikijs/core";
-import {
-  createJavaScriptRegexEngine,
-  defaultJavaScriptRegexConstructor,
-} from "@shikijs/engine-javascript";
+import { createJavaScriptRegexEngine } from "@shikijs/engine-javascript";
 import bashLanguage from "@shikijs/langs/bash";
 import diffLanguage from "@shikijs/langs/diff";
 import javascriptLanguage from "@shikijs/langs/javascript";
@@ -212,6 +209,7 @@ const NATIVE_REVIEW_DIFF_LANGUAGES = [
 
 let nativeHighlighterPromise: Promise<NativeReviewDiffHighlighterHandle> | null = null;
 let javascriptHighlighterPromise: Promise<NativeReviewDiffHighlighterHandle> | null = null;
+let visibleRowsHighlightQueue: Promise<void> = Promise.resolve();
 
 function waitForNextFrame(): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, 0));
@@ -248,20 +246,10 @@ async function createNativeReviewDiffHighlighter(): Promise<NativeReviewDiffHigh
 }
 
 async function createJavascriptReviewDiffHighlighter(): Promise<NativeReviewDiffHighlighterHandle> {
-  const compiledPatterns = new Map<string, RegExp>();
   const highlighter: HighlighterCore = await createHighlighterCore({
     langs: NATIVE_REVIEW_DIFF_LANGUAGES,
     themes: NATIVE_REVIEW_DIFF_SHIKI_THEMES,
-    engine: createJavaScriptRegexEngine({
-      cache: null,
-      regexConstructor: (pattern) => {
-        const compiled =
-          compiledPatterns.get(pattern) ??
-          defaultJavaScriptRegexConstructor(pattern, { lazyCompileLength: Infinity });
-        compiledPatterns.set(pattern, compiled);
-        return new RegExp(compiled.source, compiled.flags);
-      },
-    }),
+    engine: createJavaScriptRegexEngine(),
   });
 
   return {
@@ -410,7 +398,7 @@ function makePlainTokenFallback(
   return [{ content: row.content || " ", color: null, fontStyle: null }];
 }
 
-export async function highlightNativeReviewDiffVisibleRows(
+async function highlightNativeReviewDiffVisibleRowsNow(
   input: HighlightNativeReviewDiffVisibleRowsInput,
 ): Promise<{
   readonly engine: NativeReviewDiffHighlightEngine;
@@ -496,6 +484,24 @@ export async function highlightNativeReviewDiffVisibleRows(
     rowCount: selectedRows.length,
     durationMs: Math.round(performance.now() - startedAt),
   };
+}
+
+export function highlightNativeReviewDiffVisibleRows(
+  input: HighlightNativeReviewDiffVisibleRowsInput,
+): Promise<{
+  readonly engine: NativeReviewDiffHighlightEngine;
+  readonly tokensByRowId: Record<string, ReadonlyArray<NativeReviewDiffToken>>;
+  readonly rowCount: number;
+  readonly durationMs: number;
+}> {
+  const operation = visibleRowsHighlightQueue.then(() =>
+    highlightNativeReviewDiffVisibleRowsNow(input),
+  );
+  visibleRowsHighlightQueue = operation.then(
+    () => undefined,
+    () => undefined,
+  );
+  return operation;
 }
 
 export async function streamNativeReviewDiffTokens(
