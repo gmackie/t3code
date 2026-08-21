@@ -299,6 +299,26 @@ describe("XAiAcpExtension", () => {
     }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
   );
 
+  it.effect("fails a hung prompt when xAI reports a rate limit", () =>
+    Effect.gen(function* () {
+      const runtime = yield* makePromptCompletionRuntime({
+        T3_ACP_EMIT_XAI_PROMPT_COMPLETE_THEN_HANG: "1",
+        T3_ACP_XAI_PROMPT_COMPLETE_STOP_REASON: "rate_limit",
+      });
+      yield* runtime.start();
+
+      const error = yield* Effect.flip(
+        runtime.prompt({
+          prompt: [{ type: "text", text: "hi" }],
+        }),
+      );
+
+      expect(error.message).toBe(
+        "You've hit the rate limit for your plan. Upgrade your account or try again later.",
+      );
+    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+  );
+
   it.effect("ignores stale xAI completion from an already settled prompt", () =>
     Effect.gen(function* () {
       const runtime = yield* makePromptCompletionRuntime({
