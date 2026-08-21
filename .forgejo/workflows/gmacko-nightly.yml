@@ -261,8 +261,8 @@ jobs:
           test_home="$(mktemp -d)"
           chown nobody:nogroup "$test_home"
           find . -type d -name node_modules -prune -exec sh -c '
-            mkdir -p "$1/.vite-temp"
-            chown nobody:nogroup "$1/.vite-temp"
+            mkdir -p "$1/.vite" "$1/.vite-temp"
+            chown -R nobody:nogroup "$1/.vite" "$1/.vite-temp"
           ' _ {} \;
           runuser -u nobody -- env HOME="$test_home" PATH="$PATH" pnpm vp run test
 
