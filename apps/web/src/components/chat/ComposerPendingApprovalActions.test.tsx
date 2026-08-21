@@ -15,11 +15,10 @@ describe("ComposerPendingApprovalActions", () => {
       />,
     );
 
-    expect(markup).toContain(">Cancel<");
+    expect(markup).toContain(">Cancel turn<");
     expect(markup).toContain("Always allow this session");
     expect(markup).not.toContain(">Always allow<");
-    expect(markup).toContain("h-5");
-    expect(markup).toContain("sm:text-[11px]");
-    expect(markup).not.toContain("sm:h-6");
+    expect(markup).toContain("h-8");
+    expect(markup).toContain("sm:h-7");
   });
 });

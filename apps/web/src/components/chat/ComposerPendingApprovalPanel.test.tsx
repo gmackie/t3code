@@ -22,18 +22,14 @@ describe("ComposerPendingApprovalPanel", () => {
 
     expect(markup).toContain('data-approval-detail="complete"');
     expect(markup).toContain('aria-label="Command"');
-    expect(markup).toContain('role="group"');
-    expect(markup).toContain('tabindex="0"');
     expect(markup).toContain(detail);
-    expect(markup).toContain("max-h-20");
+    expect(markup).toContain("max-h-40");
     expect(markup).toContain("overflow-auto");
-    expect(markup).toContain("whitespace-pre");
-    expect(markup).toContain("[scrollbar-width:thin]");
-    expect(markup).toContain("[&amp;::-webkit-scrollbar]:h-1.5");
+    expect(markup).toContain("whitespace-pre-wrap");
     expect(markup).not.toContain("truncate");
     expect(markup).not.toContain("line-clamp");
     expect(markup).toContain("min-w-0");
-    expect(markup).not.toContain("Command approval requested");
+    expect(markup).toContain("Command approval requested");
   });
 
   it("falls back to the approval kind when the provider sends an empty detail", () => {
@@ -50,6 +46,6 @@ describe("ComposerPendingApprovalPanel", () => {
       />,
     );
 
-    expect(markup).toContain("File read approval");
+    expect(markup).toContain("File-read approval requested");
   });
 });

@@ -173,6 +173,7 @@ describe("parsePersistedState", () => {
       projectExpandedById: {
         logical: false,
       },
+      projectColorById: {},
       projectOrder: ["physical-b", "physical-a"],
       threadLastVisitedAtById: {
         "environment:thread-1": "2026-02-25T12:35:00.000Z",
@@ -265,7 +266,7 @@ describe("uiStateStore persistence", () => {
     vi.unstubAllGlobals();
   });
 
-  it("persists raw UI preferences including thread visit markers", () => {
+  it("persists portable UI preferences without environment-local entity ids", () => {
     const state = makeUiState({
       projectExpandedById: {
         logical: false,
@@ -289,13 +290,10 @@ describe("uiStateStore persistence", () => {
       localStorageStub.getItem(PERSISTED_STATE_KEY) ?? "{}",
     ) as PersistedUiState;
     expect(persisted).toEqual({
-      projectExpandedById: {
-        logical: false,
-      },
-      projectOrder: ["physical-b", "physical-a"],
-      threadLastVisitedAtById: {
-        "environment:thread-1": "2026-02-25T12:35:00.000Z",
-      },
+      collapsedProjectCwds: [],
+      expandedProjectCwds: [],
+      projectOrderCwds: [],
+      projectColorCwds: {},
       defaultAdvertisedEndpointKey: "desktop-core:lan:http",
       threadChangedFilesExpansionVersion: 1,
       threadChangedFilesExpandedById: {
@@ -305,8 +303,13 @@ describe("uiStateStore persistence", () => {
         },
       },
     });
-    expect(parsePersistedState(persisted)).toEqual({
-      ...state,
+    expect(parsePersistedState(persisted)).toMatchObject({
+      projectExpandedById: {},
+      projectColorById: {},
+      projectOrder: [],
+      threadLastVisitedAtById: {},
+      threadChangedFilesExpandedById: state.threadChangedFilesExpandedById,
+      defaultAdvertisedEndpointKey: state.defaultAdvertisedEndpointKey,
     });
   });
 

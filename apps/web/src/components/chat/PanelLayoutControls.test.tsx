@@ -25,7 +25,7 @@ describe("PanelLayoutControls", () => {
       />,
     );
 
-    expect(markup.match(/data-slot="tooltip-trigger"/g)).toHaveLength(2);
+    expect(markup.match(/data-slot="tooltip-trigger"/g)).toHaveLength(3);
     expect(markup.match(/data-slot="tooltip-trigger"[^>]*><button[^>]*disabled=""/g)).toHaveLength(
       2,
     );

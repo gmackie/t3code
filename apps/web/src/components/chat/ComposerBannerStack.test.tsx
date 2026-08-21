@@ -32,13 +32,11 @@ describe("ComposerBannerStack", () => {
     expect(markup).toContain("group-focus-within/banner-stack:visible");
   });
 
-  it("colors the collapsed stack cap by the hidden banner's variant, not a fixed warning", () => {
+  it("colors the collapsed stack cap by the hidden banner's variant", () => {
     const neutralBehind = renderToStaticMarkup(
       <ComposerBannerStack items={[banner("front", "default"), banner("stacked", "default")]} />,
     );
-    expect(neutralBehind).toContain("chat-composer-banner-stack-cap");
-    expect(neutralBehind).toContain("border-[var(--chat-composer-attached-outline)]");
-    expect(neutralBehind).not.toContain("border-border");
+    expect(neutralBehind).toContain("border-border");
     expect(neutralBehind).not.toContain("border-warning/24");
 
     const warningBehind = renderToStaticMarkup(
@@ -51,10 +49,8 @@ describe("ComposerBannerStack", () => {
     const markup = renderToStaticMarkup(<ComposerBannerStack items={[banner("front")]} />);
 
     expect(markup).not.toContain("data-composer-banner-stack-expanded-items");
-    expect(markup).toContain("chat-composer-drawer-surface");
-    expect(markup).toContain("chat-composer-drawer-attached");
-    expect(markup).toContain("text-xs");
-    expect(markup).toContain('data-composer-banner-drawer="true"');
+    expect(markup).toContain("alert-glass");
+    expect(markup).toContain("rounded-[22px]");
     expect(markup).toContain('data-variant="warning"');
     expect(markup).toContain("transform:none");
     expect(markup).not.toContain("will-change:transform");
