@@ -146,12 +146,6 @@ import {
   PullRequestUpdateInput,
 } from "./pullRequest.ts";
 import {
-  ProviderUsageGetInput,
-  ProviderUsageRefreshResult,
-  ProviderUsageSnapshot,
-  ProviderUsageSubscribeInput,
-} from "./providerUsage.ts";
-import {
   RelayClientInstallFailedError,
   RelayClientInstallProgressEventSchema,
   RelayClientStatusSchema,

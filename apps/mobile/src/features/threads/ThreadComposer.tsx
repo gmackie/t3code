@@ -54,7 +54,6 @@ import {
   ComposerToolbarScroller,
 } from "../../components/ComposerToolbar";
 import { ControlPill } from "../../components/ControlPill";
-import { ProviderUsageIndicator } from "../../components/ProviderUsageIndicator";
 import { ProviderIcon } from "../../components/ProviderIcon";
 import type { DraftComposerImageAttachment } from "../../lib/composerImages";
 import { buildModelOptions, groupByProvider } from "../../lib/modelOptions";
