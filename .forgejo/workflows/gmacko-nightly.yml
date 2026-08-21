@@ -260,6 +260,7 @@ jobs:
           set -euo pipefail
           test_home="$(mktemp -d)"
           chown nobody:nogroup "$test_home"
+          chown nobody:nogroup apps/server
           find . -type d -name node_modules -prune -exec sh -c '
             mkdir -p "$1/.vite" "$1/.vite-temp"
             chown -R nobody:nogroup "$1/.vite" "$1/.vite-temp"
