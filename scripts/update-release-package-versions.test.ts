@@ -162,11 +162,17 @@ it.layer(ScriptTestLayer)("update-release-package-versions", (it) => {
       const filePath = path.join(baseDir, releasePackageFiles[0]);
 
       yield* writePackageJsonFixtures(baseDir, "0.0.1");
-      yield* fs.chmod(filePath, 0o400);
+
+      const writeCause = yield* fs.writeFileString(baseDir, "unwritable").pipe(Effect.flip);
+      const failingFs = {
+        ...fs,
+        writeFileString: (target, data, options) =>
+          target === filePath ? Effect.fail(writeCause) : fs.writeFileString(target, data, options),
+      } satisfies FileSystem.FileSystem;
 
       const error = yield* updateReleasePackageVersions("1.2.3", {
         rootDir: baseDir,
-      }).pipe(Effect.flip, Effect.ensuring(fs.chmod(filePath, 0o600).pipe(Effect.orDie)));
+      }).pipe(Effect.provideService(FileSystem.FileSystem, failingFs), Effect.flip);
 
       assert.equal(error.operation, "write");
       assert.equal(error.filePath, filePath);
