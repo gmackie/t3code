@@ -3415,6 +3415,18 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                   <ComposerFooterPrimaryActions
                     compact={isComposerPrimaryActionsCompact}
                     activeContextWindow={activeContextWindow}
+                    providerUsageSnapshot={providerUsageEventsQuery.data ?? providerUsageQuery.data}
+                    isProviderUsageRefreshing={
+                      providerUsageQuery.isPending || providerUsageEventsQuery.isPending
+                    }
+                    onRefreshProviderUsage={() => {
+                      void refreshProviderUsage({
+                        environmentId,
+                        input: { providerInstanceId: usageProviderInstanceId },
+                      });
+                      providerUsageQuery.refresh();
+                    }}
+                    activeThreadProviderDisplayName={activeThreadProviderDisplayName}
                     activeThreadModelDisplayName={activeThreadModelDisplayName}
                     pendingAction={pendingPrimaryAction}
                     isRunning={phase === "running"}

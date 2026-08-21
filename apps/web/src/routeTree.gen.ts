@@ -119,9 +119,9 @@ const SettingsAppearanceRoute = SettingsAppearanceRouteImport.update({
   getParentRoute: () => SettingsRoute,
 } as any)
 const ProjectsProjectKeyRoute = ProjectsProjectKeyRouteImport.update({
-  id: '/projects/$projectKey',
-  path: '/projects/$projectKey',
-  getParentRoute: () => rootRouteImport,
+  id: '/$projectKey',
+  path: '/$projectKey',
+  getParentRoute: () => ProjectsRoute,
 } as any)
 const PluginsPluginIdRoute = PluginsPluginIdRouteImport.update({
   id: '/plugins/$pluginId',
@@ -160,13 +160,13 @@ export interface FileRoutesByFullPath {
   '/': typeof ChatIndexRoute
   '/connect': typeof ConnectRoute
   '/pair': typeof PairRoute
+  '/projects': typeof ProjectsRouteWithChildren
   '/settings': typeof SettingsRouteWithChildren
-  '/projects': typeof ProjectsRoute
   '/usage': typeof UsageRoute
   '/pull-requests': typeof ChatPullRequestsRoute
   '/connect/callback': typeof ConnectCallbackRoute
-  '/projects/$projectKey': typeof ProjectsProjectKeyRoute
   '/plugins/$pluginId': typeof PluginsPluginIdRoute
+  '/projects/$projectKey': typeof ProjectsProjectKeyRoute
   '/settings/appearance': typeof SettingsAppearanceRoute
   '/settings/archived': typeof SettingsArchivedRoute
   '/settings/connections': typeof SettingsConnectionsRoute
@@ -184,13 +184,13 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/connect': typeof ConnectRoute
   '/pair': typeof PairRoute
+  '/projects': typeof ProjectsRouteWithChildren
   '/settings': typeof SettingsRouteWithChildren
-  '/projects': typeof ProjectsRoute
   '/usage': typeof UsageRoute
   '/pull-requests': typeof ChatPullRequestsRoute
   '/connect/callback': typeof ConnectCallbackRoute
-  '/projects/$projectKey': typeof ProjectsProjectKeyRoute
   '/plugins/$pluginId': typeof PluginsPluginIdRoute
+  '/projects/$projectKey': typeof ProjectsProjectKeyRoute
   '/settings/appearance': typeof SettingsAppearanceRoute
   '/settings/archived': typeof SettingsArchivedRoute
   '/settings/connections': typeof SettingsConnectionsRoute
@@ -211,13 +211,13 @@ export interface FileRoutesById {
   '/_chat': typeof ChatRouteWithChildren
   '/connect': typeof ConnectRoute
   '/pair': typeof PairRoute
+  '/projects': typeof ProjectsRouteWithChildren
   '/settings': typeof SettingsRouteWithChildren
-  '/projects': typeof ProjectsRoute
   '/usage': typeof UsageRoute
   '/_chat/pull-requests': typeof ChatPullRequestsRoute
   '/connect_/callback': typeof ConnectCallbackRoute
-  '/projects/$projectKey': typeof ProjectsProjectKeyRoute
   '/plugins/$pluginId': typeof PluginsPluginIdRoute
+  '/projects/$projectKey': typeof ProjectsProjectKeyRoute
   '/settings/appearance': typeof SettingsAppearanceRoute
   '/settings/archived': typeof SettingsArchivedRoute
   '/settings/connections': typeof SettingsConnectionsRoute
@@ -239,13 +239,13 @@ export interface FileRouteTypes {
     | '/'
     | '/connect'
     | '/pair'
-    | '/settings'
     | '/projects'
+    | '/settings'
     | '/usage'
     | '/pull-requests'
     | '/connect/callback'
-    | '/projects/$projectKey'
     | '/plugins/$pluginId'
+    | '/projects/$projectKey'
     | '/settings/appearance'
     | '/settings/archived'
     | '/settings/connections'
@@ -263,13 +263,13 @@ export interface FileRouteTypes {
   to:
     | '/connect'
     | '/pair'
-    | '/settings'
     | '/projects'
+    | '/settings'
     | '/usage'
     | '/pull-requests'
     | '/connect/callback'
-    | '/projects/$projectKey'
     | '/plugins/$pluginId'
+    | '/projects/$projectKey'
     | '/settings/appearance'
     | '/settings/archived'
     | '/settings/connections'
@@ -289,13 +289,13 @@ export interface FileRouteTypes {
     | '/_chat'
     | '/connect'
     | '/pair'
-    | '/settings'
     | '/projects'
+    | '/settings'
     | '/usage'
     | '/_chat/pull-requests'
     | '/connect_/callback'
-    | '/projects/$projectKey'
     | '/plugins/$pluginId'
+    | '/projects/$projectKey'
     | '/settings/appearance'
     | '/settings/archived'
     | '/settings/connections'
@@ -316,11 +316,10 @@ export interface RootRouteChildren {
   ChatRoute: typeof ChatRouteWithChildren
   ConnectRoute: typeof ConnectRoute
   PairRoute: typeof PairRoute
+  ProjectsRoute: typeof ProjectsRouteWithChildren
   SettingsRoute: typeof SettingsRouteWithChildren
-  ProjectsRoute: typeof ProjectsRoute
   UsageRoute: typeof UsageRoute
   ConnectCallbackRoute: typeof ConnectCallbackRoute
-  ProjectsProjectKeyRoute: typeof ProjectsProjectKeyRoute
   PluginsPluginIdRoute: typeof PluginsPluginIdRoute
 }
 
@@ -447,10 +446,10 @@ declare module '@tanstack/react-router' {
     }
     '/projects/$projectKey': {
       id: '/projects/$projectKey'
-      path: '/projects/$projectKey'
+      path: '/$projectKey'
       fullPath: '/projects/$projectKey'
       preLoaderRoute: typeof ProjectsProjectKeyRouteImport
-      parentRoute: typeof rootRouteImport
+      parentRoute: typeof ProjectsRoute
     }
     '/plugins/$pluginId': {
       id: '/plugins/$pluginId'
@@ -516,6 +515,18 @@ const ChatRouteChildren: ChatRouteChildren = {
 
 const ChatRouteWithChildren = ChatRoute._addFileChildren(ChatRouteChildren)
 
+interface ProjectsRouteChildren {
+  ProjectsProjectKeyRoute: typeof ProjectsProjectKeyRoute
+}
+
+const ProjectsRouteChildren: ProjectsRouteChildren = {
+  ProjectsProjectKeyRoute: ProjectsProjectKeyRoute,
+}
+
+const ProjectsRouteWithChildren = ProjectsRoute._addFileChildren(
+  ProjectsRouteChildren,
+)
+
 interface SettingsRouteChildren {
   SettingsAppearanceRoute: typeof SettingsAppearanceRoute
   SettingsArchivedRoute: typeof SettingsArchivedRoute
@@ -550,11 +561,10 @@ const rootRouteChildren: RootRouteChildren = {
   ChatRoute: ChatRouteWithChildren,
   ConnectRoute: ConnectRoute,
   PairRoute: PairRoute,
+  ProjectsRoute: ProjectsRouteWithChildren,
   SettingsRoute: SettingsRouteWithChildren,
-  ProjectsRoute: ProjectsRoute,
   UsageRoute: UsageRoute,
   ConnectCallbackRoute: ConnectCallbackRoute,
-  ProjectsProjectKeyRoute: ProjectsProjectKeyRoute,
   PluginsPluginIdRoute: PluginsPluginIdRoute,
 }
 export const routeTree = rootRouteImport
