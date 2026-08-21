@@ -164,8 +164,10 @@ jobs:
           # Downstream jobs check this exact commit out from the Forgejo copy, and
           # the scheduled workflow definition itself lives on this branch here.
           mirror_url="${FORGEJO_REPO_URL/https:\/\//https://x-access-token:${FORGEJO_TOKEN}@}"
+          # Branch only: historical tags point at commits without
+          # .forgejo/workflows, where Forgejo would fall back to the GitHub
+          # workflow files and fire their tag-triggered release jobs.
           git push --force "$mirror_url" "HEAD:refs/heads/custom-local"
-          git push --force "$mirror_url" --tags
           echo "head_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       - id: release_meta
