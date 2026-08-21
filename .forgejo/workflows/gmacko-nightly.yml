@@ -226,7 +226,7 @@ jobs:
     name: Preflight (check, typecheck, test)
     needs: sync
     if: ${{ needs.sync.outputs.should_release == 'true' }}
-    runs-on: ubuntu-24.04
+    runs-on: macos
     timeout-minutes: 45
     steps:
       - name: Checkout lane
@@ -255,17 +255,7 @@ jobs:
         run: pnpm vp run typecheck
 
       - name: Test
-        shell: bash
-        run: |
-          set -euo pipefail
-          test_home="$(mktemp -d)"
-          chown nobody:nogroup "$test_home"
-          chown nobody:nogroup apps/server
-          find . -type d -name node_modules -prune -exec sh -c '
-            mkdir -p "$1/.vite" "$1/.vite-temp"
-            chown -R nobody:nogroup "$1/.vite" "$1/.vite-temp"
-          ' _ {} \;
-          runuser -u nobody -- env HOME="$test_home" PATH="$PATH" pnpm vp run test
+        run: pnpm vp run test
 
   promote:
     name: Promote lane to GitHub
