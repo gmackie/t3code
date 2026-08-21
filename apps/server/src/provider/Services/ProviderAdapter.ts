@@ -16,6 +16,7 @@ import type {
   ProviderSendTurnInput,
   ProviderSession,
   ProviderSessionStartInput,
+  ProviderUsageWindow,
   ThreadId,
   ProviderTurnStartResult,
   TurnId,
@@ -123,4 +124,14 @@ export interface ProviderAdapterShape<TError> {
    * Canonical runtime event stream emitted by this adapter.
    */
   readonly streamEvents: Stream.Stream<ProviderRuntimeEvent>;
+
+  /**
+   * Query fresh provider quota usage on demand.
+   *
+   * Optional: adapters whose providers push rate-limit updates through
+   * runtime events (Claude, Codex) omit it. Implementations must never
+   * fail — an empty array means usage is currently unavailable (no
+   * credentials, no live session, provider unreachable).
+   */
+  readonly queryUsage?: () => Effect.Effect<ReadonlyArray<ProviderUsageWindow>>;
 }

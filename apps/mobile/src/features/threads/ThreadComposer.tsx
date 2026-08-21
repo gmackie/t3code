@@ -54,6 +54,7 @@ import {
   ComposerToolbarScroller,
 } from "../../components/ComposerToolbar";
 import { ControlPill } from "../../components/ControlPill";
+import { ProviderUsageIndicator } from "../../components/ProviderUsageIndicator";
 import { ProviderIcon } from "../../components/ProviderIcon";
 import type { DraftComposerImageAttachment } from "../../lib/composerImages";
 import { buildModelOptions, groupByProvider } from "../../lib/modelOptions";
@@ -846,6 +847,13 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
                 </View>
               ) : null}
             </View>
+          ) : null}
+          {!isExpanded ? (
+            <ProviderUsageIndicator
+              compact
+              environmentId={props.environmentId}
+              providerInstanceId={currentModelSelection.instanceId}
+            />
           ) : null}
           {!isExpanded ? (
             <Animated.View entering={FadeIn.duration(180)} exiting={FadeOut.duration(100)}>

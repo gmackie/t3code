@@ -1,5 +1,6 @@
 import type { ProviderUsageSnapshot, ProviderUsageWindow } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
+import * as Option from "effect/Option";
 
 export type ProviderRateLimitWindow = {
   readonly id: string;
@@ -17,8 +18,10 @@ function finiteNumber(value: unknown): number | undefined {
 function resetTimestamp(value: unknown): string | undefined {
   const seconds = finiteNumber(value);
   if (seconds === undefined) return undefined;
-  const date = DateTime.make(seconds * 1000);
-  return date._tag === "None" ? undefined : DateTime.formatIso(date.value);
+  return Option.match(DateTime.make(seconds * 1000), {
+    onNone: () => undefined,
+    onSome: DateTime.formatIso,
+  });
 }
 
 function normalizeWindow(id: string, value: unknown): ProviderRateLimitWindow | undefined {
@@ -109,7 +112,151 @@ export function normalizeProviderRateLimits(
 // These named entry points keep provider parsing at the adapter boundary while
 // sharing the defensive field normalization used by legacy/raw events.
 export const normalizeCodexRateLimits = normalizeProviderRateLimits;
-export const normalizeClaudeRateLimits = normalizeProviderRateLimits;
+export function normalizeClaudeRateLimits(value: unknown): ReadonlyArray<ProviderRateLimitWindow> {
+  const native = normalizeProviderRateLimits(value);
+  if (native.length > 0 || !value || typeof value !== "object") return native;
+  const record = value as Record<string, unknown>;
+  return ["five_hour", "seven_day", "seven_day_sonnet", "seven_day_opus"].flatMap((id) => {
+    const raw = record[id];
+    if (!raw || typeof raw !== "object") return [];
+    const window = raw as Record<string, unknown>;
+    const usedPercent = finiteNumber(window.utilization);
+    if (usedPercent === undefined) return [];
+    const bounded = boundedPercent(usedPercent);
+    const resetsAt = isoFromDateString(window.resets_at);
+    return [
+      {
+        id,
+        label:
+          id === "five_hour"
+            ? "5-hour window"
+            : id === "seven_day"
+              ? "Weekly window"
+              : id === "seven_day_sonnet"
+                ? "Weekly Sonnet window"
+                : "Weekly Opus window",
+        usedPercent: bounded,
+        remainingPercent: 100 - bounded,
+        ...(resetsAt ? { resetsAt } : {}),
+      },
+    ];
+  });
+}
+
+function isoFromDateString(value: unknown): string | undefined {
+  if (typeof value !== "string" || value.length === 0) return undefined;
+  return Option.match(DateTime.make(value), {
+    onNone: () => undefined,
+    onSome: DateTime.formatIso,
+  });
+}
+
+function isoFromEpochMillis(value: unknown): string | undefined {
+  const ms = typeof value === "string" && /^\d+$/.test(value) ? Number(value) : finiteNumber(value);
+  if (ms === undefined || !Number.isFinite(ms)) return undefined;
+  return Option.match(DateTime.make(ms), {
+    onNone: () => undefined,
+    onSome: DateTime.formatIso,
+  });
+}
+
+function boundedPercent(value: number): number {
+  return Math.max(0, Math.min(100, value));
+}
+
+const GROK_PERIOD_LABELS: Record<string, string> = {
+  USAGE_PERIOD_TYPE_DAILY: "Daily window",
+  USAGE_PERIOD_TYPE_WEEKLY: "Weekly window",
+  USAGE_PERIOD_TYPE_MONTHLY: "Monthly window",
+};
+
+// Grok's `_x.ai/billing` extension reports one credit-usage percentage over
+// the current billing period rather than ACP rate-limit windows.
+export function normalizeGrokBillingRateLimits(
+  value: unknown,
+): ReadonlyArray<ProviderRateLimitWindow> {
+  if (!value || typeof value !== "object") return [];
+  const config = (value as Record<string, unknown>).config;
+  if (!config || typeof config !== "object") return [];
+  const record = config as Record<string, unknown>;
+  const usedPercent = finiteNumber(record.creditUsagePercent);
+  if (usedPercent === undefined) return [];
+  const bounded = boundedPercent(usedPercent);
+  const period =
+    record.currentPeriod && typeof record.currentPeriod === "object"
+      ? (record.currentPeriod as Record<string, unknown>)
+      : undefined;
+  const label =
+    (typeof period?.type === "string" ? GROK_PERIOD_LABELS[period.type] : undefined) ??
+    "Billing window";
+  const resetsAt = isoFromDateString(period?.end);
+  return [
+    {
+      id: "billing-period",
+      label,
+      usedPercent: bounded,
+      remainingPercent: 100 - bounded,
+      ...(resetsAt ? { resetsAt } : {}),
+    },
+  ];
+}
+
+// Cursor's dashboard `GetCurrentPeriodUsage` reports included-usage
+// percentages for the auto bucket and named-model (API) requests over the
+// current billing cycle.
+export function normalizeCursorUsageRateLimits(
+  value: unknown,
+): ReadonlyArray<ProviderRateLimitWindow> {
+  if (!value || typeof value !== "object") return [];
+  const record = value as Record<string, unknown>;
+  const individualUsage = record.individualUsage;
+  const usageRecord =
+    individualUsage && typeof individualUsage === "object"
+      ? (individualUsage as Record<string, unknown>)
+      : undefined;
+  const summaryPlan = usageRecord?.plan;
+  if (summaryPlan && typeof summaryPlan === "object") {
+    const plan = summaryPlan as Record<string, unknown>;
+    const percent = finiteNumber(plan.totalPercentUsed);
+    if (percent !== undefined) {
+      const bounded = boundedPercent(percent);
+      const resetsAt = isoFromDateString(plan.resetDate ?? plan.resetsAt);
+      return [
+        {
+          id: "included-usage",
+          label: "Included usage",
+          usedPercent: bounded,
+          remainingPercent: 100 - bounded,
+          ...(resetsAt ? { resetsAt } : {}),
+        },
+      ];
+    }
+  }
+  const planUsage = record.planUsage;
+  if (!planUsage || typeof planUsage !== "object") return [];
+  const plan = planUsage as Record<string, unknown>;
+  const autoPercent = finiteNumber(plan.autoPercentUsed);
+  const apiPercent = finiteNumber(plan.apiPercentUsed);
+  if (autoPercent === undefined && apiPercent === undefined) return [];
+  const resetsAt = isoFromEpochMillis(record.billingCycleEnd);
+  const window = (id: string, label: string, percent: number): ProviderRateLimitWindow => {
+    const bounded = boundedPercent(percent);
+    return {
+      id,
+      label,
+      usedPercent: bounded,
+      remainingPercent: 100 - bounded,
+      ...(resetsAt ? { resetsAt } : {}),
+    };
+  };
+  if (autoPercent !== undefined && apiPercent !== undefined && autoPercent !== apiPercent) {
+    return [
+      window("included-auto", "Included usage (Auto)", autoPercent),
+      window("included-api", "Included usage (API)", apiPercent),
+    ];
+  }
+  return [window("included-usage", "Included usage", autoPercent ?? apiPercent ?? 0)];
+}
 
 const DEFAULT_FRESHNESS_MS = 5 * 60 * 1000;
 

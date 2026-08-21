@@ -114,6 +114,12 @@ import {
   PluginSettingsUpdateInput,
 } from "./pluginSettings.ts";
 import {
+  ProviderUsageGetInput,
+  ProviderUsageRefreshResult,
+  ProviderUsageSnapshot,
+  ProviderUsageSubscribeInput,
+} from "./providerUsage.ts";
+import {
   PullRequestActionInput,
   PullRequestActivity,
   PullRequestCommentInput,

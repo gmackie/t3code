@@ -28,6 +28,7 @@ import * as Scope from "effect/Scope";
 import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
 import * as SynchronizedRef from "effect/SynchronizedRef";
+import { HttpClient } from "effect/unstable/http";
 import * as ChildProcessSpawner from "effect/unstable/process/ChildProcessSpawner";
 import * as EffectAcpErrors from "effect-acp/errors";
 import type * as EffectAcpSchema from "effect-acp/schema";
@@ -66,6 +67,8 @@ import {
   promptResponseHasMissingXAiStopReason,
   XAiAskUserQuestionRequest,
 } from "../acp/XAiAcpExtension.ts";
+import { normalizeGrokBillingRateLimits } from "../providerUsage.ts";
+import { queryGrokUsageRateLimits } from "../grokUsageQuery.ts";
 import { type GrokAdapterShape } from "../Services/GrokAdapter.ts";
 import { type EventNdjsonLogger, makeEventNdjsonLogger } from "./EventNdjsonLogger.ts";
 
@@ -73,6 +76,7 @@ const encodeUnknownJsonStringExit = Schema.encodeUnknownExit(Schema.fromJsonStri
 
 const PROVIDER = ProviderDriverKind.make("grok");
 const GROK_RESUME_VERSION = 1 as const;
+const XAI_BILLING_METHOD = "_x.ai/billing";
 
 function encodeJsonStringForDiagnostics(input: unknown): string | undefined {
   const result = encodeUnknownJsonStringExit(input);
@@ -507,6 +511,33 @@ export function makeGrokAdapter(grokSettings: GrokSettings, options?: GrokAdapte
       return Effect.succeed(ctx);
     };
 
+    // Grok exposes subscription quota through the `_x.ai/billing` extension
+    // request rather than an ACP notification, so usage is pulled after
+    // session start and after each settled turn, then republished as the
+    // shared account.rate-limits.updated runtime event.
+    const queryBillingUsage = (ctx: GrokSessionContext) =>
+      Effect.gen(function* () {
+        const response = yield* ctx.acp.request(XAI_BILLING_METHOD, {});
+        const rateLimits = normalizeGrokBillingRateLimits(response);
+        if (rateLimits.length === 0) return;
+        yield* logNative(ctx.threadId, XAI_BILLING_METHOD, response);
+        yield* offerRuntimeEvent({
+          type: "account.rate-limits.updated",
+          ...(yield* makeEventStamp()),
+          provider: PROVIDER,
+          providerInstanceId: boundInstanceId,
+          threadId: ctx.threadId,
+          payload: { rateLimits },
+        });
+      }).pipe(
+        Effect.catchCause((cause) =>
+          Effect.logDebug("Failed to query Grok billing usage.", {
+            cause,
+            threadId: ctx.threadId,
+          }),
+        ),
+      );
+
     const stopSessionInternal = (ctx: GrokSessionContext) =>
       Effect.gen(function* () {
         if (ctx.stopped) return;
@@ -910,6 +941,7 @@ export function makeGrokAdapter(grokSettings: GrokSettings, options?: GrokAdapte
             threadId: input.threadId,
             payload: { providerThreadId: started.sessionId },
           });
+          yield* queryBillingUsage(ctx).pipe(Effect.forkIn(sessionScope));
 
           return session;
         }).pipe(Effect.scoped),
@@ -1196,6 +1228,7 @@ export function makeGrokAdapter(grokSettings: GrokSettings, options?: GrokAdapte
                     stopReason: completedStopReason,
                   },
                 });
+                yield* queryBillingUsage(ctx).pipe(Effect.forkIn(ctx.scope));
                 ctx.interruptedTurnIds.delete(prepared.turnId);
                 yield* Ref.set(promptSettled, true);
               } else if (remainingPrompts > 0) {
@@ -1441,6 +1474,21 @@ export function makeGrokAdapter(grokSettings: GrokSettings, options?: GrokAdapte
     const stopAll: GrokAdapterShape["stopAll"] = () =>
       Effect.forEach(Array.from(sessions.values()), stopSessionInternal, { discard: true });
 
+    // On-demand usage refresh uses Grok Build's authenticated billing API so
+    // it works before a chat session exists. Live sessions still publish the
+    // ACP billing extension after start and settled turns.
+    const usageHttpClient = Option.getOrUndefined(
+      yield* Effect.serviceOption(HttpClient.HttpClient),
+    );
+    const queryUsage: NonNullable<GrokAdapterShape["queryUsage"]> = () =>
+      usageHttpClient === undefined
+        ? Effect.succeed([])
+        : queryGrokUsageRateLimits.pipe(
+            Effect.provideService(HttpClient.HttpClient, usageHttpClient),
+            Effect.provideService(FileSystem.FileSystem, fileSystem),
+            Effect.provideService(Path.Path, path),
+          );
+
     yield* Effect.addFinalizer(() =>
       Effect.ignore(stopAll()).pipe(
         Effect.tap(() => PubSub.shutdown(runtimeEventPubSub)),
@@ -1465,6 +1513,7 @@ export function makeGrokAdapter(grokSettings: GrokSettings, options?: GrokAdapte
       hasSession,
       stopAll,
       streamEvents,
+      queryUsage,
     } satisfies GrokAdapterShape;
   });
 }

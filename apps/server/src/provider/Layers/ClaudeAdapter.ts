@@ -51,6 +51,7 @@ import {
   type UserInputQuestion,
 } from "@t3tools/contracts";
 import { normalizeClaudeRateLimits } from "../providerUsage.ts";
+import { queryClaudeUsageRateLimits } from "../claudeUsageQuery.ts";
 import {
   applyClaudePromptEffortPrefix,
   getModelSelectionBooleanOptionValue,
@@ -72,6 +73,7 @@ import * as Queue from "effect/Queue";
 import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
+import { HttpClient } from "effect/unstable/http";
 
 import { resolveAttachmentPath } from "../../attachmentStore.ts";
 import { ServerConfig } from "../../config.ts";
@@ -4605,6 +4607,16 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
       { discard: true },
     );
 
+  const usageHttpClient = Option.getOrUndefined(yield* Effect.serviceOption(HttpClient.HttpClient));
+  const queryUsage: NonNullable<ClaudeAdapterShape["queryUsage"]> = () =>
+    usageHttpClient === undefined
+      ? Effect.succeed([])
+      : queryClaudeUsageRateLimits(options?.environment).pipe(
+          Effect.provideService(HttpClient.HttpClient, usageHttpClient),
+          Effect.provideService(FileSystem.FileSystem, fileSystem),
+          Effect.provideService(Path.Path, path),
+        );
+
   yield* Effect.addFinalizer(() =>
     Effect.forEach(
       sessions,
@@ -4638,6 +4650,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
     listSessions,
     hasSession,
     stopAll,
+    queryUsage,
     get streamEvents() {
       return Stream.fromQueue(runtimeEventQueue);
     },

@@ -130,6 +130,7 @@ function createProviderServiceHarness() {
         },
       });
     },
+    queryInstanceUsage: () => Effect.succeed(undefined),
     rollbackConversation: () => unsupported(),
     get streamEvents() {
       return Stream.fromPubSub(runtimeEventPubSub);

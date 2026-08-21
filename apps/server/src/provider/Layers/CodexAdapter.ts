@@ -1972,6 +1972,13 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
     ),
   );
 
+  const queryUsage: NonNullable<CodexAdapterShape["queryUsage"]> = () =>
+    Effect.gen(function* () {
+      const context = Array.from(sessions.values()).find((candidate) => !candidate.stopped);
+      if (context?.runtime.readRateLimits === undefined) return [];
+      return normalizeCodexRateLimits(yield* context.runtime.readRateLimits);
+    }).pipe(Effect.orElseSucceed(() => []));
+
   return {
     provider: PROVIDER,
     capabilities: {
@@ -1988,6 +1995,7 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
     listSessions,
     hasSession,
     stopAll,
+    queryUsage,
     get streamEvents() {
       return Stream.fromQueue(runtimeEventQueue);
     },

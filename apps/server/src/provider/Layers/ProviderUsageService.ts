@@ -3,6 +3,7 @@ import {
   type ProviderUsageSnapshot,
   type ProviderRuntimeEvent,
 } from "@t3tools/contracts";
+import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as PubSub from "effect/PubSub";
@@ -27,7 +28,7 @@ export const make = Effect.gen(function* () {
   const snapshotFor = (providerInstanceId: ProviderInstanceId) =>
     provider.getInstanceInfo(providerInstanceId).pipe(
       Effect.map((info) => cache.get(providerInstanceId, info.driverKind)),
-      Effect.catch(() => Effect.succeed(cache.get(providerInstanceId))),
+      Effect.orElseSucceed(() => cache.get(providerInstanceId)),
     );
 
   const updateFromRuntimeEvent = (event: ProviderRuntimeEvent) => {
@@ -50,12 +51,39 @@ export const make = Effect.gen(function* () {
 
   yield* provider.streamEvents.pipe(Stream.runForEach(updateFromRuntimeEvent), Effect.forkScoped);
 
+  // On-demand refresh: ask the adapter for fresh usage. Adapters without a
+  // queryUsage capability (event-driven providers) and query failures both
+  // fall back to the cached snapshot, so refresh never errors to the client.
+  const refresh = (providerInstanceId: ProviderInstanceId) =>
+    Effect.gen(function* () {
+      const windows = yield* provider
+        .queryInstanceUsage(providerInstanceId)
+        .pipe(Effect.orElseSucceed(() => undefined));
+      if (windows === undefined || windows.length === 0) {
+        const snapshot = yield* snapshotFor(providerInstanceId);
+        return { snapshot, refreshQueued: false };
+      }
+      const driverKind = yield* provider.getInstanceInfo(providerInstanceId).pipe(
+        Effect.map((info) => info.driverKind),
+        Effect.orElseSucceed(() => cache.get(providerInstanceId).driverKind),
+      );
+      const snapshot: ProviderUsageSnapshot = {
+        environmentId,
+        providerInstanceId,
+        driverKind,
+        availability: "available",
+        windows,
+        lastUpdatedAt: DateTime.formatIso(yield* DateTime.now),
+        source: "provider-query",
+      };
+      cache.set(snapshot);
+      yield* PubSub.publish(changes, snapshot);
+      return { snapshot, refreshQueued: false };
+    });
+
   return ProviderUsageService.ProviderUsageService.of({
     get: snapshotFor,
-    refresh: (providerInstanceId) =>
-      snapshotFor(providerInstanceId).pipe(
-        Effect.map((snapshot) => ({ snapshot, refreshQueued: false })),
-      ),
+    refresh,
     stream: (providerInstanceId) =>
       Stream.concat(
         Stream.fromEffect(snapshotFor(providerInstanceId)),

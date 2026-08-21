@@ -183,6 +183,7 @@ describe("ProviderSessionReaper", () => {
           },
         });
       },
+      queryInstanceUsage: () => Effect.succeed(undefined),
       rollbackConversation: () => unsupported(),
       streamEvents: Stream.empty,
     };
