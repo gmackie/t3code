@@ -64,6 +64,8 @@ jobs:
     timeout-minutes: 40
     outputs:
       ref: ${{ steps.lane.outputs.head_sha }}
+      start_sha: ${{ steps.rebase_upstream.outputs.start_sha }}
+      has_changes: ${{ steps.rebase_upstream.outputs.has_changes }}
       version: ${{ steps.release_meta.outputs.version }}
       tag: ${{ steps.release_meta.outputs.tag }}
       release_name: ${{ steps.release_meta.outputs.name }}
@@ -143,16 +145,6 @@ jobs:
             fi
           fi
 
-      - name: Push rebased lane to GitHub
-        if: steps.rebase_upstream.outputs.has_changes == 'true'
-        shell: bash
-        working-directory: lane
-        env:
-          START_SHA: ${{ steps.rebase_upstream.outputs.start_sha }}
-        run: |
-          set -euo pipefail
-          git push --force-with-lease="refs/heads/custom-local:${START_SHA}" origin "HEAD:custom-local"
-
       - id: lane
         name: Mirror lane to ForgeGraph
         shell: bash
@@ -161,8 +153,10 @@ jobs:
           FORGEJO_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          # Downstream jobs check this exact commit out from the Forgejo copy, and
-          # the scheduled workflow definition itself lives on this branch here.
+          # The rebased lane is only a candidate until preflight passes: it is
+          # mirrored here so downstream jobs can check it out, but the GitHub
+          # lane is advanced by the promote job after preflight. The scheduled
+          # workflow definition itself also lives on this branch here.
           mirror_url="${FORGEJO_REPO_URL/https:\/\//https://x-access-token:${FORGEJO_TOKEN}@}"
           # Branch only: historical tags point at commits without
           # .forgejo/workflows, where Forgejo would fall back to the GitHub
@@ -262,6 +256,36 @@ jobs:
 
       - name: Test
         run: pnpm vp run test
+
+  promote:
+    name: Promote lane to GitHub
+    needs: [sync, preflight]
+    if: ${{ needs.sync.outputs.should_release == 'true' && needs.preflight.result == 'success' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Advance GitHub custom-local to the verified lane tip
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GMACKO_GITHUB_TOKEN }}
+          HEAD_SHA: ${{ needs.sync.outputs.ref }}
+          START_SHA: ${{ needs.sync.outputs.start_sha }}
+          HAS_CHANGES: ${{ needs.sync.outputs.has_changes }}
+        run: |
+          set -euo pipefail
+          if [[ "$HAS_CHANGES" != "true" ]]; then
+            echo "GitHub custom-local already at ${HEAD_SHA}; nothing to promote."
+            exit 0
+          fi
+          # A broken auto-rebase must never land on the GitHub lane: this only
+          # runs after check, typecheck, and the full test suite passed on the
+          # candidate, and the lease guarantees nobody moved the lane meanwhile.
+          git clone --branch custom-local \
+            "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_FORK}.git" lane
+          cd lane
+          git fetch "$FORGEJO_REPO_URL" "$HEAD_SHA"
+          git push --force-with-lease="refs/heads/custom-local:${START_SHA}" origin "${HEAD_SHA}:refs/heads/custom-local"
+          echo "Promoted ${HEAD_SHA} to GitHub custom-local."
 
   signing_secrets:
     name: Validate macOS signing secrets
@@ -628,8 +652,8 @@ jobs:
 
   release:
     name: Publish GitHub Release
-    needs: [sync, relay_public_config, build]
-    if: ${{ !failure() && !cancelled() && needs.sync.outputs.should_release == 'true' && needs.build.result == 'success' }}
+    needs: [sync, promote, relay_public_config, build]
+    if: ${{ !failure() && !cancelled() && needs.sync.outputs.should_release == 'true' && needs.promote.result == 'success' && needs.build.result == 'success' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
