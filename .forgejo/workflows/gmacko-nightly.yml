@@ -255,7 +255,12 @@ jobs:
         run: pnpm vp run typecheck
 
       - name: Test
-        run: pnpm vp run test
+        shell: bash
+        run: |
+          set -euo pipefail
+          test_home="$(mktemp -d)"
+          chown nobody:nogroup "$test_home"
+          runuser -u nobody -- env HOME="$test_home" PATH="$PATH" pnpm vp run test
 
   promote:
     name: Promote lane to GitHub
