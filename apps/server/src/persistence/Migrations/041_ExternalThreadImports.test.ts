@@ -3,7 +3,8 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 import { runMigrations } from "../Migrations.ts";
-import * as NodeSqliteClient from "../NodeSqliteClient.ts";
+import * as NodeSqliteClient from "@t3tools/shared/nodeSqliteClient";
+import externalThreadImports from "./041_ExternalThreadImports.ts";
 
 it.layer(Layer.mergeAll(NodeSqliteClient.layerMemory()))(
   "external thread import migrations",
@@ -11,7 +12,8 @@ it.layer(Layer.mergeAll(NodeSqliteClient.layerMemory()))(
     it.effect("upgrades the applied 041 schema without losing provenance", () =>
       Effect.gen(function* () {
         const sql = yield* SqlClient.SqlClient;
-        yield* runMigrations({ toMigrationInclusive: 41 });
+        yield* runMigrations({ toMigrationInclusive: 49 });
+        yield* externalThreadImports;
         yield* sql`
         INSERT INTO projection_external_thread_imports (
           thread_id, provider_instance_id, provider_driver, continuation_group,
@@ -22,7 +24,7 @@ it.layer(Layer.mergeAll(NodeSqliteClient.layerMemory()))(
           '{"threadId":"native-old"}', 'codex-v1', '2026-01-01T00:00:00.000Z', 7
         )
       `;
-        yield* runMigrations({ toMigrationInclusive: 42 });
+        yield* runMigrations({ toMigrationInclusive: 50 });
         const indexes = yield* sql<{ name: string; unique: number }>`
         PRAGMA index_list(projection_external_thread_imports)
       `;

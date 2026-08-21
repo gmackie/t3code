@@ -31,7 +31,17 @@ import { readLocalApi } from "~/localApi";
 import { Button } from "~/components/ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 import { Kbd } from "~/components/ui/kbd";
-import { Menu, MenuItem, MenuPopup, MenuShortcut, MenuTrigger } from "~/components/ui/menu";
+import {
+  Menu,
+  MenuItem,
+  MenuPopup,
+  MenuShortcut,
+  MenuSub,
+  MenuSubPopup,
+  MenuSubTrigger,
+  MenuTrigger,
+} from "~/components/ui/menu";
+import { useBrowserDefaults } from "~/browser/browserDefaults";
 import { ScrollArea } from "~/components/ui/scroll-area";
 import { faviconUrlForOrigin } from "~/lib/favicon";
 import { useTheme } from "~/hooks/useTheme";
@@ -71,6 +81,12 @@ interface RightPanelTabsProps {
   onCloseAllSurfaces: () => void;
   onCopyFilePath: (relativePath: string) => void;
   onAddBrowser: () => void;
+  /**
+   * Separate from `onAddBrowser` on purpose: that one is passed directly as a
+   * DOM click handler, and a `(profileId?: string)` signature would silently
+   * accept the MouseEvent as a profile id.
+   */
+  onAddBrowserInProfile: (profileId: string) => void;
   onAddTerminal: () => void;
   onAddDiff: () => void;
   onAddFiles: () => void;
@@ -589,9 +605,12 @@ function SurfaceIcon({
 
 export function RightPanelTabs(props: RightPanelTabsProps) {
   const ownsDesktopTitleBar = isElectron && props.mode === "inline";
+  const browserProfiles = useBrowserDefaults().profiles;
+  // Controlled so the submenu trigger's own action can dismiss the menu; a
+  // submenu trigger does not close it the way a plain item does.
+  const [addSurfaceMenuOpen, setAddSurfaceMenuOpen] = useState(false);
   const { resolvedTheme } = useTheme();
   const tabListRef = useRef<HTMLDivElement>(null);
-  const [addSurfaceMenuOpen, setAddSurfaceMenuOpen] = useState(false);
 
   const addSurfaceActions = [
     {
@@ -905,6 +924,57 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
                   onKeyDownCapture={handleAddSurfaceMenuKeyDown}
                 >
                   {addSurfaceActions.map((action) => {
+                    if (action.label === "Browser") {
+                      if (!props.browserAvailable) {
+                        return (
+                          <SurfaceMenuItem
+                            key={action.label}
+                            available={false}
+                            disabledReason={action.disabledReason}
+                            shortcut={action.shortcut}
+                            onClick={action.onClick}
+                          >
+                            <Globe2 />
+                            Browser
+                          </SurfaceMenuItem>
+                        );
+                      }
+                      return (
+                        <MenuSub key={action.label}>
+                          {/*
+                            Clicking the trigger opens the default profile, so the
+                            common case stays one click and there is no second row;
+                            hover or arrow reveals the rest. The choice lives at
+                            open time because a tab's profile is fixed then —
+                            Electron only honours a partition before attach.
+                          */}
+                          <MenuSubTrigger
+                            onClick={() => {
+                              setAddSurfaceMenuOpen(false);
+                              props.onAddBrowser();
+                            }}
+                          >
+                            <Globe2 />
+                            Browser
+                          </MenuSubTrigger>
+                          {/*
+                            Capped and truncated: profile names are user-supplied
+                            and run to 48 characters, which would otherwise widen
+                            the popup to fit-content and wrap.
+                          */}
+                          <MenuSubPopup className="min-w-40 max-w-56">
+                            {browserProfiles.map((profile) => (
+                              <MenuItem
+                                key={profile.id}
+                                onClick={() => props.onAddBrowserInProfile(profile.id)}
+                              >
+                                <span className="min-w-0 truncate">{profile.name}</span>
+                              </MenuItem>
+                            ))}
+                          </MenuSubPopup>
+                        </MenuSub>
+                      );
+                    }
                     const Icon = action.icon;
                     return (
                       <SurfaceMenuItem
