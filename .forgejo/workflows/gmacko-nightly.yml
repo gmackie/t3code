@@ -226,7 +226,7 @@ jobs:
     name: Preflight (check, typecheck, test)
     needs: sync
     if: ${{ needs.sync.outputs.should_release == 'true' }}
-    runs-on: macos
+    runs-on: gmacko-mini
     timeout-minutes: 45
     steps:
       - name: Checkout lane
@@ -461,13 +461,13 @@ jobs:
       matrix:
         include:
           - label: macOS arm64
-            runner: macos
+            runner: gmacko-mini
             platform: mac
             target: dmg
             arch: arm64
             rust_target: aarch64-apple-darwin
           - label: macOS x64
-            runner: macos
+            runner: gmacko-mini
             platform: mac
             target: dmg
             arch: x64
@@ -479,7 +479,7 @@ jobs:
             arch: x64
             rust_target: x86_64-unknown-linux-gnu
           - label: Windows x64
-            runner: macos
+            runner: gmacko-mini
             platform: win
             target: nsis
             arch: x64
