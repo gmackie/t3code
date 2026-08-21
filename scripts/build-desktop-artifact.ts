@@ -143,7 +143,7 @@ export function resourceMonitorExecutableName(platform: typeof BuildPlatform.Typ
 
 export function resolveResourceMonitorCargoInvocation(
   platform: typeof BuildPlatform.Type,
-  hostPlatform: NodeJS.Platform = process.platform,
+  hostPlatform: NodeJS.Platform,
 ): { readonly command: string; readonly args: ReadonlyArray<string> } {
   if (platform === "win" && hostPlatform !== "win32") {
     return { command: "cargo", args: ["xwin", "build"] };
@@ -1840,13 +1840,14 @@ const stageResourceMonitor = Effect.fn("stageResourceMonitor")(function* (input:
 }) {
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
+  const hostPlatform = yield* HostProcessPlatform;
   const manifestPath = path.join(input.repoRoot, "native/resource-monitor/Cargo.toml");
   const executableName = resourceMonitorExecutableName(input.platform);
   const rustTargets = resolveResourceMonitorRustTargets(input.platform, input.arch);
   const builtBinaries: string[] = [];
 
   for (const rustTarget of rustTargets) {
-    const cargoInvocation = resolveResourceMonitorCargoInvocation(input.platform);
+    const cargoInvocation = resolveResourceMonitorCargoInvocation(input.platform, hostPlatform);
     const spawnCommand = yield* resolveSpawnCommand(cargoInvocation.command, [
       ...cargoInvocation.args,
       "--locked",
