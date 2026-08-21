@@ -255,7 +255,9 @@ jobs:
         run: pnpm vp run typecheck
 
       - name: Test
-        run: pnpm vp run test -- --maxWorkers=4
+        # Bound both orchestration layers: vp otherwise runs four package tasks,
+        # each of which would start four Vitest workers on the native mac runner.
+        run: pnpm vp run test --concurrency-limit=2 -- --maxWorkers=2
 
   promote:
     name: Promote lane to GitHub
