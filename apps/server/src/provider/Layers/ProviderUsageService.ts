@@ -9,7 +9,7 @@ import * as PubSub from "effect/PubSub";
 import * as Stream from "effect/Stream";
 
 import * as ServerEnvironment from "../../environment/ServerEnvironment.ts";
-import * as ProviderService from "../Services/ProviderService.ts";
+import * as ProviderInstanceRegistry from "../Services/ProviderInstanceRegistry.ts";
 import * as ProviderUsageService from "../Services/ProviderUsageService.ts";
 import { ProviderUsageCache, normalizeProviderRateLimits } from "../providerUsage.ts";
 
@@ -19,16 +19,15 @@ function providerInstanceIdForEvent(event: ProviderRuntimeEvent): ProviderInstan
 
 export const make = Effect.gen(function* () {
   const environment = yield* ServerEnvironment.ServerEnvironment;
-  const provider = yield* ProviderService.ProviderService;
+  const instances = yield* ProviderInstanceRegistry.ProviderInstanceRegistry;
   const environmentId = yield* environment.getEnvironmentId;
   const cache = new ProviderUsageCache(environmentId);
   const changes = yield* PubSub.unbounded<ProviderUsageSnapshot>();
 
   const snapshotFor = (providerInstanceId: ProviderInstanceId) =>
-    provider.getInstanceInfo(providerInstanceId).pipe(
-      Effect.map((info) => cache.get(providerInstanceId, info.driverKind)),
-      Effect.catch(() => Effect.succeed(cache.get(providerInstanceId))),
-    );
+    instances
+      .getInstance(providerInstanceId)
+      .pipe(Effect.map((instance) => cache.get(providerInstanceId, instance?.driverKind)));
 
   const updateFromRuntimeEvent = (event: ProviderRuntimeEvent) => {
     if (event.type !== "account.rate-limits.updated") return Effect.void;
@@ -47,8 +46,6 @@ export const make = Effect.gen(function* () {
     cache.set(snapshot);
     return PubSub.publish(changes, snapshot).pipe(Effect.asVoid);
   };
-
-  yield* provider.streamEvents.pipe(Stream.runForEach(updateFromRuntimeEvent), Effect.forkScoped);
 
   return ProviderUsageService.ProviderUsageService.of({
     get: snapshotFor,

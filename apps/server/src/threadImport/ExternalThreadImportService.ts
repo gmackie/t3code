@@ -25,8 +25,9 @@ import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 
-import * as OrchestrationEngine from "../orchestration/Services/OrchestrationEngine.ts";
 import * as ProjectionSnapshotQuery from "../orchestration/Services/ProjectionSnapshotQuery.ts";
+import * as OrchestrationEngine from "../orchestration/Services/OrchestrationEngine.ts";
+import * as LegacyV1ThreadImporter from "../orchestration-v2/LegacyV1ThreadImporter.ts";
 import * as ProviderInstanceRegistry from "../provider/Services/ProviderInstanceRegistry.ts";
 import * as ServerEnvironment from "../environment/ServerEnvironment.ts";
 import * as VcsProcess from "../vcs/VcsProcess.ts";
@@ -406,9 +407,10 @@ export class ExternalThreadImportService extends Context.Service<
 export const makeLive = Effect.gen(function* () {
   const environment = yield* ServerEnvironment.ServerEnvironment;
   const projects = yield* ProjectionSnapshotQuery.ProjectionSnapshotQuery;
+  const engine = yield* OrchestrationEngine.OrchestrationEngineService;
+  const legacyImporter = yield* LegacyV1ThreadImporter.LegacyV1ThreadImporter;
   const instances = yield* ProviderInstanceRegistry.ProviderInstanceRegistry;
   const tokenCodec = yield* CandidateToken.ExternalThreadImportCandidateTokenCodec;
-  const engine = yield* OrchestrationEngine.OrchestrationEngineService;
   const sql = yield* SqlClient.SqlClient;
   const crypto = yield* Crypto.Crypto;
   const fileSystem = yield* FileSystem.FileSystem;
@@ -568,6 +570,16 @@ export const makeLive = Effect.gen(function* () {
               ),
             ),
           );
+        yield* legacyImporter.reconcileShells.pipe(
+          Effect.andThen(legacyImporter.ensureTranscript(input.threadId)),
+          Effect.mapError(() =>
+            requestError(
+              "import_persistence_failed",
+              "The imported thread could not be migrated into Orchestrator V2.",
+              true,
+            ),
+          ),
+        );
         return result.threadId ?? input.threadId;
       }),
     randomId: crypto.randomUUIDv4.pipe(

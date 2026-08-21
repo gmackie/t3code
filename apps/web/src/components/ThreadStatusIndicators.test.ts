@@ -426,7 +426,13 @@ describe("resolveDisplayedThreadPr + nextThreadChangeRequestSnapshot", () => {
       effectiveSettled(shell, {
         now: "2026-04-10T00:00:00.000Z",
         autoSettleAfterDays: null,
-        changeRequest: displayed,
+        changeRequest:
+          displayed == null
+            ? null
+            : {
+                state: displayed.state,
+                ...(displayed.updatedAt === undefined ? {} : { updatedAt: displayed.updatedAt }),
+              },
       }),
     ).toBe(true);
   });

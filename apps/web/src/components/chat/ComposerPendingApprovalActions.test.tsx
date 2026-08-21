@@ -1,4 +1,4 @@
-import { ApprovalRequestId } from "@t3tools/contracts";
+import { RuntimeRequestId } from "@t3tools/contracts";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vite-plus/test";
 
@@ -8,7 +8,8 @@ describe("ComposerPendingApprovalActions", () => {
   it("states that the persistent approval lasts for this session", () => {
     const markup = renderToStaticMarkup(
       <ComposerPendingApprovalActions
-        requestId={ApprovalRequestId.make("approval-1")}
+        requestId={RuntimeRequestId.make("approval-1")}
+        canRespond
         isResponding={false}
         onRespondToApproval={async () => undefined}
       />,

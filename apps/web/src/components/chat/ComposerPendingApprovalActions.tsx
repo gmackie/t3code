@@ -1,60 +1,56 @@
-import { type ApprovalRequestId, type ProviderApprovalDecision } from "@t3tools/contracts";
+import { type RuntimeRequestId, type ProviderApprovalDecision } from "@t3tools/contracts";
 import { memo } from "react";
 import { Button } from "../ui/button";
 
 interface ComposerPendingApprovalActionsProps {
-  requestId: ApprovalRequestId;
+  requestId: RuntimeRequestId;
   isResponding: boolean;
+  canRespond: boolean;
   onRespondToApproval: (
-    requestId: ApprovalRequestId,
+    requestId: RuntimeRequestId,
     decision: ProviderApprovalDecision,
   ) => Promise<unknown>;
 }
 
-const APPROVAL_ACTION_CLASS_NAME = "font-normal";
-
 export const ComposerPendingApprovalActions = memo(function ComposerPendingApprovalActions({
   requestId,
   isResponding,
+  canRespond,
   onRespondToApproval,
 }: ComposerPendingApprovalActionsProps) {
   return (
     <>
       <Button
-        size="micro"
-        variant="ghost-muted"
-        className={APPROVAL_ACTION_CLASS_NAME}
-        disabled={isResponding}
+        size="sm"
+        variant="ghost"
+        disabled={isResponding || !canRespond}
         onClick={() => void onRespondToApproval(requestId, "cancel")}
       >
-        Cancel
+        Cancel turn
       </Button>
       <Button
-        size="micro"
-        variant="ghost-muted"
-        className={`${APPROVAL_ACTION_CLASS_NAME} text-destructive-foreground [:hover,[data-pressed]]:text-destructive-foreground`}
-        disabled={isResponding}
+        size="sm"
+        variant="destructive-outline"
+        disabled={isResponding || !canRespond}
         onClick={() => void onRespondToApproval(requestId, "decline")}
       >
         Decline
       </Button>
       <Button
-        size="micro"
-        variant="ghost-muted"
-        className={APPROVAL_ACTION_CLASS_NAME}
-        disabled={isResponding}
+        size="sm"
+        variant="outline"
+        disabled={isResponding || !canRespond}
         onClick={() => void onRespondToApproval(requestId, "acceptForSession")}
       >
         Always allow this session
       </Button>
       <Button
-        size="micro"
-        variant="ghost-muted"
-        className={`${APPROVAL_ACTION_CLASS_NAME} text-foreground`}
-        disabled={isResponding}
+        size="sm"
+        variant="default"
+        disabled={isResponding || !canRespond}
         onClick={() => void onRespondToApproval(requestId, "accept")}
       >
-        Approve
+        Approve once
       </Button>
     </>
   );

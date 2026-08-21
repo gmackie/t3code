@@ -2,12 +2,14 @@ import {
   ApprovalRequestId,
   CheckpointRef,
   type ChatAttachment,
-  type OrchestrationEvent,
-  type OrchestrationSessionStatus,
   MessageId,
   ThreadId,
   TurnId,
 } from "@t3tools/contracts";
+import type {
+  OrchestrationEvent,
+  OrchestrationSessionStatus,
+} from "@t3tools/contracts/legacy-orchestration";
 import * as Effect from "effect/Effect";
 import * as DateTime from "effect/DateTime";
 import * as FileSystem from "effect/FileSystem";

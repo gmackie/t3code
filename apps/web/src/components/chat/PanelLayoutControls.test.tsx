@@ -11,11 +11,16 @@ describe("PanelLayoutControls", () => {
         terminalAvailable={false}
         terminalOpen={false}
         terminalShortcutLabel={null}
+        threadPanelOpen={false}
+        threadPanelPresentation="inline"
+        threadPanelShortcutLabel={null}
+        threadPanelHasAttention={false}
         rightPanelAvailable={false}
         rightPanelOpen={false}
         rightPanelShortcutLabel={null}
         liveAgentCount={0}
         onToggleTerminal={() => {}}
+        onToggleThreadPanel={() => {}}
         onToggleRightPanel={() => {}}
       />,
     );

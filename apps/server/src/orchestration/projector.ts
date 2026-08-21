@@ -1,12 +1,14 @@
-import type { OrchestrationEvent, OrchestrationReadModel, ThreadId } from "@t3tools/contracts";
+import { MessageId, TurnId, type ThreadId } from "@t3tools/contracts";
+import type {
+  OrchestrationEvent,
+  OrchestrationReadModel,
+} from "@t3tools/contracts/legacy-orchestration";
 import {
   OrchestrationCheckpointSummary,
-  MessageId,
   OrchestrationMessage,
   OrchestrationSession,
   OrchestrationThread,
-  TurnId,
-} from "@t3tools/contracts";
+} from "@t3tools/contracts/legacy-orchestration";
 import * as Effect from "effect/Effect";
 import * as DateTime from "effect/DateTime";
 import * as Schema from "effect/Schema";

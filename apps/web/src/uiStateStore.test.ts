@@ -173,7 +173,6 @@ describe("parsePersistedState", () => {
       projectExpandedById: {
         logical: false,
       },
-      projectColorById: {},
       projectOrder: ["physical-b", "physical-a"],
       threadLastVisitedAtById: {
         "environment:thread-1": "2026-02-25T12:35:00.000Z",
@@ -193,7 +192,6 @@ describe("parsePersistedState", () => {
       threadChangedFilesExpandedById: {
         "environment:thread-1": {
           "turn-1": false,
-          "turn-2": true,
         },
       },
     });
@@ -291,10 +289,13 @@ describe("uiStateStore persistence", () => {
       localStorageStub.getItem(PERSISTED_STATE_KEY) ?? "{}",
     ) as PersistedUiState;
     expect(persisted).toEqual({
-      collapsedProjectCwds: [],
-      expandedProjectCwds: [],
-      projectColorCwds: {},
-      projectOrderCwds: [],
+      projectExpandedById: {
+        logical: false,
+      },
+      projectOrder: ["physical-b", "physical-a"],
+      threadLastVisitedAtById: {
+        "environment:thread-1": "2026-02-25T12:35:00.000Z",
+      },
       defaultAdvertisedEndpointKey: "desktop-core:lan:http",
       threadChangedFilesExpansionVersion: 1,
       threadChangedFilesExpandedById: {
@@ -305,15 +306,7 @@ describe("uiStateStore persistence", () => {
       },
     });
     expect(parsePersistedState(persisted)).toEqual({
-      ...makeUiState({
-        defaultAdvertisedEndpointKey: "desktop-core:lan:http",
-      }),
-      threadChangedFilesExpandedById: {
-        "environment:thread-1": {
-          "turn-1": false,
-          "turn-2": true,
-        },
-      },
+      ...state,
     });
   });
 
@@ -327,8 +320,7 @@ describe("uiStateStore persistence", () => {
     const persisted = JSON.parse(
       localStorageStub.getItem(PERSISTED_STATE_KEY) ?? "{}",
     ) as PersistedUiState;
-    expect(
-      resolveProjectExpanded(parsePersistedState(persisted).projectExpandedById, ["unknown"]),
-    ).toBe(true);
+    expect(resolveProjectExpanded(persisted.projectExpandedById ?? {}, ["unknown"])).toBe(true);
+    expect(persisted).not.toHaveProperty("threadPanelOpen");
   });
 });
