@@ -1,5 +1,8 @@
 import { createHighlighterCore, type HighlighterCore } from "@shikijs/core";
-import { createJavaScriptRegexEngine } from "@shikijs/engine-javascript";
+import {
+  createJavaScriptRegexEngine,
+  defaultJavaScriptRegexConstructor,
+} from "@shikijs/engine-javascript";
 import bashLanguage from "@shikijs/langs/bash";
 import diffLanguage from "@shikijs/langs/diff";
 import javascriptLanguage from "@shikijs/langs/javascript";
@@ -245,10 +248,19 @@ async function createNativeReviewDiffHighlighter(): Promise<NativeReviewDiffHigh
 }
 
 async function createJavascriptReviewDiffHighlighter(): Promise<NativeReviewDiffHighlighterHandle> {
+  const compiledPatterns = new Map<string, RegExp>();
   const highlighter: HighlighterCore = await createHighlighterCore({
     langs: NATIVE_REVIEW_DIFF_LANGUAGES,
     themes: NATIVE_REVIEW_DIFF_SHIKI_THEMES,
-    engine: createJavaScriptRegexEngine(),
+    engine: createJavaScriptRegexEngine({
+      cache: null,
+      regexConstructor: (pattern) => {
+        const compiled =
+          compiledPatterns.get(pattern) ?? defaultJavaScriptRegexConstructor(pattern);
+        compiledPatterns.set(pattern, compiled);
+        return new RegExp(compiled.source, compiled.flags);
+      },
+    }),
   });
 
   return {
