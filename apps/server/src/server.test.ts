@@ -2002,7 +2002,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 
-  it.effect("rejects cloud link proofs for unsupported endpoint providers", () =>
+  it.effect("issues cloud link proofs for supported t3_relay endpoints", () =>
     Effect.gen(function* () {
       yield* buildAppUnderTest();
 
@@ -2023,7 +2023,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
             wsBaseUrl: linkProofUrl
               .replace("http://", "ws://")
               .replace("/api/connect/link-proof", "/ws"),
-            // "manual" and "cloudflare_tunnel" are supported; "t3_relay" is not.
+            // manual, cloudflare_tunnel, and t3_relay are all supported here.
             providerKind: "t3_relay",
           },
           origin: {
@@ -2032,14 +2032,10 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
           },
         }),
       });
-      const body = yield* responseJsonEffect<{
-        readonly _tag?: string;
-        readonly message?: string;
-      }>(linkProofResponse);
-
-      assert.equal(linkProofResponse.status, 400);
-      assert.equal(body._tag, "EnvironmentHttpBadRequestError");
-      assert.equal(body.message, "Invalid managed endpoint origin.");
+      assert.equal(linkProofResponse.status, 200);
+      const proof = yield* responseJsonEffect<string>(linkProofResponse);
+      assert.equal(typeof proof, "string");
+      assert.ok(proof.trim().length > 0);
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 
@@ -5009,6 +5005,9 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
   it.effect("reports workspace root stat failures without relabeling them as missing", () =>
     Effect.gen(function* () {
       if ((yield* HostProcessPlatform) === "win32") return;
+      // chmod-based stat failures are unprovable as root: root ignores file
+      // modes, so release CI containers would see the stat succeed.
+      if (typeof process.getuid === "function" && process.getuid() === 0) return;
 
       const fs = yield* FileSystem.FileSystem;
       const path = yield* Path.Path;

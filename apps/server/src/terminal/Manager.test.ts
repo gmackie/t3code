@@ -480,6 +480,9 @@ it.layer(
   it.effect("preserves non-notFound cwd stat failures", () =>
     Effect.gen(function* () {
       if ((yield* HostProcessPlatform) === "win32") return;
+      // chmod-based stat failures are unprovable as root: root ignores file
+      // modes, so release CI containers would see the stat succeed.
+      if (typeof process.getuid === "function" && process.getuid() === 0) return;
 
       const path = yield* Path.Path;
 

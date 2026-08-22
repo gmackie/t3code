@@ -509,6 +509,9 @@ it.layer(NodeServices.layer)("keybindings", (it) => {
 
   it.effect("fails when config directory is not writable", () =>
     Effect.gen(function* () {
+      // chmod-based write failures are unprovable as root: root ignores file
+      // modes, so release CI containers would see the write succeed.
+      if (typeof process.getuid === "function" && process.getuid() === 0) return;
       const fs = yield* FileSystem.FileSystem;
       const { keybindingsConfigPath } = yield* ServerConfig.ServerConfig;
       const { dirname } = yield* Path.Path;
