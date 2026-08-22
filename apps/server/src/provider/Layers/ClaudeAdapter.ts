@@ -281,6 +281,7 @@ interface ClaudeSessionContext {
   lastKnownTotalProcessedTokens: number | undefined;
   lastAssistantUuid: string | undefined;
   lastThreadStartedId: string | undefined;
+  rateLimitRejection: string | undefined;
   stopped: boolean;
 }
 
@@ -2381,6 +2382,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
 
     const updatedAt = yield* nowIso;
     context.turnState = undefined;
+    context.rateLimitRejection = undefined;
     context.session = {
       ...context.session,
       status: "ready",
@@ -2977,8 +2979,8 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
       return;
     }
 
-    const status = turnStatusFromResult(message);
-    const errorMessage = resultUserFacingError(message);
+    const status = context.rateLimitRejection ? "failed" : turnStatusFromResult(message);
+    const errorMessage = context.rateLimitRejection ?? resultUserFacingError(message);
 
     if (status === "failed") {
       yield* emitRuntimeError(context, errorMessage ?? "Claude turn failed.");
@@ -3508,6 +3510,20 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
     }
 
     if (message.type === "rate_limit_event") {
+      const rateLimitInfo = (message as unknown as Record<string, unknown>).rate_limit_info;
+      if (rateLimitInfo && typeof rateLimitInfo === "object") {
+        const info = rateLimitInfo as Record<string, unknown>;
+        if (info.status === "rejected") {
+          const limitType = typeof info.rateLimitType === "string" ? info.rateLimitType : "plan";
+          const label = limitType.includes("seven_day") ? "weekly" : limitType.replaceAll("_", " ");
+          const resetsAt = typeof info.resetsAt === "number" ? info.resetsAt : undefined;
+          context.rateLimitRejection = `Claude ${label} limit reached.${
+            resetsAt === undefined
+              ? ""
+              : ` Try again after ${DateTime.formatIso(DateTime.makeUnsafe(resetsAt * 1000))}.`
+          }`;
+        }
+      }
       yield* offerRuntimeEvent({
         ...base,
         type: "account.rate-limits.updated",
@@ -4277,6 +4293,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         lastKnownTotalProcessedTokens: undefined,
         lastAssistantUuid: resumeState?.resumeSessionAt,
         lastThreadStartedId: undefined,
+        rateLimitRejection: undefined,
         stopped: false,
       };
       yield* Ref.set(contextRef, context);
@@ -4414,6 +4431,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
 
     const turnId = steeringTurnState?.turnId ?? TurnId.make(yield* randomUUIDv4);
     if (steeringTurnState === null) {
+      context.rateLimitRejection = undefined;
       const turnState: ClaudeTurnState = {
         turnId,
         startedAt: yield* nowIso,

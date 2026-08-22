@@ -95,6 +95,27 @@ describe("normalizeProviderRateLimits", () => {
     ]);
   });
 
+  it("normalizes Claude SDK rejected rate-limit events as blocking quota windows", () => {
+    expect(
+      normalizeClaudeRateLimits({
+        type: "rate_limit_event",
+        rate_limit_info: {
+          status: "rejected",
+          resetsAt: 1_787_486_400,
+          rateLimitType: "seven_day",
+          overageStatus: "rejected",
+        },
+      }),
+    ).toEqual([
+      {
+        id: "seven_day",
+        label: "Weekly window",
+        resetsAt: "2026-08-23T12:00:00.000Z",
+        isBlocking: true,
+      },
+    ]);
+  });
+
   it("keeps usage snapshots isolated by environment and provider instance", () => {
     const cache = new ProviderUsageCache("env-1", () => "2024-08-30T06:40:00.000Z");
     const snapshot = toProviderUsageSnapshot({

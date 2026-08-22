@@ -116,6 +116,28 @@ export function normalizeClaudeRateLimits(value: unknown): ReadonlyArray<Provide
   const native = normalizeProviderRateLimits(value);
   if (native.length > 0 || !value || typeof value !== "object") return native;
   const record = value as Record<string, unknown>;
+  const nativeInfo = record.rate_limit_info;
+  if (nativeInfo && typeof nativeInfo === "object") {
+    const info = nativeInfo as Record<string, unknown>;
+    const id = typeof info.rateLimitType === "string" ? info.rateLimitType : "rate_limit";
+    const utilization = finiteNumber(info.utilization);
+    const usedPercent = utilization === undefined ? undefined : boundedPercent(utilization * 100);
+    const resetsAt = resetTimestamp(info.resetsAt);
+    const isBlocking = info.status === "rejected";
+    if (usedPercent !== undefined || resetsAt !== undefined || isBlocking) {
+      return [
+        {
+          id,
+          label: id.includes("seven_day") ? "Weekly window" : `${id.replaceAll("_", " ")} window`,
+          ...(usedPercent === undefined
+            ? {}
+            : { usedPercent, remainingPercent: 100 - usedPercent }),
+          ...(resetsAt ? { resetsAt } : {}),
+          ...(isBlocking ? { isBlocking: true } : {}),
+        },
+      ];
+    }
+  }
   return ["five_hour", "seven_day", "seven_day_sonnet", "seven_day_opus"].flatMap((id) => {
     const raw = record[id];
     if (!raw || typeof raw !== "object") return [];
