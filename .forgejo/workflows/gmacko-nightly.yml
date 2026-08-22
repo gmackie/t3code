@@ -301,6 +301,7 @@ jobs:
         shell: bash
         env:
           GITHUB_TOKEN: ${{ secrets.GMACKO_GITHUB_TOKEN }}
+          FORGEJO_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           HEAD_SHA: ${{ needs.sync.outputs.ref }}
           START_SHA: ${{ needs.sync.outputs.start_sha }}
           HAS_CHANGES: ${{ needs.sync.outputs.has_changes }}
@@ -316,7 +317,7 @@ jobs:
           git clone --branch custom-local \
             "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_FORK}.git" lane
           cd lane
-          git fetch "$FORGEJO_REPO_URL" "$HEAD_SHA"
+          git fetch "${FORGEJO_REPO_URL/https:\/\//https://x-access-token:${FORGEJO_TOKEN}@}" "$HEAD_SHA"
           git push --force-with-lease="refs/heads/custom-local:${START_SHA}" origin "${HEAD_SHA}:refs/heads/custom-local"
           echo "Promoted ${HEAD_SHA} to GitHub custom-local."
 
