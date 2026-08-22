@@ -154,6 +154,11 @@ it.layer(ScriptTestLayer)("update-release-package-versions", (it) => {
 
   it.effect("preserves manifest write context and the filesystem cause", () =>
     Effect.gen(function* () {
+      // chmod-based write failures are unprovable as root: root ignores file
+      // modes, so release CI containers would see the write succeed.
+      if (typeof process.getuid === "function" && process.getuid() === 0) {
+        return;
+      }
       const fs = yield* FileSystem.FileSystem;
       const path = yield* Path.Path;
       const baseDir = yield* fs.makeTempDirectoryScoped({
