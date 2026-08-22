@@ -4,17 +4,17 @@ import * as Layer from "effect/Layer";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 
 import { runMigrations } from "../Migrations.ts";
-import * as NodeSqliteClient from "../NodeSqliteClient.ts";
+import * as NodeSqliteClient from "@t3tools/shared/nodeSqliteClient";
 
 const layer = it.layer(Layer.mergeAll(NodeSqliteClient.layerMemory()));
 
-layer("038_ProjectionThreadsPinned", (it) => {
+layer("036_ProjectionThreadsPinned", (it) => {
   it.effect("adds the pinned timestamp column", () =>
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
 
-      yield* runMigrations({ toMigrationInclusive: 37 });
-      yield* runMigrations({ toMigrationInclusive: 38 });
+      yield* runMigrations({ toMigrationInclusive: 35 });
+      yield* runMigrations({ toMigrationInclusive: 36 });
 
       const columns = yield* sql<{ readonly name: string }>`
         PRAGMA table_info(projection_threads)

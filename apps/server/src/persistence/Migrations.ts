@@ -53,7 +53,18 @@ import Migration0037 from "./Migrations/037_ProjectionTurnsKeysetIndex.ts";
 import Migration0038 from "./Migrations/038_ProjectionThreadsPinOrderKey.ts";
 import Migration0039 from "./Migrations/039_ProjectionProjectsDefaultThreadEnvMode.ts";
 import Migration0040 from "./Migrations/040_ProjectionProjectFaviconPath.ts";
-import Migration0041 from "./Migrations/041_AuthSessionClientConnection.ts";
+// custom-local owns ids 41-44; upstream's AuthSessionClientConnection was
+// renumbered to 45 because released profiles already recorded 41-44 under
+// these names (the migrator only compares ids, never names).
+import Migration0041 from "./Migrations/041_ExternalThreadImports.ts";
+import Migration0042 from "./Migrations/042_ExternalThreadImportEnvironments.ts";
+import Migration0043 from "./Migrations/043_RepairCustomLocalMigrationSchema.ts";
+import Migration0044 from "./Migrations/044_RepairCustomLocalProjectionIndexes.ts";
+import Migration0045 from "./Migrations/045_AuthSessionClientConnection.ts";
+// Provisioned ahead of the v2 runtime port at an id above every released
+// profile's ledger (max seen: 44) so it runs everywhere. Remove once upstream
+// lands its own orchestration v2 schema.
+import Migration0099 from "./Migrations/099_OrchestrationV2Events.ts";
 
 /**
  * Migration loader with all migrations defined inline.
@@ -106,7 +117,12 @@ export const migrationEntries = [
   [38, "ProjectionThreadsPinOrderKey", Migration0038],
   [39, "ProjectionProjectsDefaultThreadEnvMode", Migration0039],
   [40, "ProjectionProjectFaviconPath", Migration0040],
-  [41, "AuthSessionClientConnection", Migration0041],
+  [41, "ExternalThreadImports", Migration0041],
+  [42, "ExternalThreadImportEnvironments", Migration0042],
+  [43, "RepairCustomLocalMigrationSchema", Migration0043],
+  [44, "RepairCustomLocalProjectionIndexes", Migration0044],
+  [45, "AuthSessionClientConnection", Migration0045],
+  [99, "OrchestrationV2Events", Migration0099],
 ] as const;
 
 export const migrationManifest = migrationEntries.map(([id, name]) => [id, name] as const);

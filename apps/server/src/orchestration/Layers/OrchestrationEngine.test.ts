@@ -31,7 +31,7 @@ import { OrchestrationEventStoreLive } from "../../persistence/Layers/Orchestrat
 import { SqlitePersistenceMemory } from "../../persistence/Layers/Sqlite.ts";
 import { makeSqlitePersistenceLive } from "../../persistence/Layers/Sqlite.ts";
 import { runMigrations } from "../../persistence/Migrations.ts";
-import * as NodeSqliteClient from "../../persistence/NodeSqliteClient.ts";
+import * as NodeSqliteClient from "@t3tools/shared/nodeSqliteClient";
 import {
   OrchestrationEventStore,
   type OrchestrationEventStoreShape,
