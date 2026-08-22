@@ -598,6 +598,8 @@ jobs:
           path: wsl-prebuild
 
       - name: Build desktop artifact
+        id: desktop_build
+        continue-on-error: ${{ matrix.platform == 'win' }}
         shell: bash
         env:
           CSC_LINK: ${{ secrets.CSC_LINK }}
@@ -660,6 +662,7 @@ jobs:
           pnpm vp run dist:desktop:artifact "${args[@]}"
 
       - name: Collect release assets
+        if: steps.desktop_build.outcome == 'success'
         shell: bash
         run: |
           set -euo pipefail
@@ -678,6 +681,7 @@ jobs:
           ls -la release-publish
 
       - name: Upload build artifacts
+        if: steps.desktop_build.outcome == 'success'
         uses: https://code.forgejo.org/forgejo/upload-artifact@v4
         with:
           name: desktop-${{ matrix.platform }}-${{ matrix.arch }}
@@ -755,14 +759,19 @@ jobs:
           PREVIOUS_TAG: ${{ needs.sync.outputs.previous_tag }}
         run: |
           set -euo pipefail
+          shopt -s nullglob
+          for pattern in "*.dmg" "*.zip" "*.AppImage" "*.blockmap" "*.yml"; do
+            matches=(release-assets/$pattern)
+            if (( ${#matches[@]} == 0 )); then
+              echo "Missing expected release asset pattern: $pattern" >&2
+              exit 1
+            fi
+          done
           notes_args=(--generate-notes)
           if [[ -n "${PREVIOUS_TAG:-}" ]]; then
             notes_args+=(--notes-start-tag "$PREVIOUS_TAG")
           fi
           assets=(release-assets/*.dmg release-assets/*.zip release-assets/*.AppImage release-assets/*.exe release-assets/*.blockmap release-assets/*.yml)
-          for asset in "${assets[@]}"; do
-            [[ -f "$asset" ]] || { echo "Missing expected asset: $asset" >&2; exit 1; }
-          done
           gh release create "$TAG" "${assets[@]}" \
             --repo "$GITHUB_FORK" \
             --target "$TARGET" \
