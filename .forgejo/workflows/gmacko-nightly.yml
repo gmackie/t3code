@@ -599,7 +599,6 @@ jobs:
 
       - name: Build desktop artifact
         id: desktop_build
-        continue-on-error: ${{ matrix.platform == 'win' }}
         shell: bash
         env:
           CSC_LINK: ${{ secrets.CSC_LINK }}
@@ -659,10 +658,17 @@ jobs:
             echo "Signing disabled for ${{ matrix.platform }}."
           fi
 
-          pnpm vp run dist:desktop:artifact "${args[@]}"
+          if pnpm vp run dist:desktop:artifact "${args[@]}"; then
+            echo "built=true" >> "$GITHUB_OUTPUT"
+          elif [[ "${{ matrix.platform }}" == "win" ]]; then
+            echo "built=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::Skipping failed best-effort Windows artifact build."
+          else
+            exit 1
+          fi
 
       - name: Collect release assets
-        if: steps.desktop_build.outcome == 'success'
+        if: steps.desktop_build.outputs.built == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -681,7 +687,7 @@ jobs:
           ls -la release-publish
 
       - name: Upload build artifacts
-        if: steps.desktop_build.outcome == 'success'
+        if: steps.desktop_build.outputs.built == 'true'
         uses: https://code.forgejo.org/forgejo/upload-artifact@v4
         with:
           name: desktop-${{ matrix.platform }}-${{ matrix.arch }}
