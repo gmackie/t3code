@@ -15,7 +15,7 @@
  * @module provider/cursorUsageQuery
  */
 import * as NodeOS from "node:os";
-import { DatabaseSync } from "node:sqlite";
+import * as NodeSqlite from "node:sqlite";
 
 import { HostProcessPlatform } from "@t3tools/shared/hostProcess";
 import * as Effect from "effect/Effect";
@@ -156,7 +156,7 @@ const readCursorStateToken = (
     const platform = yield* HostProcessPlatform;
     return yield* Effect.try({
       try: () => {
-        const database = new DatabaseSync(
+        const database = new NodeSqlite.DatabaseSync(
           cursorStateDbPath(path, platform, environment ? { environment } : undefined),
           { readOnly: true },
         );
