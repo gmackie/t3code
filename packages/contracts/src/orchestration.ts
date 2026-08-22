@@ -1357,6 +1357,27 @@ export const OrchestrationClientOrigin = Schema.Struct({
 });
 export type OrchestrationClientOrigin = typeof OrchestrationClientOrigin.Type;
 
+const CurrentThreadImportedPayload = Schema.Struct({
+  threadId: ThreadId,
+  environmentId: EnvironmentId,
+  provenance: ExternalThreadImportProvenance,
+  modelSelection: ModelSelection,
+  runtimeMode: RuntimeMode,
+  normalizedHistory: Schema.Unknown,
+});
+
+const Migration33ThreadImportedPayload = Schema.Struct({
+  threadId: ThreadId,
+  provenance: ExternalThreadImportProvenance,
+  modelSelection: ModelSelection,
+  runtimeMode: RuntimeMode,
+});
+
+export const ThreadImportedPayload = Schema.Union([
+  CurrentThreadImportedPayload,
+  Migration33ThreadImportedPayload,
+]);
+
 export const OrchestrationEventMetadata = Schema.Struct({
   providerTurnId: Schema.optional(TrimmedNonEmptyString),
   providerItemId: Schema.optional(ProviderItemId),

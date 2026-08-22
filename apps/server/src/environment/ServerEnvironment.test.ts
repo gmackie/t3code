@@ -157,9 +157,16 @@ it.layer(NodeServices.layer)("ServerEnvironmentLive", (it) => {
           return yield* serverEnvironment.getDescriptor;
         }).pipe(
           Effect.provide(
-            ServerEnvironment.layer.pipe(
-              Layer.provide(ServerConfig.layer({ ...serverConfig, ...overrides })),
-            ),
+            (() => {
+              const serverConfigLayer = ServerConfig.layer({
+                ...serverConfig,
+                ...overrides,
+              });
+              return ServerEnvironment.layer.pipe(
+                Layer.provide(Layer.provide(ServerSecretStore.layer, serverConfigLayer)),
+                Layer.provide(serverConfigLayer),
+              );
+            })(),
           ),
         );
 
