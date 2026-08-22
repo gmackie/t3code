@@ -31,6 +31,9 @@
 name: GMACKO Nightly
 
 on:
+  push:
+    branches:
+      - custom-local
   schedule:
     # 09:00 UTC ≈ 02:00 America/Los_Angeles.
     - cron: "0 9 * * *"
@@ -85,18 +88,24 @@ jobs:
           corepack prepare "pnpm@${PNPM_VERSION}" --activate
           pnpm --version
 
-      - name: Clone release lane from GitHub
+      - name: Clone release lane
         shell: bash
         env:
           GITHUB_TOKEN: ${{ secrets.GMACKO_GITHUB_TOKEN }}
+          FORGEJO_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           if [[ -z "${GITHUB_TOKEN:-}" ]]; then
             echo "GMACKO_GITHUB_TOKEN secret is required to read and publish the release lane." >&2
             exit 1
           fi
-          git clone --branch custom-local --tags \
-            "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_FORK}.git" lane
+          github_url="https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_FORK}.git"
+          forgejo_url="${FORGEJO_REPO_URL/https:\/\//https://x-access-token:${FORGEJO_TOKEN}@}"
+          if [[ "${GITHUB_EVENT_NAME}" == "push" ]]; then
+            git clone --branch custom-local "$forgejo_url" lane
+          else
+            git clone --branch custom-local --tags "$github_url" lane
+          fi
           cd lane
           git config user.name "gmacko-nightly[bot]"
           git config user.email "gmacko-nightly@users.noreply.forgegraf.com"
@@ -109,8 +118,18 @@ jobs:
         name: Rebase custom-local onto upstream main
         shell: bash
         working-directory: lane
+        env:
+          GITHUB_TOKEN: ${{ secrets.GMACKO_GITHUB_TOKEN }}
         run: |
           set -euo pipefail
+          if [[ "${GITHUB_EVENT_NAME}" == "push" ]]; then
+            github_url="https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_FORK}.git"
+            START_SHA="$(git ls-remote "$github_url" refs/heads/custom-local | cut -f1)"
+            echo "Push-triggered release; preserving ForgeGraph lane tip $(git rev-parse HEAD)."
+            echo "has_changes=$([[ "$START_SHA" == "$(git rev-parse HEAD)" ]] && echo false || echo true)" >> "$GITHUB_OUTPUT"
+            echo "start_sha=$START_SHA" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           if [[ "${{ inputs.skip_sync }}" == "true" ]]; then
             echo "skip_sync requested; releasing the lane as-is."
             echo "has_changes=false" >> "$GITHUB_OUTPUT"
@@ -129,7 +148,7 @@ jobs:
           echo "start_sha=$START_SHA" >> "$GITHUB_OUTPUT"
 
       - name: Refresh lockfile after rebase
-        if: steps.rebase_upstream.outputs.has_changes == 'true'
+        if: steps.rebase_upstream.outputs.has_changes == 'true' && github.event_name != 'push'
         shell: bash
         working-directory: lane
         run: |
@@ -153,6 +172,11 @@ jobs:
           FORGEJO_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
+          if [[ "${GITHUB_EVENT_NAME}" == "push" ]]; then
+            echo "Push-triggered release already runs at the ForgeGraph lane tip."
+            echo "head_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           # The rebased lane is only a candidate until preflight passes: it is
           # mirrored here so downstream jobs can check it out, but the GitHub
           # lane is advanced by the promote job after preflight. The scheduled
@@ -193,8 +217,17 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GMACKO_GITHUB_TOKEN }}
           HEAD_SHA: ${{ steps.lane.outputs.head_sha }}
+          HAS_CHANGES: ${{ steps.rebase_upstream.outputs.has_changes }}
         run: |
           set -euo pipefail
+          # A scheduled rebase mirrors a new lane tip, which starts its own
+          # push-triggered run. Let that run preflight, promote, and publish so
+          # one SHA can never race through two release builds.
+          if [[ "${GITHUB_EVENT_NAME}" != "push" && "$HAS_CHANGES" == "true" ]]; then
+            echo "ForgeGraph push will cut the release for ${HEAD_SHA}."
+            echo "should_release=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           if [[ "${{ inputs.force_release }}" == "true" ]]; then
             echo "should_release=true" >> "$GITHUB_OUTPUT"
             exit 0
