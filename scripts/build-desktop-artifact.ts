@@ -1835,43 +1835,49 @@ const stageResourceMonitor = Effect.fn("stageResourceMonitor")(function* (input:
   const rustTargets = resolveResourceMonitorRustTargets(input.platform, input.arch);
   const builtBinaries: string[] = [];
 
-  for (const rustTarget of rustTargets) {
-    const spawnCommand = yield* resolveSpawnCommand("cargo", [
-      "build",
-      "--locked",
-      "--release",
-      "--manifest-path",
-      manifestPath,
-      "--target",
-      rustTarget,
-    ]);
-    yield* runCommand(
-      ChildProcess.make(spawnCommand.command, spawnCommand.args, {
-        cwd: input.repoRoot,
-        shell: spawnCommand.shell,
-      }),
-      {
-        label: `cargo build resource monitor (${rustTarget})`,
-        verbose: input.verbose,
-      },
-    );
-
-    const binaryPath = path.join(
-      input.repoRoot,
-      "native/resource-monitor/target",
-      rustTarget,
-      "release",
-      executableName,
-    );
-    if (!(yield* fs.exists(binaryPath))) {
-      return yield* new ResourceMonitorBuildOutputMissingError({
-        binaryPath,
+  // Windows cross-builds run on the macOS host with no MSVC toolchain, so the
+  // resource monitor cannot link there. The server treats a missing monitor
+  // binary as a typed degradation (ResourceMonitorBinaryNotFound), so Windows
+  // packages ship without it instead of failing the whole release.
+  if (input.platform !== "win") {
+    for (const rustTarget of rustTargets) {
+      const spawnCommand = yield* resolveSpawnCommand("cargo", [
+        "build",
+        "--locked",
+        "--release",
+        "--manifest-path",
+        manifestPath,
+        "--target",
         rustTarget,
-        platform: input.platform,
-        arch: input.arch,
-      });
+      ]);
+      yield* runCommand(
+        ChildProcess.make(spawnCommand.command, spawnCommand.args, {
+          cwd: input.repoRoot,
+          shell: spawnCommand.shell,
+        }),
+        {
+          label: `cargo build resource monitor (${rustTarget})`,
+          verbose: input.verbose,
+        },
+      );
+
+      const binaryPath = path.join(
+        input.repoRoot,
+        "native/resource-monitor/target",
+        rustTarget,
+        "release",
+        executableName,
+      );
+      if (!(yield* fs.exists(binaryPath))) {
+        return yield* new ResourceMonitorBuildOutputMissingError({
+          binaryPath,
+          rustTarget,
+          platform: input.platform,
+          arch: input.arch,
+        });
+      }
+      builtBinaries.push(binaryPath);
     }
-    builtBinaries.push(binaryPath);
   }
 
   const destinationDirectory = path.join(input.stageResourcesDir, "resource-monitor");
@@ -1881,7 +1887,7 @@ const stageResourceMonitor = Effect.fn("stageResourceMonitor")(function* (input:
 
   if (builtBinaries.length === 1) {
     yield* fs.copyFile(builtBinaries[0]!, destinationPath);
-  } else {
+  } else if (builtBinaries.length > 1) {
     yield* runCommand(
       ChildProcess.make("lipo", ["-create", ...builtBinaries, "-output", destinationPath]),
       {
@@ -2813,18 +2819,9 @@ export const validateWindowsPackagedPayload = Effect.fn(
     });
   }
 
-  const resourceMonitorPath = path.join(
-    resourcesDir,
-    "resource-monitor",
-    resourceMonitorExecutableName("win"),
-  );
-  if (!(yield* isFile(resourceMonitorPath))) {
-    return yield* new WindowsPackagedPayloadValidationError({
-      reason: "resource-monitor-missing",
-      packagedAppDir,
-      missingFiles: ["resource-monitor/t3-resource-monitor.exe"],
-    });
-  }
+  // The monitor binary is optional on Windows: cross-builds have no MSVC
+  // toolchain, and the server degrades to a typed ResourceMonitorBinaryNotFound
+  // when it is absent. No presence check here, unlike mac/linux.
 
   const fileCount = yield* countPayloadFiles(packagedAppDir);
   if (fileCount > fileLimit) {

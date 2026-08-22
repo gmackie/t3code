@@ -780,23 +780,20 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
 
         yield* fs.remove(nativePath, { recursive: true });
         yield* fs.writeFileString(nativePath, "native-binary");
+
+        // The resource monitor is optional on Windows: cross-build hosts have
+        // no MSVC toolchain, so its absence must not fail payload validation.
         const resourceMonitorPath = path.join(
           fixture.packagedAppDir,
           "resources/resource-monitor/t3-resource-monitor.exe",
         );
-        yield* fs.remove(resourceMonitorPath);
-        yield* fs.makeDirectory(resourceMonitorPath);
-
-        const resourceMonitorError = yield* validateWindowsPackagedPayload({
+        yield* fs.remove(resourceMonitorPath, { recursive: true });
+        const withoutResourceMonitor = yield* validateWindowsPackagedPayload({
           stageDistDir: fixture.stageDistDir,
           appExecutableName: fixture.appExecutableName,
           targetArch: "x64",
-        }).pipe(Effect.flip);
-        assert.instanceOf(resourceMonitorError, WindowsPackagedPayloadValidationError);
-        assert.equal(resourceMonitorError.reason, "resource-monitor-missing");
-        assert.deepStrictEqual(resourceMonitorError.missingFiles, [
-          "resource-monitor/t3-resource-monitor.exe",
-        ]);
+        });
+        assert.isDefined(withoutResourceMonitor);
       }),
     ),
   );
