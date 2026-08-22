@@ -8,6 +8,7 @@ import { RepositoryIdentity, ThreadEnvMode } from "./environment.ts";
 import {
   ApprovalRequestId,
   CheckpointRef,
+  ClientSurface,
   CommandId,
   EventId,
   EnvironmentId,
@@ -1344,26 +1345,17 @@ export const ThreadActivityAppendedPayload = Schema.Struct({
   activity: OrchestrationThreadActivity,
 });
 
-const CurrentThreadImportedPayload = Schema.Struct({
-  threadId: ThreadId,
-  environmentId: EnvironmentId,
-  provenance: ExternalThreadImportProvenance,
-  modelSelection: ModelSelection,
-  runtimeMode: RuntimeMode,
-  normalizedHistory: Schema.Unknown,
+/**
+ * Which client connection dispatched the command that produced an event.
+ * Stamped by the orchestration engine on client-dispatched commands; absent on
+ * provider/server-originated events and on commands from clients too old to
+ * report it.
+ */
+export const OrchestrationClientOrigin = Schema.Struct({
+  surface: Schema.optional(ClientSurface),
+  appVersion: Schema.optional(TrimmedNonEmptyString),
 });
-
-const Migration33ThreadImportedPayload = Schema.Struct({
-  threadId: ThreadId,
-  provenance: ExternalThreadImportProvenance,
-  modelSelection: ModelSelection,
-  runtimeMode: RuntimeMode,
-});
-
-export const ThreadImportedPayload = Schema.Union([
-  CurrentThreadImportedPayload,
-  Migration33ThreadImportedPayload,
-]);
+export type OrchestrationClientOrigin = typeof OrchestrationClientOrigin.Type;
 
 export const OrchestrationEventMetadata = Schema.Struct({
   providerTurnId: Schema.optional(TrimmedNonEmptyString),
@@ -1371,6 +1363,7 @@ export const OrchestrationEventMetadata = Schema.Struct({
   adapterKey: Schema.optional(TrimmedNonEmptyString),
   requestId: Schema.optional(ApprovalRequestId),
   ingestedAt: Schema.optional(IsoDateTime),
+  origin: Schema.optional(OrchestrationClientOrigin),
 });
 export type OrchestrationEventMetadata = typeof OrchestrationEventMetadata.Type;
 
