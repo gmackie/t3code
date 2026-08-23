@@ -5,6 +5,13 @@ on:
   push:
     branches:
       - main
+      # Fork branches: upstream only builds `main`, but our fork's default
+      # branch is `main-local` and the mutable release branch is
+      # `custom-local`. Run CI on both so breakages (including ones pulled in
+      # by the daily upstream sync into custom-local) surface here instead of
+      # only at release time.
+      - main-local
+      - custom-local
 
 jobs:
   quality:
