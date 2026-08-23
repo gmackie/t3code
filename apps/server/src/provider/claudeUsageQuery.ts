@@ -92,7 +92,6 @@ export const queryClaudeUsageRateLimits = (
   never,
   | ChildProcessSpawner.ChildProcessSpawner
   | FileSystem.FileSystem
-  | HostProcessPlatform
   | HttpClient.HttpClient
   | Path.Path
 > =>
