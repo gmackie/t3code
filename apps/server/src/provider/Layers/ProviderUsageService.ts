@@ -86,7 +86,7 @@ export const make = Effect.gen(function* () {
     refresh,
     stream: (providerInstanceId) =>
       Stream.concat(
-        Stream.fromEffect(snapshotFor(providerInstanceId)),
+        Stream.fromEffect(refresh(providerInstanceId).pipe(Effect.map(({ snapshot }) => snapshot))),
         Stream.fromPubSub(changes).pipe(
           Stream.filter((snapshot) => snapshot.providerInstanceId === providerInstanceId),
         ),

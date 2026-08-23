@@ -74,6 +74,7 @@ import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import { HttpClient } from "effect/unstable/http";
+import * as ChildProcessSpawner from "effect/unstable/process/ChildProcessSpawner";
 
 import { resolveAttachmentPath } from "../../attachmentStore.ts";
 import { ServerConfig } from "../../config.ts";
@@ -4626,11 +4627,15 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
     );
 
   const usageHttpClient = Option.getOrUndefined(yield* Effect.serviceOption(HttpClient.HttpClient));
+  const usageChildProcessSpawner = Option.getOrUndefined(
+    yield* Effect.serviceOption(ChildProcessSpawner.ChildProcessSpawner),
+  );
   const queryUsage: NonNullable<ClaudeAdapterShape["queryUsage"]> = () =>
-    usageHttpClient === undefined
+    usageHttpClient === undefined || usageChildProcessSpawner === undefined
       ? Effect.succeed([])
       : queryClaudeUsageRateLimits(options?.environment).pipe(
           Effect.provideService(HttpClient.HttpClient, usageHttpClient),
+          Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, usageChildProcessSpawner),
           Effect.provideService(FileSystem.FileSystem, fileSystem),
           Effect.provideService(Path.Path, path),
         );

@@ -16,6 +16,7 @@ import {
   ProviderInstanceId,
   type ProviderRuntimeEvent,
   type ProviderRequestKind,
+  type ProviderUsageWindow,
   type ThreadTokenUsageSnapshot,
   type ProviderUserInputAnswers,
   RuntimeItemId,
@@ -64,6 +65,7 @@ import {
   type CodexSessionRuntimeShape,
 } from "./CodexSessionRuntime.ts";
 import { type EventNdjsonLogger, makeEventNdjsonLogger } from "./EventNdjsonLogger.ts";
+import { queryCodexAccountRateLimits } from "./CodexProvider.ts";
 import { resolveCodexLaunchArgs } from "./codexLaunchArgs.ts";
 const isCodexAppServerProcessExitedError = Schema.is(CodexErrors.CodexAppServerProcessExitedError);
 const isCodexAppServerTransportError = Schema.is(CodexErrors.CodexAppServerTransportError);
@@ -84,6 +86,7 @@ export interface CodexAdapterLiveOptions {
     CodexSessionRuntimeError,
     ChildProcessSpawner.ChildProcessSpawner | Scope.Scope
   >;
+  readonly queryUsage?: () => Effect.Effect<ReadonlyArray<ProviderUsageWindow>>;
   readonly nativeEventLogPath?: string;
   readonly nativeEventLogger?: EventNdjsonLogger;
 }
@@ -1977,8 +1980,21 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
   const queryUsage: NonNullable<CodexAdapterShape["queryUsage"]> = () =>
     Effect.gen(function* () {
       const context = Array.from(sessions.values()).find((candidate) => !candidate.stopped);
-      if (context?.runtime.readRateLimits === undefined) return [];
-      return normalizeCodexRateLimits(yield* context.runtime.readRateLimits);
+      if (context?.runtime.readRateLimits !== undefined) {
+        return normalizeCodexRateLimits(yield* context.runtime.readRateLimits);
+      }
+      if (options?.queryUsage !== undefined) return yield* options.queryUsage();
+      return yield* queryCodexAccountRateLimits({
+        binaryPath: codexConfig.binaryPath,
+        ...(codexConfig.homePath ? { homePath: codexConfig.homePath } : {}),
+        launchArgs: resolveCodexLaunchArgs(codexConfig.launchArgs, options?.environment),
+        cwd: serverConfig.cwd,
+        ...(options?.environment ? { environment: options.environment } : {}),
+      }).pipe(
+        Effect.map(normalizeCodexRateLimits),
+        Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, childProcessSpawner),
+        Effect.scoped,
+      );
     }).pipe(Effect.orElseSucceed(() => []));
 
   return {

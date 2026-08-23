@@ -7,6 +7,7 @@ import {
 } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import * as Stream from "effect/Stream";
 import { describe, expect, it } from "@effect/vitest";
 
@@ -68,6 +69,17 @@ const runWithHarness = <A>(
   }).pipe(Effect.provide(makeHarnessLayer(options)));
 
 describe("ProviderUsageService refresh", () => {
+  it.effect("queries fresh quota for the first subscription snapshot", () =>
+    runWithHarness({ queryResult: QUERY_WINDOWS }, (usage) =>
+      Effect.gen(function* () {
+        const first = yield* usage.stream(INSTANCE_ID).pipe(Stream.runHead);
+
+        expect(Option.getOrUndefined(first)?.source).toBe("provider-query");
+        expect(Option.getOrUndefined(first)?.windows).toEqual(QUERY_WINDOWS);
+      }),
+    ),
+  );
+
   it.effect("publishes a provider-query snapshot when the adapter returns fresh windows", () =>
     runWithHarness({ queryResult: QUERY_WINDOWS }, (usage) =>
       Effect.gen(function* () {
