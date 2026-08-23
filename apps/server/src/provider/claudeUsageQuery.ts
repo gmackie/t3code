@@ -8,6 +8,7 @@ import * as Schema from "effect/Schema";
 import { HttpClient, HttpClientRequest } from "effect/unstable/http";
 import * as ChildProcess from "effect/unstable/process/ChildProcess";
 import * as ChildProcessSpawner from "effect/unstable/process/ChildProcessSpawner";
+import { HostProcessPlatform } from "@t3tools/shared/hostProcess";
 
 import { collectStreamAsString } from "./providerSnapshot.ts";
 import { normalizeClaudeRateLimits, type ProviderRateLimitWindow } from "./providerUsage.ts";
@@ -63,7 +64,7 @@ const readMacKeychainCredential: Effect.Effect<
   never,
   ChildProcessSpawner.ChildProcessSpawner
 > = Effect.gen(function* () {
-  if (process.platform !== "darwin") return undefined;
+  if ((yield* HostProcessPlatform) !== "darwin") return undefined;
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
   const child = yield* spawner.spawn(
     ChildProcess.make(
@@ -91,6 +92,7 @@ export const queryClaudeUsageRateLimits = (
   never,
   | ChildProcessSpawner.ChildProcessSpawner
   | FileSystem.FileSystem
+  | HostProcessPlatform
   | HttpClient.HttpClient
   | Path.Path
 > =>
