@@ -3,7 +3,6 @@ import {
   ProjectId,
   type ModelSelection,
   type ProviderDriverKind,
-  type ServerProvider,
   type ScopedProjectRef,
   type ScopedThreadRef,
   type ThreadId,
@@ -430,8 +429,7 @@ export function threadHasStarted(thread: Thread | null | undefined): boolean {
 }
 
 // Started threads remain provider-neutral. The server replaces the active
-// provider session when the next turn selects another driver, while edit-mode
-// restrictions are enforced separately by the model-change guard.
+// provider session when the next turn selects another driver.
 export function deriveLockedProvider(input: {
   thread: Thread | null | undefined;
   selectedProvider: string | null;
@@ -439,44 +437,6 @@ export function deriveLockedProvider(input: {
 }): ProviderDriverKind | null {
   void input;
   return null;
-}
-
-export function getStartedThreadModelChangeBlockReason(input: {
-  providers: ReadonlyArray<Pick<ServerProvider, "instanceId" | "requiresNewThreadForModelChange">>;
-  hasStartedSession: boolean;
-  currentModelSelection: ModelSelection;
-  currentProviderInstanceId?: ModelSelection["instanceId"] | null | undefined;
-  nextModelSelection: ModelSelection;
-}): { title: string; description: string } | null {
-  if (!input.hasStartedSession) {
-    return null;
-  }
-  const currentModelSelection = {
-    ...input.currentModelSelection,
-    instanceId: input.currentProviderInstanceId ?? input.currentModelSelection.instanceId,
-  };
-  if (
-    currentModelSelection.instanceId === input.nextModelSelection.instanceId &&
-    currentModelSelection.model === input.nextModelSelection.model
-  ) {
-    return null;
-  }
-  const currentProvider = input.providers.find(
-    (snapshot) => snapshot.instanceId === currentModelSelection.instanceId,
-  );
-  const nextProvider = input.providers.find(
-    (snapshot) => snapshot.instanceId === input.nextModelSelection.instanceId,
-  );
-  if (
-    currentProvider?.requiresNewThreadForModelChange !== true &&
-    nextProvider?.requiresNewThreadForModelChange !== true
-  ) {
-    return null;
-  }
-  return {
-    title: "Start a new chat to change models",
-    description: "This provider does not allow switching models after a conversation has started.",
-  };
 }
 
 export async function waitForStartedServerThread(
