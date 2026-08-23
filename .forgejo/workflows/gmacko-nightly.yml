@@ -2,10 +2,8 @@
 #
 # Runs on ForgeGraph CI (Forgejo Actions at git.forgegraf.com) instead of
 # GitHub Actions. Runner topology:
-#   - ubuntu-24.04  → labnuc (docker runner): sync, preflight, Linux build,
-#                      WSL node-pty prebuild, publish
-#   - macos         → gmacko-mini (host runner): macOS arm64/x64 and the
-#                      Windows cross-build (electron-builder NSIS on macOS)
+#   - ubuntu-24.04  → labnuc (docker runner): sync, preflight, Linux build, publish
+#   - macos         → gmacko-mini (host runner): macOS arm64/x64
 #
 # The release lane itself (branch custom-local) and the published releases stay
 # on GitHub (gmackie/t3code) so existing installs keep auto-updating; only the
@@ -25,8 +23,7 @@
 #   RELAY_DOMAIN, RELAY_API_ZONE_NAME, T3CODE_CLERK_PUBLISHABLE_KEY,
 #   T3CODE_CLERK_JWT_TEMPLATE, T3CODE_CLERK_CLI_OAUTH_CLIENT_ID
 #
-# Windows builds are produced unsigned here: Azure Trusted Signing needs
-# Windows signtool and there is no Windows runner in the fleet.
+# Windows builds are omitted until the fleet has an isolated Windows runner.
 
 name: GMACKO Nightly
 
@@ -431,55 +428,9 @@ jobs:
             echo "relay_url=" >> "$GITHUB_OUTPUT"
           fi
 
-  # node-pty publishes no Linux prebuilt and the WSL backend runs under the
-  # distro's own (Linux) Node. Build the Linux pty.node here and hand it to the
-  # Windows packaging job so the artifact ships a ready WSL backend binary.
-  build_wsl_node_pty:
-    name: Build WSL node-pty (linux-x64)
-    needs: [sync, preflight]
-    if: ${{ !failure() && !cancelled() && needs.sync.outputs.should_release == 'true' }}
-    runs-on: ubuntu-24.04
-    timeout-minutes: 20
-    steps:
-      - name: Checkout lane
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ needs.sync.outputs.ref }}
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 24
-
-      - name: Setup pnpm and install
-        shell: bash
-        run: |
-          set -euo pipefail
-          corepack enable
-          corepack prepare "pnpm@${PNPM_VERSION}" --activate
-          pnpm install --frozen-lockfile
-
-      - name: Build node-pty linux-x64 prebuild
-        shell: bash
-        run: |
-          set -euo pipefail
-          pty_pkg="$(node -e "console.log(require.resolve('node-pty/package.json', { paths: ['$PWD/apps/server'] }))")"
-          pty_dir="$(dirname "$pty_pkg")"
-          ( cd "$pty_dir" && npx --yes node-gyp rebuild )
-          mkdir -p wsl-prebuild
-          cp "$pty_dir/build/Release/pty.node" wsl-prebuild/pty.node
-          file wsl-prebuild/pty.node
-
-      - name: Upload node-pty linux-x64 prebuild
-        uses: https://code.forgejo.org/forgejo/upload-artifact@v4
-        with:
-          name: wsl-node-pty-x64
-          path: wsl-prebuild/pty.node
-          if-no-files-found: error
-
   build:
     name: Build ${{ matrix.label }}
-    needs: [sync, preflight, relay_public_config, build_wsl_node_pty]
+    needs: [sync, preflight, relay_public_config]
     if: ${{ !cancelled() && needs.sync.outputs.should_release == 'true' && needs.preflight.result == 'success' && needs.relay_public_config.result == 'success' }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 90
@@ -490,6 +441,9 @@ jobs:
       T3CODE_RELAY_URL: ${{ needs.relay_public_config.outputs.relay_url }}
     strategy:
       fail-fast: false
+      # The macOS host executor uses one shared workspace. Serial execution
+      # prevents one matrix job's cleanup from deleting another job's cwd.
+      max-parallel: 1
       matrix:
         include:
           - label: macOS arm64
@@ -510,12 +464,6 @@ jobs:
             target: AppImage
             arch: x64
             rust_target: x86_64-unknown-linux-gnu
-          - label: Windows x64
-            runner: macos
-            platform: win
-            target: nsis
-            arch: x64
-            rust_target: x86_64-pc-windows-msvc
     steps:
       - name: Checkout lane
         uses: actions/checkout@v4
@@ -590,15 +538,7 @@ jobs:
       - name: Align package versions to release version
         run: node scripts/update-release-package-versions.ts "${{ needs.sync.outputs.version }}"
 
-      - name: Download WSL node-pty prebuild
-        if: matrix.platform == 'win'
-        uses: https://code.forgejo.org/forgejo/download-artifact@v4
-        with:
-          name: wsl-node-pty-x64
-          path: wsl-prebuild
-
       - name: Build desktop artifact
-        id: desktop_build
         shell: bash
         env:
           CSC_LINK: ${{ secrets.CSC_LINK }}
@@ -651,24 +591,13 @@ jobs:
               echo "macOS signing is required for GMACKO releases; missing one or more Apple signing secrets." >&2
               exit 1
             fi
-          elif [[ "${{ matrix.platform }}" == "win" ]]; then
-            args+=(--wsl-prebuild "$PWD/wsl-prebuild/pty.node")
-            echo "Windows signing disabled: Azure Trusted Signing requires a Windows runner."
           else
             echo "Signing disabled for ${{ matrix.platform }}."
           fi
 
-          if pnpm vp run dist:desktop:artifact "${args[@]}"; then
-            echo "built=true" >> "$GITHUB_OUTPUT"
-          elif [[ "${{ matrix.platform }}" == "win" ]]; then
-            echo "built=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::Skipping failed best-effort Windows artifact build."
-          else
-            exit 1
-          fi
+          pnpm vp run dist:desktop:artifact "${args[@]}"
 
       - name: Collect release assets
-        if: steps.desktop_build.outputs.built == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -687,7 +616,6 @@ jobs:
           ls -la release-publish
 
       - name: Upload build artifacts
-        if: steps.desktop_build.outputs.built == 'true'
         uses: https://code.forgejo.org/forgejo/upload-artifact@v4
         with:
           name: desktop-${{ matrix.platform }}-${{ matrix.arch }}
