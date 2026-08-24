@@ -62,6 +62,7 @@ describe("ForgeGraph GMACKO release workflow", () => {
 
     expect(desktopUploadSteps).toHaveLength(2);
     for (const step of desktopUploadSteps) {
+      expect(step).toContain("uses: https://code.forgejo.org/forgejo/upload-artifact@v5");
       expect(step).toContain("ACTIONS_ARTIFACT_UPLOAD_CONCURRENCY: 1");
       expect(step).toContain("ACTIONS_ARTIFACT_UPLOAD_TIMEOUT_MS: 1800000");
     }
