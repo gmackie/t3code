@@ -55,4 +55,15 @@ describe("ForgeGraph GMACKO release workflow", () => {
       );
     }
   });
+
+  it("serializes desktop artifact uploads on constrained runner links", () => {
+    const workflow = NodeFS.readFileSync(workflowPath, "utf8");
+    const desktopUploadSteps = workflow.split("      - name: Upload build artifacts\n").slice(1);
+
+    expect(desktopUploadSteps).toHaveLength(2);
+    for (const step of desktopUploadSteps) {
+      expect(step).toContain("ACTIONS_ARTIFACT_UPLOAD_CONCURRENCY: 1");
+      expect(step).toContain("ACTIONS_ARTIFACT_UPLOAD_TIMEOUT_MS: 1800000");
+    }
+  });
 });

@@ -607,6 +607,9 @@ jobs:
           ls -la release-publish
 
       - name: Upload build artifacts
+        env:
+          ACTIONS_ARTIFACT_UPLOAD_CONCURRENCY: 1
+          ACTIONS_ARTIFACT_UPLOAD_TIMEOUT_MS: 1800000
         uses: https://code.forgejo.org/forgejo/upload-artifact@v4
         with:
           name: desktop-${{ matrix.platform }}-${{ matrix.arch }}
@@ -740,6 +743,9 @@ jobs:
           ls -la release-publish
 
       - name: Upload build artifacts
+        env:
+          ACTIONS_ARTIFACT_UPLOAD_CONCURRENCY: 1
+          ACTIONS_ARTIFACT_UPLOAD_TIMEOUT_MS: 1800000
         uses: https://code.forgejo.org/forgejo/upload-artifact@v4
         with:
           name: desktop-mac-x64
