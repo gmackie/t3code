@@ -466,6 +466,9 @@ jobs:
         with:
           node-version: 24
 
+      - name: Align package versions to release version
+        run: node scripts/update-release-package-versions.ts "${{ needs.sync.outputs.version }}"
+
       - name: Setup pnpm and install
         shell: bash
         run: |
@@ -525,9 +528,6 @@ jobs:
             echo "::add-mask::$tracing_token"
           fi
           cat "$config_path" >> "$GITHUB_ENV"
-
-      - name: Align package versions to release version
-        run: node scripts/update-release-package-versions.ts "${{ needs.sync.outputs.version }}"
 
       - name: Build desktop artifact
         shell: bash
@@ -638,6 +638,9 @@ jobs:
         with:
           node-version: 24
 
+      - name: Align package versions to release version
+        run: node scripts/update-release-package-versions.ts "${{ needs.sync.outputs.version }}"
+
       - name: Setup pnpm and install
         shell: bash
         run: |
@@ -678,9 +681,6 @@ jobs:
             echo "::add-mask::$tracing_token"
           fi
           cat "$config_path" >> "$GITHUB_ENV"
-
-      - name: Align package versions to release version
-        run: node scripts/update-release-package-versions.ts "${{ needs.sync.outputs.version }}"
 
       - name: Build desktop artifact
         shell: bash

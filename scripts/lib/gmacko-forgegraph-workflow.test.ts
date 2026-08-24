@@ -33,4 +33,23 @@ describe("ForgeGraph GMACKO release workflow", () => {
     );
     expect(workflow).not.toContain('git push --force origin "${HEAD_SHA}:refs/heads/custom-local"');
   });
+
+  it("aligns release package versions before installing macOS build dependencies", () => {
+    const workflow = NodeFS.readFileSync(workflowPath, "utf8");
+    const buildJob = workflow.slice(
+      workflow.indexOf("  build:\n"),
+      workflow.indexOf("  build_macos_x64:\n"),
+    );
+    const x64Job = workflow.slice(
+      workflow.indexOf("  build_macos_x64:\n"),
+      workflow.indexOf("  release:\n"),
+    );
+
+    for (const job of [buildJob, x64Job]) {
+      expect(job.indexOf("Align package versions to release version")).toBeGreaterThan(-1);
+      expect(job.indexOf("Align package versions to release version")).toBeLessThan(
+        job.indexOf("Setup pnpm and install"),
+      );
+    }
+  });
 });
