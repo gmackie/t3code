@@ -23,6 +23,7 @@ describe("ForgeGraph GMACKO release workflow", () => {
     expect(workflow).toContain(
       'if [[ "${GITHUB_EVENT_NAME}" != "push" && "$HAS_CHANGES" == "true" ]]',
     );
+    expect(workflow).toContain("group: gmacko-nightly\n  cancel-in-progress: true");
   });
 
   it("keeps GitHub promotion lease-protected", () => {

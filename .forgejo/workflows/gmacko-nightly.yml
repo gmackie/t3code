@@ -49,7 +49,7 @@ on:
 
 concurrency:
   group: gmacko-nightly
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 env:
   GITHUB_FORK: gmackie/t3code
