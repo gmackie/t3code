@@ -75,6 +75,7 @@ const StageWorkspaceConfig = Schema.Struct({
     cpu: Schema.Array(Schema.String),
     libc: Schema.optional(Schema.Array(Schema.String)),
   }),
+  ignoredOptionalDependencies: Schema.Array(Schema.String),
   // pnpm 11 only reads these from pnpm-workspace.yaml (not package.json#pnpm).
   // Without allowBuilds the staged `vp install --prod` fails with
   // ERR_PNPM_IGNORED_BUILDS for packages that have lifecycle scripts.
@@ -1358,6 +1359,11 @@ export function createStageWorkspaceConfig(input: {
 
   return {
     supportedArchitectures,
+    // T3 Code supplies the user's installed Claude executable to the SDK.
+    // Its optional platform packages are bundled CLI copies that are never
+    // executed, so do not download them into release stages only to exclude
+    // them from the packaged app later.
+    ignoredOptionalDependencies: ["@anthropic-ai/claude-agent-sdk-*"],
     ...(allowBuilds && Object.keys(allowBuilds).length > 0 ? { allowBuilds } : {}),
     ...(patchedDependencies && Object.keys(patchedDependencies).length > 0
       ? { patchedDependencies }

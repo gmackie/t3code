@@ -352,11 +352,15 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
 
   it("installs optional native dependencies for the target desktop architecture", () => {
     assert.deepStrictEqual(STAGE_INSTALL_ARGS, ["install", "--prod"]);
+    const ignoredClaudeCliPackages = {
+      ignoredOptionalDependencies: ["@anthropic-ai/claude-agent-sdk-*"],
+    };
     assert.deepStrictEqual(createStageWorkspaceConfig({ platform: "mac", arch: "x64" }), {
       supportedArchitectures: {
         os: ["darwin"],
         cpu: ["x64"],
       },
+      ...ignoredClaudeCliPackages,
     });
     assert.deepStrictEqual(createStageWorkspaceConfig({ platform: "linux", arch: "x64" }), {
       supportedArchitectures: {
@@ -364,6 +368,7 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
         cpu: ["x64"],
         libc: ["glibc"],
       },
+      ...ignoredClaudeCliPackages,
     });
     // The Windows app stage only serves the desktop main process; the server
     // sidecar stage is the one that needs Linux natives (below).
@@ -372,6 +377,7 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
         os: ["win32"],
         cpu: ["x64"],
       },
+      ...ignoredClaudeCliPackages,
     });
     // The server sidecar stage bundles the same-architecture WSL (Linux,
     // glibc) backend, so its install must fetch Linux native optional deps
@@ -385,6 +391,7 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
           cpu: ["x64"],
           libc: ["glibc"],
         },
+        ...ignoredClaudeCliPackages,
         nodeLinker: "hoisted",
       },
     );
@@ -396,6 +403,7 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
           cpu: ["arm64"],
           libc: ["glibc"],
         },
+        ...ignoredClaudeCliPackages,
         nodeLinker: "hoisted",
       },
     );
@@ -404,6 +412,7 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
         os: ["darwin"],
         cpu: ["arm64", "x64"],
       },
+      ...ignoredClaudeCliPackages,
     });
   });
 
@@ -430,6 +439,7 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
           cpu: ["x64"],
           libc: ["glibc"],
         },
+        ignoredOptionalDependencies: ["@anthropic-ai/claude-agent-sdk-*"],
         allowBuilds: {
           electron: true,
           "node-pty": true,
@@ -460,6 +470,7 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
           os: ["darwin"],
           cpu: ["arm64"],
         },
+        ignoredOptionalDependencies: ["@anthropic-ai/claude-agent-sdk-*"],
       },
     );
   });
