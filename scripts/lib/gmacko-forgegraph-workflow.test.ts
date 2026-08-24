@@ -47,6 +47,9 @@ describe("ForgeGraph GMACKO release workflow", () => {
 
     for (const job of [buildJob, x64Job]) {
       expect(job.indexOf("Align package versions to release version")).toBeGreaterThan(-1);
+      expect(job).toContain(
+        'node scripts/bootstrap-release-package-versions.mjs "${{ needs.sync.outputs.version }}"',
+      );
       expect(job.indexOf("Align package versions to release version")).toBeLessThan(
         job.indexOf("Setup pnpm and install"),
       );

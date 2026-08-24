@@ -467,7 +467,7 @@ jobs:
           node-version: 24
 
       - name: Align package versions to release version
-        run: node scripts/update-release-package-versions.ts "${{ needs.sync.outputs.version }}"
+        run: node scripts/bootstrap-release-package-versions.mjs "${{ needs.sync.outputs.version }}"
 
       - name: Setup pnpm and install
         shell: bash
@@ -639,7 +639,7 @@ jobs:
           node-version: 24
 
       - name: Align package versions to release version
-        run: node scripts/update-release-package-versions.ts "${{ needs.sync.outputs.version }}"
+        run: node scripts/bootstrap-release-package-versions.mjs "${{ needs.sync.outputs.version }}"
 
       - name: Setup pnpm and install
         shell: bash
