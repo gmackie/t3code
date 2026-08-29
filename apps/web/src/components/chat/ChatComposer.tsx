@@ -1268,8 +1268,6 @@ export interface ChatComposerProps {
   ) => void;
 
   onProviderModelSelect: (instanceId: ProviderInstanceId, model: string) => void;
-  onOpenProviderSetup: (instanceId: ProviderInstanceId) => void;
-  getModelDisabledReason: (instanceId: ProviderInstanceId, model: string) => string | null;
   toggleInteractionMode: () => void;
   handleRuntimeModeChange: (mode: RuntimeMode) => void;
   handleInteractionModeChange: (mode: ProviderInteractionMode) => void;
@@ -1357,8 +1355,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     onPreviousActivePendingUserInputQuestion,
     onChangeActivePendingUserInputCustomAnswer,
     onProviderModelSelect,
-    onOpenProviderSetup,
-    getModelDisabledReason,
     toggleInteractionMode,
     handleRuntimeModeChange,
     handleInteractionModeChange,
@@ -5424,9 +5420,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                       No provider available
                     </Button>
                   ) : (
-                  <ProviderModelPicker
-                    environmentId={environmentId}
-                    compact={isComposerFooterCompact}
+                    <ProviderModelPicker
+                      environmentId={environmentId}
+                      compact={isComposerFooterCompact}
                       activeInstanceId={selectedInstanceId}
                       model={selectedModelForPickerWithCustomFallback}
                       lockedProvider={lockedProvider}
@@ -5446,7 +5442,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                       onOpenChange={(open) => {
                         setIsComposerModelPickerOpen(open);
                       }}
-                      getModelDisabledReason={getModelDisabledReason}
                       onInstanceModelChange={onProviderModelSelect}
                     />
                   )}
