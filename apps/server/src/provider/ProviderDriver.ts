@@ -29,6 +29,7 @@ import type {
 import type * as Effect from "effect/Effect";
 import type * as Schema from "effect/Schema";
 import type * as Scope from "effect/Scope";
+import type { ThreadImportSource } from "../threadImport/ThreadImportSource.ts";
 
 import type * as TextGeneration from "../textGeneration/TextGeneration.ts";
 import type { ProviderAdapterError, ProviderDriverError } from "./Errors.ts";
@@ -71,6 +72,8 @@ export interface ProviderInstance {
   readonly snapshot: ServerProviderShape;
   readonly adapter: ProviderAdapterShape<ProviderAdapterError>;
   readonly textGeneration: TextGeneration.TextGeneration["Service"];
+  /** Optional read-only native history source. It must never start a provider session. */
+  readonly threadImportSource?: ThreadImportSource;
 }
 
 export interface ProviderContinuationIdentity {
