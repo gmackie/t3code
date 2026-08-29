@@ -1,58 +1,89 @@
 import { describe, expect, it, vi } from "vite-plus/test";
-import { EnvironmentId, ProjectId, ProviderInstanceId, ThreadId } from "@t3tools/contracts";
-import type { Project, Thread } from "../types";
+import {
+  EnvironmentId,
+  ProjectId,
+  ProviderInstanceId,
+  ThreadId,
+  type PluginCommand,
+} from "@t3tools/contracts";
+import type { Thread } from "../types";
 import {
   buildBrowseGroups,
-  buildCommandPaletteProjectMetadata,
-  buildProjectActionItems,
+  buildPluginCommandActionItems,
   buildThreadActionItems,
   buildLinkedThreadActionItems,
   enumerateCommandPaletteItems,
   filterPinnedBrowseEntries,
   filterCommandPaletteGroups,
   reduceCommandPaletteUiState,
+  resolvePluginCommandEnvironmentId,
   type CommandPaletteGroup,
 } from "./CommandPalette.logic";
 
-describe("linked pull request thread navigation", () => {
-  it("keeps archived relations searchable and routes them through the PR environment", async () => {
-    const environmentId = EnvironmentId.make("remote");
-    const id = ThreadId.make("archived-thread");
-    const runThread = vi.fn(async () => {});
-    const query = "https://github.com/acme/web/pull/42";
-    const linkedThreads = {
-      environmentId,
-      threads: [
-        {
-          id,
-          projectId: ProjectId.make("project"),
-          title: "Completed work",
-          archivedAt: "2026-09-01T00:00:00.000Z",
-        },
-      ],
-    };
-    const state = reduceCommandPaletteUiState(
-      { open: false, mode: "command", openIntent: null },
+describe("buildPluginCommandActionItems", () => {
+  it("renders only commands for the current host surface and routes execution", async () => {
+    const run = vi.fn(async () => undefined);
+    const commands: ReadonlyArray<PluginCommand> = [
       {
-        _tag: "OpenSearch",
-        query,
-        linkedThreads,
+        id: "plugin.status",
+        label: "Check plugin status",
+        description: "Verify the runtime.",
+        surfaces: ["web", "desktop"],
       },
-    );
-    expect(state.openIntent).toEqual({ kind: "search", query, linkedThreads });
-    const items = buildLinkedThreadActionItems({ ...linkedThreads, query, icon: null, runThread });
-    const groups = filterCommandPaletteGroups({
-      activeGroups: [],
-      query,
-      isInSubmenu: false,
-      projectSearchItems: [],
-      settingsSearchItems: [],
-      threadSearchItems: items,
-    });
-    expect(groups.flatMap((group) => group.items)).toEqual(items);
-    expect(items[0]?.description).toBe("Archived thread");
+      {
+        id: "plugin.mobile",
+        label: "Mobile only",
+        surfaces: ["mobile"],
+      },
+    ];
+
+    const items = buildPluginCommandActionItems({ commands, icon: null, run, surface: "web" });
+
+    expect(items.map((item) => item.value)).toEqual(["plugin-command:plugin.status"]);
+    expect(items[0]?.description).toBe("Verify the runtime.");
     await items[0]?.run();
-    expect(runThread).toHaveBeenCalledWith({ environmentId, id });
+    expect(run).toHaveBeenCalledWith(commands[0]);
+  });
+});
+
+describe("resolvePluginCommandEnvironmentId", () => {
+  it("prefers an active remote draft over the primary environment", () => {
+    expect(
+      resolvePluginCommandEnvironmentId({
+        activeDraftEnvironmentId: EnvironmentId.make("remote"),
+        activeThreadEnvironmentId: null,
+        primaryEnvironmentId: EnvironmentId.make("primary"),
+      }),
+    ).toBe("remote");
+  });
+});
+
+describe("browseInputEndPaddingClass", () => {
+  it("reserves the widest space for the create action", () => {
+    expect(
+      browseInputEndPaddingClass({
+        willCreateProjectPath: true,
+        hasHighlightedBrowseItem: false,
+      }),
+    ).toContain("pe-38");
+  });
+
+  it("reserves space for the wider highlighted-item shortcut", () => {
+    expect(
+      browseInputEndPaddingClass({
+        willCreateProjectPath: false,
+        hasHighlightedBrowseItem: true,
+      }),
+    ).toContain("pe-30");
+  });
+
+  it("keeps the compact reserve for the normal add action", () => {
+    expect(
+      browseInputEndPaddingClass({
+        willCreateProjectPath: false,
+        hasHighlightedBrowseItem: false,
+      }),
+    ).toContain("pe-24");
   });
 });
 
