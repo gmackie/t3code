@@ -357,9 +357,9 @@ export const SETTINGS_SEARCH_ITEMS = [
   },
   {
     id: "browser-default-profile",
-    title: "Default browser profile",
+    title: "Default profile",
     to: "/settings/integrations",
-    targetId: "browser",
+    targetId: "browser-profiles",
   },
   {
     id: "browser-default-viewport",

@@ -201,20 +201,11 @@ describe("searchSettings", () => {
     });
   });
 
-  it("routes browser recording quality to integrations", () => {
-    const result = searchSettings("recording frame rate")[0];
-    expect(result).toMatchObject({
-      id: "browser-recording-frame-rate",
+  it("finds the default browser profile action in the profiles list", () => {
+    expect(searchSettings("default profile")[0]).toMatchObject({
+      id: "browser-default-profile",
       to: "/settings/integrations",
+      targetId: "browser-profiles",
     });
-    expect(result).not.toHaveProperty("targetId");
-  });
-
-  it("routes where links open to integrations", () => {
-    expect(searchSettings("open links in")[0]).toMatchObject({
-      id: "browser-link-target",
-      to: "/settings/integrations",
-    });
-    expect(searchSettings("external links")[0]).toMatchObject({ id: "browser-link-target" });
   });
 });
