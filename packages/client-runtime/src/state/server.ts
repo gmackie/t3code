@@ -525,6 +525,7 @@ export function createServerEnvironmentAtoms<R, E>(
   },
 ) {
   const configScheduler = createAtomCommandScheduler();
+  const pluginPackageScheduler = createAtomCommandScheduler();
   // Updates stay serial end-to-end, but only their handoff phase occupies the config lane.
   const updateScheduler = createAtomCommandScheduler();
   const configConcurrency = {
@@ -762,6 +763,16 @@ export function createServerEnvironmentAtoms<R, E>(
       tag: WS_METHODS.subscribeResourceTelemetry,
       idleTtlMs: 0,
     }),
+    pluginCommands: createEnvironmentRpcSubscriptionAtomFamily(runtime, {
+      label: "environment-data:server:plugin-commands",
+      tag: WS_METHODS.subscribePluginCommands,
+      idleTtlMs: 0,
+    }),
+    pluginPackages: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:server:plugin-packages",
+      tag: WS_METHODS.pluginPackagesStatus,
+      staleTimeMs: 1_000,
+    }),
     resourceTelemetryHistory: createEnvironmentRpcQueryAtomFamily(runtime, {
       label: "environment-data:server:resource-telemetry-history",
       tag: WS_METHODS.serverGetResourceTelemetryHistory,
@@ -790,6 +801,32 @@ export function createServerEnvironmentAtoms<R, E>(
         mode: "singleFlight",
         key: ({ environmentId }) => environmentId,
       },
+    }),
+    invokePluginCommand: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:invoke-plugin-command",
+      tag: WS_METHODS.pluginCommandsInvoke,
+      concurrency: {
+        mode: "serial",
+        key: ({ environmentId }) => environmentId,
+      },
+    }),
+    enablePluginPackage: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:enable-plugin-package",
+      tag: WS_METHODS.pluginPackagesEnable,
+      scheduler: pluginPackageScheduler,
+      concurrency: configConcurrency,
+    }),
+    disablePluginPackage: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:disable-plugin-package",
+      tag: WS_METHODS.pluginPackagesDisable,
+      scheduler: pluginPackageScheduler,
+      concurrency: configConcurrency,
+    }),
+    reloadPluginPackage: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:reload-plugin-package",
+      tag: WS_METHODS.pluginPackagesReload,
+      scheduler: pluginPackageScheduler,
+      concurrency: configConcurrency,
     }),
     updateProvider: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:server:update-provider",
