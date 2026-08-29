@@ -55,6 +55,8 @@ import {
   ComposerInlineControl,
   ComposerToolbarRow,
 } from "../../components/ComposerToolbar";
+import { ControlPill } from "../../components/ControlPill";
+import { ProviderUsageIndicator } from "../../components/ProviderUsageIndicator";
 import { ProviderIcon } from "../../components/ProviderIcon";
 import type {
   DraftComposerAttachment,
@@ -697,23 +699,60 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
                     onPressPreview={onPressPreview}
                     onPressVideo={onPressVideo}
                   />
-                ))}
-                {props.draftAttachments.length > 3 ? (
-                  <View className="size-[30px] items-center justify-center rounded-lg bg-subtle-strong">
-                    <Text className="text-foreground-muted text-2xs font-t3-bold">
-                      +{props.draftAttachments.length - 3}
-                    </Text>
-                  </View>
-                ) : null}
-              </View>
-            ) : null}
-            {!isExpanded ? (
-              <View className="flex-row items-center">
-                <ComposerDictationStartAction
-                  state={voiceInput.state}
-                  isAvailable={voiceInput.isAvailable}
-                  onStart={voiceInput.start}
-                  onCancel={voiceInput.cancel}
+                </Pressable>
+              ))}
+              {props.draftAttachments.length > 3 ? (
+                <View className="size-[30px] items-center justify-center rounded-lg bg-subtle-strong">
+                  <Text className="text-foreground-muted text-2xs font-t3-bold">
+                    +{props.draftAttachments.length - 3}
+                  </Text>
+                </View>
+              ) : null}
+            </View>
+          ) : null}
+          {!isExpanded ? (
+            <ProviderUsageIndicator
+              compact
+              environmentId={props.environmentId}
+              providerInstanceId={currentModelSelection.instanceId}
+            />
+          ) : null}
+          {!isExpanded ? (
+            <Animated.View entering={FadeIn.duration(180)} exiting={FadeOut.duration(100)}>
+              {showStopAction ? (
+                <ControlPill icon="stop.fill" variant="danger" onPress={props.onStopThread} />
+              ) : (
+                <ControlPill
+                  icon="arrow.up"
+                  variant="primary"
+                  disabled={!canSend}
+                  onPress={handleSend}
+                />
+              )}
+            </Animated.View>
+          ) : null}
+          {isExpanded ? (
+            <ComposerToolbarRow paddingBottom={0} paddingHorizontal={0} paddingTop={4}>
+              <ComposerToolbarScroller contentPaddingRight={8}>
+                <ComposerToolbarButton
+                  accessibilityLabel="Add attachment"
+                  icon="plus"
+                  onPress={() => void props.onPickDraftImages()}
+                  showChevron={false}
+                />
+                <ComposerInlineControl
+                  accessibilityLabel="Model and reasoning settings"
+                  emphasized
+                  iconNode={
+                    <ProviderIcon provider={currentModelOption?.providerDriver} size={16} />
+                  }
+                  label={currentModelOption?.label ?? currentModelSelection.model}
+                  maxWidth={152}
+                  onPress={openSettings}
+                />
+                <ProviderUsageIndicator
+                  environmentId={props.environmentId}
+                  providerInstanceId={currentModelSelection.instanceId}
                 />
                 {showStopAction ? (
                   <ComposerActionButton

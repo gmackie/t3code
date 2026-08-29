@@ -105,6 +105,12 @@ import {
   PluginPackageStatusSnapshot,
 } from "./pluginPackages.ts";
 import {
+  ProviderUsageGetInput,
+  ProviderUsageRefreshResult,
+  ProviderUsageSnapshot,
+  ProviderUsageSubscribeInput,
+} from "./providerUsage.ts";
+import {
   PullRequestActionInput,
   PullRequestActivity,
   PullRequestCommentInput,
@@ -310,6 +316,9 @@ export const WS_METHODS = {
   serverProbe: "server.probe",
   serverGetConfig: "server.getConfig",
   serverRefreshProviders: "server.refreshProviders",
+  providerUsageGet: "providerUsage.get",
+  providerUsageRefresh: "providerUsage.refresh",
+  providerUsageSubscribe: "providerUsage.subscribe",
   serverUpdateProvider: "server.updateProvider",
   serverUpdateServer: "server.updateServer",
   serverUpdateServerWithProgress: "server.updateServerWithProgress",
@@ -463,6 +472,25 @@ export const WsServerRefreshProvidersRpc = Rpc.make(WS_METHODS.serverRefreshProv
   }),
   success: ServerProviderUpdatedPayload,
   error: Schema.Union([EnvironmentAuthorizationError, ProviderSetupError]),
+});
+
+export const WsProviderUsageGetRpc = Rpc.make(WS_METHODS.providerUsageGet, {
+  payload: ProviderUsageGetInput,
+  success: ProviderUsageSnapshot,
+  error: EnvironmentAuthorizationError,
+});
+
+export const WsProviderUsageRefreshRpc = Rpc.make(WS_METHODS.providerUsageRefresh, {
+  payload: ProviderUsageGetInput,
+  success: ProviderUsageRefreshResult,
+  error: EnvironmentAuthorizationError,
+});
+
+export const WsProviderUsageSubscribeRpc = Rpc.make(WS_METHODS.providerUsageSubscribe, {
+  payload: ProviderUsageSubscribeInput,
+  success: ProviderUsageSnapshot,
+  error: EnvironmentAuthorizationError,
+  stream: true,
 });
 
 export const WsServerUpdateProviderRpc = Rpc.make(WS_METHODS.serverUpdateProvider, {
@@ -1230,6 +1258,9 @@ export const WsRpcGroup = RpcGroup.make(
   WsPluginPackagesDisableRpc,
   WsPluginPackagesReloadRpc,
   WsServerRefreshProvidersRpc,
+  WsProviderUsageGetRpc,
+  WsProviderUsageRefreshRpc,
+  WsProviderUsageSubscribeRpc,
   WsServerUpdateProviderRpc,
   WsProviderAuthStartRpc,
   WsProviderAuthCompleteRpc,
