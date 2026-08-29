@@ -198,6 +198,7 @@ export interface CodexSessionRuntimeShape {
   ) => Effect.Effect<ProviderTurnStartResult, CodexSessionRuntimeError>;
   readonly interruptTurn: (turnId?: TurnId) => Effect.Effect<void, CodexSessionRuntimeError>;
   readonly readThread: Effect.Effect<CodexThreadSnapshot, CodexSessionRuntimeError>;
+  readonly readRateLimits?: Effect.Effect<unknown, CodexSessionRuntimeError>;
   readonly rollbackThread: (
     numTurns: number,
   ) => Effect.Effect<CodexThreadSnapshot, CodexSessionRuntimeError>;
@@ -2470,6 +2471,9 @@ export const makeCodexSessionRuntime = (
             },
           });
         }),
+      readRateLimits: client
+        .request("account/rateLimits/read", undefined)
+        .pipe(Effect.map((response) => response.rateLimits)),
       events: Stream.fromQueue(events),
       close,
     } satisfies CodexSessionRuntimeShape;

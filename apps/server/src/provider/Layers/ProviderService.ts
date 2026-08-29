@@ -1075,6 +1075,15 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
   const getInstanceInfo: ProviderServiceMethod<"getInstanceInfo"> = (instanceId) =>
     registry.getInstanceInfo(instanceId);
 
+  const queryInstanceUsage: ProviderServiceMethod<"queryInstanceUsage"> = (instanceId) =>
+    registry
+      .getByInstance(instanceId)
+      .pipe(
+        Effect.flatMap((adapter) =>
+          adapter.queryUsage === undefined ? Effect.succeed(undefined) : adapter.queryUsage(),
+        ),
+      );
+
   const rollbackConversation: ProviderServiceMethod<"rollbackConversation"> = Effect.fn(
     "rollbackConversation",
   )(function* (rawInput) {
@@ -1227,6 +1236,7 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
     listSessions,
     getCapabilities,
     getInstanceInfo,
+    queryInstanceUsage,
     rollbackConversation,
     uploadFeedback,
     // Each access creates a fresh PubSub subscription so that multiple

@@ -1565,6 +1565,75 @@ describe("ClaudeAdapterLive", () => {
     );
   });
 
+  it.effect("fails a turn when Claude rejects it for a plan rate limit", () => {
+    const harness = makeHarness();
+    return Effect.gen(function* () {
+      const adapter = yield* ClaudeAdapter;
+      const runtimeEventsFiber = yield* Stream.take(adapter.streamEvents, 8).pipe(
+        Stream.runCollect,
+        Effect.forkChild,
+      );
+
+      const session = yield* adapter.startSession({
+        threadId: THREAD_ID,
+        provider: ProviderDriverKind.make("claudeAgent"),
+        runtimeMode: "full-access",
+      });
+      const turn = yield* adapter.sendTurn({
+        threadId: session.threadId,
+        input: "continue",
+        attachments: [],
+      });
+
+      harness.query.emit({
+        type: "rate_limit_event",
+        rate_limit_info: {
+          status: "rejected",
+          resetsAt: 1_787_486_400,
+          rateLimitType: "seven_day",
+          overageStatus: "rejected",
+          overageDisabledReason: "out_of_credits",
+          isUsingOverage: false,
+        },
+        session_id: "sdk-session-rate-limit",
+        uuid: "rate-limit-rejected",
+      } as unknown as SDKMessage);
+      harness.query.emit({
+        type: "result",
+        subtype: "success",
+        is_error: false,
+        errors: [],
+        session_id: "sdk-session-rate-limit",
+        uuid: "result-after-rate-limit",
+      } as unknown as SDKMessage);
+
+      const runtimeEvents = Array.from(yield* Fiber.join(runtimeEventsFiber));
+      assert.deepEqual(
+        runtimeEvents.map((event) => event.type),
+        [
+          "session.started",
+          "session.configured",
+          "session.state.changed",
+          "turn.started",
+          "thread.started",
+          "account.rate-limits.updated",
+          "runtime.error",
+          "turn.completed",
+        ],
+      );
+      const completed = runtimeEvents.at(-1);
+      assert.equal(completed?.type, "turn.completed");
+      if (completed?.type === "turn.completed") {
+        assert.equal(String(completed.turnId), String(turn.turnId));
+        assert.equal(completed.payload.state, "failed");
+        assert.match(completed.payload.errorMessage ?? "", /weekly limit/i);
+      }
+    }).pipe(
+      Effect.provideService(Random.Random, makeDeterministicRandomService()),
+      Effect.provide(harness.layer),
+    );
+  });
+
   it.effect("treats aborted_tools results as interrupted and hides ede_diagnostic errors", () => {
     const harness = makeHarness();
     return Effect.gen(function* () {

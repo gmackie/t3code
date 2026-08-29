@@ -124,6 +124,7 @@ function createProviderServiceHarness(
           continuationKey: `${providerName}:instance:${instanceId}`,
         },
       }),
+    queryInstanceUsage: () => Effect.succeed(undefined),
     rollbackConversation,
     uploadFeedback: () => unsupported(),
     get streamEvents() {

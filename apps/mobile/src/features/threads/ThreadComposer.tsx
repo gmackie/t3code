@@ -34,6 +34,7 @@ import {
   ComposerToolbarScroller,
 } from "../../components/ComposerToolbar";
 import { ControlPill } from "../../components/ControlPill";
+import { ProviderUsageIndicator } from "../../components/ProviderUsageIndicator";
 import { ProviderIcon } from "../../components/ProviderIcon";
 import type { DraftComposerImageAttachment } from "../../lib/composerImages";
 import { buildModelOptions, groupByProvider } from "../../lib/modelOptions";
@@ -576,6 +577,13 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
             </View>
           ) : null}
           {!isExpanded ? (
+            <ProviderUsageIndicator
+              compact
+              environmentId={props.environmentId}
+              providerInstanceId={currentModelSelection.instanceId}
+            />
+          ) : null}
+          {!isExpanded ? (
             <Animated.View entering={FadeIn.duration(180)} exiting={FadeOut.duration(100)}>
               {showStopAction ? (
                 <ControlPill icon="stop.fill" variant="danger" onPress={props.onStopThread} />
@@ -607,6 +615,10 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
                   label={currentModelOption?.label ?? currentModelSelection.model}
                   maxWidth={152}
                   onPress={openSettings}
+                />
+                <ProviderUsageIndicator
+                  environmentId={props.environmentId}
+                  providerInstanceId={currentModelSelection.instanceId}
                 />
                 {showStopAction ? (
                   <ComposerToolbarButton

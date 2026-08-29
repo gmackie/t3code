@@ -54,6 +54,7 @@ const makeProviderService = (liveThreadIds: ReadonlyArray<ThreadId> = []) =>
     listSessions: () => Effect.succeed(liveThreadIds.map((threadId) => ({ threadId }) as never)),
     getCapabilities: () => Effect.die("unused"),
     getInstanceInfo: () => Effect.die("unused"),
+    queryInstanceUsage: () => Effect.succeed(undefined),
     rollbackConversation: () => Effect.die("unused"),
     uploadFeedback: () => Effect.die("unused"),
     streamEvents: Stream.empty,

@@ -16,6 +16,7 @@ import {
   ProviderInstanceId,
   type ProviderRuntimeEvent,
   type ProviderRequestKind,
+  type ProviderUsageWindow,
   type ThreadTokenUsageSnapshot,
   type ProviderUserInputAnswers,
   RuntimeItemId,
@@ -40,6 +41,7 @@ import * as CodexErrors from "effect-codex-app-server/errors";
 import * as EffectCodexSchema from "effect-codex-app-server/schema";
 
 import { getModelSelectionStringOptionValue } from "@t3tools/shared/model";
+import { normalizeCodexRateLimits } from "../providerUsage.ts";
 import { getCodexServiceTierOptionValue } from "../../codexModelOptions.ts";
 import * as McpProviderSession from "../../mcp/McpProviderSession.ts";
 
@@ -64,6 +66,7 @@ import {
   type CodexSessionRuntimeShape,
 } from "./CodexSessionRuntime.ts";
 import { type EventNdjsonLogger, makeEventNdjsonLogger } from "./EventNdjsonLogger.ts";
+import { queryCodexAccountRateLimits } from "./CodexProvider.ts";
 import { resolveCodexLaunchArgs } from "./codexLaunchArgs.ts";
 const isCodexAppServerProcessExitedError = Schema.is(CodexErrors.CodexAppServerProcessExitedError);
 const isCodexAppServerTransportError = Schema.is(CodexErrors.CodexAppServerTransportError);
@@ -84,6 +87,7 @@ export interface CodexAdapterLiveOptions {
     CodexSessionRuntimeError,
     ChildProcessSpawner.ChildProcessSpawner | Scope.Scope
   >;
+  readonly queryUsage?: () => Effect.Effect<ReadonlyArray<ProviderUsageWindow>>;
   readonly nativeEventLogPath?: string;
   readonly nativeEventLogger?: EventNdjsonLogger;
 }
@@ -1422,7 +1426,7 @@ function mapToRuntimeEvents(
         type: "account.rate-limits.updated",
         ...runtimeEventBase(event, canonicalThreadId),
         payload: {
-          rateLimits: event.payload ?? {},
+          rateLimits: normalizeCodexRateLimits(event.payload ?? {}),
         },
       },
     ];
@@ -2006,6 +2010,26 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
     ),
   );
 
+  const queryUsage: NonNullable<CodexAdapterShape["queryUsage"]> = () =>
+    Effect.gen(function* () {
+      const context = Array.from(sessions.values()).find((candidate) => !candidate.stopped);
+      if (context?.runtime.readRateLimits !== undefined) {
+        return normalizeCodexRateLimits(yield* context.runtime.readRateLimits);
+      }
+      if (options?.queryUsage !== undefined) return yield* options.queryUsage();
+      return yield* queryCodexAccountRateLimits({
+        binaryPath: codexConfig.binaryPath,
+        ...(codexConfig.homePath ? { homePath: codexConfig.homePath } : {}),
+        launchArgs: resolveCodexLaunchArgs(codexConfig.launchArgs, options?.environment),
+        cwd: serverConfig.cwd,
+        ...(options?.environment ? { environment: options.environment } : {}),
+      }).pipe(
+        Effect.map(normalizeCodexRateLimits),
+        Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, childProcessSpawner),
+        Effect.scoped,
+      );
+    }).pipe(Effect.orElseSucceed(() => []));
+
   return {
     provider: PROVIDER,
     capabilities: {
@@ -2023,6 +2047,7 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
     listSessions,
     hasSession,
     stopAll,
+    queryUsage,
     get streamEvents() {
       return Stream.fromQueue(runtimeEventQueue);
     },

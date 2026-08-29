@@ -10,6 +10,7 @@ import {
   ProviderDriverKind,
   ProviderInstanceId,
   ProviderItemId,
+  type ProviderUsageWindow,
   type ProviderApprovalDecision,
   type ProviderEvent,
   type ProviderSession,
@@ -230,6 +231,14 @@ const providerSessionDirectoryTestLayer = Layer.succeed(ProviderSessionDirectory
 });
 
 const validationRuntimeFactory = makeRuntimeFactory();
+const standaloneUsageWindows: ReadonlyArray<ProviderUsageWindow> = [
+  {
+    id: "primary",
+    label: "5-hour window",
+    usedPercent: 25,
+    remainingPercent: 75,
+  },
+];
 const validationLayer = it.layer(
   Layer.effect(
     CodexAdapter,
@@ -237,6 +246,7 @@ const validationLayer = it.layer(
       const codexConfig = decodeCodexSettings({});
       return yield* makeCodexAdapter(codexConfig, {
         makeRuntime: validationRuntimeFactory.factory,
+        queryUsage: () => Effect.succeed(standaloneUsageWindows),
       });
     }),
   ).pipe(
@@ -248,6 +258,16 @@ const validationLayer = it.layer(
 );
 
 validationLayer("CodexAdapterLive validation", (it) => {
+  it.effect("queries account quota before a chat session exists", () =>
+    Effect.gen(function* () {
+      const adapter = yield* CodexAdapter;
+      const queryUsage = adapter.queryUsage;
+      NodeAssert.ok(queryUsage);
+
+      NodeAssert.deepStrictEqual(yield* queryUsage(), standaloneUsageWindows);
+    }),
+  );
+
   it.effect("returns validation error for non-codex provider on startSession", () =>
     Effect.gen(function* () {
       const adapter = yield* CodexAdapter;
