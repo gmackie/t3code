@@ -27,23 +27,19 @@ export interface UpdatesHarnessOptions {
   readonly beforeSetUpdateChannel?: Effect.Effect<void>;
   readonly setUpdateChannelError?: DesktopAppSettings.DesktopSettingsWriteError;
   readonly setDisableDifferentialDownload?: Effect.Effect<void>;
-  readonly downloadUpdate?: Effect.Effect<void>;
   readonly quitAndInstall?: Effect.Effect<void, ElectronUpdater.ElectronUpdaterQuitAndInstallError>;
   readonly stopBackend?: Effect.Effect<void>;
-  readonly startBackend?: Effect.Effect<void>;
   readonly env?: Record<string, string | undefined>;
 }
 
 export function makeHarness(options: UpdatesHarnessOptions = {}) {
   let checkCount = 0;
   let quitAndInstallCount = 0;
-  let downloadCount = 0;
   let allowDowngrade = false;
   let fullChangelog = false;
   const feedUrls: ElectronUpdater.ElectronUpdaterFeedUrl[] = [];
   const listeners = new Map<string, Set<(...args: readonly unknown[]) => void>>();
   const sentStates: DesktopUpdateState[] = [];
-  const installSteps: string[] = [];
 
   const addListener = (eventName: string, listener: (...args: readonly unknown[]) => void) => {
     const eventListeners = listeners.get(eventName) ?? new Set();
@@ -84,13 +80,10 @@ export function makeHarness(options: UpdatesHarnessOptions = {}) {
     checkForUpdates: Effect.sync(() => {
       checkCount += 1;
     }).pipe(Effect.andThen(options.checkForUpdates ?? Effect.void)),
-    downloadUpdate: Effect.sync(() => {
-      downloadCount += 1;
-    }).pipe(Effect.andThen(options.downloadUpdate ?? Effect.void)),
+    downloadUpdate: Effect.void,
     quitAndInstall: () =>
       Effect.sync(() => {
         quitAndInstallCount += 1;
-        installSteps.push("quitAndInstall");
       }).pipe(Effect.andThen(options.quitAndInstall ?? Effect.void)),
     on: (eventName, listener) =>
       Effect.acquireRelease(
@@ -116,18 +109,14 @@ export function makeHarness(options: UpdatesHarnessOptions = {}) {
       Effect.sync(() => {
         sentStates.push(state as DesktopUpdateState);
       }),
-    destroyAll: Effect.sync(() => {
-      installSteps.push("destroyAll");
-    }),
+    destroyAll: Effect.void,
     syncAllAppearance: () => Effect.void,
   } satisfies ElectronWindow.ElectronWindow["Service"]);
 
   const stubBackendInstance: DesktopBackendPool.DesktopBackendInstance = {
     id: DesktopBackendPool.PRIMARY_INSTANCE_ID,
     label: Effect.succeed("Windows"),
-    start: Effect.sync(() => {
-      installSteps.push("startBackend");
-    }).pipe(Effect.andThen(options.startBackend ?? Effect.void)),
+    start: Effect.void,
     stop: () => options.stopBackend ?? Effect.void,
     currentConfig: Effect.succeed(Option.none()),
     snapshot: Effect.succeed({
@@ -172,32 +161,32 @@ export function makeHarness(options: UpdatesHarnessOptions = {}) {
   const settingsLayer =
     setUpdateChannelError || options.beforeSetUpdateChannel
       ? Layer.succeed(DesktopAppSettings.DesktopAppSettings, {
-          get: Effect.sync(() => testSettings),
-          load: Effect.sync(() => testSettings),
-          setMainWindowBounds: () => Effect.die("unexpected main window bounds update"),
-          setServerExposureMode: () => Effect.die("unexpected server exposure update"),
-          setTailscaleServe: () => Effect.die("unexpected Tailscale Serve update"),
-          setUpdateChannel: (channel) =>
-            setUpdateChannelError
-              ? Effect.fail(setUpdateChannelError)
-              : (options.beforeSetUpdateChannel ?? Effect.void).pipe(
-                  Effect.andThen(
-                    Effect.sync(() => {
-                      const changed = testSettings.updateChannel !== channel;
-                      testSettings = {
-                        ...testSettings,
-                        updateChannel: channel,
-                        updateChannelConfiguredByUser: true,
-                      };
-                      return { settings: testSettings, changed };
-                    }),
-                  ),
+        get: Effect.sync(() => testSettings),
+        load: Effect.sync(() => testSettings),
+        setMainWindowBounds: () => Effect.die("unexpected main window bounds update"),
+        setServerExposureMode: () => Effect.die("unexpected server exposure update"),
+        setTailscaleServe: () => Effect.die("unexpected Tailscale Serve update"),
+        setUpdateChannel: (channel) =>
+          setUpdateChannelError
+            ? Effect.fail(setUpdateChannelError)
+            : (options.beforeSetUpdateChannel ?? Effect.void).pipe(
+                Effect.andThen(
+                  Effect.sync(() => {
+                    const changed = testSettings.updateChannel !== channel;
+                    testSettings = {
+                      ...testSettings,
+                      updateChannel: channel,
+                      updateChannelConfiguredByUser: true,
+                    };
+                    return { settings: testSettings, changed };
+                  }),
                 ),
-          setWslBackendEnabled: () => Effect.die("unexpected WSL backend toggle"),
-          setWslDistro: () => Effect.die("unexpected WSL distro change"),
-          setWslOnly: () => Effect.die("unexpected WSL-only toggle"),
-          applyWslWindowsFallback: Effect.die("unexpected WSL Windows fallback"),
-          applyWslWindowsFallbackInMemory: Effect.die("unexpected WSL Windows fallback"),
+              ),
+        setWslBackendEnabled: () => Effect.die("unexpected WSL backend toggle"),
+        setWslDistro: () => Effect.die("unexpected WSL distro change"),
+        setWslOnly: () => Effect.die("unexpected WSL-only toggle"),
+        applyWslWindowsFallback: Effect.die("unexpected WSL Windows fallback"),
+        applyWslWindowsFallbackInMemory: Effect.die("unexpected WSL Windows fallback"),
         } satisfies DesktopAppSettings.DesktopAppSettings["Service"])
       : DesktopAppSettings.layer;
 
@@ -223,8 +212,6 @@ export function makeHarness(options: UpdatesHarnessOptions = {}) {
     layer,
     checkCount: () => checkCount,
     quitAndInstalls: () => quitAndInstallCount,
-    installSteps,
-    downloadCount: () => downloadCount,
     feedUrls: () => feedUrls,
     fullChangelog: () => fullChangelog,
     listenerCount: () =>

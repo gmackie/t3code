@@ -436,7 +436,6 @@ import {
   resolveServerSelfUpdateCapability,
   serverUpdateGuidance,
   supportsDesktopAppUpdate,
-  supportsServerUpdateThreadContinuation,
 } from "../versionSkew";
 import { useAssetUrls } from "../assets/assetUrls";
 
@@ -2241,7 +2240,6 @@ function ChatViewContent(props: ChatViewProps) {
   const serverUpdateEnvironmentId = activeThread?.environmentId ?? null;
   const versionMismatchSelfUpdate = resolveServerSelfUpdateCapability(serverConfig);
   const versionMismatchDesktopAppUpdate = supportsDesktopAppUpdate(serverConfig);
-  const versionMismatchThreadContinuation = supportsServerUpdateThreadContinuation(serverConfig);
   const serverUpdateState = useAtomValue(
     serverEnvironment.updateStateAtom(serverUpdateEnvironmentId),
   );
@@ -2361,12 +2359,15 @@ function ChatViewContent(props: ChatViewProps) {
             "Server update available"
           ),
         description:
-          !updateInProgress &&
-          !updateFailed &&
-          versionMismatchSelfUpdate !== null &&
-          (versionMismatchSelfUpdate !== "desktop-managed" || !versionMismatchDesktopAppUpdate)
-            ? serverUpdateGuidance(versionMismatchSelfUpdate)
-            : undefined,
+          updateInProgress || updateFailed ? (
+            <ServerUpdateProgress state={serverUpdateState} />
+          ) : versionMismatchSelfUpdate === "desktop-managed" &&
+            !versionMismatchDesktopAppUpdate ? (
+            serverUpdateGuidance(versionMismatchSelfUpdate, versionMismatchServerLabel)
+          ) : undefined,
+        // The desktop-managed guidance is already the description; the action
+        // slot would only repeat it. When the desktop app accepts remote
+        // update requests, the action button takes over instead.
         actions:
           updateInProgress ||
           !versionMismatch ||
@@ -2377,7 +2378,6 @@ function ChatViewContent(props: ChatViewProps) {
               serverLabel={versionMismatchServerLabel}
               selfUpdate={versionMismatchSelfUpdate}
               desktopAppUpdate={versionMismatchDesktopAppUpdate}
-              threadContinuation={versionMismatchThreadContinuation}
               targetVersion={versionMismatch.clientVersion}
               label={updateFailed ? "Retry" : "Update"}
               variant="ghost"
@@ -2413,7 +2413,6 @@ function ChatViewContent(props: ChatViewProps) {
     serverUpdateEnvironmentId,
     versionMismatchSelfUpdate,
     versionMismatchDesktopAppUpdate,
-    versionMismatchThreadContinuation,
     versionMismatchServerLabel,
   ]);
   const providerStatuses = serverConfig?.providers ?? EMPTY_PROVIDERS;

@@ -148,49 +148,6 @@ describe("ServerUpdateAction", () => {
       description: "Desktop app relaunched on 0.0.34.",
     });
   });
-
-  it("leaves thread continuation off by default", async () => {
-    testState.updateServer.mockResolvedValue(
-      AsyncResult.success({ targetVersion: "0.0.31", method: "boot-service" as const }),
-    );
-    const action = ServerUpdateAction({
-      environmentId: "env-test" as EnvironmentId,
-      serverLabel: "Test server",
-      selfUpdate: "boot-service",
-      threadContinuation: true,
-      targetVersion: "0.0.31",
-    }) as ActionElement;
-
-    action.props.onClick?.();
-    await flushPromises();
-
-    expect(testState.updateServer).toHaveBeenCalledWith({
-      environmentId: "env-test",
-      input: { targetVersion: "0.0.31" },
-    });
-  });
-
-  it("applies the saved thread continuation preference automatically", async () => {
-    testState.updateServer.mockResolvedValue(
-      AsyncResult.success({ targetVersion: "0.0.31", method: "boot-service" as const }),
-    );
-    testState.continueThreadsAfterServerUpdate = true;
-    const action = ServerUpdateAction({
-      environmentId: "env-test" as EnvironmentId,
-      serverLabel: "Test server",
-      selfUpdate: "boot-service",
-      threadContinuation: true,
-      targetVersion: "0.0.31",
-    }) as ActionElement;
-
-    action.props.onClick?.();
-    await flushPromises();
-
-    expect(testState.updateServer).toHaveBeenCalledWith({
-      environmentId: "env-test",
-      input: { targetVersion: "0.0.31", continueRunningThreads: true },
-    });
-  });
 });
 
 describe("ServerUpdateProgress", () => {

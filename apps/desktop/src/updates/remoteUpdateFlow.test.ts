@@ -5,7 +5,6 @@ import {
   MAX_REMOTE_UPDATE_CHECKS,
   MAX_REMOTE_UPDATE_DOWNLOADS,
   nextRemoteDesktopUpdateStep,
-  normalizeRemoteUpdateReason,
   type RemoteDesktopUpdateAttempts,
 } from "./remoteUpdateFlow.ts";
 
@@ -28,7 +27,6 @@ function makeState(overrides: Partial<DesktopUpdateState> = {}): DesktopUpdateSt
     message: null,
     errorContext: null,
     canRetry: false,
-    omittedReleaseCount: 0,
     ...overrides,
   };
 }
@@ -72,28 +70,13 @@ describe("nextRemoteDesktopUpdateStep", () => {
       ),
       { action: "install" },
     );
-    // A download survives an unrelated background updater error, so a run
-    // installs it instead of replaying that error.
-    assert.deepEqual(
-      nextRemoteDesktopUpdateStep(
-        makeState({
-          status: "error",
-          downloadedVersion: "1.2.4",
-          errorContext: null,
-          message: "background updater error",
-        }),
-        NO_ATTEMPTS,
-        null,
-      ),
-      { action: "install" },
-    );
-    // A leftover download behind a check error is not installable: fresh
-    // runs re-check, and post-check the error is terminal.
+    // A leftover downloadedVersion on an error state (background updater
+    // error) must not report an install the updater refuses: fresh runs
+    // re-check, and post-check it fails.
     const staleError = makeState({
       status: "error",
       downloadedVersion: "1.2.4",
-      errorContext: "check",
-      message: "feed unreachable",
+      message: "background updater error",
     });
     assert.deepEqual(nextRemoteDesktopUpdateStep(staleError, NO_ATTEMPTS, null), {
       action: "check",
@@ -101,7 +84,7 @@ describe("nextRemoteDesktopUpdateStep", () => {
     assert.deepEqual(nextRemoteDesktopUpdateStep(staleError, { checks: 1, downloads: 0 }, null), {
       action: "done",
       outcome: "failed",
-      reason: "feed unreachable",
+      reason: "background updater error",
     });
   });
 
@@ -207,12 +190,5 @@ describe("nextRemoteDesktopUpdateStep", () => {
         reason: "The desktop app did not report an update result.",
       },
     );
-  });
-
-  it("drops blank reasons so the wire report still encodes", () => {
-    assert.equal(normalizeRemoteUpdateReason(undefined), undefined);
-    assert.equal(normalizeRemoteUpdateReason(""), undefined);
-    assert.equal(normalizeRemoteUpdateReason("   "), undefined);
-    assert.equal(normalizeRemoteUpdateReason("  feed unreachable  "), "feed unreachable");
   });
 });
