@@ -125,8 +125,6 @@ export interface PullRequestTabStatus {
   isDraft: boolean;
 }
 
-export type PullRequestTabStatusSeed = Pick<PullRequestTabStatus, "state" | "isDraft">;
-
 export function shouldOpenDefaultBrowserProfileFromMenuClick(
   pointerType: string | undefined,
 ): boolean {

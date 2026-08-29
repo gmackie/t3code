@@ -8,15 +8,11 @@
  */
 import {
   BROWSER_PROFILE_MAX_COUNT,
-  type BrowserLinkTarget,
   type BrowserProfile,
   type EnvironmentId,
   BROWSER_PROFILE_NAME_MAX_LENGTH,
-  BROWSER_RECORDING_FRAME_RATES,
   DEFAULT_BROWSER_AUTO_SHOW_FLOATING_PREVIEW,
   DEFAULT_BROWSER_PROFILE_ID,
-  DEFAULT_BROWSER_LINK_TARGET,
-  DEFAULT_BROWSER_RECORDING_FRAME_RATE,
   DEFAULT_BROWSER_VIEWPORT,
   DEFAULT_PREVIEW_APPEARANCE,
   DEFAULT_UNIFIED_SETTINGS,
@@ -763,7 +759,7 @@ function BrowserProfilesSetting({ disabled }: { readonly disabled: boolean }) {
                     render={
                       <span className="inline-flex" {...(!removalAvailable ? { tabIndex: 0 } : {})}>
                         <Button
-                          size="icon-xs"
+                          size="icon-sm"
                           variant="ghost-muted"
                           disabled={profileWritesDisabled || !removalAvailable}
                           aria-label={`Remove ${profile.name}`}
@@ -879,24 +875,10 @@ function BrowserDefaultProfileSetting({ disabled }: { readonly disabled: boolean
           <SelectTrigger size="sm" className="w-full sm:w-44" aria-label="Default browser profile">
             <SelectValue>{selected?.name ?? "Default"}</SelectValue>
           </SelectTrigger>
-          {/*
-            Capped and truncated like the tab menu's profile list: names are
-            user-supplied and run to 48 characters, which would otherwise
-            widen the popup to fit the longest one. The cap goes on the glass
-            shell (`popupClassName`), and the list fills that shell so it is
-            never narrower than the trigger it opens from — the same floor
-            every other settings select keeps. `ItemText` renders a block, so
-            the label must be a block too for `truncate` to apply.
-          */}
-          <SelectPopup
-            align="end"
-            alignItemWithTrigger={false}
-            popupClassName="max-w-64"
-            className="w-full"
-          >
+          <SelectPopup align="end" alignItemWithTrigger={false}>
             {profiles.map((profile) => (
               <SelectItem hideIndicator key={profile.id} value={profile.id}>
-                <span className="block min-w-0 truncate">{profile.name}</span>
+                {profile.name}
               </SelectItem>
             ))}
           </SelectPopup>
