@@ -4,15 +4,12 @@ import {
   type AssetCreateUrlResult,
   type ChatFileAttachment,
   type EnvironmentId,
-  isProviderDriverKind,
   ProjectId,
   type MessageId,
   type ModelSelection,
   type PreviewAnnotationPayload,
   type ProviderInteractionMode,
-  ProviderDriverKind,
-  type ProviderInstanceId,
-  type ServerProvider,
+  type ProviderDriverKind,
   type ScopedProjectRef,
   type ScopedThreadRef,
   type ThreadId,
@@ -1065,88 +1062,16 @@ export function threadHasStarted(thread: Thread | null | undefined): boolean {
   );
 }
 
-/**
- * Whether a thread ran at least one turn, judged from its shell alone.
- *
- * `threadHasStarted` needs the detail: a thread whose latest turn was cleared
- * still has messages, and the loading shell carries none. The shell records
- * when the last user message landed, which every started thread has.
- */
-export function threadShellHasStarted(
-  shell: Pick<ThreadShell, "latestTurn" | "latestUserMessageAt" | "session"> | null | undefined,
-): boolean {
-  return Boolean(
-    shell &&
-    (shell.latestTurn !== null || shell.latestUserMessageAt !== null || shell.session !== null),
-  );
-}
-
-// Imported history has no session until its first prompt. Resolve its instance
-// through the environment's provider catalog before locking to a driver.
+// Started threads remain provider-neutral. The server replaces the active
+// provider session when the next turn selects another driver.
 export function deriveLockedProvider(input: {
   thread: Thread | null | undefined;
   selectedProvider: string | null;
   threadProvider: string | null;
   providers: ReadonlyArray<Pick<ServerProvider, "instanceId" | "driver">>;
 }): ProviderDriverKind | null {
-  if (!threadHasStarted(input.thread)) {
-    return null;
-  }
-  const sessionProvider = input.thread?.session?.providerName ?? null;
-  if (sessionProvider && isProviderDriverKind(sessionProvider)) {
-    return sessionProvider;
-  }
-  // Preserve the existing lock while an instance is missing from the catalog;
-  // a started thread must not silently fall back to a different driver.
-  const threadProvider =
-    input.providers.find((provider) => provider.instanceId === input.threadProvider)?.driver ??
-    input.threadProvider;
-  const selectedProvider =
-    input.providers.find((provider) => provider.instanceId === input.selectedProvider)?.driver ??
-    input.selectedProvider;
-  const narrowedThreadProvider =
-    threadProvider && isProviderDriverKind(threadProvider) ? threadProvider : null;
-  const narrowedSelectedProvider =
-    selectedProvider && isProviderDriverKind(selectedProvider) ? selectedProvider : null;
-  return narrowedThreadProvider ?? narrowedSelectedProvider ?? null;
-}
-
-export function getStartedThreadModelChangeBlockReason(input: {
-  providers: ReadonlyArray<Pick<ServerProvider, "instanceId" | "requiresNewThreadForModelChange">>;
-  hasStartedSession: boolean;
-  currentModelSelection: ModelSelection;
-  currentProviderInstanceId?: ModelSelection["instanceId"] | null | undefined;
-  nextModelSelection: ModelSelection;
-}): { title: string; description: string } | null {
-  if (!input.hasStartedSession) {
-    return null;
-  }
-  const currentModelSelection = {
-    ...input.currentModelSelection,
-    instanceId: input.currentProviderInstanceId ?? input.currentModelSelection.instanceId,
-  };
-  if (
-    currentModelSelection.instanceId === input.nextModelSelection.instanceId &&
-    currentModelSelection.model === input.nextModelSelection.model
-  ) {
-    return null;
-  }
-  const currentProvider = input.providers.find(
-    (snapshot) => snapshot.instanceId === currentModelSelection.instanceId,
-  );
-  const nextProvider = input.providers.find(
-    (snapshot) => snapshot.instanceId === input.nextModelSelection.instanceId,
-  );
-  if (
-    currentProvider?.requiresNewThreadForModelChange !== true &&
-    nextProvider?.requiresNewThreadForModelChange !== true
-  ) {
-    return null;
-  }
-  return {
-    title: "Start a new chat to change models",
-    description: "This provider does not allow switching models after a conversation has started.",
-  };
+  void input;
+  return null;
 }
 
 export async function waitForStartedServerThread(
