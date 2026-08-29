@@ -11,6 +11,7 @@ import * as BackgroundPolicy from "../../background/BackgroundPolicy.ts";
 import { ServerConfig } from "../../config.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
 import { makeGrokTextGeneration } from "../../textGeneration/GrokTextGeneration.ts";
+import { makeGrokThreadImportSource } from "../../threadImport/provider/GrokThreadImportSource.ts";
 import { ProviderDriverError } from "../Errors.ts";
 import { makeGrokAdapter } from "../Layers/GrokAdapter.ts";
 import {
@@ -99,6 +100,11 @@ export const GrokDriver: ProviderDriver<GrokSettings, GrokDriverEnv> = {
         instanceId,
       });
       const textGeneration = yield* makeGrokTextGeneration(effectiveConfig, processEnv);
+      const threadImportSource = yield* makeGrokThreadImportSource({
+        provider: { instanceId, driver: DRIVER_KIND },
+        grokSettings: effectiveConfig,
+        environment: processEnv,
+      });
 
       const checkProvider = checkGrokProviderStatus(effectiveConfig, processEnv, cwd).pipe(
         Effect.map(stampIdentity),
@@ -164,6 +170,7 @@ export const GrokDriver: ProviderDriver<GrokSettings, GrokDriverEnv> = {
         snapshotForCwd,
         adapter,
         textGeneration,
+        threadImportSource,
       } satisfies ProviderInstance;
     }),
 };

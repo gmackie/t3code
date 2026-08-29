@@ -2,7 +2,13 @@ import { describe, expect, it } from "vite-plus/test";
 import * as Exit from "effect/Exit";
 import * as Schema from "effect/Schema";
 
-import { WsSubscribeServerConfigRpc } from "./rpc.ts";
+import { WS_METHODS, WsSubscribeServerConfigRpc } from "./rpc.ts";
+
+describe("custom-local project import RPCs", () => {
+  it("exposes external thread discovery", () => {
+    expect(WS_METHODS).toHaveProperty("externalThreadsDiscover", "externalThreads.discover");
+  });
+});
 
 /**
  * The client always sends `environmentThemes`, including to servers built
