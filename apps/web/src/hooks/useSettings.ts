@@ -60,7 +60,6 @@ let clientSettingsHydrationStatus: ClientSettingsHydrationStatus = "pending";
 let clientSettingsHydrationPromise: Promise<void> | null = null;
 let clientSettingsHydrationGeneration = 0;
 let clientSettingsPersistenceQueue: Promise<void> = Promise.resolve();
-let deferredClientSettingsPatchCount = 0;
 
 function emitClientSettingsChange() {
   for (const listener of clientSettingsListeners) {
@@ -177,32 +176,15 @@ export function persistClientSettingsPatch(
   patch: ClientSettingsPatch,
   persist: (settings: ClientSettings) => Promise<void> = defaultClientSettingsPersistence,
 ): void {
-  // Patches queued before hydration must publish before newer optimistic patches.
-  const deferPatch =
-    clientSettingsHydrationStatus !== "ready" || deferredClientSettingsPatchCount > 0;
-  if (deferPatch) {
-    deferredClientSettingsPatchCount += 1;
-  } else {
-    replaceClientSettingsSnapshot({ ...getClientSettingsSnapshot(), ...patch });
-  }
-  void enqueueClientSettingsPersistence(async () => {
-    if (deferPatch) {
-      try {
-        if (clientSettingsHydrationStatus !== "ready") {
-          await hydrateClientSettings();
-        }
-        replaceClientSettingsSnapshot({ ...getClientSettingsSnapshot(), ...patch });
-      } finally {
-        deferredClientSettingsPatchCount -= 1;
-      }
-    }
-    await persist(getClientSettingsSnapshot());
-  }).catch((error) => {
-    console.error(`${CLIENT_SETTINGS_PERSISTENCE_ERROR_SCOPE} persist failed`, {
-      operation: "persist",
-      ...safeErrorLogAttributes(error),
-    });
-  });
+  replaceClientSettingsSnapshot({ ...getClientSettingsSnapshot(), ...patch });
+  void enqueueClientSettingsPersistence(() => persist(getClientSettingsSnapshot())).catch(
+    (error) => {
+      console.error(`${CLIENT_SETTINGS_PERSISTENCE_ERROR_SCOPE} persist failed`, {
+        operation: "persist",
+        ...safeErrorLogAttributes(error),
+      });
+    },
+  );
 }
 
 /**
@@ -216,9 +198,6 @@ export async function persistClientSettingsUpdate(
   persist: (settings: ClientSettings) => Promise<void> = defaultClientSettingsPersistence,
 ): Promise<ClientSettings> {
   return enqueueClientSettingsPersistence(async () => {
-    if (clientSettingsHydrationStatus !== "ready") {
-      await hydrateClientSettings();
-    }
     for (;;) {
       const current = getClientSettingsSnapshot();
       const next = update(current);
@@ -566,10 +545,9 @@ export function useUpdateClientSettings() {
 export function __resetClientSettingsPersistenceForTests(): void {
   clientSettingsHydrationGeneration += 1;
   clientSettingsSnapshot = DEFAULT_CLIENT_SETTINGS;
-  clientSettingsHydrationStatus = "pending";
+  clientSettingsHydrated = false;
   clientSettingsHydrationPromise = null;
   clientSettingsPersistenceQueue = Promise.resolve();
-  deferredClientSettingsPatchCount = 0;
   clientSettingsListeners.clear();
   clientSettingsHydrationListeners.clear();
 }
@@ -577,6 +555,6 @@ export function __resetClientSettingsPersistenceForTests(): void {
 export function __setClientSettingsForTests(settings: ClientSettings): void {
   clientSettingsHydrationGeneration += 1;
   clientSettingsSnapshot = settings;
-  clientSettingsHydrationStatus = "ready";
+  clientSettingsHydrated = true;
   clientSettingsHydrationPromise = null;
 }

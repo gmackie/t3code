@@ -27,10 +27,9 @@ import * as BrowserSession from "../BrowserSession.ts";
 import { ChromiumCookieReadError, readChromiumCookies } from "./ChromiumCookies.ts";
 import type { CookieReadResult } from "./CookieDatabase.ts";
 import { FirefoxCookieReadError, readFirefoxCookies } from "./FirefoxCookies.ts";
-import { readSafariCookies, safariAccessDenied, SafariCookieReadError } from "./SafariCookies.ts";
 import {
   BROWSER_IMPORT_SOURCES,
-  resolveCookieDatabase,
+  cookieDatabasePath,
   isSourceInstalled,
   isSourceRunning,
   listSourceProfiles,
@@ -85,23 +84,10 @@ export class BrowserImport extends Context.Service<
 const unavailableReason = Effect.fn("BrowserImport.unavailableReason")(function* (
   definition: BrowserImportSourceDefinition,
   context: BrowserImportPathContext,
-): Effect.fn.Return<
-  BrowserImportUnavailableReason | undefined,
-  never,
-  FileSystem.FileSystem | ChildProcessSpawner.ChildProcessSpawner
-> {
+): Effect.fn.Return<BrowserImportUnavailableReason | undefined, never, FileSystem.FileSystem> {
   if (!definition.platforms.includes(context.platform)) return "unsupportedPlatform";
   if (!(yield* isSourceInstalled(definition, context))) return "notInstalled";
   if (yield* isSourceRunning(definition, context)) return "browserRunning";
-  // Safari's jar is found by `stat`, which TCC permits without Full Disk
-  // Access — so a Safari that lists as ready may still refuse the read. Probe
-  // the grant here, so the wizard can open on the permission step and a
-  // post-grant recheck can tell granted from still-denied, rather than only
-  // discovering it by attempting the import.
-  if (definition.engine === "safari") {
-    const jar = yield* resolveCookieDatabase(definition, context, ".");
-    if (jar !== undefined && (yield* safariAccessDenied(jar))) return "needsFullDiskAccess";
-  }
   return undefined;
 });
 
@@ -115,7 +101,7 @@ const cookieHost = (url: string): string => {
 };
 
 export const writeCookies = Effect.fn("BrowserImport.writeCookies")(function* (
-  session: { readonly cookies: Pick<Session["cookies"], "set" | "flushStore"> },
+  session: { readonly cookies: Pick<Session["cookies"], "set"> },
   read: CookieReadResult,
 ) {
   let imported = 0;
@@ -149,19 +135,6 @@ export const writeCookies = Effect.fn("BrowserImport.writeCookies")(function* (
       skipped += 1;
       skippedDomains.add(cookieHost(cookie.url));
     }
-  }
-  // `set` resolves once the cookie is in memory; Chromium writes the store to
-  // disk on its own schedule. Flush before reporting "Done", so a crash right
-  // after does not lose what the user was just told was imported. A failed
-  // flush is logged rather than surfaced: the cookies are still in the
-  // session and land on disk at the next scheduled write.
-  if (imported > 0) {
-    yield* Effect.tryPromise(() => session.cookies.flushStore()).pipe(
-      Effect.tapError((error) =>
-        Effect.logWarning("Imported cookies could not be flushed to disk", { cause: error.cause }),
-      ),
-      Effect.ignore,
-    );
   }
   return { imported, skipped, skippedDomains: [...skippedDomains].slice(0, 20) };
 });
@@ -216,15 +189,13 @@ export const make = Effect.gen(function* BrowserImportMake() {
       return yield* new BrowserImportFailedError({ sourceId: definition.id, reason: blocked });
     }
 
-    if (platform === "darwin" && definition.engine === "chromium") {
-      // macOS attributes the Keychain prompt and the resulting ACL grant to the
-      // executable that asks, so record which one that was — in a packaged build
-      // it is the signed app, in dev whatever binary hosts the main process.
-      yield* Effect.logInfo("Reading browser cookie key from the keychain", {
-        sourceId: definition.id,
-        executablePath,
-      });
-    }
+    // macOS attributes the Keychain prompt and the resulting ACL grant to the
+    // executable that asks, so record which one that was — in a packaged build
+    // it is the signed app, in dev whatever binary hosts the main process.
+    yield* Effect.logInfo("Reading browser cookie key from the keychain", {
+      sourceId: definition.id,
+      executablePath,
+    });
 
     // The profile directory arrives over IPC, so it is only honoured when the
     // source itself reported it. Forwarding it unchecked would let `..`
@@ -243,50 +214,34 @@ export const make = Effect.gen(function* BrowserImportMake() {
       });
     }
 
-    // The profile was listed against a database moments ago; resolve it again
-    // rather than assume a path, since a Chromium jar may sit under `Network/`.
-    const databasePath = yield* resolveCookieDatabase(
-      definition,
-      pathContext,
-      requestedProfile.directory,
-    ).pipe(Effect.provide(platformServices));
+    const databasePath = cookieDatabasePath(definition, pathContext, requestedProfile.directory);
     if (databasePath === undefined) {
-      // A profile we listed moments ago can lose its database before the
-      // import runs (browser data cleanup, a profile reset). That is a read
-      // failure, not a platform problem.
-      return yield* new BrowserImportFailedError({ sourceId: definition.id, reason: "readFailed" });
+      return yield* new BrowserImportFailedError({
+        sourceId: definition.id,
+        reason: "unsupportedPlatform",
+      });
     }
 
     // Both branches fail with a tagged error, so the union stays structurally
     // identifiable and each tag is handled on its own below. The success side
     // is normalized to one shape too, so the skipped tally survives either
     // engine — Firefox stores plaintext, so nothing there is ever unreadable.
-    const userDataDirectory = definition.userDataDirectory(pathContext);
     const read: Effect.Effect<
       CookieReadResult,
-      ChromiumCookieReadError | FirefoxCookieReadError | SafariCookieReadError,
+      ChromiumCookieReadError | FirefoxCookieReadError,
       FileSystem.FileSystem | Path.Path | Scope.Scope | ChildProcessSpawner.ChildProcessSpawner
     > =
-      definition.engine === "safari"
-        ? readSafariCookies(databasePath).pipe(
+      definition.engine === "firefox"
+        ? readFirefoxCookies(databasePath).pipe(
             Effect.map((cookies) => ({ cookies, undecryptable: 0, undecryptableHosts: [] })),
           )
-        : definition.engine === "firefox"
-          ? readFirefoxCookies(databasePath).pipe(
-              Effect.map((cookies) => ({ cookies, undecryptable: 0, undecryptableHosts: [] })),
-            )
-          : readChromiumCookies({
-              cookieDatabasePath: databasePath,
-              keychainService: definition.keychainService,
-              keychainAccount: definition.keychainAccount,
-              linuxSecretApplication: definition.linuxSecretApplication,
-              ...(platform === "win32" && userDataDirectory !== undefined
-                ? {
-                    windowsLocalStatePath: pathContext.path.join(userDataDirectory, "Local State"),
-                  }
-                : {}),
-              platform,
-            });
+        : readChromiumCookies({
+            cookieDatabasePath: databasePath,
+            keychainService: definition.keychainService,
+            keychainAccount: definition.keychainAccount,
+            linuxSecretApplication: definition.linuxSecretApplication,
+            platform,
+          });
 
     const result = yield* read.pipe(
       Effect.scoped,
@@ -302,12 +257,6 @@ export const make = Effect.gen(function* BrowserImportMake() {
         FirefoxCookieReadError: (cause) =>
           Effect.fail(
             new BrowserImportFailedError({ sourceId: definition.id, reason: "readFailed", cause }),
-          ),
-        // Safari's reasons are already user-facing: a TCC refusal is the Full
-        // Disk Access prompt, anything else is a read failure.
-        SafariCookieReadError: (cause) =>
-          Effect.fail(
-            new BrowserImportFailedError({ sourceId: definition.id, reason: cause.reason, cause }),
           ),
       }),
     );
