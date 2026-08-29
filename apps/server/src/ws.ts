@@ -103,7 +103,8 @@ import {
 } from "./observability/RpcInstrumentation.ts";
 import * as ProviderRegistry from "./provider/Services/ProviderRegistry.ts";
 import * as ProviderService from "./provider/Services/ProviderService.ts";
-import * as ProviderSessionDirectory from "./provider/Services/ProviderSessionDirectory.ts";
+import * as ProviderUsageService from "./provider/Services/ProviderUsageService.ts";
+import * as ProviderUsageServiceLayer from "./provider/Layers/ProviderUsageService.ts";
 import * as ProviderMaintenanceRunner from "./provider/providerMaintenanceRunner.ts";
 import { ProviderAuthService } from "./provider/Services/ProviderAuthService.ts";
 import { ProviderInstanceRegistry } from "./provider/Services/ProviderInstanceRegistry.ts";
@@ -525,7 +526,7 @@ const makeWsRpcLayer = (
       const portDiscovery = yield* PortScanner.PortDiscovery;
       const providerRegistry = yield* ProviderRegistry.ProviderRegistry;
       const providerService = yield* ProviderService.ProviderService;
-      const providerSessionDirectory = yield* ProviderSessionDirectory.ProviderSessionDirectory;
+      const providerUsage = yield* ProviderUsageService.ProviderUsageService;
       const providerMaintenanceRunner = yield* ProviderMaintenanceRunner.ProviderMaintenanceRunner;
       const providerAuth = yield* ProviderAuthService;
       const providerInstances = yield* ProviderInstanceRegistry;
@@ -1859,6 +1860,26 @@ const makeWsRpcLayer = (
             ),
             { "rpc.aggregate": "provider" },
           ),
+        [WS_METHODS.providerUsageGet]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.providerUsageGet,
+            providerUsage.get(input.providerInstanceId),
+            {
+              "rpc.aggregate": "provider-usage",
+            },
+          ),
+        [WS_METHODS.providerUsageRefresh]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.providerUsageRefresh,
+            providerUsage.refresh(input.providerInstanceId),
+            { "rpc.aggregate": "provider-usage" },
+          ),
+        [WS_METHODS.providerUsageSubscribe]: (input) =>
+          observeRpcStream(
+            WS_METHODS.providerUsageSubscribe,
+            providerUsage.stream(input.providerInstanceId),
+            { "rpc.aggregate": "provider-usage" },
+          ),
         [WS_METHODS.serverUpdateProvider]: (input) =>
           observeRpcEffect(
             WS_METHODS.serverUpdateProvider,
@@ -2971,6 +2992,7 @@ export const websocketRpcRouteLayer = Layer.unwrap(
               Layer.provideMerge(RpcSerialization.layerJson),
               Layer.provide(AgentSessionScanner.layer),
               Layer.provide(ProviderMaintenanceRunner.layer),
+              Layer.provide(ProviderUsageServiceLayer.layer),
               Layer.provide(Layer.succeed(ServerSelfUpdate.ServerSelfUpdate, serverSelfUpdate)),
               // One server-lifetime service means clients share the same PR caches, and a WS
               // mutation invalidates the HTTP diff cache that every client reads from.
