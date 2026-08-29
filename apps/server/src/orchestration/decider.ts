@@ -45,12 +45,11 @@ import {
   requireThreadNotArchived,
 } from "./commandInvariants.ts";
 import { projectEvent } from "./projector.ts";
+import { threadHasQueuedTurnStart } from "./ThreadSettlementPolicy.ts";
 import { NormalizedThreadImportHistory } from "../threadImport/ThreadImportSource.ts";
-import * as Schema from "effect/Schema";
-
-const isScriptRunCommand = Schema.is(SCRIPT_RUN_COMMAND_PATTERN);
 
 const nowIso = Effect.map(DateTime.now, DateTime.formatIso);
+const decodeUserInputRequestedPayload = Schema.decodeUnknownOption(UserInputRequestedPayload);
 const decodeNormalizedThreadImportHistory = Schema.decodeUnknownEffect(
   NormalizedThreadImportHistory,
 );

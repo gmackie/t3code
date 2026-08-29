@@ -1547,6 +1547,7 @@ const ThreadPullRequestLinkSyncCommand = Schema.Struct({
 });
 
 const InternalOrchestrationCommand = Schema.Union([
+  ThreadAutoSettleCommand,
   ThreadImportCommand,
   ThreadSessionSetCommand,
   ThreadMessageAssistantDeltaCommand,

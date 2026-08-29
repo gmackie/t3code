@@ -21,11 +21,6 @@ import {
   ExternalThreadImportSelection,
 } from "./externalThreadImport.ts";
 import {
-  ProjectSessionImportRequestError,
-  ProjectSessionImportScanInput,
-  ProjectSessionImportScanResult,
-} from "./projectSessionImport.ts";
-import {
   AuthAccessStreamError,
   AuthAccessStreamEvent,
   EnvironmentAuthorizationError,
@@ -325,7 +320,6 @@ export const WS_METHODS = {
   projectsWriteFile: "projects.writeFile",
 
   externalThreadsDiscover: "externalThreads.discover",
-  projectSessionImportsScan: "projectSessionImports.scan",
   externalThreadsImport: "externalThreads.import",
 
   // Shell methods
@@ -507,12 +501,6 @@ export const WsExternalThreadsDiscoverRpc = Rpc.make(WS_METHODS.externalThreadsD
   payload: ExternalThreadImportDiscoveryInput,
   success: ExternalThreadImportDiscoveryResult,
   error: Schema.Union([ExternalThreadImportRequestError, EnvironmentAuthorizationError]),
-});
-
-export const WsProjectSessionImportsScanRpc = Rpc.make(WS_METHODS.projectSessionImportsScan, {
-  payload: ProjectSessionImportScanInput,
-  success: ProjectSessionImportScanResult,
-  error: Schema.Union([ProjectSessionImportRequestError, EnvironmentAuthorizationError]),
 });
 
 export const WsExternalThreadsImportRpc = Rpc.make(WS_METHODS.externalThreadsImport, {
@@ -1545,7 +1533,6 @@ export const WsSubscribePluginCommandsRpc = Rpc.make(WS_METHODS.subscribePluginC
 export const WsRpcGroup = RpcGroup.make(
   WsServerProbeRpc,
   WsExternalThreadsDiscoverRpc,
-  WsProjectSessionImportsScanRpc,
   WsExternalThreadsImportRpc,
   WsServerGetConfigRpc,
   WsPluginCommandsListRpc,

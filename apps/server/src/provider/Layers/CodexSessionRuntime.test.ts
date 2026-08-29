@@ -880,6 +880,46 @@ describe("openCodexThread", () => {
     Effect.gen(function* () {
       const calls: Array<"thread/start" | "thread/resume"> = [];
       const client = {
+        request: <M extends "thread/start" | "thread/resume">(
+          method: M,
+          _payload: CodexRpc.ClientRequestParamsByMethod[M],
+        ) => {
+          calls.push(method);
+          return method === "thread/resume"
+            ? Effect.fail(
+                new CodexErrors.CodexAppServerRequestError({
+                  code: -32603,
+                  errorMessage: "thread not found",
+                }),
+              )
+            : Effect.succeed(
+                makeThreadOpenResponse(
+                  "unexpected-fresh-thread",
+                ) as CodexRpc.ClientRequestResponsesByMethod[M],
+              );
+        },
+      };
+
+      const error = yield* openCodexThread({
+        client,
+        threadId: ThreadId.make("imported-thread"),
+        runtimeMode: "full-access",
+        cwd: "/tmp/project",
+        requestedModel: "gpt-5.3-codex",
+        serviceTier: undefined,
+        resumeThreadId: "native-imported-thread",
+        resumeRequired: true,
+      }).pipe(Effect.flip);
+
+      NodeAssert.ok(isCodexAppServerRequestError(error));
+      NodeAssert.deepStrictEqual(calls, ["thread/resume"]);
+    }),
+  );
+
+  it.effect("falls back to thread/start when resume fails recoverably", () =>
+    Effect.gen(function* () {
+      const calls: Array<"thread/start" | "thread/resume"> = [];
+      const client = {
         raw: {
           request: (method: string) => {
             calls.push(method as "thread/resume");

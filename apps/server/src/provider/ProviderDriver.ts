@@ -86,6 +86,7 @@ export interface ProviderInstance {
   >;
   readonly adapter: ProviderAdapterShape<ProviderAdapterError>;
   readonly textGeneration: TextGeneration.TextGeneration["Service"];
+  readonly auth?: ProviderAuthController;
   /** Optional read-only native history source. It must never start a provider session. */
   readonly threadImportSource?: ThreadImportSource;
 }

@@ -756,17 +756,6 @@ export const openCodexThread = (input: {
       excludeTurns: true,
     })
     .pipe(
-      Effect.flatMap((rawResponse) =>
-        decodeV2ThreadResumeResponse(rawResponse).pipe(
-          Effect.mapError((error) =>
-            CodexErrors.CodexAppServerProtocolParseError.fromSchemaError(
-              "decode-response-payload",
-              error,
-              { method: "thread/resume" },
-            ),
-          ),
-        ),
-      ),
       Effect.catchIf(
         (error) => !input.resumeRequired && isRecoverableThreadResumeError(error),
         (error) =>

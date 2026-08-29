@@ -245,24 +245,22 @@ describe("ExternalThreadImportService", () => {
           instanceId: ProviderInstanceId.make("codex"),
           driver: ProviderDriverKind.make("codex"),
         },
-      ].map(
-        (sourceProvider): ThreadImportSource => ({
-          provider: sourceProvider,
-          discover: ({ limit }) => {
-            requestedLimits.push(limit);
-            return Effect.succeed({
-              candidates: Array.from({ length: limit }, (_, index) => ({
-                provider: sourceProvider,
-                nativeThreadId: `${sourceProvider.instanceId}-${index}`,
-                recordedCwd: "/work/project",
-                metadata: { updatedAt: 1_722_000_000_000 },
-              })),
-              nextCursor: { offset: limit },
-            });
-          },
-          load: () => Effect.die("not used"),
-        }),
-      );
+      ].map((sourceProvider): ThreadImportSource => ({
+        provider: sourceProvider,
+        discover: ({ limit }) => {
+          requestedLimits.push(limit);
+          return Effect.succeed({
+            candidates: Array.from({ length: limit }, (_, index) => ({
+              provider: sourceProvider,
+              nativeThreadId: `${sourceProvider.instanceId}-${index}`,
+              recordedCwd: "/work/project",
+              metadata: { updatedAt: 1_722_000_000_000 },
+            })),
+            nextCursor: { offset: limit },
+          });
+        },
+        load: () => Effect.die("not used"),
+      }));
       const service = makeExternalThreadImportService({
         getEnvironmentId: Effect.succeed(environmentId),
         getProjectRoot: () => Effect.succeed("/work/project"),

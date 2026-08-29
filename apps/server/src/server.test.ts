@@ -141,6 +141,38 @@ const collectQueueUntil = Effect.fn("TransferBudget.collectQueueUntil")(function
   );
 });
 
+const unavailableExternalThreadImportService: ExternalThreadImportService.ExternalThreadImportService["Service"] =
+  {
+    discover: () =>
+      Effect.die("ExternalThreadImportService not stubbed in this test") as ReturnType<
+        ExternalThreadImportService.ExternalThreadImportService["Service"]["discover"]
+      >,
+    importSelected: () =>
+      Effect.die("ExternalThreadImportService not stubbed in this test") as ReturnType<
+        ExternalThreadImportService.ExternalThreadImportService["Service"]["importSelected"]
+      >,
+  };
+
+const collectQueueUntil = Effect.fn("TransferBudget.collectQueueUntil")(function* <A>(
+  queue: Queue.Queue<A>,
+  predicate: (value: A) => boolean,
+  waitDescription: string,
+) {
+  return yield* Effect.gen(function* () {
+    const values: A[] = [];
+    while (true) {
+      const value = yield* Queue.take(queue);
+      values.push(value);
+      if (predicate(value)) return values;
+    }
+  }).pipe(
+    Effect.timeoutOrElse({
+      duration: "10 seconds",
+      orElse: () => Effect.die(new Error(`Timed out waiting for ${waitDescription}`)),
+    }),
+  );
+});
+
 import * as BackgroundPolicy from "./background/BackgroundPolicy.ts";
 import * as ServerConfig from "./config.ts";
 import * as DeviceService from "./device/DeviceService.ts";
@@ -226,7 +258,6 @@ import * as ResourceTelemetry from "./resourceTelemetry/ResourceTelemetry.ts";
 import * as UsageService from "./usage/UsageService.ts";
 import * as AnalyticsService from "./telemetry/AnalyticsService.ts";
 import * as ExternalThreadImportService from "./threadImport/ExternalThreadImportService.ts";
-import * as ProjectSessionImportService from "./projectImport/ProjectSessionImportService.ts";
 import * as Data from "effect/Data";
 
 import { makeOrchestrationIntegrationHarness } from "../integration/OrchestrationEngineHarness.integration.ts";
@@ -844,13 +875,21 @@ const buildAppUnderTest = (options?: {
             streamEvents: Stream.empty,
             ...options?.layers?.providerService,
           }),
+          Layer.mock(ProviderAuthService)({
+            ...options?.layers?.providerAuth,
+          }),
+          Layer.mock(ProviderInstanceRegistry)({
+            getInstance: () => Effect.succeed(undefined),
+            listInstances: Effect.succeed([]),
+            ...options?.layers?.providerInstanceRegistry,
+          }),
+          Layer.mock(AntigravityInstallation)({
+            managedDirectory: "unused-test-antigravity-runtime",
+            ...options?.layers?.antigravityInstallation,
+          }),
           Layer.succeed(
             ExternalThreadImportService.ExternalThreadImportService,
             unavailableExternalThreadImportService,
-          ),
-          Layer.succeed(
-            ProjectSessionImportService.ProjectSessionImportService,
-            unavailableProjectSessionImportService,
           ),
         ),
       ),
