@@ -81,6 +81,7 @@ function configuredMcpToolAvailability(
 
 export const CodexResumeCursorSchema = Schema.Struct({
   threadId: Schema.String,
+  resumeRequired: Schema.optional(Schema.Boolean),
 });
 const CodexUserInputAnswerObject = Schema.Struct({
   answers: Schema.Array(Schema.String),
@@ -507,6 +508,14 @@ function readResumeCursorThreadId(
   return isCodexResumeCursorSchema(resumeCursor) ? resumeCursor.threadId : undefined;
 }
 
+function readResumeCursorRequired(resumeCursor: ProviderSession["resumeCursor"]): boolean {
+  return isCodexResumeCursorSchema(resumeCursor) && resumeCursor.resumeRequired === true;
+}
+
+function makeCodexResumeCursor(threadId: string, resumeRequired: boolean): CodexResumeCursor {
+  return { threadId, ...(resumeRequired ? { resumeRequired: true } : {}) };
+}
+
 function runtimeModeToThreadConfig(input: RuntimeMode): {
   readonly approvalPolicy: EffectCodexSchema.V2ThreadStartParams__AskForApproval;
   readonly sandbox: EffectCodexSchema.V2ThreadStartParams__SandboxMode;
@@ -725,7 +734,8 @@ export const openCodexThread = (input: {
   readonly requestedModel: string | undefined;
   readonly serviceTier: CodexServiceTier | undefined;
   readonly resumeThreadId: string | undefined;
-}): Effect.Effect<typeof CodexThreadResumeMetadata.Type, CodexErrors.CodexAppServerError> => {
+  readonly resumeRequired?: boolean;
+}): Effect.Effect<CodexThreadOpenResponse, CodexErrors.CodexAppServerError> => {
   const resumeThreadId = input.resumeThreadId;
   const startParams = buildThreadStartParams({
     cwd: input.cwd,
@@ -748,25 +758,16 @@ export const openCodexThread = (input: {
       excludeTurns: true,
     })
     .pipe(
-      Effect.flatMap((response) =>
-        decodeCodexThreadResumeMetadata(response).pipe(
-          Effect.mapError((error) =>
-            CodexErrors.CodexAppServerRequestError.invalidPayload(
-              "thread/resume",
-              "decode-payload",
-              error,
-            ),
-          ),
-        ),
-      ),
-      Effect.catchIf(isRecoverableThreadResumeError, (error) =>
-        Effect.logWarning("codex app-server thread resume fell back to fresh start", {
-          threadId: input.threadId,
-          requestedRuntimeMode: input.runtimeMode,
-          resumeThreadId,
-          recoverable: true,
-          cause: error,
-        }).pipe(Effect.andThen(input.client.request("thread/start", startParams))),
+      Effect.catchIf(
+        (error) => !input.resumeRequired && isRecoverableThreadResumeError(error),
+        (error) =>
+          Effect.logWarning("codex app-server thread resume fell back to fresh start", {
+            threadId: input.threadId,
+            requestedRuntimeMode: input.runtimeMode,
+            resumeThreadId,
+            recoverable: true,
+            cause: error,
+          }).pipe(Effect.andThen(input.client.request("thread/start", startParams))),
       ),
     );
 };
@@ -1994,7 +1995,10 @@ export const makeCodexSessionRuntime = (
             return Effect.void;
           }
           return updateSession(sessionRef, {
-            resumeCursor: { threadId: payload.thread.id },
+            resumeCursor: makeCodexResumeCursor(
+              payload.thread.id,
+              readResumeCursorRequired(options.resumeCursor),
+            ),
           });
         }),
       ),
@@ -2369,6 +2373,7 @@ export const makeCodexSessionRuntime = (
       yield* client.notify("initialized", undefined);
 
       const requestedModel = normalizeCodexModelSlug(options.model);
+      const resumeRequired = readResumeCursorRequired(options.resumeCursor);
 
       const opened = yield* openCodexThread({
         client,
@@ -2378,6 +2383,7 @@ export const makeCodexSessionRuntime = (
         requestedModel,
         serviceTier: options.serviceTier,
         resumeThreadId: readResumeCursorThreadId(options.resumeCursor),
+        resumeRequired,
       });
 
       const providerThreadId = opened.thread.id;
@@ -2386,7 +2392,7 @@ export const makeCodexSessionRuntime = (
         status: "ready",
         cwd: opened.cwd,
         model: opened.model,
-        resumeCursor: { threadId: providerThreadId },
+        resumeCursor: makeCodexResumeCursor(providerThreadId, resumeRequired),
         updatedAt: yield* nowIso,
       } satisfies ProviderSession;
       yield* Ref.set(sessionRef, session);
@@ -2488,7 +2494,12 @@ export const makeCodexSessionRuntime = (
             threadId: options.threadId,
             turnId,
             ...(resumedProviderThreadId
-              ? { resumeCursor: { threadId: resumedProviderThreadId } }
+              ? {
+                  resumeCursor: makeCodexResumeCursor(
+                    resumedProviderThreadId,
+                    readResumeCursorRequired(options.resumeCursor),
+                  ),
+                }
               : {}),
           } satisfies ProviderTurnStartResult;
         }),

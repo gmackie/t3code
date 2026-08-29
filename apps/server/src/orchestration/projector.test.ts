@@ -1171,69 +1171,65 @@ describe("orchestration projector", () => {
     expect(thread?.checkpoints.at(-1)?.turnId).toBe("turn-599");
   });
 
-  effectIt.effect("keeps the worktree setup record past the activity retention cap", () =>
+  effectIt.effect("keeps the full normalized history for an imported thread", () =>
     Effect.gen(function* () {
-      const createdAt = "2026-03-01T10:00:00.000Z";
-      const threadId = "thread-setup-retained";
+      const now = "2026-01-01T00:00:00.000Z";
       const afterCreate = yield* projectEvent(
-        createEmptyReadModel(createdAt),
+        createEmptyReadModel(now),
         makeEvent({
           sequence: 1,
           type: "thread.created",
           aggregateKind: "thread",
-          aggregateId: threadId,
-          occurredAt: createdAt,
-          commandId: "cmd-create-setup-retained",
+          aggregateId: "thread-imported-large",
+          occurredAt: now,
+          commandId: "cmd-create-imported-large",
           payload: {
-            threadId,
+            threadId: "thread-imported-large",
             projectId: "project-1",
-            title: "setup retained",
-            modelSelection: {
-              provider: ProviderDriverKind.make("codex"),
-              model: "gpt-5-codex",
-            },
+            title: "Imported large thread",
+            modelSelection: { instanceId: "codex", model: "gpt-5" },
             runtimeMode: "full-access",
+            interactionMode: "default",
             branch: null,
             worktreePath: null,
-            createdAt,
-            updatedAt: createdAt,
+            createdAt: now,
+            updatedAt: now,
           },
         }),
       );
-      const activityEvent = (sequence: number, id: string, kind: string) =>
-        makeEvent({
-          sequence,
-          type: "thread.activity-appended",
-          aggregateKind: "thread",
-          aggregateId: threadId,
-          occurredAt: `2026-03-01T10:${String(Math.floor(sequence / 60) % 60).padStart(2, "0")}:${String(sequence % 60).padStart(2, "0")}.000Z`,
-          commandId: `cmd-activity-${sequence}`,
-          payload: {
-            threadId,
-            activity: {
-              id,
-              tone: "info",
-              kind,
-              summary: kind,
-              payload: {},
-              turnId: null,
-              createdAt: `2026-03-01T10:${String(Math.floor(sequence / 60) % 60).padStart(2, "0")}:${String(sequence % 60).padStart(2, "0")}.000Z`,
-            },
-          },
-        });
-      let model = yield* projectEvent(
+      const normalizedHistory = Array.from({ length: 10_000 }, (_, sequence) => ({
+        _tag: "Activity" as const,
+        sequence,
+        label: `activity-${sequence}`,
+      }));
+      const projected = yield* projectEvent(
         afterCreate,
-        activityEvent(2, `worktree-setup:${threadId}`, "worktree-setup"),
+        makeEvent({
+          sequence: 2,
+          type: "thread.imported",
+          aggregateKind: "thread",
+          aggregateId: "thread-imported-large",
+          occurredAt: now,
+          commandId: "cmd-imported-large",
+          payload: {
+            threadId: "thread-imported-large",
+            environmentId: "local",
+            provenance: {
+              provider: { instanceId: "codex", driver: "codex" },
+              nativeThreadId: "native-large",
+              continuationGroup: "home:test",
+              originalCwd: "/tmp/test",
+              decoderVersion: "codex-v1",
+              importedAt: now,
+            },
+            modelSelection: { instanceId: "codex", model: "gpt-5" },
+            runtimeMode: "full-access",
+            normalizedHistory,
+          },
+        }),
       );
-      for (let index = 0; index < 600; index += 1) {
-        model = yield* projectEvent(
-          model,
-          activityEvent(3 + index, `tool-${index}`, "tool.completed"),
-        );
-      }
-      const thread = model.threads.find((entry) => entry.id === threadId);
-      expect(thread?.activities).toHaveLength(501);
-      expect(thread?.activities[0]?.id).toBe(`worktree-setup:${threadId}`);
+
+      expect(projected.threads[0]?.activities).toHaveLength(10_000);
     }),
   );
 });

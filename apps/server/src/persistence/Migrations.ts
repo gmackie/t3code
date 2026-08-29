@@ -55,15 +55,8 @@ import Migration0040 from "./Migrations/040_ProjectionProjectFaviconPath.ts";
 import Migration0041 from "./Migrations/041_AuthSessionClientConnection.ts";
 import Migration0042 from "./Migrations/042_ProjectionThreadLinkedPullRequest.ts";
 import Migration0043 from "./Migrations/043_ProjectionThreadsUnsettledAt.ts";
-import Migration0044 from "./Migrations/044_ClearAutomaticProjectModelDefaults.ts";
-import Migration0045 from "./Migrations/045_ProjectionProjectsAutoPull.ts";
-import Migration0046 from "./Migrations/046_RepairAutomaticSettlementTimestamps.ts";
-import Migration0047 from "./Migrations/047_ProjectionProjectIcon.ts";
-import Migration0048 from "./Migrations/048_ProjectionThreadBranchPullRequest.ts";
-import Migration0049 from "./Migrations/049_ProjectionThreadsActiveOrderKey.ts";
-import Migration0050 from "./Migrations/050_ProjectionThreadPullRequests.ts";
-import Migration0051 from "./Migrations/051_ProjectionThreadMessageContext.ts";
-import Migration0052 from "./Migrations/052_ProjectionThreadTitleState.ts";
+import Migration0044 from "./Migrations/044_ExternalThreadImports.ts";
+import Migration0045 from "./Migrations/045_ExternalThreadImportEnvironments.ts";
 
 /**
  * Migration loader with all migrations defined inline.
@@ -119,15 +112,8 @@ const migrationEntries = [
   [41, "AuthSessionClientConnection", Migration0041],
   [42, "ProjectionThreadLinkedPullRequest", Migration0042],
   [43, "ProjectionThreadsUnsettledAt", Migration0043],
-  [44, "ClearAutomaticProjectModelDefaults", Migration0044],
-  [45, "ProjectionProjectsAutoPull", Migration0045],
-  [46, "RepairAutomaticSettlementTimestamps", Migration0046],
-  [47, "ProjectionProjectIcon", Migration0047],
-  [48, "ProjectionThreadBranchPullRequest", Migration0048],
-  [49, "ProjectionThreadsActiveOrderKey", Migration0049],
-  [50, "ProjectionThreadPullRequests", Migration0050],
-  [51, "ProjectionThreadMessageContext", Migration0051],
-  [52, "ProjectionThreadTitleState", Migration0052],
+  [44, "ExternalThreadImports", Migration0044],
+  [45, "ExternalThreadImportEnvironments", Migration0045],
 ] as const;
 
 export const migrationManifest = migrationEntries.map(([id, name]) => [id, name] as const);

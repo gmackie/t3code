@@ -872,95 +872,43 @@ describe("isRecoverableThreadResumeError", () => {
 });
 
 describe("openCodexThread", () => {
-  it.effect("resumes metadata when historical turns contain unknown error values", () =>
+  it.effect("never starts a fresh thread when an imported thread must resume", () =>
     Effect.gen(function* () {
-      const response = makeThreadOpenResponse("saved-thread");
-      const calls: unknown[] = [];
-      const opened = yield* openCodexThread({
-        client: {
-          request: () => Effect.die("A valid resumed thread must not start fresh"),
-          raw: {
-            request: (method, payload) => {
-              calls.push({ method, payload });
-              return Effect.succeed({
-                ...response,
-                thread: {
-                  ...response.thread,
-                  turns: [
-                    {
-                      id: "old-turn",
-                      status: "failed",
-                      items: [],
-                      error: {
-                        message: "Historical provider error",
-                        codexErrorInfo: "misalignment_policy_violation",
-                      },
-                    },
-                  ],
-                },
-              });
-            },
-          },
+      const calls: Array<"thread/start" | "thread/resume"> = [];
+      const client = {
+        request: <M extends "thread/start" | "thread/resume">(
+          method: M,
+          _payload: CodexRpc.ClientRequestParamsByMethod[M],
+        ) => {
+          calls.push(method);
+          return method === "thread/resume"
+            ? Effect.fail(
+                new CodexErrors.CodexAppServerRequestError({
+                  code: -32603,
+                  errorMessage: "thread not found",
+                }),
+              )
+            : Effect.succeed(
+                makeThreadOpenResponse(
+                  "unexpected-fresh-thread",
+                ) as CodexRpc.ClientRequestResponsesByMethod[M],
+              );
         },
-        threadId: ThreadId.make("thread-1"),
-        runtimeMode: "auto",
+      };
+
+      const error = yield* openCodexThread({
+        client,
+        threadId: ThreadId.make("imported-thread"),
+        runtimeMode: "full-access",
         cwd: "/tmp/project",
         requestedModel: "gpt-5.3-codex",
-        serviceTier: "fast",
-        resumeThreadId: "saved-thread",
-      });
+        serviceTier: undefined,
+        resumeThreadId: "native-imported-thread",
+        resumeRequired: true,
+      }).pipe(Effect.flip);
 
-      NodeAssert.deepStrictEqual(opened, {
-        cwd: response.cwd,
-        model: response.model,
-        thread: { id: "saved-thread" },
-      });
-      NodeAssert.deepStrictEqual(calls, [
-        {
-          method: "thread/resume",
-          payload: {
-            threadId: "saved-thread",
-            cwd: "/tmp/project",
-            model: "gpt-5.3-codex",
-            serviceTier: "fast",
-            approvalPolicy: "on-request",
-            sandbox: "workspace-write",
-            approvalsReviewer: "auto_review",
-            excludeTurns: true,
-          },
-        },
-      ]);
-    }),
-  );
-
-  it.effect("rejects malformed required resume metadata without starting a fresh thread", () =>
-    Effect.gen(function* () {
-      for (const invalidMetadata of [
-        { cwd: null },
-        { model: 42 },
-        { thread: { id: null } },
-        { thread: {} },
-      ]) {
-        const error = yield* openCodexThread({
-          client: {
-            request: () => Effect.die("Invalid resume metadata must not start a fresh thread"),
-            raw: {
-              request: () =>
-                Effect.succeed({ ...makeThreadOpenResponse("saved-thread"), ...invalidMetadata }),
-            },
-          },
-          threadId: ThreadId.make("thread-1"),
-          runtimeMode: "full-access",
-          cwd: "/tmp/project",
-          requestedModel: "gpt-5.3-codex",
-          serviceTier: undefined,
-          resumeThreadId: "saved-thread",
-        }).pipe(Effect.flip);
-
-        NodeAssert.ok(isCodexAppServerRequestError(error));
-        NodeAssert.equal(error.operation, "decode-payload");
-        NodeAssert.equal(error.method, "thread/resume");
-      }
+      NodeAssert.ok(isCodexAppServerRequestError(error));
+      NodeAssert.deepStrictEqual(calls, ["thread/resume"]);
     }),
   );
 

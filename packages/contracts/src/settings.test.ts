@@ -802,6 +802,7 @@ describe("ServerSettingsPatch string normalization", () => {
           homePath: "  ~/.codex  ",
           launchArgs: "  --strict-config --enable foo  ",
         },
+        grok: { homePath: "  ~/.grok-work  " },
       },
       providerInstances: {
         codex_personal: {
@@ -818,6 +819,7 @@ describe("ServerSettingsPatch string normalization", () => {
     expect(patch.providers?.codex?.binaryPath).toBe("/opt/homebrew/bin/codex");
     expect(patch.providers?.codex?.homePath).toBe("~/.codex");
     expect(patch.providers?.codex?.launchArgs).toBe("--strict-config --enable foo");
+    expect(patch.providers?.grok?.homePath).toBe("~/.grok-work");
     expect(patch.providerInstances?.[ProviderInstanceId.make("codex_personal")]?.driver).toBe(
       "codex",
     );
