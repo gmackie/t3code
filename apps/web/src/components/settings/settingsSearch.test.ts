@@ -238,42 +238,12 @@ describe("searchSettings", () => {
     });
   });
 
-  it("routes conditional window capture settings to the stable toggle row", () => {
-    const targets = [
-      "capture accessibility data",
-      "capture shortcut",
-      "capture sound",
-      "capture flash",
-      "capture animations",
-    ].map((query) => {
-      const match = searchSettings(query)[0];
-      return [match?.id, match?.targetId];
-    });
-
-    expect(targets).toEqual([
-      ["snap-shot-accessibility", "snap-shot-enabled"],
-      ["snap-shot-shortcut", "snap-shot-enabled"],
-      ["snap-shot-sound", "snap-shot-enabled"],
-      ["snap-shot-flash", "snap-shot-enabled"],
-      ["snap-shot-animations", "snap-shot-enabled"],
-    ]);
-  });
-
-  it("routes browser recording quality to integrations", () => {
-    const result = searchSettings("recording frame rate")[0];
-    expect(result).toMatchObject({
-      id: "browser-recording-frame-rate",
+  it("finds the default browser profile action in the profiles list", () => {
+    expect(searchSettings("default profile")[0]).toMatchObject({
+      id: "browser-default-profile",
       to: "/settings/integrations",
+      targetId: "browser-profiles",
     });
-    expect(result).not.toHaveProperty("targetId");
-  });
-
-  it("routes where links open to integrations", () => {
-    expect(searchSettings("open links in")[0]).toMatchObject({
-      id: "browser-link-target",
-      to: "/settings/integrations",
-    });
-    expect(searchSettings("external links")[0]).toMatchObject({ id: "browser-link-target" });
   });
 
   it("finds the default browser profile action in the profiles list", () => {

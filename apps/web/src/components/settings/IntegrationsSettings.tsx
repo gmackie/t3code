@@ -33,8 +33,8 @@ import {
   type PreviewViewportSetting,
 } from "@t3tools/contracts";
 import { PREVIEW_VIEWPORT_PRESETS } from "@t3tools/shared/previewViewport";
-import { MoreVertical, Plus as PlusIcon } from "lucide-react";
-import { useCallback, useRef, useState } from "react";
+import { InfoIcon, MoreVertical, Plus as PlusIcon } from "lucide-react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 
 import { ScreenRotationIcon } from "~/browser/ScreenRotationIcon";
 import { AnimatedHeight } from "~/components/AnimatedHeight";
@@ -64,8 +64,6 @@ import {
   MenuSeparator,
   MenuTrigger,
 } from "../ui/menu";
-import { readLocalApi } from "~/localApi";
-
 import { toastManager } from "../ui/toast";
 import {
   AlertDialog,
@@ -165,15 +163,7 @@ const zoomLabel = (zoomFactor: number) => `${Math.round(zoomFactor * 100)}%`;
  * it. Anything unrecognised reads as a plain read failure rather than leaking
  * the raw message into a toast.
  */
-/** Thrown from the post-import settings updater when the cap was hit meanwhile. */
-class ProfileLimitReachedError extends Error {
-  constructor() {
-    super("Browser profile limit reached.");
-    this.name = "ProfileLimitReachedError";
-  }
-}
-
-export const importFailureReason = (cause: unknown): BrowserImportFailureReason => {
+const importFailureReason = (cause: unknown): BrowserImportFailureReason => {
   const message = String((cause as { message?: unknown } | undefined)?.message ?? "");
   return (
     BrowserImportFailureReason.literals.find((reason) => message.includes(`failed: ${reason}.`)) ??
@@ -825,9 +815,6 @@ function BrowserProfilesSetting({ disabled }: { readonly disabled: boolean }) {
   const createProfile = (baseName: string) => {
     if (!settingsHydrated || importInFlightRef.current) return undefined;
     const currentProfiles = getClientSettings().browserProfiles;
-    // Checked against the live settings, not the rendered list: two clicks
-    // before a re-render would otherwise both pass the disabled control.
-    if (currentProfiles.length >= BROWSER_PROFILE_MAX_COUNT) return undefined;
     const resolvedProfiles = resolveBrowserProfiles(currentProfiles);
     const taken = new Set(resolvedProfiles.map((profile) => profile.name));
     let name = baseName;
@@ -907,23 +894,27 @@ function BrowserProfilesSetting({ disabled }: { readonly disabled: boolean }) {
 
   // A browser that is not on this machine is left out rather than listed as a
   // dead row: there is nothing to act on, and the menu is a list of things you
-  // can import from. An unsupported one is left out for the same reason — the
-  // blocked wizard step can't be fixed from here. Every other unavailable
-  // reason stays, since each names a step the user can take.
+  // can import from. Every other unavailable reason stays, since each names a
+  // step the user can take.
   const importableSources = (sources ?? []).filter(
-    (source) =>
-      source.unavailable !== "notInstalled" && source.unavailable !== "unsupportedPlatform",
+    (source) => source.unavailable !== "notInstalled",
   );
 
   // Refreshed without blanking the last result: the menu shows the cached list
   // straight away so it doesn't reflow on open, and the source list is stable
   // (names only) since choosing what to import happens in the wizard, not here.
-  const loadSources = useCallback(() => {
+  const loadSources = () => {
     if (!previewBridge) return;
     void previewBridge
       .listBrowserImportSources()
       .then(setSources)
       .catch(() => setSources((previous) => previous ?? []));
+  };
+
+  // Loaded once so the first open is instant instead of flashing a spinner.
+  useEffect(() => {
+    loadSources();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Runs one import for the wizard. A new profile is registered only once the
@@ -973,12 +964,6 @@ function BrowserProfilesSetting({ disabled }: { readonly disabled: boolean }) {
                 (profile) => profile.id === input.target.profileId,
               );
               if (existing) return current;
-              // The wizard refuses a new target at the cap, but the cap can be
-              // reached while the import runs; the updater sees the newest
-              // settings, so this is the check that holds.
-              if (current.browserProfiles.length >= BROWSER_PROFILE_MAX_COUNT) {
-                throw new ProfileLimitReachedError();
-              }
               const taken = new Set(
                 resolveBrowserProfiles(current.browserProfiles).map((profile) => profile.name),
               );
@@ -1004,12 +989,7 @@ function BrowserProfilesSetting({ disabled }: { readonly disabled: boolean }) {
               [environmentId],
               input.target.profileId,
             ).catch(() => undefined);
-            // Not a read failure: the cookies came over and were cleared again
-            // because the profile could not be kept. Name that, in the same
-            // token form `importFailureReason` recovers from a bridge error.
-            const reason =
-              cause instanceof ProfileLimitReachedError ? "profileLimitReached" : "profileNotSaved";
-            throw new Error(`Importing cookies from ${source.id} failed: ${reason}.`, { cause });
+            throw cause;
           }
         } else {
           targetName = source.name;
@@ -1052,7 +1032,7 @@ function BrowserProfilesSetting({ disabled }: { readonly disabled: boolean }) {
   return (
     <SettingsRow
       {...searchableSetting("browser-profiles")}
-      description="Profiles separate cookies and logins. Incognito data is cleared when the app closes."
+      description="Each profile has its own cookies and logins, so you can stay signed in to different accounts at once."
       control={
         <Menu onOpenChange={(open) => open && loadSources()}>
           <MenuTrigger
@@ -1074,9 +1054,6 @@ function BrowserProfilesSetting({ disabled }: { readonly disabled: boolean }) {
             >
               Blank profile
             </MenuItem>
-            {atProfileLimit ? (
-              <MenuItem disabled>You&rsquo;ve reached the profile limit</MenuItem>
-            ) : null}
             <MenuSeparator />
             <MenuGroup>
               <MenuGroupLabel>Import from</MenuGroupLabel>
@@ -1136,51 +1113,30 @@ function BrowserProfilesSetting({ disabled }: { readonly disabled: boolean }) {
                 index > 0 && "border-t border-border/60",
               )}
             >
-              {builtIn ? (
-                // Dimmed here rather than on the list, which is the only
-                // content in the row without a disabled treatment of its own:
-                // a wrapper-level dim would stack with the rename field's and
-                // the remove button's, landing them near 0.41 while every
-                // other disabled control in the block sits at 0.64.
-                <span
-                  className={cn(
-                    "flex min-w-0 items-center gap-2 text-sm text-foreground",
-                    profileWritesDisabled && "opacity-64",
-                  )}
-                >
-                  {profile.name}
-                  <Badge variant="outline">
-                    {profile.kind === "incognito" ? "Ephemeral" : "Built-in"}
-                  </Badge>
-                </span>
-              ) : (
-                <DraftInput
-                  nativeInput
-                  size="sm"
-                  className="w-full sm:w-64"
-                  aria-label={`Rename ${profile.name}`}
-                  disabled={profileWritesDisabled}
-                  maxLength={BROWSER_PROFILE_NAME_MAX_LENGTH}
-                  value={profile.name}
-                  onCommit={(next) => renameProfile(profile.id, next)}
-                />
-              )}
-              {builtIn ? null : (
-                <Tooltip>
-                  <TooltipTrigger
-                    render={
-                      <span className="inline-flex" {...(!removalAvailable ? { tabIndex: 0 } : {})}>
-                        <Button
-                          size="icon-sm"
-                          variant="ghost-muted"
-                          disabled={profileWritesDisabled || !removalAvailable}
-                          aria-label={`Remove ${profile.name}`}
-                          onClick={() => setProfilePendingRemoval(profile)}
-                        >
-                          <Trash2Icon />
-                        </Button>
-                      </span>
-                    }
+              <span className="flex min-w-0 flex-1 items-center gap-2">
+                {builtIn ? (
+                  // Dimmed here rather than on the table: a wrapper-level dim
+                  // stacks with the rename field's and the row menu button's
+                  // own, landing them near 0.41 while every other disabled
+                  // control in the block sits at 0.64.
+                  <span
+                    className={cn(
+                      "truncate text-sm text-foreground",
+                      profileWritesDisabled && "opacity-64",
+                    )}
+                  >
+                    {profile.name}
+                  </span>
+                ) : (
+                  <DraftInput
+                    nativeInput
+                    size="sm"
+                    className="w-full max-w-56"
+                    aria-label={`Rename ${profile.name}`}
+                    disabled={profileWritesDisabled || importInFlight}
+                    maxLength={BROWSER_PROFILE_NAME_MAX_LENGTH}
+                    value={profile.name}
+                    onCommit={(next) => renameProfile(profile.id, next)}
                   />
                 )}
                 {/*
@@ -1197,7 +1153,7 @@ function BrowserProfilesSetting({ disabled }: { readonly disabled: boolean }) {
                 <MenuTrigger
                   render={
                     <Button
-                      size="icon-xs"
+                      size="icon-sm"
                       variant="ghost-muted"
                       disabled={profileWritesDisabled || importInFlight}
                       aria-label={`${profile.name} options`}
@@ -1308,38 +1264,10 @@ function BrowserProfilesSetting({ disabled }: { readonly disabled: boolean }) {
             runWizardImport(importSession.source, importSession.environmentId, input)
           }
           onRefreshSource={() => refreshImportSource(importSession.source.id)}
-          onCheckFullDiskAccess={
-            window.desktopBridge?.checkSystemPermission
-              ? () => window.desktopBridge!.checkSystemPermission!("full-disk-access")
-              : undefined
-          }
-          onOpenFullDiskAccessSettings={async () => {
-            // Rejects outside the desktop shell (and on shells that predate the
-            // method), so the one toast covers every way the link can fail.
-            await readLocalApi()
-              ?.shell.openSystemSettings("full-disk-access")
-              .catch(() => {
-                toastManager.add({
-                  type: "error",
-                  title: "Could not open System Settings",
-                  description: "Open Privacy & Security → Full Disk Access manually.",
-                });
-              });
-          }}
-        >
-          <SelectTrigger size="sm" className="w-full sm:w-44" aria-label="Default browser profile">
-            <SelectValue>{selected?.name ?? "Default"}</SelectValue>
-          </SelectTrigger>
-          <SelectPopup align="end" alignItemWithTrigger={false}>
-            {profiles.map((profile) => (
-              <SelectItem hideIndicator key={profile.id} value={profile.id}>
-                {profile.name}
-              </SelectItem>
-            ))}
-          </SelectPopup>
-        </Select>
-      }
-    />
+          onClose={() => setImportSession(null)}
+        />
+      ) : null}
+    </SettingsRow>
   );
 }
 

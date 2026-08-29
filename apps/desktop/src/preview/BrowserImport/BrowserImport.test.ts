@@ -14,7 +14,6 @@ import * as Ref from "effect/Ref";
 import * as BrowserSession from "../BrowserSession.ts";
 import * as BrowserImport from "./BrowserImport.ts";
 import { BROWSER_IMPORT_SOURCES, sourcePathContext } from "./Sources.ts";
-import { symlinksSupported } from "@t3tools/shared/testing/symlinks";
 
 const helium = BROWSER_IMPORT_SOURCES.find((source) => source.id === "helium")!;
 
@@ -106,45 +105,38 @@ describe("BrowserImport.importCookies", () => {
     }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
   );
 
-  it.effect.skipIf(!symlinksSupported)(
-    "refuses to import while the source browser holds its profile",
-    () =>
-      Effect.gen(function* () {
-        const fileSystem = yield* FileSystem.FileSystem;
-        const { importer, root } = yield* withImporter();
-        // The lock Chromium leaves while it is running, dangling target and
-        // all. This must stop the import before it ever asks the keychain.
-        yield* fileSystem.symlink("host-that-does-not-exist-1234", `${root}/SingletonLock`);
+  it.effect("refuses to import while the source browser holds its profile", () =>
+    Effect.gen(function* () {
+      const fileSystem = yield* FileSystem.FileSystem;
+      const { importer, root } = yield* withImporter();
+      // The lock Chromium leaves while it is running, dangling target and
+      // all. This must stop the import before it ever asks the keychain.
+      yield* fileSystem.symlink("host-that-does-not-exist-1234", `${root}/SingletonLock`);
 
-        const error = yield* importer
-          .importCookies({
-            input: {
-              sourceId: "helium",
-              sourceProfileDirectory: "Default",
-              targetProfileId: "default",
-            },
-            scope: "persist:t3code-preview-test",
-            persistent: true,
-          })
-          .pipe(Effect.flip);
+      const error = yield* importer
+        .importCookies({
+          input: {
+            sourceId: "helium",
+            sourceProfileDirectory: "Default",
+            targetProfileId: "default",
+          },
+          scope: "persist:t3code-preview-test",
+          persistent: true,
+        })
+        .pipe(Effect.flip);
 
-        assert.equal(error.reason, "browserRunning");
-      }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+      assert.equal(error.reason, "browserRunning");
+    }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
   );
 });
 
 describe("BrowserImport.writeCookies", () => {
   it.effect("counts a rejected cookie and its domain as skipped", () =>
     Effect.gen(function* () {
-      let flushes = 0;
       const result = yield* BrowserImport.writeCookies(
         {
           cookies: {
             set: () => Promise.reject(new Error("fixture rejection")),
-            flushStore: () => {
-              flushes += 1;
-              return Promise.resolve();
-            },
           },
         },
         { cookies: [cookie], undecryptable: 0, undecryptableHosts: [] },
@@ -155,34 +147,6 @@ describe("BrowserImport.writeCookies", () => {
         skipped: 1,
         skippedDomains: ["rejected.example"],
       });
-      // Nothing landed, so there is nothing to persist.
-      assert.equal(flushes, 0);
-    }),
-  );
-
-  it.effect("flushes the store after writing, and reports success if the flush fails", () =>
-    Effect.gen(function* () {
-      const events: Array<string> = [];
-      const result = yield* BrowserImport.writeCookies(
-        {
-          cookies: {
-            set: () => {
-              events.push("set");
-              return Promise.resolve();
-            },
-            flushStore: () => {
-              events.push("flush");
-              return Promise.reject(new Error("fixture flush failure"));
-            },
-          },
-        },
-        { cookies: [cookie, cookie], undecryptable: 0, undecryptableHosts: [] },
-      );
-
-      // One flush after every write, not one per cookie; the cookies are in
-      // the session either way, so a failed flush is not a failed import.
-      assert.deepEqual(events, ["set", "set", "flush"]);
-      assert.deepEqual(result, { imported: 2, skipped: 0, skippedDomains: [] });
     }),
   );
 
@@ -192,7 +156,6 @@ describe("BrowserImport.writeCookies", () => {
         {
           cookies: {
             set: () => new Promise<void>(() => {}),
-            flushStore: () => Promise.resolve(),
           },
         },
         { cookies: [cookie], undecryptable: 0, undecryptableHosts: [] },
