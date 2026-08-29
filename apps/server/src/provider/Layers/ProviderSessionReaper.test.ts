@@ -213,6 +213,7 @@ describe("ProviderSessionReaper", () => {
           },
         });
       },
+      queryInstanceUsage: () => Effect.succeed(undefined),
       rollbackConversation: () => unsupported(),
       uploadFeedback: () => unsupported(),
       streamEvents: Stream.empty,

@@ -133,6 +133,7 @@ import { SqlitePersistenceMemory } from "./persistence/Layers/Sqlite.ts";
 import { OrchestrationEventStoreLive } from "./persistence/Layers/OrchestrationEventStore.ts";
 import { OrchestrationEventStore } from "./persistence/Services/OrchestrationEventStore.ts";
 import { PersistenceSqlError } from "./persistence/Errors.ts";
+import { ProviderUnsupportedError } from "./provider/Errors.ts";
 import * as ProviderRegistry from "./provider/Services/ProviderRegistry.ts";
 import * as ProviderService from "./provider/Services/ProviderService.ts";
 import { ProviderAuthService } from "./provider/Services/ProviderAuthService.ts";
@@ -800,6 +801,9 @@ const buildAppUnderTest = (options?: {
           }),
           Layer.mock(ProviderService.ProviderService)({
             uploadFeedback: () => Effect.die("Provider feedback is not stubbed in this test"),
+            getInstanceInfo: (instanceId) =>
+              Effect.fail(new ProviderUnsupportedError({ provider: instanceId })),
+            streamEvents: Stream.empty,
             ...options?.layers?.providerService,
           }),
           Layer.mock(ProviderAuthService)({

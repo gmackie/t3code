@@ -135,13 +135,9 @@
       "types": "./src/state/presentation.ts",
       "default": "./src/state/presentation.ts"
     },
-    "./state/device": {
-      "types": "./src/state/device.ts",
-      "default": "./src/state/device.ts"
-    },
-    "./state/deviceHubAccess": {
-      "types": "./src/state/deviceHubAccess.ts",
-      "default": "./src/state/deviceHubAccess.ts"
+    "./state/provider-usage": {
+      "types": "./src/state/providerUsage.ts",
+      "default": "./src/state/providerUsage.ts"
     },
     "./state/preview": {
       "types": "./src/state/preview.ts",
