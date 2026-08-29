@@ -191,20 +191,26 @@ export function ServerUpdateAction({
   serverLabel,
   selfUpdate,
   desktopAppUpdate = false,
-  threadContinuation = false,
   targetVersion,
   label = "Update",
   variant = "outline",
   size = "xs",
-  className,
-  appearance = "button",
-}: Omit<ServerUpdateTarget, "continueThreadsAfterServerUpdate"> & UpdateButtonProps) {
+}: {
+  readonly environmentId: EnvironmentId;
+  readonly serverLabel: string;
+  readonly selfUpdate: ServerSelfUpdateCapability | null;
+  /** The desktop app supervising this server accepts remote update
+      requests (capabilities.desktopAppUpdate). */
+  readonly desktopAppUpdate?: boolean;
+  readonly targetVersion: string;
+  readonly label?: string;
+  readonly variant?: ComponentProps<typeof Button>["variant"];
+  readonly size?: ComponentProps<typeof Button>["size"];
+}) {
   const isDesktopAppUpdate = selfUpdate === "desktop-managed";
-  const continueThreadsAfterServerUpdate = useEnvironmentSettings(
-    environmentId,
-    (settings) => settings.continueThreadsAfterServerUpdate,
-  );
-  const update = useServerUpdate();
+  const updateServer = useAtomCommand(serverEnvironment.updateServer, {
+    reportFailure: false,
+  });
   const { copyToClipboard } = useCopyToClipboard<{ command: string }>({
     target: "update command",
     onCopy: ({ command }) => {
@@ -233,7 +239,7 @@ export function ServerUpdateAction({
       // remote machine installs without asking anyone there.
       const confirmed =
         (await requestConfirmDialog(
-          `Update the T3 Code desktop app that runs the ${serverLabel}? It will close and relaunch on that machine.`,
+          `Update the T3 Code desktop app on ${serverLabel}? It will close and relaunch on that machine.`,
         )) ?? true;
       if (!confirmed) {
         return;
