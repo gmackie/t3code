@@ -43,11 +43,14 @@ describe("RPC authorization scopes", () => {
     );
   });
 
-  it("requires write access to import agent session history", () => {
-    expect(requiredScopeForRpcMethod(WS_METHODS.agentSessionsScan)).toBe(
+  it("allows command discovery with read scope and invocation with operate scope", () => {
+    expect(requiredScopeForRpcMethod(WS_METHODS.pluginCommandsList)).toBe(
       AuthOrchestrationReadScope,
     );
-    expect(requiredScopeForRpcMethod(WS_METHODS.agentSessionsImport)).toBe(
+    expect(requiredScopeForRpcMethod(WS_METHODS.subscribePluginCommands)).toBe(
+      AuthOrchestrationReadScope,
+    );
+    expect(requiredScopeForRpcMethod(WS_METHODS.pluginCommandsInvoke)).toBe(
       AuthOrchestrationOperateScope,
     );
   });

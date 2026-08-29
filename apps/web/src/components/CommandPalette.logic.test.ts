@@ -1,15 +1,90 @@
 import { describe, expect, it, vi } from "vite-plus/test";
-import { EnvironmentId, ProjectId, ProviderInstanceId, ThreadId } from "@t3tools/contracts";
+import {
+  EnvironmentId,
+  ProjectId,
+  ProviderInstanceId,
+  ThreadId,
+  type PluginCommand,
+} from "@t3tools/contracts";
 import type { Thread } from "../types";
 import {
   buildBrowseGroups,
+  buildPluginCommandActionItems,
   buildThreadActionItems,
   enumerateCommandPaletteItems,
   filterPinnedBrowseEntries,
   filterCommandPaletteGroups,
   reduceCommandPaletteUiState,
+  resolvePluginCommandEnvironmentId,
   type CommandPaletteGroup,
 } from "./CommandPalette.logic";
+
+describe("buildPluginCommandActionItems", () => {
+  it("renders only commands for the current host surface and routes execution", async () => {
+    const run = vi.fn(async () => undefined);
+    const commands: ReadonlyArray<PluginCommand> = [
+      {
+        id: "plugin.status",
+        label: "Check plugin status",
+        description: "Verify the runtime.",
+        surfaces: ["web", "desktop"],
+      },
+      {
+        id: "plugin.mobile",
+        label: "Mobile only",
+        surfaces: ["mobile"],
+      },
+    ];
+
+    const items = buildPluginCommandActionItems({ commands, icon: null, run, surface: "web" });
+
+    expect(items.map((item) => item.value)).toEqual(["plugin-command:plugin.status"]);
+    expect(items[0]?.description).toBe("Verify the runtime.");
+    await items[0]?.run();
+    expect(run).toHaveBeenCalledWith(commands[0]);
+  });
+});
+
+describe("resolvePluginCommandEnvironmentId", () => {
+  it("prefers an active remote draft over the primary environment", () => {
+    expect(
+      resolvePluginCommandEnvironmentId({
+        activeDraftEnvironmentId: EnvironmentId.make("remote"),
+        activeThreadEnvironmentId: null,
+        primaryEnvironmentId: EnvironmentId.make("primary"),
+      }),
+    ).toBe("remote");
+  });
+});
+
+describe("browseInputEndPaddingClass", () => {
+  it("reserves the widest space for the create action", () => {
+    expect(
+      browseInputEndPaddingClass({
+        willCreateProjectPath: true,
+        hasHighlightedBrowseItem: false,
+      }),
+    ).toContain("pe-38");
+  });
+
+  it("reserves space for the wider highlighted-item shortcut", () => {
+    expect(
+      browseInputEndPaddingClass({
+        willCreateProjectPath: false,
+        hasHighlightedBrowseItem: true,
+      }),
+    ).toContain("pe-30");
+  });
+
+  it("keeps the compact reserve for the normal add action", () => {
+    expect(
+      browseInputEndPaddingClass({
+        willCreateProjectPath: false,
+        hasHighlightedBrowseItem: false,
+      }),
+    ).toContain("pe-24");
+  });
+});
 
 describe("reduceCommandPaletteUiState", () => {
   const closedState = { open: false, mode: "command", openIntent: null } as const;
