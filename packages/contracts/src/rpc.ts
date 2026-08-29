@@ -91,6 +91,20 @@ import {
 } from "./provider.ts";
 import { ProviderInstanceId } from "./providerInstance.ts";
 import {
+  PluginCommandCatalog,
+  PluginCommandCatalogChangedError,
+  PluginCommandInvocationError,
+  PluginCommandInvocationResult,
+  PluginCommandInvokeInput,
+  PluginCommandNotFoundError,
+} from "./pluginCommands.ts";
+import {
+  PluginPackageActionInput,
+  PluginPackageNotFoundError,
+  PluginPackageOperationError,
+  PluginPackageStatusSnapshot,
+} from "./pluginPackages.ts";
+import {
   PullRequestActionInput,
   PullRequestActivity,
   PullRequestCommentInput,
@@ -317,6 +331,16 @@ export const WS_METHODS = {
   serverGetUsageSummary: "server.getUsageSummary",
   serverRefreshUsageRates: "server.refreshUsageRates",
 
+  // Plugin command methods
+  pluginCommandsList: "pluginCommands.list",
+  pluginCommandsInvoke: "pluginCommands.invoke",
+
+  // Plugin package lifecycle methods
+  pluginPackagesStatus: "pluginPackages.status",
+  pluginPackagesEnable: "pluginPackages.enable",
+  pluginPackagesDisable: "pluginPackages.disable",
+  pluginPackagesReload: "pluginPackages.reload",
+
   // Cloud environment methods
   cloudGetRelayClientStatus: "cloud.getRelayClientStatus",
   cloudInstallRelayClient: "cloud.installRelayClient",
@@ -359,6 +383,7 @@ export const WS_METHODS = {
   subscribeAuthAccess: "subscribeAuthAccess",
   subscribeBackgroundPolicy: "subscribeBackgroundPolicy",
   subscribeResourceTelemetry: "subscribeResourceTelemetry",
+  subscribePluginCommands: "subscribePluginCommands",
 } as const;
 
 export const WsServerUpsertKeybindingRpc = Rpc.make(WS_METHODS.serverUpsertKeybinding, {
@@ -384,6 +409,44 @@ export const WsServerGetConfigRpc = Rpc.make(WS_METHODS.serverGetConfig, {
   success: ServerConfig,
   error: Schema.Union([KeybindingsConfigError, ServerSettingsError, EnvironmentAuthorizationError]),
 });
+
+export const WsPluginCommandsListRpc = Rpc.make(WS_METHODS.pluginCommandsList, {
+  payload: Schema.Struct({}),
+  success: PluginCommandCatalog,
+  error: EnvironmentAuthorizationError,
+});
+
+export const WsPluginCommandsInvokeRpc = Rpc.make(WS_METHODS.pluginCommandsInvoke, {
+  payload: PluginCommandInvokeInput,
+  success: PluginCommandInvocationResult,
+  error: Schema.Union([
+    PluginCommandCatalogChangedError,
+    PluginCommandInvocationError,
+    PluginCommandNotFoundError,
+    EnvironmentAuthorizationError,
+  ]),
+});
+
+export const WsPluginPackagesStatusRpc = Rpc.make(WS_METHODS.pluginPackagesStatus, {
+  payload: Schema.Struct({}),
+  success: PluginPackageStatusSnapshot,
+  error: Schema.Union([PluginPackageOperationError, EnvironmentAuthorizationError]),
+});
+
+const pluginPackageActionRpc = <const Method extends string>(method: Method) =>
+  Rpc.make(method, {
+    payload: PluginPackageActionInput,
+    success: PluginPackageStatusSnapshot,
+    error: Schema.Union([
+      PluginPackageNotFoundError,
+      PluginPackageOperationError,
+      EnvironmentAuthorizationError,
+    ]),
+  });
+
+export const WsPluginPackagesEnableRpc = pluginPackageActionRpc(WS_METHODS.pluginPackagesEnable);
+export const WsPluginPackagesDisableRpc = pluginPackageActionRpc(WS_METHODS.pluginPackagesDisable);
+export const WsPluginPackagesReloadRpc = pluginPackageActionRpc(WS_METHODS.pluginPackagesReload);
 
 export const WsServerRefreshProvidersRpc = Rpc.make(WS_METHODS.serverRefreshProviders, {
   payload: Schema.Struct({
@@ -1150,9 +1213,22 @@ export const WsSubscribeResourceTelemetryRpc = Rpc.make(WS_METHODS.subscribeReso
   stream: true,
 });
 
+export const WsSubscribePluginCommandsRpc = Rpc.make(WS_METHODS.subscribePluginCommands, {
+  payload: Schema.Struct({}),
+  success: PluginCommandCatalog,
+  error: EnvironmentAuthorizationError,
+  stream: true,
+});
+
 export const WsRpcGroup = RpcGroup.make(
   WsServerProbeRpc,
   WsServerGetConfigRpc,
+  WsPluginCommandsListRpc,
+  WsPluginCommandsInvokeRpc,
+  WsPluginPackagesStatusRpc,
+  WsPluginPackagesEnableRpc,
+  WsPluginPackagesDisableRpc,
+  WsPluginPackagesReloadRpc,
   WsServerRefreshProvidersRpc,
   WsServerUpdateProviderRpc,
   WsProviderAuthStartRpc,
@@ -1259,6 +1335,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsSubscribeAuthAccessRpc,
   WsSubscribeBackgroundPolicyRpc,
   WsSubscribeResourceTelemetryRpc,
+  WsSubscribePluginCommandsRpc,
   WsOrchestrationDispatchCommandRpc,
   WsOrchestrationGetWorkflowScriptRpc,
   WsOrchestrationGetTurnDiffRpc,
