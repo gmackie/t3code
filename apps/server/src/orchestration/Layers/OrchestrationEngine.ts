@@ -209,6 +209,35 @@ const makeOrchestrationEngine = Effect.gen(function* () {
           envelope.command.type === "thread.user-input.dismiss"
             ? yield* projectionSnapshotQuery.getUserInputActivity(envelope.command)
             : Option.none();
+
+        if (envelope.command.type === "thread.import") {
+          const existingImport = yield* sql<{ threadId: string; eventSequence: number }>`
+            SELECT thread_id AS "threadId", event_sequence AS "eventSequence"
+            FROM projection_external_thread_imports
+            WHERE environment_id = ${envelope.command.environmentId}
+              AND continuation_group = ${envelope.command.provenance.continuationGroup}
+              AND provider_instance_id = ${envelope.command.provenance.provider.instanceId}
+              AND provider_driver = ${envelope.command.provenance.provider.driver}
+              AND native_thread_id = ${envelope.command.provenance.nativeThreadId}
+            LIMIT 1
+          `;
+          const duplicate = existingImport[0];
+          if (duplicate !== undefined) {
+            yield* commandReceiptRepository.upsert({
+              commandId: envelope.command.commandId,
+              aggregateKind: "thread",
+              aggregateId: ThreadId.make(duplicate.threadId),
+              acceptedAt: envelope.command.provenance.importedAt,
+              resultSequence: duplicate.eventSequence,
+              status: "accepted",
+              error: null,
+            });
+            return {
+              sequence: duplicate.eventSequence,
+              threadId: ThreadId.make(duplicate.threadId),
+            };
+          }
+        }
         const eventBase = yield* decideOrchestrationCommand({
           command: envelope.command,
           readModel: commandReadModel,

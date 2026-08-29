@@ -1235,6 +1235,7 @@ export const ThreadImportCommand = Schema.Struct({
 export type ThreadImportCommand = typeof ThreadImportCommand.Type;
 
 const InternalOrchestrationCommand = Schema.Union([
+  ThreadAutoSettleCommand,
   ThreadImportCommand,
   ThreadSessionSetCommand,
   ThreadMessageAssistantDeltaCommand,

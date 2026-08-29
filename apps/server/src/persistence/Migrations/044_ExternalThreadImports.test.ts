@@ -8,10 +8,10 @@ import * as NodeSqliteClient from "@t3tools/shared/nodeSqliteClient";
 it.layer(Layer.mergeAll(NodeSqliteClient.layerMemory()))(
   "external thread import migrations",
   (it) => {
-    it.effect("upgrades the applied 044 schema without losing provenance", () =>
+    it.effect("upgrades the applied import schema without losing provenance", () =>
       Effect.gen(function* () {
         const sql = yield* SqlClient.SqlClient;
-        yield* runMigrations({ toMigrationInclusive: 44 });
+        yield* runMigrations({ toMigrationInclusive: 48 });
         yield* sql`
         INSERT INTO projection_external_thread_imports (
           thread_id, provider_instance_id, provider_driver, continuation_group,
@@ -22,7 +22,7 @@ it.layer(Layer.mergeAll(NodeSqliteClient.layerMemory()))(
           '{"threadId":"native-old"}', 'codex-v1', '2026-01-01T00:00:00.000Z', 7
         )
       `;
-        yield* runMigrations({ toMigrationInclusive: 45 });
+        yield* runMigrations({ toMigrationInclusive: 49 });
         const indexes = yield* sql<{ name: string; unique: number }>`
         PRAGMA index_list(projection_external_thread_imports)
       `;
