@@ -2,8 +2,6 @@ import {
   DesktopHostTelemetryMessage,
   type DesktopHostTelemetrySnapshot,
   type DesktopTelemetryControlMessage,
-  type DesktopTelemetryCancelDesktopUpdate,
-  type DesktopTelemetryCommitDesktopUpdate,
   type DesktopTelemetryRequestDesktopUpdate,
   type DesktopUpdateStatusReport,
   type HostPowerSnapshot,
@@ -75,8 +73,6 @@ export class DesktopTelemetryPublisher extends Context.Service<
     readonly publishUpdateReport: (report: DesktopUpdateStatusReport) => Effect.Effect<void>;
     /** Update requests received over the control channel. Single consumer. */
     readonly updateRequests: Stream.Stream<DesktopTelemetryRequestDesktopUpdate>;
-    readonly updateCommits: Stream.Stream<DesktopTelemetryCommitDesktopUpdate>;
-    readonly updateCancellations: Stream.Stream<DesktopTelemetryCancelDesktopUpdate>;
   }
 >()("@t3tools/desktop/telemetry/DesktopTelemetryPublisher") {}
 
@@ -175,8 +171,6 @@ export const make = Effect.fn("desktop.telemetryPublisher.make")(function* () {
   const latestUpdateReport = yield* Ref.make(Option.none<DesktopUpdateStatusReport>());
   const updateReportChanges = yield* PubSub.sliding<DesktopUpdateStatusReport>(16);
   const updateRequestQueue = yield* Queue.unbounded<DesktopTelemetryRequestDesktopUpdate>();
-  const updateCommitQueue = yield* Queue.unbounded<DesktopTelemetryCommitDesktopUpdate>();
-  const updateCancellationQueue = yield* Queue.unbounded<DesktopTelemetryCancelDesktopUpdate>();
 
   const offer = (event: PowerEvent): void => {
     Queue.offerUnsafe(powerEvents, event);
@@ -343,10 +337,6 @@ export const make = Effect.fn("desktop.telemetryPublisher.make")(function* () {
         }).pipe(Effect.andThen(Queue.offer(sampleTriggers, undefined)), Effect.asVoid);
       case "requestDesktopUpdate":
         return Queue.offer(updateRequestQueue, message).pipe(Effect.asVoid);
-      case "commitDesktopUpdate":
-        return Queue.offer(updateCommitQueue, message).pipe(Effect.asVoid);
-      case "cancelDesktopUpdate":
-        return Queue.offer(updateCancellationQueue, message).pipe(Effect.asVoid);
     }
   };
   const removeControlSource: DesktopTelemetryPublisher["Service"]["removeControlSource"] = (
@@ -419,8 +409,6 @@ export const make = Effect.fn("desktop.telemetryPublisher.make")(function* () {
     removeControlSource,
     publishUpdateReport,
     updateRequests: Stream.fromQueue(updateRequestQueue),
-    updateCommits: Stream.fromQueue(updateCommitQueue),
-    updateCancellations: Stream.fromQueue(updateCancellationQueue),
   });
 });
 

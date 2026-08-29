@@ -441,7 +441,6 @@ describe("DesktopTelemetryPublisher", () => {
             message: null,
             errorContext: null,
             canRetry: false,
-            omittedReleaseCount: 0,
           },
         } as const;
         yield* publisher.publishUpdateReport(report);

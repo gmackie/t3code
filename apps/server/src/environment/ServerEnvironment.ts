@@ -232,10 +232,7 @@ export const make = Effect.gen(function* () {
       environmentIcon: true,
       ...(serverSelfUpdate === null ? {} : { serverSelfUpdate }),
       ...(serverSelfUpdate === "boot-service" || desktopAppUpdate
-        ? {
-            serverSelfUpdateProgress: true,
-            serverUpdateThreadContinuation: true,
-          }
+        ? { serverSelfUpdateProgress: true }
         : {}),
       ...(desktopAppUpdate ? { desktopAppUpdate: true } : {}),
     },
