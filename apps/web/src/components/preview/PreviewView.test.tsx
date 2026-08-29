@@ -253,8 +253,7 @@ vi.mock("./AgentBrowserCursor", () => ({ AgentBrowserCursor: () => null }));
 vi.mock("~/browser/BrowserSurfaceSlot", () => ({ BrowserSurfaceSlot: () => null }));
 vi.mock("./usePreviewSession", () => ({ usePreviewSession: vi.fn() }));
 
-import { PreviewView } from "./PreviewView";
-import { toastManager } from "~/components/ui/toast";
+import { PreviewView, previewProfileName } from "./PreviewView";
 import { previewRuntimeTabId } from "~/browser/previewRuntimeTabId";
 
 const TEST_THREAD_REF = {

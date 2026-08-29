@@ -29,15 +29,6 @@ vi.mock("~/browser/browserDefaults", () => ({
   browserDefaultOpenProfileId: (defaults: { profileId: string }) => defaults.profileId,
 }));
 
-const linkTargetMocks = vi.hoisted(() => ({
-  preference: vi.fn<() => "system" | "app">(),
-}));
-
-vi.mock("~/browser/browserLinkTarget", () => ({
-  resolveBrowserLinkTargetPreference: async () => linkTargetMocks.preference(),
-  isWebUrl: (url: string) => /^https?:/u.test(url),
-}));
-
 const hydratedDefaults = {
   viewport: { _tag: "fixed", width: 1280, height: 720 } as const,
   profileId: "work",
@@ -58,9 +49,7 @@ const snapshot: PreviewSessionSnapshot = {
 };
 
 beforeEach(() => {
-  browserDefaultsMocks.resolve.mockReset();
   browserDefaultsMocks.resolve.mockResolvedValue(hydratedDefaults);
-  linkTargetMocks.preference.mockReturnValue("app");
 });
 
 afterEach(() => {
@@ -68,36 +57,47 @@ afterEach(() => {
 });
 
 describe("openTerminalLinkInPreview", () => {
-  it.each(["target", "defaults"] as const)(
-    "does not open either browser when reading %s fails",
-    async (setting) => {
-      const failure = new Error("Settings read failed");
-      if (setting === "target") {
-        linkTargetMocks.preference.mockImplementationOnce(() => {
-          throw failure;
-        });
-      } else {
-        browserDefaultsMocks.resolve.mockRejectedValueOnce(failure);
-      }
-      const fallbackToBrowser = vi.fn();
-      const openPreview = vi.fn(async () => AsyncResult.success(snapshot));
-
-      await expect(
-        openTerminalLinkInPreview({
-          url: "https://example.com/docs",
-          threadRef,
-          openPreview,
-          fallbackToBrowser,
-          forceBrowser: false,
+  it("waits for hydrated viewport and profile defaults before opening", async () => {
+    let hydrate: ((defaults: typeof hydratedDefaults) => void) | undefined;
+    browserDefaultsMocks.resolve.mockImplementationOnce(
+      () =>
+        new Promise<typeof hydratedDefaults>((resolve) => {
+          hydrate = resolve;
         }),
-      ).rejects.toBe(failure);
-      expect(fallbackToBrowser).not.toHaveBeenCalled();
-      expect(openPreview).not.toHaveBeenCalled();
-    },
-  );
+    );
+    const openPreview = vi.fn(async () => AsyncResult.success(snapshot));
 
-  it("opens in the system browser while that is the configured target", async () => {
-    linkTargetMocks.preference.mockReturnValue("system");
+    const opening = openTerminalLinkInPreview({
+      url: "http://localhost:3000/",
+      position: { x: 12, y: 34 },
+      threadRef,
+      openPreview,
+      localApi: {
+        contextMenu: {
+          show: vi.fn(async () => "open-in-preview"),
+        },
+      } as unknown as LocalApi,
+      fallbackToBrowser: vi.fn(),
+    });
+
+    await vi.waitFor(() => expect(browserDefaultsMocks.resolve).toHaveBeenCalledOnce());
+    expect(openPreview).not.toHaveBeenCalled();
+    hydrate?.(hydratedDefaults);
+    await opening;
+
+    expect(openPreview).toHaveBeenCalledWith({
+      environmentId: "local",
+      input: {
+        threadId: "thread-1",
+        url: "http://localhost:3000/",
+        viewport: hydratedDefaults.viewport,
+        profileId: hydratedDefaults.profileId,
+      },
+    });
+  });
+
+  it("preserves context-menu failures with terminal link context before falling back", async () => {
+    const cause = new Error("menu unavailable");
     const fallbackToBrowser = vi.fn();
     const openPreview = vi.fn(async () => AsyncResult.success(snapshot));
 

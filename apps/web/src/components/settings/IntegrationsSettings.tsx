@@ -12,15 +12,11 @@ import { DeviceHostsSettings } from "./DeviceHostsSettings";
 import {
   BrowserImportFailureReason,
   BROWSER_PROFILE_MAX_COUNT,
-  type BrowserLinkTarget,
   type BrowserProfile,
   type EnvironmentId,
   BROWSER_PROFILE_NAME_MAX_LENGTH,
-  BROWSER_RECORDING_FRAME_RATES,
   DEFAULT_BROWSER_AUTO_SHOW_FLOATING_PREVIEW,
   DEFAULT_BROWSER_PROFILE_ID,
-  DEFAULT_BROWSER_LINK_TARGET,
-  DEFAULT_BROWSER_RECORDING_FRAME_RATE,
   DEFAULT_BROWSER_VIEWPORT,
   DEFAULT_PREVIEW_APPEARANCE,
   DEFAULT_PREVIEW_ZOOM_FACTOR,
@@ -1140,30 +1136,51 @@ function BrowserProfilesSetting({ disabled }: { readonly disabled: boolean }) {
                 index > 0 && "border-t border-border/60",
               )}
             >
-              <span className="flex min-w-0 flex-1 items-center gap-2">
-                {builtIn ? (
-                  // Dimmed here rather than on the table: a wrapper-level dim
-                  // stacks with the rename field's and the row menu button's
-                  // own, landing them near 0.41 while every other disabled
-                  // control in the block sits at 0.64.
-                  <span
-                    className={cn(
-                      "truncate text-sm text-foreground",
-                      profileWritesDisabled && "opacity-64",
-                    )}
-                  >
-                    {profile.name}
-                  </span>
-                ) : (
-                  <DraftInput
-                    nativeInput
-                    size="sm"
-                    className="w-full max-w-56"
-                    aria-label={`Rename ${profile.name}`}
-                    disabled={profileWritesDisabled || importInFlight}
-                    maxLength={BROWSER_PROFILE_NAME_MAX_LENGTH}
-                    value={profile.name}
-                    onCommit={(next) => renameProfile(profile.id, next)}
+              {builtIn ? (
+                // Dimmed here rather than on the list, which is the only
+                // content in the row without a disabled treatment of its own:
+                // a wrapper-level dim would stack with the rename field's and
+                // the remove button's, landing them near 0.41 while every
+                // other disabled control in the block sits at 0.64.
+                <span
+                  className={cn(
+                    "flex min-w-0 items-center gap-2 text-sm text-foreground",
+                    profileWritesDisabled && "opacity-64",
+                  )}
+                >
+                  {profile.name}
+                  <Badge variant="outline">
+                    {profile.kind === "incognito" ? "Ephemeral" : "Built-in"}
+                  </Badge>
+                </span>
+              ) : (
+                <DraftInput
+                  nativeInput
+                  size="sm"
+                  className="w-full sm:w-64"
+                  aria-label={`Rename ${profile.name}`}
+                  disabled={profileWritesDisabled}
+                  maxLength={BROWSER_PROFILE_NAME_MAX_LENGTH}
+                  value={profile.name}
+                  onCommit={(next) => renameProfile(profile.id, next)}
+                />
+              )}
+              {builtIn ? null : (
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <span className="inline-flex" {...(!removalAvailable ? { tabIndex: 0 } : {})}>
+                        <Button
+                          size="icon-sm"
+                          variant="ghost-muted"
+                          disabled={profileWritesDisabled || !removalAvailable}
+                          aria-label={`Remove ${profile.name}`}
+                          onClick={() => setProfilePendingRemoval(profile)}
+                        >
+                          <Trash2Icon />
+                        </Button>
+                      </span>
+                    }
                   />
                 )}
                 {/*
@@ -1309,10 +1326,20 @@ function BrowserProfilesSetting({ disabled }: { readonly disabled: boolean }) {
                 });
               });
           }}
-          onClose={() => setImportSession(null)}
-        />
-      ) : null}
-    </SettingsRow>
+        >
+          <SelectTrigger size="sm" className="w-full sm:w-44" aria-label="Default browser profile">
+            <SelectValue>{selected?.name ?? "Default"}</SelectValue>
+          </SelectTrigger>
+          <SelectPopup align="end" alignItemWithTrigger={false}>
+            {profiles.map((profile) => (
+              <SelectItem hideIndicator key={profile.id} value={profile.id}>
+                {profile.name}
+              </SelectItem>
+            ))}
+          </SelectPopup>
+        </Select>
+      }
+    />
   );
 }
 
