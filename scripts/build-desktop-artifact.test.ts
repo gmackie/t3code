@@ -306,6 +306,17 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
           ),
         ),
       );
+      const gmackoConfig = yield* resolveGitHubPublishConfig("gmacko").pipe(
+        Effect.provide(
+          ConfigProvider.layer(
+            ConfigProvider.fromEnv({
+              env: {
+                GITHUB_REPOSITORY: "gmackie/t3code",
+              },
+            }),
+          ),
+        ),
+      );
 
       assert.deepStrictEqual(latestConfig, {
         provider: "github",
@@ -319,6 +330,13 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
         repo: "t3code",
         releaseType: "prerelease",
         channel: "nightly",
+      });
+      assert.deepStrictEqual(gmackoConfig, {
+        provider: "github",
+        owner: "gmackie",
+        repo: "t3code",
+        releaseType: "prerelease",
+        channel: "gmacko",
       });
     }),
   );

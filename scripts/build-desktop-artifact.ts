@@ -2157,7 +2157,7 @@ export const resolveGitHubPublishConfig = Effect.fn("resolveGitHubPublishConfig"
     owner,
     repo,
     releaseType: updateChannel === "latest" ? "release" : "prerelease",
-    ...(updateChannel === "nightly" ? { channel: "nightly" as const } : {}),
+    ...(updateChannel === "latest" ? {} : { channel: updateChannel }),
   };
 });
 
