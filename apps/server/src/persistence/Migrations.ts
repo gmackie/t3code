@@ -10,6 +10,8 @@
 
 import * as Migrator from "effect/unstable/sql/Migrator";
 import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
+import * as SqlClient from "effect/unstable/sql/SqlClient";
 
 // Import all migrations statically
 import Migration0001 from "./Migrations/001_OrchestrationEvents.ts";
@@ -133,6 +135,86 @@ export const makeMigrationLoader = (throughId?: number) =>
  */
 const run = Migrator.make({});
 
+/**
+ * The GMACKO lane rebases onto upstream, and upstream occasionally claims
+ * migration ids the lane was using, so lane migrations get renumbered. The
+ * migrator tracks applied migrations by numeric id only and skips every id at
+ * or below the highest recorded one, which turns a renumbered ledger into
+ * silently skipped migrations and a schema that lags the code (missing
+ * columns surface later as runtime SQL errors, not migration failures).
+ *
+ * Reconcile the ledger by migration NAME before the migrator runs:
+ * - rows whose name moved to a new id are re-keyed to the manifest id
+ * - rows whose name the manifest no longer knows are dropped (their schema
+ *   effects stay in place)
+ * - manifest migrations below the highest applied id that were never applied
+ *   by name ("holes" created by past renumbering) are executed and recorded;
+ *   migrations from the renumbering era onward are written re-runnable, so
+ *   backfilling them is safe
+ *
+ * Aligned ledgers (every fresh install, and every repaired profile after one
+ * boot) short-circuit without writing anything.
+ */
+export const reconcileMigrationLedger = Effect.fn("reconcileMigrationLedger")(function* () {
+  const sql = yield* SqlClient.SqlClient;
+  const ledgerTables = yield* sql<{ readonly name: string }>`
+    SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'effect_sql_migrations'
+  `;
+  if (ledgerTables.length === 0) return;
+  const rows = yield* sql<{
+    readonly migration_id: number;
+    readonly name: string;
+    readonly created_at: string;
+  }>`SELECT migration_id, name, created_at FROM effect_sql_migrations ORDER BY migration_id`;
+  const manifestIdByName = new Map<string, number>(
+    migrationEntries.map(([id, name]) => [name, id]),
+  );
+  const aligned = rows.every(
+    (row, index) =>
+      manifestIdByName.get(row.name) === row.migration_id &&
+      rows.findIndex((other) => other.name === row.name) === index,
+  );
+  if (aligned) return;
+
+  const appliedAtByName = new Map<string, string>();
+  for (const row of rows) {
+    if (!appliedAtByName.has(row.name)) appliedAtByName.set(row.name, row.created_at);
+  }
+  const highestAppliedId = migrationEntries.reduce(
+    (highest, [id, name]) => (appliedAtByName.has(name) && id > highest ? id : highest),
+    0,
+  );
+  const dropped = rows
+    .filter((row) => !manifestIdByName.has(row.name))
+    .map((row) => `${row.migration_id}_${row.name}`);
+  const backfilled: Array<string> = [];
+
+  yield* sql.withTransaction(
+    Effect.gen(function* () {
+      yield* sql`DELETE FROM effect_sql_migrations`;
+      for (const [id, name, migration] of migrationEntries) {
+        const appliedAt = appliedAtByName.get(name);
+        if (appliedAt !== undefined) {
+          yield* sql`
+            INSERT INTO effect_sql_migrations (migration_id, name, created_at)
+            VALUES (${id}, ${name}, ${appliedAt})
+          `;
+        } else if (id < highestAppliedId) {
+          yield* migration;
+          backfilled.push(`${id}_${name}`);
+          yield* sql`
+            INSERT INTO effect_sql_migrations (migration_id, name, created_at)
+            VALUES (${id}, ${name}, CURRENT_TIMESTAMP)
+          `;
+        }
+      }
+    }),
+  );
+  yield* Effect.log("Reconciled migration ledger").pipe(
+    Effect.annotateLogs({ dropped, backfilled }),
+  );
+});
+
 export interface RunMigrationsOptions {
   readonly toMigrationInclusive?: number | undefined;
 }
@@ -150,6 +232,7 @@ export interface RunMigrationsOptions {
 export const runMigrations = Effect.fn("runMigrations")(function* ({
   toMigrationInclusive,
 }: RunMigrationsOptions = {}) {
+  yield* reconcileMigrationLedger();
   const executedMigrations = yield* run({ loader: makeMigrationLoader(toMigrationInclusive) });
   const migrations = executedMigrations.map(([id, name]) => `${id}_${name}`);
   yield* migrations.length === 0
