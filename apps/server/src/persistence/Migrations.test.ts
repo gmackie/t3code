@@ -105,6 +105,24 @@ layer("migration ledger reconciliation", (it) => {
       assert.ok(columns.some((column) => column.name === "pinned_at"));
     }),
   );
+  it.effect("leaves foreign rows in place so collision checks stay loud", () =>
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* runMigrations();
+
+      // Another checkout's migration claimed slot 1. Its code is not ours to
+      // re-run and its name is not a known retired lane migration, so the
+      // reconciler must not touch the ledger.
+      yield* sql`UPDATE effect_sql_migrations
+        SET name = 'SomebodyElsesMigration' WHERE migration_id = 1`;
+      const before = yield* readLedger;
+
+      yield* reconcileMigrationLedger();
+
+      const after = yield* readLedger;
+      assert.deepStrictEqual(after, before);
+    }),
+  );
 });
 
 layer("migration ledger reconciliation on an empty database", (it) => {
