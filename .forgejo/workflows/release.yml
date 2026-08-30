@@ -35,8 +35,8 @@ env:
   DESKTOP_PACKAGE_JSON: apps/desktop/package.json
   DESKTOP_RELEASE_DIR: release
   BUILD_COMMAND: bun run dist:desktop:artifact --
-  PREFLIGHT_TYPECHECK: bun run typecheck
-  PREFLIGHT_TEST: bun run test
+  PREFLIGHT_TYPECHECK: turbo run typecheck --filter=@t3tools/desktop --filter=t3
+  PREFLIGHT_TEST: turbo run test --filter=@t3tools/desktop
   ARTIFACT_NAME_PREFIX: desktop
   NIGHTLY_TAG_GLOB: 'v*-nightly.*'
   PACKAGE_MANAGER: bun
@@ -173,8 +173,8 @@ jobs:
             fi
           fi
 
-      - run: bun run typecheck
-      - run: bun run test
+      - run: turbo run typecheck --filter=@t3tools/desktop --filter=t3
+      - run: turbo run test --filter=@t3tools/desktop
 
       - id: previous_tag
         run: |
