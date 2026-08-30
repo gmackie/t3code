@@ -101,10 +101,11 @@ describe("ForgeGraph GMACKO release workflow", () => {
     }
   });
 
-  it("leaves enough time to download and publish desktop artifacts", () => {
+  it("gives release preparation enough time and memory", () => {
     const workflow = NodeFS.readFileSync(workflowPath, "utf8");
     const releaseJob = workflow.slice(workflow.indexOf("  release:\n"));
 
-    expect(releaseJob).toContain("timeout-minutes: 45");
+    expect(releaseJob).toContain("timeout-minutes: 60");
+    expect(workflow).toContain('NODE_OPTIONS: "--max-old-space-size=4096"');
   });
 });
