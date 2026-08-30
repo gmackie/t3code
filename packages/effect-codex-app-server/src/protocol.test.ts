@@ -33,7 +33,56 @@ const decodeConsumeRateLimitResetCreditResponse = Schema.decodeUnknownEffect(
   CodexRpc.CLIENT_REQUEST_RESPONSES["account/rateLimitResetCredit/consume"],
 );
 
+it("frames fragmented JSON lines and rejects oversized frames", () => {
+  const framer = CodexProtocol.makeJsonLineFramer({ maxFrameCharacters: 8 });
+
+  assert.deepEqual(framer.push('{"id":'), []);
+  assert.deepEqual(framer.push("1}\n"), ['{"id":1}']);
+  assert.equal(framer.finish(), "");
+
+  const oversized = CodexProtocol.makeJsonLineFramer({ maxFrameCharacters: 8 });
+  let error: unknown;
+  try {
+    oversized.push("123456789");
+  } catch (cause) {
+    error = cause;
+  }
+  assert.instanceOf(error, CodexError.CodexAppServerIncomingFrameTooLargeError);
+  assert.equal(error.maximumCharacters, 8);
+  assert.equal(error.observedCharacters, 9);
+});
+
 it.layer(NodeServices.layer)("effect-codex-app-server protocol", (it) => {
+  it.effect("terminates the protocol and rejects pending requests for oversized frames", () =>
+    Effect.gen(function* () {
+      const { stdio, input, output } = yield* makeInMemoryStdio();
+      const termination = yield* Deferred.make<CodexError.CodexAppServerError>();
+      const transport = yield* CodexProtocol.makeCodexAppServerPatchedProtocol({
+        stdio,
+        maxIncomingFrameCharacters: 8,
+        onTermination: (error) => Deferred.succeed(termination, error).pipe(Effect.asVoid),
+      });
+
+      const pending = yield* transport.request("thread/start", {}).pipe(Effect.forkScoped);
+      yield* Queue.take(output);
+      yield* Queue.offer(input, encoder.encode("123456789"));
+
+      const terminationError = yield* Deferred.await(termination);
+      assert.instanceOf(terminationError, CodexError.CodexAppServerIncomingFrameTooLargeError);
+      assert.deepInclude(terminationError, {
+        maximumCharacters: 8,
+        observedCharacters: 9,
+      });
+      const requestError = yield* Fiber.join(pending).pipe(
+        Effect.match({
+          onFailure: (error) => error,
+          onSuccess: () => assert.fail("Expected pending request to fail on termination"),
+        }),
+      );
+      assert.strictEqual(requestError, terminationError);
+    }),
+  );
+
   it.effect("maps account usage responses to the upstream token usage schema", () =>
     Effect.gen(function* () {
       assert.strictEqual(
