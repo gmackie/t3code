@@ -6,9 +6,9 @@ import * as Schema from "effect/Schema";
 export type ThreadImportJson = Schema.Json;
 
 /** Hard limits applied before imported provider history reaches persistence or orchestration. */
-export const MAX_NORMALIZED_HISTORY_ITEMS = 10_000;
+export const MAX_NORMALIZED_HISTORY_ITEMS = 100_000;
 export const MAX_NORMALIZED_HISTORY_TEXT_BYTES = 256 * 1_024;
-export const MAX_NORMALIZED_HISTORY_BYTES = 8 * 1_024 * 1_024;
+export const MAX_NORMALIZED_HISTORY_BYTES = 128 * 1_024 * 1_024;
 export const MAX_NORMALIZED_TOOL_JSON_BYTES = 512 * 1_024;
 export const MAX_NORMALIZED_TOOL_JSON_DEPTH = 32;
 export const MAX_NORMALIZED_TOOL_JSON_NODES = 10_000;
@@ -122,7 +122,7 @@ const toolJsonLimits: JsonResourceLimits = {
   maxNodes: MAX_NORMALIZED_TOOL_JSON_NODES,
   maxObjectKeys: MAX_NORMALIZED_TOOL_JSON_OBJECT_KEYS,
 };
-const BoundedThreadImportJson = Schema.declare<Schema.Json>(
+export const BoundedThreadImportJson = Schema.declare<Schema.Json>(
   (value): value is Schema.Json => isJsonWithinLimits(value, toolJsonLimits),
   { title: "BoundedThreadImportJson" },
 );
