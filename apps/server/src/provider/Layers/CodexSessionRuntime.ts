@@ -41,6 +41,9 @@ import { codexSessionAppServerArgs } from "./codexLaunchArgs.ts";
 import { expandHomePath } from "../../pathExpansion.ts";
 import { buildCodexDeveloperInstructions } from "../CodexDeveloperInstructions.ts";
 const decodeV2TurnStartResponse = Schema.decodeUnknownEffect(EffectCodexSchema.V2TurnStartResponse);
+const decodeV2ThreadResumeResponse = Schema.decodeUnknownEffect(
+  EffectCodexSchema.V2ThreadResumeResponse,
+);
 
 const PROVIDER = ProviderDriverKind.make("codex");
 
@@ -696,19 +699,14 @@ const decodeCodexThreadResumeMetadata = Schema.decodeUnknownEffect(CodexThreadRe
 interface CodexThreadOpenClient {
   readonly raw: {
     readonly request: (
-      method: "thread/resume",
-      payload: CodexRpc.ClientRequestParamsByMethod["thread/resume"] & {
-        readonly excludeTurns?: boolean;
-      },
+      method: string,
+      payload?: unknown,
     ) => Effect.Effect<unknown, CodexErrors.CodexAppServerError>;
   };
-  readonly request: (
-    method: "thread/start",
-    payload: CodexRpc.ClientRequestParamsByMethod["thread/start"],
-  ) => Effect.Effect<
-    CodexRpc.ClientRequestResponsesByMethod["thread/start"],
-    CodexErrors.CodexAppServerError
-  >;
+  readonly request: <M extends CodexThreadOpenMethod>(
+    method: M,
+    payload: CodexRpc.ClientRequestParamsByMethod[M],
+  ) => Effect.Effect<CodexRpc.ClientRequestResponsesByMethod[M], CodexErrors.CodexAppServerError>;
 }
 
 export const openCodexThread = (input: {
@@ -733,16 +731,27 @@ export const openCodexThread = (input: {
     return input.client.request("thread/start", startParams);
   }
 
-  // Older providers may still return history despite excludeTurns. Only the
-  // session metadata is needed here, so unrelated historical items cannot
-  // prevent resuming a valid provider thread.
   return input.client.raw
     .request("thread/resume", {
       threadId: resumeThreadId,
       ...startParams,
+      // T3 already persists the visible transcript. Asking Codex to rebuild and
+      // return every historical turn can make large resumes exhaust the local
+      // backend before the session becomes ready.
       excludeTurns: true,
     })
     .pipe(
+      Effect.flatMap((rawResponse) =>
+        decodeV2ThreadResumeResponse(rawResponse).pipe(
+          Effect.mapError((error) =>
+            CodexErrors.CodexAppServerProtocolParseError.fromSchemaError(
+              "decode-response-payload",
+              error,
+              { method: "thread/resume" },
+            ),
+          ),
+        ),
+      ),
       Effect.catchIf(
         (error) => !input.resumeRequired && isRecoverableThreadResumeError(error),
         (error) =>
