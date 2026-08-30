@@ -99,6 +99,12 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
+      - name: Install @forgegraph/desktop-release
+        run: |
+          git clone --depth 1 --branch feat/desktop-release-lane \
+            https://git.forgegraf.com/gmackie/forgegraph.git /tmp/forgegraph
+          npm install -g /tmp/forgegraph/packages/desktop-release
+
       - id: release_meta
         name: Resolve release version
         shell: bash
@@ -116,10 +122,13 @@ jobs:
           if [[ "${GITHUB_EVENT_NAME}" == "schedule" || ( "${GITHUB_EVENT_NAME}" == "workflow_dispatch" && "$dispatch_channel" == "nightly" ) ]]; then
             nightly_date="$(date -u -d "$NIGHTLY_DATE" +%Y%m%d)"
 
-            node scripts/resolve-nightly-release.ts \
+            fg-desktop-release resolve-nightly \
               --date "$nightly_date" \
               --run-number "$NIGHTLY_RUN_NUMBER" \
               --sha "$NIGHTLY_SHA" \
+              --package-json apps/desktop/package.json \
+              --tag-prefix v \
+              --product-name "T3 Code" \
               --github-output
 
             echo "release_channel=nightly" >> "$GITHUB_OUTPUT"
@@ -211,9 +220,10 @@ jobs:
       - id: previous_tag
         name: Resolve previous release tag
         run: |
-          node scripts/resolve-previous-release-tag.ts \
+          fg-desktop-release resolve-previous-tag \
             --channel "${{ steps.release_meta.outputs.release_channel }}" \
             --current-tag "${{ steps.release_meta.outputs.tag }}" \
+            --tag-prefix v \
             --github-output
 
   build:
@@ -485,6 +495,12 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
+      - name: Install @forgegraph/desktop-release
+        run: |
+          git clone --depth 1 --branch feat/desktop-release-lane \
+            https://git.forgegraf.com/gmackie/forgegraph.git /tmp/forgegraph
+          npm install -g /tmp/forgegraph/packages/desktop-release
+
       - name: Download all desktop artifacts
         uses: actions/download-artifact@v8
         with:
@@ -498,7 +514,7 @@ jobs:
           for x64_manifest in release-assets/*-mac-x64.yml; do
             arm64_manifest="${x64_manifest%-x64.yml}.yml"
             if [[ -f "$arm64_manifest" ]]; then
-              node scripts/merge-update-manifests.ts --platform mac "$arm64_manifest" "$x64_manifest"
+              fg-desktop-release merge-manifests --platform mac "$arm64_manifest" "$x64_manifest"
               rm -f "$x64_manifest"
             fi
           done
