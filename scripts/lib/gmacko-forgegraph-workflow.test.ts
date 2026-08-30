@@ -55,7 +55,8 @@ describe("ForgeGraph GMACKO release workflow", () => {
     );
 
     expect(preflightJob).toContain('sudo chown -R ubuntu:ubuntu "$GITHUB_WORKSPACE"');
-    expect(preflightJob).toContain('sudo -u ubuntu -H env "PATH=$PATH" pnpm vp run test');
+    expect(preflightJob).toContain('sudo -u ubuntu -H env "PATH=$PATH"');
+    expect(preflightJob).toContain("pnpm vp run test");
   });
 
   it("keeps GitHub promotion lease-protected", () => {
