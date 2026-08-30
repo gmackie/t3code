@@ -779,11 +779,11 @@ importers:
         specifier: workspace:*
         version: link:../../packages/shared
       alchemy:
-        specifier: 2.0.0-beta.76
-        version: 2.0.0-beta.76(b3825b36417e56a486ccb5f22a7f3d7e)
+        specifier: 2.0.0-beta.68
+        version: 2.0.0-beta.68(0885d8a95b948dcd9cb22ae87b3f43ad)
       drizzle-orm:
-        specifier: 1.0.0-rc.5-ab785fc
-        version: 1.0.0-rc.5-ab785fc(8ab70e2706da13c78d64d8a92fef1884)
+        specifier: 1.0.0-rc.4
+        version: 1.0.0-rc.4(5e12850ccc97093662994947013b2e06)
       effect:
         specifier: 4.0.0-rc.112
         version: 4.0.0-rc.112(patch_hash=8bef799f35729cf3465eb428196f617b434a7c9f658d56acb2874d74b21b98b2)
@@ -1969,108 +1969,69 @@ packages:
   '@cloudflare/workers-types@4.20260604.1':
     resolution: {integrity: sha512-nVTydUwPcz9WfwZ/6xAmqs8uUVeGbDVmyPvSYrYAo4CQTyi0122SoE1Suw8RvqnN60XXHPChAjDqSIjnr/mbmg==}
 
-  '@cloudflare/workers-types@5.20260907.1':
-    resolution: {integrity: sha512-HYI7eFb/MOcNzvbUW7ZwHVZL5YFXb4r6yHN3vx8gJCqde7yhn3bhuPKiQPw90UtGWWp7uOI+Que3kf8Svjn5cw==}
+  '@cloudflare/workers-types@5.20260828.1':
+    resolution: {integrity: sha512-Ce0QfghuAK9v821gER8rFPR3rMeC+5puTgTzCu4UrG1Zg967Z5Aa+2uZVciIyfCAdGssyh+sLEC6rMjN/YBQwA==}
 
-  '@crowecawcaw/xa11y-darwin-arm64@0.13.0':
-    resolution: {integrity: sha512-wT+f9lbE6IfSPs8unb7IHr6/V/EkB4SCMFisTtV3jsTseCKr4/vkgpI1LRdul2r+KrmgQ4JxRpUDVB25dmpqNw==}
-    engines: {node: '>=18'}
-    cpu: [arm64]
-    os: [darwin]
-
-  '@crowecawcaw/xa11y-darwin-x64@0.13.0':
-    resolution: {integrity: sha512-8QtLjTzciLIFOTWX1wZRTh6lg+Cw35Rc0VcDtJspS3baHiqkTZD6UyeZKhu5awSirbYZWLeXTuyY2CHCfaQ9rw==}
-    engines: {node: '>=18'}
-    cpu: [x64]
-    os: [darwin]
-
-  '@crowecawcaw/xa11y-linux-arm64-gnu@0.13.0':
-    resolution: {integrity: sha512-Yad7Bo25pqyowd92yLxGqr59ASSf7zr6lhzoufeCJU62eOq96jEQhhQw0TlvRU8aRI1ksgSuiUivoxNjYP2/gg==}
-    engines: {node: '>=18'}
-    cpu: [arm64]
-    os: [linux]
-    libc: [glibc]
-
-  '@crowecawcaw/xa11y-linux-x64-gnu@0.13.0':
-    resolution: {integrity: sha512-h/7UoAr2X8iSHaBsNFt7uW1Ft14zgintTACNYMTX8WFwE+WXdHe3vtJmxa/bG+N8imWSGH1Xkzg52YJaa/C+bw==}
-    engines: {node: '>=18'}
-    cpu: [x64]
-    os: [linux]
-    libc: [glibc]
-
-  '@crowecawcaw/xa11y-win32-arm64-msvc@0.13.0':
-    resolution: {integrity: sha512-3vmwZxNg7s6qXdSmYve3EE/zh7vZx75jUxi29odguy9llUvWpWFguvvXJ8EFYh13+TwxchibxnImlZb1XpKG+g==}
-    engines: {node: '>=18'}
-    cpu: [arm64]
-    os: [win32]
-
-  '@crowecawcaw/xa11y-win32-x64-msvc@0.13.0':
-    resolution: {integrity: sha512-7kWYSj6AZKIN89EirGJQTkeaCJrElwFXOp9eQKd55vUFGZw2YARGY5HfpXha2BKGgZgT2IRR4CJrmgz2Nb1ETw==}
-    engines: {node: '>=18'}
-    cpu: [x64]
-    os: [win32]
-
-  '@crowecawcaw/xa11y@0.13.0':
-    resolution: {integrity: sha512-WTYHwlBhImGmmMt81crxaRvNdZXlBNemFyrP5GGHj2WeDTJMBrHgHTaladTypXHXrviFFBBGROl5moijRQ4ODA==}
-    engines: {node: '>=18'}
-
-  '@date-fns/tz@1.5.0':
-    resolution: {integrity: sha512-lwYN/vDPeNRULcepoE/LO2Pgx+7/RV+S9ARfbc9lr2DtGkOD7pAiruHvbR1RX3Qyf6ja47EWJDMsNK5vK08DJg==}
-
-  '@daypicker/react@10.0.1':
-    resolution: {integrity: sha512-lH4YQz4iMBWP8hsI1bD9Eg0T7t503IkSUR/WDGGkV5mKZvwVv+ukCkJz7yN+uVFBv7vHTK+ww7a5EvlkeFwPYQ==}
-    engines: {node: '>=18'}
+  '@distilled.cloud/aws@1.0.0-rc.2':
+    resolution: {integrity: sha512-hTWmdpfaKt6yLQ1YrJ17tp0DXINH7Wm5WQ05ap1FZW13Kwv+HzejXc4QPOYS6KT00Tlrfm6EEkTd3fDrY8dSGQ==}
     peerDependencies:
-      '@types/react': '>=16.8.0'
-      react: '>=16.8.0'
+      effect: 4.0.0-beta.103
+
+  '@distilled.cloud/axiom@1.0.0-rc.2':
+    resolution: {integrity: sha512-okRnWBdEQ6vYanYtiKbNzNJCgccEa7ZgeytHaNRTvIpHD4PlwG5WYwBsLkhTYjjudOvD5yjJ4H2N8dQQsJlGrg==}
+
+  '@distilled.cloud/cloudflare-rolldown-plugin@0.16.0':
+    resolution: {integrity: sha512-O/F+fYtUrspoWq6D8hk37PPqPu+e2wu+F/p8QkhcJIgpaNxKJliPSgXl8WrEDSXOh5nGmnVTXFWu2YFnbEIcLg==}
+    peerDependencies:
+      rolldown: ~1.1.5
+      vite: ^7.0.0 || ^8.0.0
     peerDependenciesMeta:
-      '@types/react':
+      rolldown:
+        optional: true
+      vite:
         optional: true
 
-  '@distilled.cloud/aws@1.0.0-rc.8':
-    resolution: {integrity: sha512-eL4tRACU4TSykk/6+ItwUTZs93r3tRlrBn36ohqaUxqYYOfmssYlt/SLCzos4nlLgCxb+1T6BAstgYC848v1EQ==}
+  '@distilled.cloud/cloudflare-runtime@0.16.0':
+    resolution: {integrity: sha512-66vUbNlsl2uVjdOe3NlbU8qRICphMWRyTUj3hcchOyyrG3yR4OqWqNtEeztTpN/qb4kXasB52MqM1Sv7vqRHQg==}
     peerDependencies:
-      effect: 4.0.0-rc.112
+      '@distilled.cloud/cloudflare': ^0.30.3
+      '@effect/platform-bun': 4.0.0-beta.103
+      '@effect/platform-node': 4.0.0-beta.103
+      effect: 4.0.0-beta.103
+    peerDependenciesMeta:
+      '@effect/platform-bun':
+        optional: true
+      '@effect/platform-node':
+        optional: true
 
-  '@distilled.cloud/axiom@1.0.0-rc.8':
-    resolution: {integrity: sha512-lczeM0FPuF1mLZu7V8vcj8Klm9b1VSo4A75PP2a4km/cjphDl9LKamUwrSGLEY9denmqd1nn4+g2Svw1UmGpEw==}
+  '@distilled.cloud/cloudflare-vite-plugin@0.16.0':
+    resolution: {integrity: sha512-JPg5m/XP0aDKzU5R0tDpJXPfZ19GiqW58Odg088mlDbXOOyVq9XCr9Zqee3QzANRJzBZXlldiMVpAbN1ZbxK1g==}
     peerDependencies:
-      effect: 4.0.0-rc.112
+      '@distilled.cloud/cloudflare': ^0.30.3
+      '@distilled.cloud/cloudflare-runtime': 0.16.0
+      '@effect/platform-bun': 4.0.0-beta.103
+      '@effect/platform-node': 4.0.0-beta.103
+      effect: 4.0.0-beta.103
+      vite: ^7.0.0 || ^8.0.0
+    peerDependenciesMeta:
+      '@effect/platform-bun':
+        optional: true
+      '@effect/platform-node':
+        optional: true
 
-  '@distilled.cloud/cloudflare@1.0.0-rc.8':
-    resolution: {integrity: sha512-nhEyGOaupi/JmT0PS1DEMH5Ebwu004pvQv3Emzt9MJz3mF3LTdiuAnxP86rf3jsFtfa826TDokKArVMq55OKRA==}
-    peerDependencies:
-      effect: 4.0.0-rc.112
+  '@distilled.cloud/cloudflare@1.0.0-rc.2':
+    resolution: {integrity: sha512-GGO5I8OxY/0iUT2bj+Ug+ivrjS6V1/nvdMRfL8dLOrpBkIhR8AFkLPgdatBwdIWeJWRE5wdU4wy+aeHJNp3oJA==}
 
-  '@distilled.cloud/core@1.0.0-rc.8':
-    resolution: {integrity: sha512-baZMSaBh9kEyAqdhO+UbkvVDK+wqyI8d0UW0paSp5CqVResOl7ydHU4tCbBUOLoxOrqLRWfmImKrhW9SY1R8qw==}
+  '@distilled.cloud/core@1.0.0-rc.2':
+    resolution: {integrity: sha512-cVswTWsqC15Z9EPAOdRpfTG4UU8JPXhQEeH2ThW7Yh2BRl4lhIIOdxbRqUsRXPDMn24Mn08h2C3A6MGKP/KwLA==}
     peerDependencies:
-      effect: 4.0.0-rc.112
+      effect: 4.0.0-beta.103
 
-  '@distilled.cloud/fly-io@1.0.0-rc.8':
-    resolution: {integrity: sha512-0HqVLIpBxmuvrIrnmziz8iK39F5cBxkHlz43WR2s+tFidbPlCzmnci6gxixxiwMBCzcmiRmv57xQxuQzgfDQMw==}
-    peerDependencies:
-      effect: 4.0.0-rc.112
+  '@distilled.cloud/neon@1.0.0-rc.2':
+    resolution: {integrity: sha512-j1SRh/ionzWDeS8nO3+zF8h2zHNOddmTfqeev5LBs1pKeQWBJ3ZVDK3GeBACZzaeW3rCcll8eJEZ6fRnrp3xbw==}
 
-  '@distilled.cloud/hetzner@1.0.0-rc.8':
-    resolution: {integrity: sha512-CAPj912qUQXMetyFvJEc7PJnSG4DR6RBvGXCOfQcJVgGTspt/IdT3iIeIInTUf6rgFRsqoGiRfS4ywTqWoqLFA==}
-    peerDependencies:
-      effect: 4.0.0-rc.112
-
-  '@distilled.cloud/neon@1.0.0-rc.8':
-    resolution: {integrity: sha512-xIgxgoDyIs/G5lW8T2r4oyHpOcRzBO1wu7p46lU3ppuJ2rlJR4pmP9dF7KxStAVglr9yK3wmmmnraLoCAtd8Sg==}
-    peerDependencies:
-      effect: 4.0.0-rc.112
-
-  '@distilled.cloud/planetscale@1.0.0-rc.8':
-    resolution: {integrity: sha512-D0mnkT2Gnk/SKWoz05rkf7+sngH8+5m5ugjQ1GycsFMfTxUVSIVUIHX9yrO5vFrTsMlNsmrMR+7a9R3ZMGCWkA==}
-    peerDependencies:
-      effect: 4.0.0-rc.112
-
-  '@distilled.cloud/railway@1.0.0-rc.8':
-    resolution: {integrity: sha512-VW2YdbblVHhYww5JVtOjFlv3jBFl7xlt6/xTfkNxxgXgzJ5GYVlD3gPgBIpGy9Pcnv9rVRA6CL7QZeYeu47c9Q==}
-    peerDependencies:
-      effect: 4.0.0-rc.112
+  '@distilled.cloud/planetscale@1.0.0-rc.2':
+    resolution: {integrity: sha512-ucuQ0VM3bmovjzHoC/C7uo9634EQOJcI1gzx0jjdE2QIDsvy56UhjT3alilq9kADGz1V0/LUHOV3Xf1VqJf6Nw==}
 
   '@dnd-kit/accessibility@3.1.1':
     resolution: {integrity: sha512-2P+YgaXF+gRsIihwwY1gCsQSYnu9Zyj2py8kY5fFvUM1qm2WA2u639R6YNVfU4GWr+ZM5mqEsfHZZLoRONbemw==}
@@ -2153,10 +2114,10 @@ packages:
   '@effect/sql-sqlite-do@4.0.0-rc.112':
     resolution: {integrity: sha512-PewNVasimmhrdxYbNU91O0YlCcalIHOoF0H5XAWXrmzcEQrKM7kVCyb5h0gmJAZjBM4ZgWRvPY0PUOfbNmWchQ==}
     peerDependencies:
-      effect: 4.0.0-rc.112
+      effect: 4.0.0-beta.103
 
-  '@effect/tsgo-darwin-arm64@0.41.0':
-    resolution: {integrity: sha512-3iEPtcHF72yDjv7T5YpnX+Io1LDLywJb1oGG3Fp/Fth4xmqiT1Vacyz5wnPCfEWGQ6CyrlyCZSSjUxPyJ70+DQ==}
+  '@effect/tsgo-darwin-arm64@0.13.2':
+    resolution: {integrity: sha512-AlYlxU2sD3urNCmNCQWtatPJS/+m2r3CvgZdDTs9KEz2YcyQc2GV1g2RWFkoMwmgzYBx69DBLu1oscqJO2qAog==}
     cpu: [arm64]
     os: [darwin]
 
@@ -2216,10 +2177,6 @@ packages:
 
   '@electric-sql/pglite@0.3.15':
     resolution: {integrity: sha512-Cj++n1Mekf9ETfdc16TlDi+cDDQF0W7EcbyRHYOAeZdsAe8M/FJg18itDTSwyHfar2WIezawM9o0EKaRGVKygQ==}
-
-  '@electron-internal/extract-zip@1.0.5':
-    resolution: {integrity: sha512-+bqFCP98pLI0Tt0XQo1TmlXtwjWchISndDOxCkEcIuUgXWpBnLyRI+2DU+mesvnMMX6L1XDqYNA0lXNDHd/yiA==}
-    engines: {node: '>=22.12.0'}
 
   '@electron/asar@3.4.1':
     resolution: {integrity: sha512-i4/rNPRS84t0vSRa2HorerGRXWyF4vThfHesw0dmcWHp+cspK743UanA0suA5Q5y8kzY2y6YKrvbIUn69BCAiA==}
@@ -4307,18 +4264,10 @@ packages:
   '@prisma/query-plan-executor@7.2.0':
     resolution: {integrity: sha512-EOZmNzcV8uJ0mae3DhTsiHgoNCuu1J9mULQpGCh62zN3PxPTd+qI9tJvk5jOst8WHKQNwJWR3b39t0XvfBB0WQ==}
 
-  '@puppeteer/browsers@3.2.2':
-    resolution: {integrity: sha512-q2BU4YfO9h/Wt7IcWPcggpOOqLk2Tbs1hDwolvKZrweRjy751OJBKMN9zO5bfD0pzU7X/tvKw/exQds4pM/LOg==}
-    engines: {node: '>=22.12.0'}
+  '@puppeteer/browsers@2.13.2':
+    resolution: {integrity: sha512-5EUZSUIc37H6aIXyWO0Z4y8NlF8NnjgmqeQgOGiswAU7pY0HOo16ho4+alIWmSfdZnjqBRawMsP3I5YqLSn6kw==}
+    engines: {node: '>=18'}
     hasBin: true
-    peerDependencies:
-      proxy-agent: '>=8.0.1'
-      yauzl: ^2.10.0 || ^3.4.0
-    peerDependenciesMeta:
-      proxy-agent:
-        optional: true
-      yauzl:
-        optional: true
 
   '@radix-ui/primitive@1.1.3':
     resolution: {integrity: sha512-JTF99U/6XIjCBo0wqkU5sK10glYe27MRRsfwoiq5zzOEZLHU3A3KCMa5X/azekYRCJ0HlwI0crAXS/5dEHTzDg==}
@@ -5353,6 +5302,9 @@ packages:
     peerDependencies:
       '@testing-library/dom': '>=7.21.4'
 
+  '@tootallnate/quickjs-emscripten@0.23.0':
+    resolution: {integrity: sha512-C5Mc6rdnsaJDjO3UpGW/CQTHtCKaYlScZTly4JIu97Jxo/odCiH0ITnDXSJPTOrEKk/ycSZ0AOgTmkDtkOsvIA==}
+
   '@tybys/wasm-util@0.10.3':
     resolution: {integrity: sha512-F3fo1MYrRJYL3zER0OUOmkutjr1Vp23m7OsSgp7nq4SP6OqX6C/56XFIPAl5bt3zaBRjmW7SGz3u/6LwFpYcOg==}
 
@@ -6108,23 +6060,23 @@ packages:
   ajv@8.20.0:
     resolution: {integrity: sha512-Thbli+OlOj+iMPYFBVBfJ3OmCAnaSyNn4M1vz9T6Gka5Jt9ba/HIR56joy65tY6kx/FCF5VXNB819Y7/GUrBGA==}
 
-  alchemy@2.0.0-beta.76:
-    resolution: {integrity: sha512-XpcsXWk38YV9nO0v7s5PPjlMVtF8OQPeP8YqLu1iMzrq33bwViEOqkwQn3cgFiD7/QsnNcCju+hCXyeBwXrdtg==}
+  alchemy@2.0.0-beta.68:
+    resolution: {integrity: sha512-jD2bS3K6HZaqi5WhF0amcn8xYrY/9X3bgIxRhXdHvOWkS0aoCYg2K8wzgze6Oqlr0WzyFVl/OobuTS9jvwfDJg==}
     hasBin: true
     peerDependencies:
       '@alchemy.run/frontend-frameworks': 2.0.0-beta.76
       '@aws/durable-execution-sdk-js': ^2.1.0
-      '@effect/platform-bun': '>=4.0.0-rc.112 || >=4.0.0'
-      '@effect/platform-node': 4.0.0-rc.112
-      '@effect/sql-mysql2': '>=4.0.0-rc.112 || >=4.0.0'
-      '@effect/sql-pg': 4.0.0-rc.112
+      '@effect/platform-bun': 4.0.0-beta.103
+      '@effect/platform-node': 4.0.0-beta.103
+      '@effect/sql-mysql2': '>=4.0.0-beta.102 || >=4.0.0'
+      '@effect/sql-pg': 4.0.0-beta.103
       '@vercel/nft': ^1.10.2
-      drizzle-kit: 1.0.0-rc.5-ab785fc
-      drizzle-orm: 1.0.0-rc.5-ab785fc
-      effect: 4.0.0-rc.112
+      drizzle-kit: 1.0.0-rc.4
+      drizzle-orm: 1.0.0-rc.4
+      effect: 4.0.0-beta.103
       mongodb: ^6.10.0
-      mysql2: ^3.24.2
-      pg: ^8.22.0
+      mysql2: ^3.15.3
+      pg: ^8.13.0
       vite: ^8.0.7
       ws: ^8.20.0
     peerDependenciesMeta:
@@ -6252,6 +6204,10 @@ packages:
     resolution: {integrity: sha512-Izi8RQcffqCeNVgFigKli1ssklIbpHnCYc6AknXGYoB6grJqyeby7jv12JUQgmTAnIDnbck1uxksT4dzN3PWBA==}
     engines: {node: '>=12'}
 
+  ast-types@0.13.4:
+    resolution: {integrity: sha512-x1FCFnFifvYDDzTaLII71vG5uvDwgtmDTEVWAxrgeiR8VjMONcCXJx7E+USjDtHlwFmt9MysbqgF9b9Vjr6w+w==}
+    engines: {node: '>=4'}
+
   astro@7.0.3:
     resolution: {integrity: sha512-CK+G+Tl2DMV1EXCwVG45vyurxf2IfRTklMxDhRKn+tst9Yl8rWXpudL62Fa6zin5Bt968FBvuyASj1aJShROZg==}
     engines: {node: '>=22.12.0', npm: '>=9.6.5', pnpm: '>=7.1.0'}
@@ -6296,6 +6252,14 @@ packages:
   axobject-query@4.1.0:
     resolution: {integrity: sha512-qIj0G9wZbMGNLjLmg1PT6v2mE9AH2zlnADJD/2tC6E00hgmhUOfEB6greHPAfLRSufHqROIUTkw6E+M3lH0PTQ==}
     engines: {node: '>= 0.4'}
+
+  b4a@1.8.1:
+    resolution: {integrity: sha512-aiqre1Nr0B/6DgE2N5vwTc+2/oQZ4Wh1t4NznYY4E00y8LCt6NqdRv81so00oo27D8MVKTpUa/MwUUtBLXCoDw==}
+    peerDependencies:
+      react-native-b4a: '*'
+    peerDependenciesMeta:
+      react-native-b4a:
+        optional: true
 
   babel-dead-code-elimination@1.0.12:
     resolution: {integrity: sha512-GERT7L2TiYcYDtYk1IpD+ASAYXjKbLTDPhBtYj7X1NuRMDTMtAx9kyBenub1Ev41lo91OHCKdmP+egTDmfQ7Ig==}
@@ -6361,6 +6325,43 @@ packages:
   barcode-detector@3.2.0:
     resolution: {integrity: sha512-MrT5TT058ptG5YB157pHLfXKVpp0BKEfQBOb8QvzTbatzmLDu85JJ0Gd/sCYwbwdwStJvxsYflrSN6D6E4Ndyw==}
 
+  bare-events@2.9.2:
+    resolution: {integrity: sha512-AIPKioV7/Y/8KfZ3AAhjPJxLLbY49S64Ym5DakZlUg75qQiTgUq9hEJoEwa4eUezPUlXRy/i5NpsKvo9jgKmoA==}
+    peerDependencies:
+      bare-abort-controller: '*'
+    peerDependenciesMeta:
+      bare-abort-controller:
+        optional: true
+
+  bare-fs@4.8.1:
+    resolution: {integrity: sha512-N1nnXdHZAOSstz0XiHikGS4HGMH4CnSwhqWdGQQMqqdvp4Jybm9sE3R1WVnpWVd4SFkc8ryPDBLViNLwiEqECg==}
+    engines: {bare: '>=1.28.0'}
+    peerDependencies:
+      bare-buffer: '*'
+    peerDependenciesMeta:
+      bare-buffer:
+        optional: true
+
+  bare-path@3.1.1:
+    resolution: {integrity: sha512-JprUlveX3QjApC1cTpsUOiscADftCGVWkzitbHsRqv84hzYwYHw2mbluddsq5TvI8mH/8Ov1f4BiMAdcB0oYnQ==}
+
+  bare-stream@2.13.4:
+    resolution: {integrity: sha512-PcrQ8lVLbiJscNm1Kez+Yp4Gy4AHGcN1lzwjvf5NybWen7VvEgUfyfnXYJ2zNqWnzOfCb1Abq6lH8ti0syQszA==}
+    peerDependencies:
+      bare-abort-controller: '*'
+      bare-buffer: '*'
+      bare-events: '*'
+    peerDependenciesMeta:
+      bare-abort-controller:
+        optional: true
+      bare-buffer:
+        optional: true
+      bare-events:
+        optional: true
+
+  bare-url@2.5.2:
+    resolution: {integrity: sha512-L13PCJzKG8RGvx8V1/DdMi12ERhC3tprr7/8a94BxpmnRsFqxh5XZNdhtMxu5HPkRshYOOWRGY8lDP7ZhpG9Cg==}
+
   base-64@1.0.0:
     resolution: {integrity: sha512-kwDPIFCGx0NZHog36dj+tHiwP4QMzsZ3AgMViUBKI0+V5n4U0ufTCUMhnQ04diaRI8EX/QcPfql7zlhZ7j4zgg==}
 
@@ -6371,6 +6372,10 @@ packages:
     resolution: {integrity: sha512-bA6+tcSLpz2tIEdDXZPpPTIuxBcC4+w6SieaYyfigIa4h8GlFxbA17v22Vx3JUtuZQj9SgOsnbK+aTBzyDyEuw==}
     engines: {node: '>=6.0.0'}
     hasBin: true
+
+  basic-ftp@5.3.1:
+    resolution: {integrity: sha512-bopVNp6ugyA150DDuZfPFdt1KZ5a94ZDiwX4hMgZDzF+GttD80lEy8kj98kbyhLXnPvhtIo93mdnLIjpCAeeOw==}
+    engines: {node: '>=10.0.0'}
 
   before-after-hook@4.0.0:
     resolution: {integrity: sha512-q6tR3RPqIB1pMiTRMFcZwuG5T8vwp+vUvEG0vuI6B+Rikh5BfPp2fQ82c925FOs+b0lcFQ8CFrL+KbilfZFhOQ==}
@@ -6827,11 +6832,9 @@ packages:
     resolution: {integrity: sha512-1+BhOB8ahCn4O0cep0Sh2l9KCOfOdY+BXJnKMHFFzDEouSr/el18QwXEMRlOj9UY5nCeA8UN3a/82rUWRBeyBw==}
     engines: {node: ^12.20.0 || ^14.13.1 || >=16.0.0}
 
-  date-fns@4.4.0:
-    resolution: {integrity: sha512-+1UMbeh68lH1SegH83CGWwpb6OHHbpSgr3+s5Eww5M4CAgswBpoWS0AjTOfEJ33HiYKz1hdj/KTFprzXHmq/6w==}
-
-  dbus-next@0.10.2:
-    resolution: {integrity: sha512-kLNQoadPstLgKKGIXKrnRsMgtAK/o+ix3ZmcfTfvBHzghiO9yHXpoKImGnB50EXwnfSFaSAullW/7UrSkAISSQ==}
+  data-uri-to-buffer@6.0.2:
+    resolution: {integrity: sha512-7hvf7/GW8e86rW0ptuwS3OcBGDjIi6SZva7hCyWC0yYry2cOPmLIjXAUHI6DK2HsnwJd9ifmt57i8eV2n4YNpw==}
+    engines: {node: '>= 14'}
 
   debounce-fn@4.0.0:
     resolution: {integrity: sha512-8pYCQiL9Xdcg0UPSD3d+0KMlOjp+KGU5EPwYddgzQ7DATsg4fuUDjQtsYLmWjnk2obnNHgV3vE2Y4jejSOJVBQ==}
@@ -6894,6 +6897,10 @@ packages:
 
   defu@6.1.7:
     resolution: {integrity: sha512-7z22QmUWiQ/2d0KkdYmANbRUVABpZ9SNYyH5vx6PZ+nE5bcC0l7uFvEfHlyld/HcGBFTL536ClDt3DEcSlEJAQ==}
+
+  degenerator@5.0.1:
+    resolution: {integrity: sha512-TllpMR/t0M5sqCXfj85i4XaAzxmS5tVA16dqvdkMwGmzI+dXLXnw3J+3Vdv7VKw+ThlTMboK6i9rnZ6Nntj5CQ==}
+    engines: {node: '>= 14'}
 
   delayed-stream@1.0.0:
     resolution: {integrity: sha512-ZySD7Nf91aLB0RxL4KGrKHBXl7Eds1DAmEdcoVawXnLD7SDhpNgtuII2aAkg7a7QS41jxPSZ17p4VdGnMHk3MQ==}
@@ -7304,6 +7311,20 @@ packages:
     resolution: {integrity: sha512-/veY75JbMK4j1yjvuUxuVsiS/hr/4iHs9FTT6cgTexxdE0Ly/glccBAkloH/DofkjRbZU3bnoj38mOmhkZ0lHw==}
     engines: {node: '>=12'}
 
+  escodegen@2.1.0:
+    resolution: {integrity: sha512-2NlIDTwUWJN0mRPQOdtQBzbUHvdGY2P1VXSyU83Q3xKxM7WHX2Ql8dKq782Q9TgQUNOLEzEYu9bzLNj1q88I5w==}
+    engines: {node: '>=6.0'}
+    hasBin: true
+
+  esprima@4.0.1:
+    resolution: {integrity: sha512-eGuFFw7Upda+g4p+QHvnW0RyTX/SVeJBDM/gCtMARO0cLuT2HcEKnTPvhjV6aGeqrCB/sbNop0Kszm0jsaWU4A==}
+    engines: {node: '>=4'}
+    hasBin: true
+
+  estraverse@5.3.0:
+    resolution: {integrity: sha512-MMdARuVEQziNTeJD8DgMqmhwR11BRQ/cBP+pLtYdSTnf3MIO8fFeiINEbX36ZdNlfU/7A9f3gUw49B3oQsvwBA==}
+    engines: {node: '>=4.0'}
+
   estree-util-is-identifier-name@3.0.0:
     resolution: {integrity: sha512-hFtqIDZTIUZ9BXLb8y4pYGyk6+wekIivNVTcmvk8NoOh+VeRn5y6cEHzbURrWbfp1fIqdVipilzj+lfaadNZmg==}
 
@@ -7312,6 +7333,10 @@ packages:
 
   estree-walker@3.0.3:
     resolution: {integrity: sha512-7RUKfXgSMMkzt6ZuXmqapOurLGPPfgj6l9uRZ7lRGolvk0y2yocc35LdcxKC5PQZdn2DMqioAQ2NoWcrTKmm6g==}
+
+  esutils@2.0.3:
+    resolution: {integrity: sha512-kVscqXk4OCp68SZ0dkgEKVi6/8ij300KBWTJq32P/dYeWTSwK41WyTxalN1eRmA5Z9UU/LX9D7FWSmV9SAYx6g==}
+    engines: {node: '>=0.10.0'}
 
   etag@1.8.1:
     resolution: {integrity: sha512-aIL5Fx7mawVa300al2BnEE4iNvo1qETxLrPI/o05L7z6go7fCw1J6EQmbK4FmJ2AS7kgVF/KEZWufBfdClMcPg==}
@@ -7326,6 +7351,9 @@ packages:
 
   eventemitter3@5.0.4:
     resolution: {integrity: sha512-mlsTRyGaPBjPedk6Bvw+aqbsXDtoAyAzm5MO7JgU+yVRyMQ5O8bD4Kcci7BS85f93veegeCPkL8R4GLClnjLFw==}
+
+  events-universal@1.0.1:
+    resolution: {integrity: sha512-LUd5euvbMLpwOF8m6ivPCbhQeSiYVNb8Vs0fQ8QjXo0JTkEHpz8pxdQf0gStltaPpw0Cca8b39KxvK9cfKRiAw==}
 
   eventsource-parser@3.1.0:
     resolution: {integrity: sha512-kJezFj9YFAMLeORyi7aCLxLbD5/qWMQnoMVlVPyHIll7lgRJCc3JVln9Vgl9nwQi0YkMnhdGTMNn7CkRRAptMg==}
@@ -7678,6 +7706,9 @@ packages:
   fast-deep-equal@3.1.3:
     resolution: {integrity: sha512-f3qQ9oQy9j2AhBe/H9VC91wLmKBCCU/gDOnKNAYG5hswO7BLKj09Hc5HYNz9cGI++xlpDCIgDaitVs03ATR84Q==}
 
+  fast-fifo@1.3.2:
+    resolution: {integrity: sha512-/d9sfos4yxzpwkDkuN7k2SqFKtYNmCTzgfEpz82x34IM9/zc8KGxQoXg1liNC/izpRM/MBdt44Nmx41ZWqk+FQ==}
+
   fast-glob@3.3.3:
     resolution: {integrity: sha512-7MptL8U0cqcFdzIzwOTHoilX9x5BrNqye7Z/LuC7kCMRio1EMSyqRK3BEAUD7sXRq4iT4AzTVuZdhgQ2TCvYLg==}
     engines: {node: '>=8.6.0'}
@@ -7887,6 +7918,10 @@ packages:
   get-tsconfig@5.0.0-beta.4:
     resolution: {integrity: sha512-7nF7C9fIPFEMHgEMEfgIlO9wDdZ8CyHw27rWciFZfHvHDReIiPhsYuzPRXsfvBCqFy1l8RRyyWV7QLM+ZhUJsQ==}
     engines: {node: '>=20.20.0'}
+
+  get-uri@6.0.5:
+    resolution: {integrity: sha512-b1O07XYq8eRuVzBNgJLstU6FYc1tS6wnMtF1I1D9lE8LxZSOGZ7LhxN54yPP6mGw5f2CkXY2BQUL9Fx41qvcIg==}
+    engines: {node: '>= 14'}
 
   getenv@2.0.0:
     resolution: {integrity: sha512-VilgtJj/ALgGY77fiLam5iD336eSWi96Q15JSAG1zi8NRBysm3LXKdGnHb4m5cuyxvOLQQKWpBZAT6ni4FI2iQ==}
@@ -8578,6 +8613,14 @@ packages:
     resolution: {integrity: sha512-Jo6dJ04CmSjuznwJSS3pUeWmd/H0ffTlkXXgwZi+eq1UCmqQwCh+eLsYOYCwY991i2Fah4h1BEMCx4qThGbsiA==}
     engines: {node: '>=10'}
 
+  lru-cache@7.18.3:
+    resolution: {integrity: sha512-jumlc0BIUrS3qJGgIkWZsyfAM7NCWiBcCDhnd+3NNM5KbBmLTgHVfWBcg6W+rLUsIpzpERPsvwUP7CckAQSOoA==}
+    engines: {node: '>=12'}
+
+  lru.min@1.1.4:
+    resolution: {integrity: sha512-DqC6n3QQ77zdFpCMASA1a3Jlb64Hv2N2DciFGkO/4L9+q/IpIAuRlKOvCXabtRW6cQf8usbmM6BE/TOPysCdIA==}
+    engines: {bun: '>=1.0.0', deno: '>=1.30.0', node: '>=8.0.0'}
+
   lru_map@0.4.1:
     resolution: {integrity: sha512-I+lBvqMMFfqaV8CJCISjI3wbjmwVu/VyOoU7+qtu9d7ioW5klMgsTTiUOUp+DJvfTTzKXoPbyC6YfgkNcyPSOg==}
 
@@ -9089,6 +9132,10 @@ packages:
     resolution: {integrity: sha512-Z4SmBUweYa09+o6pG+eASabEpP6QkQ70yHj351pQoEXIs8uHbaU2DWVmzBANKgflPa47A50PtB2+NgRpQvr7vA==}
     engines: {node: '>= 10'}
 
+  netmask@2.1.1:
+    resolution: {integrity: sha512-eonl3sLUha+S1GzTPxychyhnUzKyeQkZ7jLjKrBagJgPla13F+uQ71HgpFefyHgqrjEbCPkDArxYsjY8/+gLKA==}
+    engines: {node: '>= 0.4.0'}
+
   nlcst-to-string@4.0.0:
     resolution: {integrity: sha512-YKLBCcUYKAg0FNlOBT6aI91qFmSiFKiluk655WzPF+DDMA02qIyy8uiRqI8QXtcFpEvll12LpL5MXqEmAZ+dcA==}
 
@@ -9340,6 +9387,14 @@ packages:
     resolution: {integrity: sha512-R4nPAVTAU0B9D35/Gk3uJf/7XYbQcyohSKdvAxIRSNghFl4e71hVoGnBNQz9cWaXxO2I10KTC+3jMdvvoKw6dQ==}
     engines: {node: '>=6'}
 
+  pac-proxy-agent@7.2.0:
+    resolution: {integrity: sha512-TEB8ESquiLMc0lV8vcd5Ql/JAKAoyzHFXaStwjkzpOpC5Yv+pIzLfHvjTSdf3vpa2bMiUQrg9i6276yn8666aA==}
+    engines: {node: '>= 14'}
+
+  pac-resolver@7.0.1:
+    resolution: {integrity: sha512-5NPgf87AT2STgwa2ntRMr45jTKrYBGkVU36yT0ig/n/GMAa3oPqhZfIQ2kMEimReg0+t9kZViDVZ83qfVUlckg==}
+    engines: {node: '>= 14'}
+
   package-manager-detector@1.6.0:
     resolution: {integrity: sha512-61A5ThoTiDG/C8s8UMZwSorAGwMJ0ERVGj2OjoW5pAalsNOg15+iQiPzrLJ4jhZ1HJzmC2PIHT2oEiH3R5fzNA==}
 
@@ -9442,8 +9497,8 @@ packages:
     peerDependencies:
       pg: '>=8.0'
 
-  pg-protocol@1.16.0:
-    resolution: {integrity: sha512-sILXutLVjCLjcDuOmvhX5e2Z4cS5qG/6Bu3VkpFwdf/633ElGLpEh9bgmuI5I4sqKqkifQiGyiCcx1HdtrK7tg==}
+  pg-protocol@1.15.0:
+    resolution: {integrity: sha512-cq9sECI5s0+uPUXjbz8ioyPJni6RzsRib0US67i5IoTZKw8fNeYlVE7u8F4dG7vEJJtc5wdD1K189lCCUwqWTQ==}
 
   pg-types@2.2.0:
     resolution: {integrity: sha512-qTAAlrEsl8s4OiEQY69wDvcMIdQN6wdz5ojQiOy6YRMuynxenON0O5oCpJI6lshc6scgAY8qvJ2On/p+CXY0GA==}
@@ -9453,8 +9508,8 @@ packages:
     resolution: {integrity: sha512-o2XFanIMy/3+mThw69O8d4n1E5zsLhdO+OPqswezu7Z5ekP4hYDqlDjlmOpYMbzY2Br0ufCwJLdDIXeNVwcWFg==}
     engines: {node: '>=10'}
 
-  pg@8.23.0:
-    resolution: {integrity: sha512-Ip2EQCngowJLGOfCwkFhPXU7/ljlhn6Rxlmy4XYfL2Y+vyRM59+8uR2xqRWKdYmbXmxCFOAmKxBuSUCdF34qLg==}
+  pg@8.22.0:
+    resolution: {integrity: sha512-8wih1vVIBMxoUM2oB4soJsD9tDnDpLv4OXBJ+EJzFsvycD+lfyIreC2gGHq78f8jbLLt+bvlPTFdFZfJkOuzAA==}
     engines: {node: '>= 16.0.0'}
     peerDependencies:
       pg-native: '>=3.0.1'
@@ -9631,6 +9686,13 @@ packages:
   proxy-addr@2.0.7:
     resolution: {integrity: sha512-llQsMLSUDUPT44jdrU/O37qlnifitDP+ZwrmmZcoSKyLKvtZxpyV0n2/bD/N4tBAAZ/gJEdZU7KMraoK1+XYAg==}
     engines: {node: '>= 0.10'}
+
+  proxy-agent@6.5.0:
+    resolution: {integrity: sha512-TmatMXdr2KlRiA2CyDu8GqR8EjahTG3aY3nXjdzFyoZbmB8hrBsTyMezhULIXKnC0jpfjlmiZ3+EaCzoInSu/A==}
+    engines: {node: '>= 14'}
+
+  proxy-from-env@1.1.0:
+    resolution: {integrity: sha512-D+zkORCbA9f1tdWRK0RaCR3GPv50cMxcrz4X8k5LTSUD1Dkw47mKJEZQNunItRTkWwgtaUSo1RVFRIG9ZXiFYg==}
 
   pump@3.0.4:
     resolution: {integrity: sha512-VS7sjc6KR7e1ukRFhQSY5LM2uBWAUPiOPa/A3mkKmiMwSmRFUITt0xuj+/lesgnCv+dPIEYlkzrcyXgquIHMcA==}
@@ -10311,9 +10373,13 @@ packages:
     resolution: {integrity: sha512-aqVvWoyO21L23mb+drl4RmMXbf6N7FdHjAhTRA9ZBL7apWBgfWC16KjrASI+1p9GAroljyMHj6fK67i0UiTNvQ==}
     engines: {node: '>= 18'}
 
-  smol-toml@1.8.0:
-    resolution: {integrity: sha512-kCZr2V3ch9i00x8zXRhjUNVcjG9ijES5dDudkXvUVCT5QlJNQWElSJdZqyPemffHoLNUYwOcou0Fy+ojN0uHSQ==}
-    engines: {node: '>= 18'}
+  socks-proxy-agent@8.0.5:
+    resolution: {integrity: sha512-HehCEsotFqbPW9sJ8WVYB6UbmIMv7kUUORIF2Nncq4VQvBfNBLibW9YZR5dlYCSUhwcD628pRllm7n+E+YTzJw==}
+    engines: {node: '>= 14'}
+
+  socks@2.8.9:
+    resolution: {integrity: sha512-LJhUYUvItdQ0LkJTmPeaEObWXAqFyfmP85x0tch/ez9cahmhlBBLbIqDFnvBnUJGagb0JbIQrkBs1wJ+yRYpEw==}
+    engines: {node: '>= 10.0.0', npm: '>= 3.0.0'}
 
   socks@2.8.9:
     resolution: {integrity: sha512-LJhUYUvItdQ0LkJTmPeaEObWXAqFyfmP85x0tch/ez9cahmhlBBLbIqDFnvBnUJGagb0JbIQrkBs1wJ+yRYpEw==}
@@ -10403,15 +10469,8 @@ packages:
     resolution: {integrity: sha512-uyQK/mx5QjHun80FLJTfaWE7JtwfRMKBLkMne6udYOmvH0CawotVa7TfgYHzAnpphn4+TweIx1QKMnRIbipmUg==}
     engines: {node: '>= 0.10.0'}
 
-  stream-chain@4.2.5:
-    resolution: {integrity: sha512-Wtyq3bNE3ggLR0v2vftqvuhltym3WbZAkZpfIrkr5F/6vpeUmWmwTgXa16zD87gpahwJ/Qulq3zVfUlgIc0J2A==}
-    engines: {node: '>=22'}
-
-  stream-combiner@0.0.4:
-    resolution: {integrity: sha512-rT00SPnTVyRsaSz5zgSPma/aHSOic5U1prhYdRy5HS2kTZviFpmDgzilbtsJsxiroqACmayynDN/9VzIbX5DOw==}
-
-  stream-json@3.6.0:
-    resolution: {integrity: sha512-NiJdqxKyau579z/E8vfqcjWfSDWxW/AT99javFXdPXF147Z5za85LRXSHEmSX9TKOakB7gaIccfD0fOIctb7KQ==}
+  streamx@2.28.1:
+    resolution: {integrity: sha512-zEzXb0s5Cds7tqMH6rhZ05lcJydCWiQPEwiNngVqzsxCc962vLY4Uw+mW7od8kDH258k2Uz/JrOkdIAAhSh9VA==}
 
   strict-event-emitter@0.5.1:
     resolution: {integrity: sha512-vMgjE/GGEPEFnhFub6pa4FmJBRBVOLpIII2hvCZ8Kzb7K0hlHo7mQv6xYrBvCL2LtAIBwFUK8wvuJgTVSQ5MFQ==}
@@ -10516,9 +10575,18 @@ packages:
     resolution: {integrity: sha512-uxc/zpqFg6x7C8vOE7lh6Lbda8eEL9zmVm/PLeTPBRhh1xCgdWaQ+J1CUieGpIfm2HdtsUpRv+HshiasBMcc6A==}
     engines: {node: '>=6'}
 
+  tar-fs@3.1.3:
+    resolution: {integrity: sha512-/hU4AXnIdZu+Gvl1pk0oI5f5HxWsCJRtY2aFaJdk9VvyL48DWU6iU5WAIPG+wIi1YvWA6eTJvIviP/tMAZZNwQ==}
+
+  tar-stream@3.2.1:
+    resolution: {integrity: sha512-nqsEO8zLZJvrOMdEwkA0QdCLFbetHMn95Zqu4fKwX+hkaTWJPZZOrxx/PwtxoK0MMGQmBQNRW3CPs8IFYQz4cQ==}
+
   tar@7.5.16:
     resolution: {integrity: sha512-56adEpPMouktRlBLXiaYFFzZ/3+JXa8P9n7WbR+ibIjtviN55mEaOkiysCnPnWm+7kkui1Dn8J9l+g6zV8731w==}
     engines: {node: '>=18'}
+
+  teex@1.0.1:
+    resolution: {integrity: sha512-eYE6iEI62Ni1H8oIa7KlDU6uQBtqr4Eajni3wX7rpfXD8ysFx8z0+dri+KWEPWpBsxXfxu58x/0jvTVT1ekOSg==}
 
   temp-file@3.4.0:
     resolution: {integrity: sha512-C5tjlC/HCtVUOi3KWVokd4vHVViOmGjtLwIh4MuzPo/nMYTV/p1urt3RnMz2IWXDdKEGJH3k5+KPxtqRsUYGtg==}
@@ -10539,6 +10607,9 @@ packages:
     resolution: {integrity: sha512-J/9An6vs9Us6wKRriSFXBWdRZapREHqFzdNUKk0pmu804EMR6dr6winwo7e5JDxN4xahxQsuysyYFwlwj4XN/Q==}
     engines: {node: '>=10'}
     hasBin: true
+
+  text-decoder@1.2.7:
+    resolution: {integrity: sha512-vlLytXkeP4xvEq2otHeJfSQIRyWxo/oZGEbXrtEEF9Hnmrdly59sUbzZ/QgyWuLYHctCHxFF4tRQZNQ9k60ExQ==}
 
   throat@5.0.0:
     resolution: {integrity: sha512-fcwX4mndzpLQKBS1DVYhGAcYaYt7vsHNIvQV+WXMvnow5cgjPphq5CaayLaGsjRdSCKZFNGt7/GYAuXaNOiYCA==}
@@ -11347,11 +11418,8 @@ packages:
   yoga-layout@3.2.1:
     resolution: {integrity: sha512-0LPOt3AxKqMdFBZA3HBAt/t/8vIKq7VaQYbuA8WxCgung+p9TVyKRYdpvCb80HcdTN2NkbIKbhNwKUfm3tQywQ==}
 
-  yuku-codegen@0.5.48:
-    resolution: {integrity: sha512-p7HxD5Xl4jzDzqMrGePAOeSHmRY4g58h4HuGq15weQFPxuPWd/W6e7nqp/+Lea6JfpOdBwJOAyXFqIZ/J9Zfnw==}
-
-  yuku-parser@0.5.48:
-    resolution: {integrity: sha512-OWBfhrpgK9+/4+IXG9oT8Bao4AhViQA7vdyNNH7EUg8dQYgwa70XtIBWTpCEme1P1ECyoDNYkn0wT63f8XRcVA==}
+  zeptomatch@2.1.0:
+    resolution: {integrity: sha512-KiGErG2J0G82LSpniV0CtIzjlJ10E04j02VOudJsPyPwNZgGnRKQy7I1R7GMyg/QswnE4l7ohSGrQbQbjXPPDA==}
 
   zeptomatch@2.1.0:
     resolution: {integrity: sha512-KiGErG2J0G82LSpniV0CtIzjlJ10E04j02VOudJsPyPwNZgGnRKQy7I1R7GMyg/QswnE4l7ohSGrQbQbjXPPDA==}
@@ -12567,51 +12635,15 @@ snapshots:
 
   '@cloudflare/workers-types@4.20260604.1': {}
 
-  '@cloudflare/workers-types@5.20260907.1': {}
+  '@cloudflare/workers-types@5.20260828.1': {}
 
-  '@crowecawcaw/xa11y-darwin-arm64@0.13.0':
-    optional: true
-
-  '@crowecawcaw/xa11y-darwin-x64@0.13.0':
-    optional: true
-
-  '@crowecawcaw/xa11y-linux-arm64-gnu@0.13.0':
-    optional: true
-
-  '@crowecawcaw/xa11y-linux-x64-gnu@0.13.0':
-    optional: true
-
-  '@crowecawcaw/xa11y-win32-arm64-msvc@0.13.0':
-    optional: true
-
-  '@crowecawcaw/xa11y-win32-x64-msvc@0.13.0':
-    optional: true
-
-  '@crowecawcaw/xa11y@0.13.0':
-    optionalDependencies:
-      '@crowecawcaw/xa11y-darwin-arm64': 0.13.0
-      '@crowecawcaw/xa11y-darwin-x64': 0.13.0
-      '@crowecawcaw/xa11y-linux-arm64-gnu': 0.13.0
-      '@crowecawcaw/xa11y-linux-x64-gnu': 0.13.0
-      '@crowecawcaw/xa11y-win32-arm64-msvc': 0.13.0
-      '@crowecawcaw/xa11y-win32-x64-msvc': 0.13.0
-
-  '@date-fns/tz@1.5.0': {}
-
-  '@daypicker/react@10.0.1(@types/react@19.2.16)(react@19.2.6)':
-    dependencies:
-      react: 19.2.6
-      react-day-picker: 10.0.1(@types/react@19.2.16)(react@19.2.6)
-    optionalDependencies:
-      '@types/react': 19.2.16
-
-  '@distilled.cloud/aws@1.0.0-rc.8(effect@4.0.0-rc.112(patch_hash=8bef799f35729cf3465eb428196f617b434a7c9f658d56acb2874d74b21b98b2))':
+  '@distilled.cloud/aws@1.0.0-rc.2(effect@4.0.0-beta.103(patch_hash=af36b7948b6f9c56623074662b51dade5699880c1a7c71245de73e13c3185fb6))':
     dependencies:
       '@aws-crypto/crc32': 5.2.0
       '@aws-crypto/util': 5.2.0
       '@aws-sdk/credential-providers': 3.1062.0
       '@aws-sdk/types': 3.973.10
-      '@distilled.cloud/core': 1.0.0-rc.8(effect@4.0.0-rc.112(patch_hash=8bef799f35729cf3465eb428196f617b434a7c9f658d56acb2874d74b21b98b2))
+      '@distilled.cloud/core': 1.0.0-rc.2(effect@4.0.0-beta.103(patch_hash=af36b7948b6f9c56623074662b51dade5699880c1a7c71245de73e13c3185fb6))
       '@smithy/shared-ini-file-loader': 4.5.6
       '@smithy/types': 4.14.3
       '@smithy/util-base64': 4.4.6
@@ -12619,44 +12651,82 @@ snapshots:
       effect: 4.0.0-rc.112(patch_hash=8bef799f35729cf3465eb428196f617b434a7c9f658d56acb2874d74b21b98b2)
       fast-xml-parser: 5.8.0
 
-  '@distilled.cloud/axiom@1.0.0-rc.8(effect@4.0.0-rc.112(patch_hash=8bef799f35729cf3465eb428196f617b434a7c9f658d56acb2874d74b21b98b2))':
+  '@distilled.cloud/axiom@1.0.0-rc.2(bufferutil@4.1.0)(utf-8-validate@6.0.6)':
+    dependencies:
+      '@distilled.cloud/core': 1.0.0-rc.2(effect@4.0.0-beta.103(patch_hash=af36b7948b6f9c56623074662b51dade5699880c1a7c71245de73e13c3185fb6))
+      '@effect/platform-bun': 4.0.0-beta.103(bufferutil@4.1.0)(effect@4.0.0-beta.103(patch_hash=af36b7948b6f9c56623074662b51dade5699880c1a7c71245de73e13c3185fb6))(utf-8-validate@6.0.6)
+      effect: 4.0.0-beta.103(patch_hash=af36b7948b6f9c56623074662b51dade5699880c1a7c71245de73e13c3185fb6)
+    transitivePeerDependencies:
+      - bufferutil
+      - utf-8-validate
+
+  '@distilled.cloud/cloudflare-rolldown-plugin@0.16.0(@voidzero-dev/vite-plus-core@0.2.2(@types/node@24.12.4)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.48.0)(typescript@6.0.3)(unrun@0.2.39)(yaml@2.9.0))(rolldown@1.1.5)(workerd@1.20260704.1)':
     dependencies:
       '@distilled.cloud/core': 1.0.0-rc.8(effect@4.0.0-rc.112(patch_hash=8bef799f35729cf3465eb428196f617b434a7c9f658d56acb2874d74b21b98b2))
       effect: 4.0.0-rc.112(patch_hash=8bef799f35729cf3465eb428196f617b434a7c9f658d56acb2874d74b21b98b2)
 
-  '@distilled.cloud/cloudflare@1.0.0-rc.8(effect@4.0.0-rc.112(patch_hash=8bef799f35729cf3465eb428196f617b434a7c9f658d56acb2874d74b21b98b2))':
+  '@distilled.cloud/cloudflare-runtime@0.16.0(@distilled.cloud/cloudflare@1.0.0-rc.2(bufferutil@4.1.0)(utf-8-validate@6.0.6))(@effect/platform-bun@4.0.0-beta.103(bufferutil@4.1.0)(effect@4.0.0-beta.103(patch_hash=af36b7948b6f9c56623074662b51dade5699880c1a7c71245de73e13c3185fb6))(utf-8-validate@6.0.6))(@effect/platform-node@4.0.0-beta.103(bufferutil@4.1.0)(effect@4.0.0-beta.103(patch_hash=af36b7948b6f9c56623074662b51dade5699880c1a7c71245de73e13c3185fb6))(ioredis@5.11.0)(utf-8-validate@6.0.6))(effect@4.0.0-beta.103(patch_hash=af36b7948b6f9c56623074662b51dade5699880c1a7c71245de73e13c3185fb6))':
+    dependencies:
+      '@alchemy.run/node-utils': 0.0.5
+      '@distilled.cloud/cloudflare': 1.0.0-rc.2(bufferutil@4.1.0)(utf-8-validate@6.0.6)
+      '@puppeteer/browsers': 2.13.2
+      effect: 4.0.0-beta.103(patch_hash=af36b7948b6f9c56623074662b51dade5699880c1a7c71245de73e13c3185fb6)
+      sharp: 0.34.5
+      workerd: 1.20260704.1
+    optionalDependencies:
+      '@effect/platform-bun': 4.0.0-beta.103(bufferutil@4.1.0)(effect@4.0.0-beta.103(patch_hash=af36b7948b6f9c56623074662b51dade5699880c1a7c71245de73e13c3185fb6))(utf-8-validate@6.0.6)
+      '@effect/platform-node': 4.0.0-beta.103(bufferutil@4.1.0)(effect@4.0.0-beta.103(patch_hash=af36b7948b6f9c56623074662b51dade5699880c1a7c71245de73e13c3185fb6))(ioredis@5.11.0)(utf-8-validate@6.0.6)
+    transitivePeerDependencies:
+      - bare-abort-controller
+      - bare-buffer
+      - react-native-b4a
+      - supports-color
+
+  '@distilled.cloud/cloudflare-vite-plugin@0.16.0(466bfa2f28ed423ab158ad3780d9e1ac)':
+    dependencies:
+      '@distilled.cloud/cloudflare': 1.0.0-rc.2(bufferutil@4.1.0)(utf-8-validate@6.0.6)
+      '@distilled.cloud/cloudflare-rolldown-plugin': 0.16.0(@voidzero-dev/vite-plus-core@0.2.2(@types/node@24.12.4)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.48.0)(typescript@6.0.3)(unrun@0.2.39)(yaml@2.9.0))(rolldown@1.1.5)(workerd@1.20260704.1)
+      '@distilled.cloud/cloudflare-runtime': 0.16.0(@distilled.cloud/cloudflare@1.0.0-rc.2(bufferutil@4.1.0)(utf-8-validate@6.0.6))(@effect/platform-bun@4.0.0-beta.103(bufferutil@4.1.0)(effect@4.0.0-beta.103(patch_hash=af36b7948b6f9c56623074662b51dade5699880c1a7c71245de73e13c3185fb6))(utf-8-validate@6.0.6))(@effect/platform-node@4.0.0-beta.103(bufferutil@4.1.0)(effect@4.0.0-beta.103(patch_hash=af36b7948b6f9c56623074662b51dade5699880c1a7c71245de73e13c3185fb6))(ioredis@5.11.0)(utf-8-validate@6.0.6))(effect@4.0.0-beta.103(patch_hash=af36b7948b6f9c56623074662b51dade5699880c1a7c71245de73e13c3185fb6))
+      effect: 4.0.0-beta.103(patch_hash=af36b7948b6f9c56623074662b51dade5699880c1a7c71245de73e13c3185fb6)
+      vite: '@voidzero-dev/vite-plus-core@0.3.0(@types/node@24.12.4)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.48.0)(typescript@6.0.3)(unrun@0.2.39)(yaml@2.9.0)'
+    optionalDependencies:
+      '@effect/platform-bun': 4.0.0-beta.103(bufferutil@4.1.0)(effect@4.0.0-beta.103(patch_hash=af36b7948b6f9c56623074662b51dade5699880c1a7c71245de73e13c3185fb6))(utf-8-validate@6.0.6)
+      '@effect/platform-node': 4.0.0-beta.103(bufferutil@4.1.0)(effect@4.0.0-beta.103(patch_hash=af36b7948b6f9c56623074662b51dade5699880c1a7c71245de73e13c3185fb6))(ioredis@5.11.0)(utf-8-validate@6.0.6)
+    transitivePeerDependencies:
+      - rolldown
+      - workerd
+
+  '@distilled.cloud/cloudflare@1.0.0-rc.2(bufferutil@4.1.0)(utf-8-validate@6.0.6)':
+    dependencies:
+      '@distilled.cloud/core': 1.0.0-rc.2(effect@4.0.0-beta.103(patch_hash=af36b7948b6f9c56623074662b51dade5699880c1a7c71245de73e13c3185fb6))
+      '@effect/platform-bun': 4.0.0-beta.103(bufferutil@4.1.0)(effect@4.0.0-beta.103(patch_hash=af36b7948b6f9c56623074662b51dade5699880c1a7c71245de73e13c3185fb6))(utf-8-validate@6.0.6)
+      effect: 4.0.0-beta.103(patch_hash=af36b7948b6f9c56623074662b51dade5699880c1a7c71245de73e13c3185fb6)
+    transitivePeerDependencies:
+      - bufferutil
+      - utf-8-validate
+
+  '@distilled.cloud/core@1.0.0-rc.2(effect@4.0.0-beta.103(patch_hash=af36b7948b6f9c56623074662b51dade5699880c1a7c71245de73e13c3185fb6))':
     dependencies:
       '@distilled.cloud/core': 1.0.0-rc.8(effect@4.0.0-rc.112(patch_hash=8bef799f35729cf3465eb428196f617b434a7c9f658d56acb2874d74b21b98b2))
       effect: 4.0.0-rc.112(patch_hash=8bef799f35729cf3465eb428196f617b434a7c9f658d56acb2874d74b21b98b2)
 
-  '@distilled.cloud/core@1.0.0-rc.8(effect@4.0.0-rc.112(patch_hash=8bef799f35729cf3465eb428196f617b434a7c9f658d56acb2874d74b21b98b2))':
+  '@distilled.cloud/neon@1.0.0-rc.2(bufferutil@4.1.0)(utf-8-validate@6.0.6)':
     dependencies:
-      effect: 4.0.0-rc.112(patch_hash=8bef799f35729cf3465eb428196f617b434a7c9f658d56acb2874d74b21b98b2)
+      '@distilled.cloud/core': 1.0.0-rc.2(effect@4.0.0-beta.103(patch_hash=af36b7948b6f9c56623074662b51dade5699880c1a7c71245de73e13c3185fb6))
+      '@effect/platform-bun': 4.0.0-beta.103(bufferutil@4.1.0)(effect@4.0.0-beta.103(patch_hash=af36b7948b6f9c56623074662b51dade5699880c1a7c71245de73e13c3185fb6))(utf-8-validate@6.0.6)
+      effect: 4.0.0-beta.103(patch_hash=af36b7948b6f9c56623074662b51dade5699880c1a7c71245de73e13c3185fb6)
+    transitivePeerDependencies:
+      - bufferutil
+      - utf-8-validate
 
-  '@distilled.cloud/fly-io@1.0.0-rc.8(effect@4.0.0-rc.112(patch_hash=8bef799f35729cf3465eb428196f617b434a7c9f658d56acb2874d74b21b98b2))':
+  '@distilled.cloud/planetscale@1.0.0-rc.2(bufferutil@4.1.0)(utf-8-validate@6.0.6)':
     dependencies:
-      '@distilled.cloud/core': 1.0.0-rc.8(effect@4.0.0-rc.112(patch_hash=8bef799f35729cf3465eb428196f617b434a7c9f658d56acb2874d74b21b98b2))
-      effect: 4.0.0-rc.112(patch_hash=8bef799f35729cf3465eb428196f617b434a7c9f658d56acb2874d74b21b98b2)
-
-  '@distilled.cloud/hetzner@1.0.0-rc.8(effect@4.0.0-rc.112(patch_hash=8bef799f35729cf3465eb428196f617b434a7c9f658d56acb2874d74b21b98b2))':
-    dependencies:
-      '@distilled.cloud/core': 1.0.0-rc.8(effect@4.0.0-rc.112(patch_hash=8bef799f35729cf3465eb428196f617b434a7c9f658d56acb2874d74b21b98b2))
-      effect: 4.0.0-rc.112(patch_hash=8bef799f35729cf3465eb428196f617b434a7c9f658d56acb2874d74b21b98b2)
-
-  '@distilled.cloud/neon@1.0.0-rc.8(effect@4.0.0-rc.112(patch_hash=8bef799f35729cf3465eb428196f617b434a7c9f658d56acb2874d74b21b98b2))':
-    dependencies:
-      '@distilled.cloud/core': 1.0.0-rc.8(effect@4.0.0-rc.112(patch_hash=8bef799f35729cf3465eb428196f617b434a7c9f658d56acb2874d74b21b98b2))
-      effect: 4.0.0-rc.112(patch_hash=8bef799f35729cf3465eb428196f617b434a7c9f658d56acb2874d74b21b98b2)
-
-  '@distilled.cloud/planetscale@1.0.0-rc.8(effect@4.0.0-rc.112(patch_hash=8bef799f35729cf3465eb428196f617b434a7c9f658d56acb2874d74b21b98b2))':
-    dependencies:
-      '@distilled.cloud/core': 1.0.0-rc.8(effect@4.0.0-rc.112(patch_hash=8bef799f35729cf3465eb428196f617b434a7c9f658d56acb2874d74b21b98b2))
-      effect: 4.0.0-rc.112(patch_hash=8bef799f35729cf3465eb428196f617b434a7c9f658d56acb2874d74b21b98b2)
-
-  '@distilled.cloud/railway@1.0.0-rc.8(effect@4.0.0-rc.112(patch_hash=8bef799f35729cf3465eb428196f617b434a7c9f658d56acb2874d74b21b98b2))':
-    dependencies:
-      '@distilled.cloud/core': 1.0.0-rc.8(effect@4.0.0-rc.112(patch_hash=8bef799f35729cf3465eb428196f617b434a7c9f658d56acb2874d74b21b98b2))
-      effect: 4.0.0-rc.112(patch_hash=8bef799f35729cf3465eb428196f617b434a7c9f658d56acb2874d74b21b98b2)
+      '@distilled.cloud/core': 1.0.0-rc.2(effect@4.0.0-beta.103(patch_hash=af36b7948b6f9c56623074662b51dade5699880c1a7c71245de73e13c3185fb6))
+      '@effect/platform-bun': 4.0.0-beta.103(bufferutil@4.1.0)(effect@4.0.0-beta.103(patch_hash=af36b7948b6f9c56623074662b51dade5699880c1a7c71245de73e13c3185fb6))(utf-8-validate@6.0.6)
+      effect: 4.0.0-beta.103(patch_hash=af36b7948b6f9c56623074662b51dade5699880c1a7c71245de73e13c3185fb6)
+    transitivePeerDependencies:
+      - bufferutil
+      - utf-8-validate
 
   '@dnd-kit/accessibility@3.1.1(react@19.2.6)':
     dependencies:
@@ -12741,10 +12811,10 @@ snapshots:
       - bufferutil
       - utf-8-validate
 
-  '@effect/sql-d1@4.0.0-rc.112(effect@4.0.0-rc.112(patch_hash=8bef799f35729cf3465eb428196f617b434a7c9f658d56acb2874d74b21b98b2))':
+  '@effect/sql-d1@4.0.0-rc.112(effect@4.0.0-beta.103(patch_hash=af36b7948b6f9c56623074662b51dade5699880c1a7c71245de73e13c3185fb6))':
     dependencies:
-      '@cloudflare/workers-types': 5.20260907.1
-      effect: 4.0.0-rc.112(patch_hash=8bef799f35729cf3465eb428196f617b434a7c9f658d56acb2874d74b21b98b2)
+      '@cloudflare/workers-types': 5.20260828.1
+      effect: 4.0.0-beta.103(patch_hash=af36b7948b6f9c56623074662b51dade5699880c1a7c71245de73e13c3185fb6)
 
   '@effect/sql-pg@4.0.0-rc.112(effect@4.0.0-rc.112(patch_hash=8bef799f35729cf3465eb428196f617b434a7c9f658d56acb2874d74b21b98b2))':
     dependencies:
@@ -12762,11 +12832,11 @@ snapshots:
       effect: 4.0.0-rc.112(patch_hash=8bef799f35729cf3465eb428196f617b434a7c9f658d56acb2874d74b21b98b2)
     optional: true
 
-  '@effect/sql-sqlite-do@4.0.0-rc.112(effect@4.0.0-rc.112(patch_hash=8bef799f35729cf3465eb428196f617b434a7c9f658d56acb2874d74b21b98b2))':
+  '@effect/sql-sqlite-do@4.0.0-rc.112(effect@4.0.0-beta.103(patch_hash=af36b7948b6f9c56623074662b51dade5699880c1a7c71245de73e13c3185fb6))':
     dependencies:
-      effect: 4.0.0-rc.112(patch_hash=8bef799f35729cf3465eb428196f617b434a7c9f658d56acb2874d74b21b98b2)
+      effect: 4.0.0-beta.103(patch_hash=af36b7948b6f9c56623074662b51dade5699880c1a7c71245de73e13c3185fb6)
 
-  '@effect/tsgo-darwin-arm64@0.41.0':
+  '@effect/tsgo-darwin-arm64@0.13.2':
     optional: true
 
   '@effect/tsgo-darwin-x64@0.41.0':
@@ -12814,8 +12884,6 @@ snapshots:
       '@electric-sql/pglite': 0.3.15
 
   '@electric-sql/pglite@0.3.15': {}
-
-  '@electron-internal/extract-zip@1.0.5': {}
 
   '@electron/asar@3.4.1':
     dependencies:
@@ -14920,12 +14988,20 @@ snapshots:
 
   '@prisma/query-plan-executor@7.2.0': {}
 
-  '@puppeteer/browsers@3.2.2(yauzl@3.4.0)':
+  '@puppeteer/browsers@2.13.2':
     dependencies:
-      modern-tar: 0.8.5
-      yargs: 18.1.0
-    optionalDependencies:
-      yauzl: 3.4.0
+      debug: 4.4.3
+      extract-zip: 2.0.1
+      progress: 2.0.3
+      proxy-agent: 6.5.0
+      semver: 7.8.5
+      tar-fs: 3.1.3
+      yargs: 17.7.2
+    transitivePeerDependencies:
+      - bare-abort-controller
+      - bare-buffer
+      - react-native-b4a
+      - supports-color
 
   '@radix-ui/primitive@1.1.3': {}
 
@@ -15859,6 +15935,8 @@ snapshots:
     dependencies:
       '@testing-library/dom': 10.4.1
 
+  '@tootallnate/quickjs-emscripten@0.23.0': {}
+
   '@tybys/wasm-util@0.10.3':
     dependencies:
       tslib: 2.8.1
@@ -16504,25 +16582,25 @@ snapshots:
       json-schema-traverse: 1.0.0
       require-from-string: 2.0.2
 
-  alchemy@2.0.0-beta.76(b3825b36417e56a486ccb5f22a7f3d7e):
+  alchemy@2.0.0-beta.68(0885d8a95b948dcd9cb22ae87b3f43ad):
     dependencies:
       '@alchemy.run/cloudflare-runtime': 2.0.0-beta.76(@distilled.cloud/cloudflare@1.0.0-rc.8(effect@4.0.0-rc.112(patch_hash=8bef799f35729cf3465eb428196f617b434a7c9f658d56acb2874d74b21b98b2)))(@effect/platform-bun@4.0.0-rc.112(bufferutil@4.1.0)(effect@4.0.0-rc.112(patch_hash=8bef799f35729cf3465eb428196f617b434a7c9f658d56acb2874d74b21b98b2))(utf-8-validate@6.0.6))(@effect/platform-node@4.0.0-rc.112(bufferutil@4.1.0)(effect@4.0.0-rc.112(patch_hash=8bef799f35729cf3465eb428196f617b434a7c9f658d56acb2874d74b21b98b2))(redis@6.2.1)(utf-8-validate@6.0.6))(@types/node@24.12.4)(@voidzero-dev/vite-plus-core@0.3.0(@types/node@24.12.4)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.48.0)(typescript@7.0.2)(unrun@0.2.39)(yaml@2.9.0))(effect@4.0.0-rc.112(patch_hash=8bef799f35729cf3465eb428196f617b434a7c9f658d56acb2874d74b21b98b2))(rolldown@1.2.5)(typescript@7.0.2)
       '@alchemy.run/floci': 2.0.0-beta.76(effect@4.0.0-rc.112(patch_hash=8bef799f35729cf3465eb428196f617b434a7c9f658d56acb2874d74b21b98b2))
       '@alchemy.run/node-utils': 2.0.0-beta.76
       '@aws-sdk/credential-providers': 3.1062.0
       '@clack/prompts': 1.7.0
-      '@distilled.cloud/aws': 1.0.0-rc.8(effect@4.0.0-rc.112(patch_hash=8bef799f35729cf3465eb428196f617b434a7c9f658d56acb2874d74b21b98b2))
-      '@distilled.cloud/axiom': 1.0.0-rc.8(effect@4.0.0-rc.112(patch_hash=8bef799f35729cf3465eb428196f617b434a7c9f658d56acb2874d74b21b98b2))
-      '@distilled.cloud/cloudflare': 1.0.0-rc.8(effect@4.0.0-rc.112(patch_hash=8bef799f35729cf3465eb428196f617b434a7c9f658d56acb2874d74b21b98b2))
-      '@distilled.cloud/core': 1.0.0-rc.8(effect@4.0.0-rc.112(patch_hash=8bef799f35729cf3465eb428196f617b434a7c9f658d56acb2874d74b21b98b2))
-      '@distilled.cloud/fly-io': 1.0.0-rc.8(effect@4.0.0-rc.112(patch_hash=8bef799f35729cf3465eb428196f617b434a7c9f658d56acb2874d74b21b98b2))
-      '@distilled.cloud/hetzner': 1.0.0-rc.8(effect@4.0.0-rc.112(patch_hash=8bef799f35729cf3465eb428196f617b434a7c9f658d56acb2874d74b21b98b2))
-      '@distilled.cloud/neon': 1.0.0-rc.8(effect@4.0.0-rc.112(patch_hash=8bef799f35729cf3465eb428196f617b434a7c9f658d56acb2874d74b21b98b2))
-      '@distilled.cloud/planetscale': 1.0.0-rc.8(effect@4.0.0-rc.112(patch_hash=8bef799f35729cf3465eb428196f617b434a7c9f658d56acb2874d74b21b98b2))
-      '@distilled.cloud/railway': 1.0.0-rc.8(effect@4.0.0-rc.112(patch_hash=8bef799f35729cf3465eb428196f617b434a7c9f658d56acb2874d74b21b98b2))
-      '@effect/sql-d1': 4.0.0-rc.112(effect@4.0.0-rc.112(patch_hash=8bef799f35729cf3465eb428196f617b434a7c9f658d56acb2874d74b21b98b2))
-      '@effect/sql-sqlite-do': 4.0.0-rc.112(effect@4.0.0-rc.112(patch_hash=8bef799f35729cf3465eb428196f617b434a7c9f658d56acb2874d74b21b98b2))
-      '@effect/vitest': 4.0.0-rc.112(patch_hash=a16b1e870d8c29e4a98b17cc4c638a4ff471753d8ca3487f78a22b759caf951b)(effect@4.0.0-rc.112(patch_hash=8bef799f35729cf3465eb428196f617b434a7c9f658d56acb2874d74b21b98b2))
+      '@distilled.cloud/aws': 1.0.0-rc.2(effect@4.0.0-beta.103(patch_hash=af36b7948b6f9c56623074662b51dade5699880c1a7c71245de73e13c3185fb6))
+      '@distilled.cloud/axiom': 1.0.0-rc.2(bufferutil@4.1.0)(utf-8-validate@6.0.6)
+      '@distilled.cloud/cloudflare': 1.0.0-rc.2(bufferutil@4.1.0)(utf-8-validate@6.0.6)
+      '@distilled.cloud/cloudflare-rolldown-plugin': 0.16.0(@voidzero-dev/vite-plus-core@0.2.2(@types/node@24.12.4)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.48.0)(typescript@6.0.3)(unrun@0.2.39)(yaml@2.9.0))(rolldown@1.1.5)(workerd@1.20260704.1)
+      '@distilled.cloud/cloudflare-runtime': 0.16.0(@distilled.cloud/cloudflare@1.0.0-rc.2(bufferutil@4.1.0)(utf-8-validate@6.0.6))(@effect/platform-bun@4.0.0-beta.103(bufferutil@4.1.0)(effect@4.0.0-beta.103(patch_hash=af36b7948b6f9c56623074662b51dade5699880c1a7c71245de73e13c3185fb6))(utf-8-validate@6.0.6))(@effect/platform-node@4.0.0-beta.103(bufferutil@4.1.0)(effect@4.0.0-beta.103(patch_hash=af36b7948b6f9c56623074662b51dade5699880c1a7c71245de73e13c3185fb6))(ioredis@5.11.0)(utf-8-validate@6.0.6))(effect@4.0.0-beta.103(patch_hash=af36b7948b6f9c56623074662b51dade5699880c1a7c71245de73e13c3185fb6))
+      '@distilled.cloud/cloudflare-vite-plugin': 0.16.0(466bfa2f28ed423ab158ad3780d9e1ac)
+      '@distilled.cloud/core': 1.0.0-rc.2(effect@4.0.0-beta.103(patch_hash=af36b7948b6f9c56623074662b51dade5699880c1a7c71245de73e13c3185fb6))
+      '@distilled.cloud/neon': 1.0.0-rc.2(bufferutil@4.1.0)(utf-8-validate@6.0.6)
+      '@distilled.cloud/planetscale': 1.0.0-rc.2(bufferutil@4.1.0)(utf-8-validate@6.0.6)
+      '@effect/sql-d1': 4.0.0-rc.112(effect@4.0.0-beta.103(patch_hash=af36b7948b6f9c56623074662b51dade5699880c1a7c71245de73e13c3185fb6))
+      '@effect/sql-sqlite-do': 4.0.0-rc.112(effect@4.0.0-beta.103(patch_hash=af36b7948b6f9c56623074662b51dade5699880c1a7c71245de73e13c3185fb6))
+      '@effect/vitest': 4.0.0-beta.103(patch_hash=a16b1e870d8c29e4a98b17cc4c638a4ff471753d8ca3487f78a22b759caf951b)(effect@4.0.0-beta.103(patch_hash=af36b7948b6f9c56623074662b51dade5699880c1a7c71245de73e13c3185fb6))
       '@libsql/client': 0.17.3(bufferutil@4.1.0)(utf-8-validate@6.0.6)
       '@octokit/rest': 22.0.1
       '@octokit/webhooks': 14.2.0
@@ -16540,27 +16618,30 @@ snapshots:
       jszip: 3.10.1
       libsodium-wrappers: 0.8.4
       pathe: 2.0.3
-      picomatch: 4.0.7
+      picomatch: 4.0.4
       react: 19.2.6
       rolldown: 1.2.5
       undici: 7.27.1
       yaml: 2.9.0
     optionalDependencies:
-      '@effect/platform-bun': 4.0.0-rc.112(bufferutil@4.1.0)(effect@4.0.0-rc.112(patch_hash=8bef799f35729cf3465eb428196f617b434a7c9f658d56acb2874d74b21b98b2))(utf-8-validate@6.0.6)
-      '@effect/platform-node': 4.0.0-rc.112(bufferutil@4.1.0)(effect@4.0.0-rc.112(patch_hash=8bef799f35729cf3465eb428196f617b434a7c9f658d56acb2874d74b21b98b2))(redis@6.2.1)(utf-8-validate@6.0.6)
-      '@effect/sql-pg': 4.0.0-rc.112(effect@4.0.0-rc.112(patch_hash=8bef799f35729cf3465eb428196f617b434a7c9f658d56acb2874d74b21b98b2))
-      drizzle-kit: 1.0.0-rc.5-ab785fc
-      drizzle-orm: 1.0.0-rc.5-ab785fc(8ab70e2706da13c78d64d8a92fef1884)
+      '@effect/platform-bun': 4.0.0-beta.103(bufferutil@4.1.0)(effect@4.0.0-beta.103(patch_hash=af36b7948b6f9c56623074662b51dade5699880c1a7c71245de73e13c3185fb6))(utf-8-validate@6.0.6)
+      '@effect/platform-node': 4.0.0-beta.103(bufferutil@4.1.0)(effect@4.0.0-beta.103(patch_hash=af36b7948b6f9c56623074662b51dade5699880c1a7c71245de73e13c3185fb6))(ioredis@5.11.0)(utf-8-validate@6.0.6)
+      '@effect/sql-pg': 4.0.0-beta.103(effect@4.0.0-beta.103(patch_hash=af36b7948b6f9c56623074662b51dade5699880c1a7c71245de73e13c3185fb6))
+      drizzle-kit: 1.0.0-rc.4
+      drizzle-orm: 1.0.0-rc.4(5e12850ccc97093662994947013b2e06)
       mongodb: 6.21.0(@aws-sdk/credential-providers@3.1062.0)(socks@2.8.9)
-      pg: 8.23.0
-      vite: '@voidzero-dev/vite-plus-core@0.3.0(@types/node@24.12.4)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.48.0)(typescript@7.0.2)(unrun@0.2.39)(yaml@2.9.0)'
-      ws: 8.21.3(bufferutil@4.1.0)(utf-8-validate@6.0.6)
+      mysql2: 3.22.4(@types/node@24.12.4)
+      pg: 8.22.0
+      vite: '@voidzero-dev/vite-plus-core@0.2.2(@types/node@24.12.4)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.48.0)(typescript@6.0.3)(unrun@0.2.39)(yaml@2.9.0)'
+      ws: 8.21.0(bufferutil@4.1.0)(utf-8-validate@6.0.6)
     transitivePeerDependencies:
-      - '@types/node'
       - '@types/react'
+      - bare-abort-controller
+      - bare-buffer
       - bufferutil
-      - proxy-agent
       - react-devtools-core
+      - react-native-b4a
+      - supports-color
       - typescript
       - utf-8-validate
 
@@ -16682,6 +16763,10 @@ snapshots:
 
   assertion-error@2.0.1: {}
 
+  ast-types@0.13.4:
+    dependencies:
+      tslib: 2.8.1
+
   astro@7.0.3(@astrojs/markdown-remark@7.2.0)(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.1)(@types/node@24.12.4)(aws4fetch@1.0.20)(idb-keyval@6.2.1)(ioredis@5.11.0)(jiti@2.7.0)(rollup@4.61.0)(terser@5.48.0)(typescript@6.0.3)(unrun@0.2.39)(yaml@2.9.0):
     dependencies:
       '@astrojs/compiler-rs': 0.2.3(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.1)
@@ -16797,11 +16882,16 @@ snapshots:
 
   await-lock@2.2.2: {}
 
+  aws-ssl-profiles@1.1.2:
+    optional: true
+
   aws4@1.13.2: {}
 
   aws4fetch@1.0.20: {}
 
   axobject-query@4.1.0: {}
+
+  b4a@1.8.1: {}
 
   babel-dead-code-elimination@1.0.12:
     dependencies:
@@ -16923,11 +17013,42 @@ snapshots:
     transitivePeerDependencies:
       - '@types/emscripten'
 
+  bare-events@2.9.2: {}
+
+  bare-fs@4.8.1:
+    dependencies:
+      bare-events: 2.9.2
+      bare-path: 3.1.1
+      bare-stream: 2.13.4(bare-events@2.9.2)
+      bare-url: 2.5.2
+      fast-fifo: 1.3.2
+    transitivePeerDependencies:
+      - bare-abort-controller
+      - react-native-b4a
+
+  bare-path@3.1.1: {}
+
+  bare-stream@2.13.4(bare-events@2.9.2):
+    dependencies:
+      b4a: 1.8.1
+      streamx: 2.28.1
+      teex: 1.0.1
+    optionalDependencies:
+      bare-events: 2.9.2
+    transitivePeerDependencies:
+      - react-native-b4a
+
+  bare-url@2.5.2:
+    dependencies:
+      bare-path: 3.1.1
+
   base-64@1.0.0: {}
 
   base64-js@1.5.1: {}
 
   baseline-browser-mapping@2.10.33: {}
+
+  basic-ftp@5.3.1: {}
 
   before-after-hook@4.0.0: {}
 
@@ -17396,17 +17517,7 @@ snapshots:
 
   culori@4.0.2: {}
 
-  date-fns@4.4.0: {}
-
-  dbus-next@0.10.2(patch_hash=cfff57561b0ee59b5addb3b2e6c6f20906e967507a530ab67e8db8108e520ba4):
-    dependencies:
-      '@nornagon/put': 0.0.8
-      event-stream: 3.3.4
-      hexy: 0.2.11
-      jsbi: 2.0.5
-      long: 4.0.0
-      safe-buffer: 5.2.1
-      xml2js: 0.4.23
+  data-uri-to-buffer@6.0.2: {}
 
   debounce-fn@4.0.0:
     dependencies:
@@ -17457,6 +17568,12 @@ snapshots:
     optional: true
 
   defu@6.1.7: {}
+
+  degenerator@5.0.1:
+    dependencies:
+      ast-types: 0.13.4
+      escodegen: 2.1.0
+      esprima: 4.0.1
 
   delayed-stream@1.0.0: {}
 
@@ -17545,20 +17662,21 @@ snapshots:
       get-tsconfig: 4.14.3
       jiti: 2.7.0
 
-  drizzle-orm@1.0.0-rc.5-ab785fc(8ab70e2706da13c78d64d8a92fef1884):
+  drizzle-orm@1.0.0-rc.4(5e12850ccc97093662994947013b2e06):
     optionalDependencies:
       '@cloudflare/workers-types': 4.20260604.1
-      '@effect/sql-d1': 4.0.0-rc.112(effect@4.0.0-rc.112(patch_hash=8bef799f35729cf3465eb428196f617b434a7c9f658d56acb2874d74b21b98b2))
-      '@effect/sql-pg': 4.0.0-rc.112(effect@4.0.0-rc.112(patch_hash=8bef799f35729cf3465eb428196f617b434a7c9f658d56acb2874d74b21b98b2))
-      '@effect/sql-sqlite-bun': 4.0.0-rc.112(effect@4.0.0-rc.112(patch_hash=8bef799f35729cf3465eb428196f617b434a7c9f658d56acb2874d74b21b98b2))
-      '@effect/sql-sqlite-do': 4.0.0-rc.112(effect@4.0.0-rc.112(patch_hash=8bef799f35729cf3465eb428196f617b434a7c9f658d56acb2874d74b21b98b2))
+      '@effect/sql-d1': 4.0.0-rc.112(effect@4.0.0-beta.103(patch_hash=af36b7948b6f9c56623074662b51dade5699880c1a7c71245de73e13c3185fb6))
+      '@effect/sql-pg': 4.0.0-beta.103(effect@4.0.0-beta.103(patch_hash=af36b7948b6f9c56623074662b51dade5699880c1a7c71245de73e13c3185fb6))
+      '@effect/sql-sqlite-bun': 4.0.0-beta.103(effect@4.0.0-beta.103(patch_hash=af36b7948b6f9c56623074662b51dade5699880c1a7c71245de73e13c3185fb6))
+      '@effect/sql-sqlite-do': 4.0.0-rc.112(effect@4.0.0-beta.103(patch_hash=af36b7948b6f9c56623074662b51dade5699880c1a7c71245de73e13c3185fb6))
       '@electric-sql/pglite': 0.3.15
       '@libsql/client': 0.17.3(bufferutil@4.1.0)(utf-8-validate@6.0.6)
       bun-types: 1.3.14
       effect: 4.0.0-rc.112(patch_hash=8bef799f35729cf3465eb428196f617b434a7c9f658d56acb2874d74b21b98b2)
       expo-sqlite: 57.0.2(expo@57.0.18)(react-native@0.86.3(@babel/core@7.29.7)(@react-native/metro-config@0.86.3(@babel/core@7.29.7)(bufferutil@4.1.0)(utf-8-validate@6.0.6))(@types/react@19.2.16)(bufferutil@4.1.0)(react@19.2.6)(utf-8-validate@6.0.6))(react@19.2.6)
-      pg: 8.23.0
-      valibot: 1.2.0(typescript@7.0.2)
+      mysql2: 3.22.4(@types/node@24.12.4)
+      pg: 8.22.0
+      valibot: 1.2.0(typescript@6.0.3)
       zod: 4.4.3
 
   dset@3.1.4: {}
@@ -17802,6 +17920,18 @@ snapshots:
 
   escape-string-regexp@5.0.0: {}
 
+  escodegen@2.1.0:
+    dependencies:
+      esprima: 4.0.1
+      estraverse: 5.3.0
+      esutils: 2.0.3
+    optionalDependencies:
+      source-map: 0.6.1
+
+  esprima@4.0.1: {}
+
+  estraverse@5.3.0: {}
+
   estree-util-is-identifier-name@3.0.0: {}
 
   estree-walker@2.0.2: {}
@@ -17809,6 +17939,8 @@ snapshots:
   estree-walker@3.0.3:
     dependencies:
       '@types/estree': 1.0.9
+
+  esutils@2.0.3: {}
 
   etag@1.8.1: {}
 
@@ -17825,6 +17957,12 @@ snapshots:
   event-target-shim@5.0.1: {}
 
   eventemitter3@5.0.4: {}
+
+  events-universal@1.0.1:
+    dependencies:
+      bare-events: 2.9.2
+    transitivePeerDependencies:
+      - bare-abort-controller
 
   eventsource-parser@3.1.0: {}
 
@@ -18372,6 +18510,8 @@ snapshots:
 
   fast-deep-equal@3.1.3: {}
 
+  fast-fifo@1.3.2: {}
+
   fast-glob@3.3.3:
     dependencies:
       '@nodelib/fs.stat': 2.0.5
@@ -18580,6 +18720,11 @@ snapshots:
 
   function-bind@1.1.2: {}
 
+  generate-function@2.3.1:
+    dependencies:
+      is-property: 1.0.2
+    optional: true
+
   gensync@1.0.0-beta.2: {}
 
   get-caller-file@2.0.5: {}
@@ -18619,6 +18764,14 @@ snapshots:
   get-tsconfig@5.0.0-beta.4:
     dependencies:
       resolve-pkg-maps: 1.0.0
+
+  get-uri@6.0.5:
+    dependencies:
+      basic-ftp: 5.3.1
+      data-uri-to-buffer: 6.0.2
+      debug: 4.4.3
+    transitivePeerDependencies:
+      - supports-color
 
   getenv@2.0.0: {}
 
@@ -18683,8 +18836,7 @@ snapshots:
 
   graphmatch@1.1.1: {}
 
-  graphql@16.14.1:
-    optional: true
+  graphql@16.14.1: {}
 
   h3@1.15.11:
     dependencies:
@@ -19059,6 +19211,9 @@ snapshots:
 
   is-promise@4.0.0: {}
 
+  is-property@1.0.2:
+    optional: true
+
   is-unicode-supported@2.1.0: {}
 
   is-wsl@2.2.0:
@@ -19335,7 +19490,8 @@ snapshots:
       is-unicode-supported: 2.1.0
       yoctocolors: 2.1.2
 
-  long@4.0.0: {}
+  long@5.3.2:
+    optional: true
 
   longest-streak@3.1.0: {}
 
@@ -19356,6 +19512,11 @@ snapshots:
   lru-cache@6.0.0:
     dependencies:
       yallist: 4.0.0
+
+  lru-cache@7.18.3: {}
+
+  lru.min@1.1.4:
+    optional: true
 
   lru_map@0.4.1: {}
 
@@ -20275,6 +20436,24 @@ snapshots:
   mute-stream@2.0.0:
     optional: true
 
+  mysql2@3.22.4(@types/node@24.12.4):
+    dependencies:
+      '@types/node': 24.12.4
+      aws-ssl-profiles: 1.1.2
+      denque: 2.1.0
+      generate-function: 2.3.1
+      iconv-lite: 0.7.2
+      long: 5.3.2
+      lru.min: 1.1.4
+      named-placeholders: 1.1.6
+      sql-escaper: 1.3.3
+    optional: true
+
+  named-placeholders@1.1.6:
+    dependencies:
+      lru.min: 1.1.4
+    optional: true
+
   nanoid@3.3.12: {}
 
   negotiator@0.6.3: {}
@@ -20284,6 +20463,8 @@ snapshots:
   negotiator@1.0.0: {}
 
   neotraverse@0.6.18: {}
+
+  netmask@2.1.1: {}
 
   nlcst-to-string@4.0.0:
     dependencies:
@@ -20619,6 +20800,24 @@ snapshots:
 
   p-try@2.2.0: {}
 
+  pac-proxy-agent@7.2.0:
+    dependencies:
+      '@tootallnate/quickjs-emscripten': 0.23.0
+      agent-base: 7.1.4
+      debug: 4.4.3
+      get-uri: 6.0.5
+      http-proxy-agent: 7.0.2
+      https-proxy-agent: 7.0.6
+      pac-resolver: 7.0.1
+      socks-proxy-agent: 8.0.5
+    transitivePeerDependencies:
+      - supports-color
+
+  pac-resolver@7.0.1:
+    dependencies:
+      degenerator: 5.0.1
+      netmask: 2.1.1
+
   package-manager-detector@1.6.0: {}
 
   package-manager-detector@1.8.0: {}
@@ -20703,11 +20902,11 @@ snapshots:
 
   pg-numeric@1.0.2: {}
 
-  pg-pool@3.14.0(pg@8.23.0):
+  pg-pool@3.14.0(pg@8.22.0):
     dependencies:
-      pg: 8.23.0
+      pg: 8.22.0
 
-  pg-protocol@1.16.0: {}
+  pg-protocol@1.15.0: {}
 
   pg-types@2.2.0:
     dependencies:
@@ -20727,11 +20926,11 @@ snapshots:
       postgres-interval: 3.0.0
       postgres-range: 1.1.4
 
-  pg@8.23.0:
+  pg@8.22.0:
     dependencies:
       pg-connection-string: 2.14.0
-      pg-pool: 3.14.0(pg@8.23.0)
-      pg-protocol: 1.16.0
+      pg-pool: 3.14.0(pg@8.22.0)
+      pg-protocol: 1.15.0
       pg-types: 2.2.0
       pgpass: 1.0.5
     optionalDependencies:
@@ -20881,6 +21080,21 @@ snapshots:
     dependencies:
       forwarded: 0.2.0
       ipaddr.js: 1.9.1
+
+  proxy-agent@6.5.0:
+    dependencies:
+      agent-base: 7.1.4
+      debug: 4.4.3
+      http-proxy-agent: 7.0.2
+      https-proxy-agent: 7.0.6
+      lru-cache: 7.18.3
+      pac-proxy-agent: 7.2.0
+      proxy-from-env: 1.1.0
+      socks-proxy-agent: 8.0.5
+    transitivePeerDependencies:
+      - supports-color
+
+  proxy-from-env@1.1.0: {}
 
   pump@3.0.4:
     dependencies:
@@ -21903,12 +22117,22 @@ snapshots:
 
   slugify@1.6.9: {}
 
-  smart-buffer@4.2.0:
-    optional: true
+  smart-buffer@4.2.0: {}
 
   smol-toml@1.7.0: {}
 
-  smol-toml@1.8.0: {}
+  socks-proxy-agent@8.0.5:
+    dependencies:
+      agent-base: 7.1.4
+      debug: 4.4.3
+      socks: 2.8.9
+    transitivePeerDependencies:
+      - supports-color
+
+  socks@2.8.9:
+    dependencies:
+      ip-address: 10.2.0
+      smart-buffer: 4.2.0
 
   socks@2.8.9:
     dependencies:
@@ -21943,6 +22167,9 @@ snapshots:
       through: 2.3.8
 
   sprintf-js@1.1.3:
+    optional: true
+
+  sql-escaper@1.3.3:
     optional: true
 
   stack-utils@2.0.6:
@@ -21981,18 +22208,16 @@ snapshots:
 
   stream-buffers@2.2.0: {}
 
-  stream-chain@4.2.5: {}
-
-  stream-combiner@0.0.4:
+  streamx@2.28.1:
     dependencies:
-      duplexer: 0.1.2
+      events-universal: 1.0.1
+      fast-fifo: 1.3.2
+      text-decoder: 1.2.7
+    transitivePeerDependencies:
+      - bare-abort-controller
+      - react-native-b4a
 
-  stream-json@3.6.0:
-    dependencies:
-      stream-chain: 4.2.5
-
-  strict-event-emitter@0.5.1:
-    optional: true
+  strict-event-emitter@0.5.1: {}
 
   strict-uri-encode@2.0.0: {}
 
@@ -22109,6 +22334,29 @@ snapshots:
 
   tapable@2.3.3: {}
 
+  tar-fs@3.1.3:
+    dependencies:
+      pump: 3.0.4
+      tar-stream: 3.2.1
+    optionalDependencies:
+      bare-fs: 4.8.1
+      bare-path: 3.1.1
+    transitivePeerDependencies:
+      - bare-abort-controller
+      - bare-buffer
+      - react-native-b4a
+
+  tar-stream@3.2.1:
+    dependencies:
+      b4a: 1.8.1
+      bare-fs: 4.8.1
+      fast-fifo: 1.3.2
+      streamx: 2.28.1
+    transitivePeerDependencies:
+      - bare-abort-controller
+      - bare-buffer
+      - react-native-b4a
+
   tar@7.5.16:
     dependencies:
       '@isaacs/fs-minipass': 4.0.1
@@ -22116,6 +22364,13 @@ snapshots:
       minipass: 7.1.3
       minizlib: 3.1.0
       yallist: 5.0.0
+
+  teex@1.0.1:
+    dependencies:
+      streamx: 2.28.1
+    transitivePeerDependencies:
+      - bare-abort-controller
+      - react-native-b4a
 
   temp-file@3.4.0:
     dependencies:
@@ -22140,6 +22395,12 @@ snapshots:
       acorn: 8.16.0
       commander: 2.20.3
       source-map-support: 0.5.21
+
+  text-decoder@1.2.7:
+    dependencies:
+      b4a: 1.8.1
+    transitivePeerDependencies:
+      - react-native-b4a
 
   throat@5.0.0: {}
 
@@ -22479,11 +22740,6 @@ snapshots:
   valibot@1.2.0(typescript@6.0.3):
     optionalDependencies:
       typescript: 6.0.3
-
-  valibot@1.2.0(typescript@7.0.2):
-    optionalDependencies:
-      typescript: 7.0.2
-    optional: true
 
   validate-npm-package-name@5.0.1: {}
 
@@ -22904,37 +23160,10 @@ snapshots:
 
   yoga-layout@3.2.1: {}
 
-  yuku-codegen@0.5.48:
+  zeptomatch@2.1.0:
     dependencies:
-      '@yuku-toolchain/types': 0.5.43
-    optionalDependencies:
-      '@yuku-codegen/binding-darwin-arm64': 0.5.48
-      '@yuku-codegen/binding-darwin-x64': 0.5.48
-      '@yuku-codegen/binding-freebsd-x64': 0.5.48
-      '@yuku-codegen/binding-linux-arm-gnu': 0.5.48
-      '@yuku-codegen/binding-linux-arm-musl': 0.5.48
-      '@yuku-codegen/binding-linux-arm64-gnu': 0.5.48
-      '@yuku-codegen/binding-linux-arm64-musl': 0.5.48
-      '@yuku-codegen/binding-linux-x64-gnu': 0.5.48
-      '@yuku-codegen/binding-linux-x64-musl': 0.5.48
-      '@yuku-codegen/binding-win32-arm64': 0.5.48
-      '@yuku-codegen/binding-win32-x64': 0.5.48
-
-  yuku-parser@0.5.48:
-    dependencies:
-      '@yuku-toolchain/types': 0.5.43
-    optionalDependencies:
-      '@yuku-parser/binding-darwin-arm64': 0.5.48
-      '@yuku-parser/binding-darwin-x64': 0.5.48
-      '@yuku-parser/binding-freebsd-x64': 0.5.48
-      '@yuku-parser/binding-linux-arm-gnu': 0.5.48
-      '@yuku-parser/binding-linux-arm-musl': 0.5.48
-      '@yuku-parser/binding-linux-arm64-gnu': 0.5.48
-      '@yuku-parser/binding-linux-arm64-musl': 0.5.48
-      '@yuku-parser/binding-linux-x64-gnu': 0.5.48
-      '@yuku-parser/binding-linux-x64-musl': 0.5.48
-      '@yuku-parser/binding-win32-arm64': 0.5.48
-      '@yuku-parser/binding-win32-x64': 0.5.48
+      grammex: 3.1.13
+      graphmatch: 1.1.1
 
   zeptomatch@2.1.0:
     dependencies:
