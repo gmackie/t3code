@@ -293,7 +293,14 @@ jobs:
         run: |
           set -euo pipefail
           sudo chown -R ubuntu:ubuntu "$GITHUB_WORKSPACE"
-          sudo -u ubuntu -H env "PATH=$PATH" pnpm vp run test
+          # sudo strips the environment, so pnpm's verify-deps check sees a
+          # fresh user and synchronously re-runs `pnpm install`, which has
+          # OOMed node at its default heap on a busy runner. Install already
+          # ran this job; skip the re-verify and give node headroom.
+          sudo -u ubuntu -H env "PATH=$PATH" \
+            "NODE_OPTIONS=--max-old-space-size=4096" \
+            "npm_config_verify_deps_before_run=false" \
+            pnpm vp run test
 
   promote:
     name: Promote lane to GitHub
