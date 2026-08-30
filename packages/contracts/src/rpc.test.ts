@@ -8,6 +8,10 @@ describe("custom-local project import RPCs", () => {
   it("exposes external thread discovery", () => {
     expect(WS_METHODS).toHaveProperty("externalThreadsDiscover", "externalThreads.discover");
   });
+
+  it("exposes project session scanning", () => {
+    expect(WS_METHODS).toHaveProperty("projectSessionImportsScan", "projectSessionImports.scan");
+  });
 });
 
 /**
