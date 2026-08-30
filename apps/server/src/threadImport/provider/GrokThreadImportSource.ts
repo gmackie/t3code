@@ -92,6 +92,25 @@ async function listLocations(sessionsRoot: string): Promise<ReadonlyArray<Locati
   return output;
 }
 
+async function discoveryRevision(root: string): Promise<string> {
+  let canonicalRoot: string;
+  try {
+    canonicalRoot = await NodeFSP.realpath(root);
+  } catch {
+    return "missing";
+  }
+  const entries = await NodeFSP.readdir(canonicalRoot, { withFileTypes: true });
+  const parts = await Promise.all(
+    entries
+      .filter((entry) => entry.isDirectory() && !entry.isSymbolicLink())
+      .map(async (entry) => {
+        const stat = await NodeFSP.stat(NodePath.join(canonicalRoot, entry.name));
+        return `${entry.name}:${stat.mtimeMs}:${stat.size}`;
+      }),
+  );
+  return parts.sort().join("|");
+}
+
 async function readSummary(location: Location): Promise<Summary | undefined> {
   const handle = await NodeFSP.open(
     location.summaryPath,
@@ -510,6 +529,23 @@ export const makeGrokThreadImportSource = (
         (entry): entry is { location: Location; summary: Summary } => entry.summary !== undefined,
       );
     };
+    let discoveryCache:
+      | {
+          readonly revision: string;
+          readonly promise: ReturnType<typeof locate>;
+        }
+      | undefined;
+    const cachedEntries = async () => {
+      const revision = await discoveryRevision(sessionsRoot);
+      if (discoveryCache && discoveryCache.revision === revision) return discoveryCache.promise;
+      const promise = locate();
+      const entry = { revision, promise };
+      discoveryCache = entry;
+      void promise.catch(() => {
+        if (discoveryCache === entry) discoveryCache = undefined;
+      });
+      return promise;
+    };
     return {
       provider: options.provider,
       discover: Effect.fn("GrokThreadImportSource.discover")(function* (input) {
@@ -527,7 +563,7 @@ export const makeGrokThreadImportSource = (
               : null;
         if (keyset === null || !Number.isSafeInteger(input.limit) || input.limit <= 0)
           return yield* discoveryError();
-        const entries = yield* Effect.tryPromise({ try: locate, catch: discoveryError });
+        const entries = yield* Effect.tryPromise({ try: cachedEntries, catch: discoveryError });
         const counts = new Map<string, number>();
         for (const entry of entries)
           counts.set(entry.location.sessionId, (counts.get(entry.location.sessionId) ?? 0) + 1);
