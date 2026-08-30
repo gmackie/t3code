@@ -264,7 +264,19 @@ export class CodexAppServerInputStreamEndedError extends Schema.TaggedError<Code
   }
 }
 
-export class CodexAppServerRequestError extends Schema.TaggedError<CodexAppServerRequestError>()(
+export class CodexAppServerIncomingFrameTooLargeError extends Schema.TaggedErrorClass<CodexAppServerIncomingFrameTooLargeError>()(
+  "CodexAppServerIncomingFrameTooLargeError",
+  {
+    maximumCharacters: Schema.Int,
+    observedCharacters: Schema.Int,
+  },
+) {
+  override get message() {
+    return `Codex App Server input frame exceeded ${this.maximumCharacters} characters.`;
+  }
+}
+
+export class CodexAppServerRequestError extends Schema.TaggedErrorClass<CodexAppServerRequestError>()(
   "CodexAppServerRequestError",
   {
     code: Schema.Number,
@@ -422,6 +434,7 @@ export const CodexAppServerError = Schema.Union([
   CodexAppServerTransportError,
   CodexAppServerIdentifierGenerationError,
   CodexAppServerInputStreamEndedError,
+  CodexAppServerIncomingFrameTooLargeError,
 ]);
 
 export type CodexAppServerError = typeof CodexAppServerError.Type;
