@@ -150,6 +150,8 @@ jobs:
         if: steps.rebase_upstream.outputs.has_changes == 'true' && github.event_name != 'push'
         shell: bash
         working-directory: lane
+        env:
+          NODE_OPTIONS: "--max-old-space-size=4096"
         run: |
           set -euo pipefail
           LOCK_COMMIT_SUBJECT="chore: refresh lockfile after upstream rebase"
@@ -763,7 +765,7 @@ jobs:
     needs: [sync, promote, relay_public_config, build, build_macos_x64]
     if: ${{ !failure() && !cancelled() && needs.sync.outputs.should_release == 'true' && needs.promote.result == 'success' && needs.build.result == 'success' && needs.build_macos_x64.result == 'success' }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 60
     env:
       GH_TOKEN: ${{ secrets.GMACKO_GITHUB_TOKEN }}
     steps:
