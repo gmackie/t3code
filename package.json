@@ -61,7 +61,6 @@
     "sync:t3-state": "node apps/server/src/stateSyncCli.ts"
   },
   "devDependencies": {
-    "@forgegraph/desktop-release": "file:../ForgeGraph/packages/desktop-release",
     "@types/node": "catalog:",
     "oxfmt": "^0.40.0",
     "oxlint": "^1.55.0",
