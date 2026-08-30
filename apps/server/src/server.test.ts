@@ -99,6 +99,14 @@ const unavailableExternalThreadImportService: ExternalThreadImportService.Extern
       >,
   };
 
+const unavailableProjectSessionImportService: ProjectSessionImportService.ProjectSessionImportService["Service"] =
+  {
+    scan: () =>
+      Effect.die("ProjectSessionImportService not stubbed in this test") as ReturnType<
+        ProjectSessionImportService.ProjectSessionImportService["Service"]["scan"]
+      >,
+  };
+
 const collectQueueUntil = Effect.fn("TransferBudget.collectQueueUntil")(function* <A>(
   queue: Queue.Queue<A>,
   predicate: (value: A) => boolean,
@@ -194,6 +202,7 @@ import * as ResourceTelemetry from "./resourceTelemetry/ResourceTelemetry.ts";
 import * as UsageService from "./usage/UsageService.ts";
 import * as AnalyticsService from "./telemetry/AnalyticsService.ts";
 import * as ExternalThreadImportService from "./threadImport/ExternalThreadImportService.ts";
+import * as ProjectSessionImportService from "./projectImport/ProjectSessionImportService.ts";
 import * as Data from "effect/Data";
 
 import { makeOrchestrationIntegrationHarness } from "../integration/OrchestrationEngineHarness.integration.ts";
@@ -797,6 +806,10 @@ const buildAppUnderTest = (options?: {
           Layer.succeed(
             ExternalThreadImportService.ExternalThreadImportService,
             unavailableExternalThreadImportService,
+          ),
+          Layer.succeed(
+            ProjectSessionImportService.ProjectSessionImportService,
+            unavailableProjectSessionImportService,
           ),
         ),
       ),
