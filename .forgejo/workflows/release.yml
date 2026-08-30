@@ -1,0 +1,365 @@
+# t3code desktop release — Forgejo CI + GitHub Releases.
+# Source: ForgeGraph docs/templates/release-electron-t3code.yml
+# Requires: @forgegraph/desktop-release in package.json devDependencies
+
+name: T3 Code Desktop Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+      - "!v*-nightly.*"
+  schedule:
+    - cron: "0 */3 * * *"
+  workflow_dispatch:
+    inputs:
+      channel:
+        description: Release channel
+        required: false
+        default: stable
+        type: choice
+        options:
+          - stable
+          - nightly
+      version:
+        description: Semver without tag prefix (stable manual only)
+        required: false
+        type: string
+
+env:
+  GITHUB_RELEASE_REPOSITORY: gmackie/t3code
+  FORGEGRAPH_URL: https://forgegraf.com
+  DEFAULT_BRANCH: main
+  RELEASE_TAG_PREFIX: v
+  RELEASE_PRODUCT_NAME: T3 Code
+  DESKTOP_PACKAGE_JSON: apps/desktop/package.json
+  DESKTOP_RELEASE_DIR: release
+  BUILD_COMMAND: bun run dist:desktop:artifact --
+  PREFLIGHT_TYPECHECK: bun run typecheck
+  PREFLIGHT_TEST: bun run test
+  ARTIFACT_NAME_PREFIX: desktop
+  NIGHTLY_TAG_GLOB: 'v*-nightly.*'
+  PACKAGE_MANAGER: bun
+
+permissions:
+  contents: read
+
+jobs:
+  check_changes:
+    name: Check for changes since last nightly
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    outputs:
+      has_changes: ${{ steps.check.outputs.has_changes }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - id: check
+        run: |
+          last_nightly_tag=$(git tag --list "$NIGHTLY_TAG_GLOB" --sort=-creatordate | head -n 1)
+          if [[ -z "$last_nightly_tag" ]]; then
+            echo "has_changes=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          last_sha=$(git rev-parse "$last_nightly_tag^{commit}")
+          head_sha=$(git rev-parse HEAD)
+          if [[ "$last_sha" == "$head_sha" ]]; then
+            echo "No changes since $last_nightly_tag. Skipping."
+            echo "has_changes=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_changes=true" >> "$GITHUB_OUTPUT"
+          fi
+        env:
+          NIGHTLY_TAG_GLOB: ${{ env.NIGHTLY_TAG_GLOB }}
+
+  preflight:
+    name: Preflight
+    needs: [check_changes]
+    if: |
+      !failure() && !cancelled() &&
+      (github.event_name != 'schedule' || needs.check_changes.outputs.has_changes == 'true')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      release_channel: ${{ steps.release_meta.outputs.release_channel }}
+      version: ${{ steps.release_meta.outputs.version }}
+      tag: ${{ steps.release_meta.outputs.tag }}
+      release_name: ${{ steps.release_meta.outputs.name }}
+      previous_tag: ${{ steps.previous_tag.outputs.previous_tag }}
+      is_prerelease: ${{ steps.release_meta.outputs.is_prerelease }}
+      make_latest: ${{ steps.release_meta.outputs.make_latest }}
+      ref: ${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: package.json
+
+      - run: bun install --frozen-lockfile
+
+      - name: Install @forgegraph/desktop-release
+        run: |
+          git clone --depth 1 --branch feat/desktop-release-lane \
+            https://git.forgegraf.com/gmackie/forgegraph.git /tmp/forgegraph
+          npm install -g /tmp/forgegraph/packages/desktop-release
+
+      - id: release_meta
+        shell: bash
+        env:
+          DISPATCH_CHANNEL: ${{ github.event.inputs.channel }}
+          DISPATCH_VERSION: ${{ github.event.inputs.version }}
+          NIGHTLY_DATE: ${{ github.run_started_at }}
+          NIGHTLY_SHA: ${{ github.sha }}
+          NIGHTLY_RUN_NUMBER: ${{ github.run_number }}
+          TAG_PREFIX: ${{ env.RELEASE_TAG_PREFIX }}
+          PRODUCT_NAME: ${{ env.RELEASE_PRODUCT_NAME }}
+          DESKTOP_PACKAGE_JSON: ${{ env.DESKTOP_PACKAGE_JSON }}
+        run: |
+          dispatch_channel="${DISPATCH_CHANNEL:-stable}"
+          tag_prefix="${TAG_PREFIX}"
+
+          if [[ "${GITHUB_EVENT_NAME}" == "schedule" || ( "${GITHUB_EVENT_NAME}" == "workflow_dispatch" && "$dispatch_channel" == "nightly" ) ]]; then
+            nightly_date="$(date -u -d "$NIGHTLY_DATE" +%Y%m%d 2>/dev/null || date -u -j -f '%Y-%m-%dT%H:%M:%S' "${NIGHTLY_DATE%%.*}" +%Y%m%d)"
+            fg-desktop-release resolve-nightly \
+              --date "$nightly_date" \
+              --run-number "$NIGHTLY_RUN_NUMBER" \
+              --sha "$NIGHTLY_SHA" \
+              --package-json "$DESKTOP_PACKAGE_JSON" \
+              --tag-prefix "$tag_prefix" \
+              --product-name "$PRODUCT_NAME" \
+              --github-output
+            echo "release_channel=nightly" >> "$GITHUB_OUTPUT"
+            echo "is_prerelease=true" >> "$GITHUB_OUTPUT"
+            echo "make_latest=false" >> "$GITHUB_OUTPUT"
+          elif [[ "${GITHUB_EVENT_NAME}" == "push" && "${GITHUB_REF}" == refs/tags/* ]]; then
+            version="${GITHUB_REF_NAME#${tag_prefix}}"
+            echo "release_channel=stable" >> "$GITHUB_OUTPUT"
+            echo "version=$version" >> "$GITHUB_OUTPUT"
+            echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+            echo "name=${PRODUCT_NAME} v$version" >> "$GITHUB_OUTPUT"
+            if [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "is_prerelease=false" >> "$GITHUB_OUTPUT"
+              echo "make_latest=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "is_prerelease=true" >> "$GITHUB_OUTPUT"
+              echo "make_latest=false" >> "$GITHUB_OUTPUT"
+            fi
+          else
+            raw="${DISPATCH_VERSION}"
+            if [[ -z "$raw" ]]; then
+              echo "workflow_dispatch stable releases require the version input." >&2
+              exit 1
+            fi
+            version="${raw#v}"
+            echo "release_channel=stable" >> "$GITHUB_OUTPUT"
+            echo "version=$version" >> "$GITHUB_OUTPUT"
+            echo "tag=${tag_prefix}${version}" >> "$GITHUB_OUTPUT"
+            echo "name=${PRODUCT_NAME} v$version" >> "$GITHUB_OUTPUT"
+            if [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "is_prerelease=false" >> "$GITHUB_OUTPUT"
+              echo "make_latest=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "is_prerelease=true" >> "$GITHUB_OUTPUT"
+              echo "make_latest=false" >> "$GITHUB_OUTPUT"
+            fi
+          fi
+
+      - run: bun run typecheck
+      - run: bun run test
+
+      - id: previous_tag
+        run: |
+          fg-desktop-release resolve-previous-tag \
+            --channel "${{ steps.release_meta.outputs.release_channel }}" \
+            --current-tag "${{ steps.release_meta.outputs.tag }}" \
+            --tag-prefix "${{ env.RELEASE_TAG_PREFIX }}" \
+            --github-output
+
+  build:
+    name: Build ${{ matrix.label }}
+    needs: preflight
+    if: ${{ !failure() && !cancelled() && needs.preflight.result == 'success' }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { label: macOS arm64, runner: macos-latest, platform: mac, arch: arm64 }
+          - { label: macOS x64, runner: macos-latest, platform: mac, arch: x64 }
+          - { label: Linux x64, runner: ubuntu-latest, platform: linux, arch: x64 }
+          - { label: Windows x64, runner: windows-latest, platform: win, arch: x64 }
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.preflight.outputs.ref }}
+          fetch-depth: 0
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: package.json
+
+      - run: bun install --frozen-lockfile
+
+      - name: Build artifact
+        shell: bash
+        env:
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+        run: |
+          args=(
+            --platform "${{ matrix.platform }}"
+            --target dmg
+            --arch "${{ matrix.arch }}"
+            --build-version "${{ needs.preflight.outputs.version }}"
+            --verbose
+          )
+          if [[ "${{ matrix.platform }}" == "mac" && -n "${CSC_LINK:-}" ]]; then
+            args+=(--signed)
+          fi
+          bun run dist:desktop:artifact -- "${args[@]}"
+
+      - name: Collect release assets
+        shell: bash
+        run: |
+          mkdir -p release-publish
+          shopt -s nullglob
+          for pattern in release/*.dmg release/*.zip release/*.AppImage release/*.exe release/*.blockmap release/*.yml; do
+            for file in $pattern; do cp "$file" release-publish/; done
+          done
+          if [[ "${{ matrix.platform }}" == "mac" && "${{ matrix.arch }}" != "arm64" ]]; then
+            for manifest in release-publish/*-mac.yml; do
+              mv "$manifest" "${manifest%.yml}-${{ matrix.arch }}.yml"
+            done
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-${{ matrix.platform }}-${{ matrix.arch }}
+          path: release-publish/*
+          if-no-files-found: error
+
+  release:
+    name: Publish GitHub Release
+    needs: [preflight, build]
+    if: ${{ !failure() && !cancelled() && needs.preflight.result == 'success' && needs.build.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - id: app_token
+        uses: actions/create-github-app-token@v2
+        continue-on-error: true
+        with:
+          app-id: ${{ secrets.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          owner: gmackie
+
+      - id: release_token
+        shell: bash
+        env:
+          APP_TOKEN: ${{ steps.app_token.outputs.token }}
+          GH_RELEASE_TOKEN: ${{ secrets.GH_RELEASE_TOKEN }}
+        run: |
+          if [[ -n "${APP_TOKEN:-}" ]]; then
+            echo "token=$APP_TOKEN" >> "$GITHUB_OUTPUT"
+          elif [[ -n "${GH_RELEASE_TOKEN:-}" ]]; then
+            echo "token=$GH_RELEASE_TOKEN" >> "$GITHUB_OUTPUT"
+          else
+            echo "Set RELEASE_APP_* or GH_RELEASE_TOKEN to publish GitHub releases." >&2
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.preflight.outputs.ref }}
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
+
+      - run: bun install --frozen-lockfile
+
+      - name: Install @forgegraph/desktop-release
+        run: |
+          git clone --depth 1 --branch feat/desktop-release-lane \
+            https://git.forgegraf.com/gmackie/forgegraph.git /tmp/forgegraph
+          npm install -g /tmp/forgegraph/packages/desktop-release
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: desktop-*
+          merge-multiple: true
+          path: release-assets
+
+      - name: Merge macOS updater manifests
+        run: |
+          shopt -s nullglob
+          for x64_manifest in release-assets/*-mac-x64.yml; do
+            arm64_manifest="${x64_manifest%-x64.yml}.yml"
+            if [[ -f "$arm64_manifest" ]]; then
+              fg-desktop-release merge-manifests --platform mac "$arm64_manifest" "$x64_manifest"
+              rm -f "$x64_manifest"
+            fi
+          done
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          repository: ${{ env.GITHUB_RELEASE_REPOSITORY }}
+          tag_name: ${{ needs.preflight.outputs.tag }}
+          target_commitish: ${{ needs.preflight.outputs.ref }}
+          name: ${{ needs.preflight.outputs.release_name }}
+          generate_release_notes: true
+          previous_tag: ${{ needs.preflight.outputs.previous_tag }}
+          prerelease: ${{ needs.preflight.outputs.is_prerelease }}
+          make_latest: ${{ needs.preflight.outputs.make_latest }}
+          files: |
+            release-assets/*.dmg
+            release-assets/*.zip
+            release-assets/*.AppImage
+            release-assets/*.exe
+            release-assets/*.blockmap
+            release-assets/*.yml
+          fail_on_unmatched_files: true
+          token: ${{ steps.release_token.outputs.token }}
+
+      - name: Report release to ForgeGraph
+        if: always()
+        env:
+          FG_CI_TOKEN: ${{ secrets.FORGEGRAPH_TOKEN }}
+        run: |
+          if [[ -z "${FG_CI_TOKEN:-}" ]]; then
+            echo "::warning::No FORGEGRAPH_TOKEN configured (run forge ci provision)"
+            exit 0
+          fi
+          status="success"
+          [[ "${{ job.status }}" == "success" ]] || status="failure"
+          REPO_FULL="${{ github.repository }}"
+          curl -sf -X POST "${{ env.FORGEGRAPH_URL }}/api/fg/ci/report" \
+            -H "Authorization: Bearer ${FG_CI_TOKEN}" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"owner\": \"${REPO_FULL%%/*}\",
+              \"repo\": \"${REPO_FULL##*/}\",
+              \"sha\": \"${{ github.sha }}\",
+              \"branch\": \"${{ github.ref_name }}\",
+              \"status\": \"${status}\",
+              \"runId\": \"${{ github.run_id }}\",
+              \"runUrl\": \"${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\",
+              \"workflowName\": \"T3 Code Desktop Release (${{ needs.preflight.outputs.release_channel }})\"
+            }" || echo "::warning::ForgeGraph CI report failed"
