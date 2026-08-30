@@ -108,7 +108,7 @@ jobs:
 
       - name: Install @forgegraph/desktop-release
         run: |
-          git clone --depth 1 --branch feat/desktop-release-lane \
+          git clone --depth 1 --branch main \
             https://git.forgegraf.com/gmackie/forgegraph.git /tmp/forgegraph
           npm install -g /tmp/forgegraph/packages/desktop-release
 
@@ -297,7 +297,7 @@ jobs:
 
       - name: Install @forgegraph/desktop-release
         run: |
-          git clone --depth 1 --branch feat/desktop-release-lane \
+          git clone --depth 1 --branch main \
             https://git.forgegraf.com/gmackie/forgegraph.git /tmp/forgegraph
           npm install -g /tmp/forgegraph/packages/desktop-release
 
