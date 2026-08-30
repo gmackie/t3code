@@ -136,6 +136,26 @@ export const makeMigrationLoader = (throughId?: number) =>
 const run = Migrator.make({});
 
 /**
+ * Historic lane migrations whose effects are baked into existing profiles but
+ * which the manifest no longer carries. Their ledger rows are safe to drop;
+ * any OTHER unknown name is a foreign migration (another checkout's code) and
+ * is left untouched so downstream collision checks stay loud.
+ */
+const retiredLaneMigrations = new Set([
+  "RepairCustomLocalMigrationSchema",
+  "RepairCustomLocalProjectionIndexes",
+  "OrchestrationV2Events",
+]);
+
+/**
+ * Migrations from the renumbering era onward are written re-runnable
+ * (guarded column adds, CREATE INDEX IF NOT EXISTS), so the reconciler may
+ * backfill them. Older migrations predate every renumbered ledger and must
+ * never be re-executed.
+ */
+const firstRerunnableMigrationId = 33;
+
+/**
  * The GMACKO lane rebases onto upstream, and upstream occasionally claims
  * migration ids the lane was using, so lane migrations get renumbered. The
  * migrator tracks applied migrations by numeric id only and skips every id at
@@ -145,15 +165,16 @@ const run = Migrator.make({});
  *
  * Reconcile the ledger by migration NAME before the migrator runs:
  * - rows whose name moved to a new id are re-keyed to the manifest id
- * - rows whose name the manifest no longer knows are dropped (their schema
- *   effects stay in place)
- * - manifest migrations below the highest applied id that were never applied
- *   by name ("holes" created by past renumbering) are executed and recorded;
- *   migrations from the renumbering era onward are written re-runnable, so
- *   backfilling them is safe
+ * - rows named in retiredLaneMigrations are dropped (their schema effects
+ *   stay in place); rows with any other unknown name are left exactly where
+ *   they are
+ * - re-runnable manifest migrations below the highest applied id that were
+ *   never applied by name ("holes" created by past renumbering) are executed
+ *   and recorded
  *
  * Aligned ledgers (every fresh install, and every repaired profile after one
- * boot) short-circuit without writing anything.
+ * boot) short-circuit without writing anything, as does any ledger where a
+ * foreign row occupies a slot the reconciliation would need.
  */
 export const reconcileMigrationLedger = Effect.fn("reconcileMigrationLedger")(function* () {
   const sql = yield* SqlClient.SqlClient;
@@ -169,29 +190,50 @@ export const reconcileMigrationLedger = Effect.fn("reconcileMigrationLedger")(fu
   const manifestIdByName = new Map<string, number>(
     migrationEntries.map(([id, name]) => [name, id]),
   );
-  const aligned = rows.every(
-    (row, index) =>
-      manifestIdByName.get(row.name) === row.migration_id &&
-      rows.findIndex((other) => other.name === row.name) === index,
-  );
+  const aligned = rows.every((row, index) => {
+    const manifestId = manifestIdByName.get(row.name);
+    if (manifestId === undefined) return !retiredLaneMigrations.has(row.name);
+    return manifestId === row.migration_id && rows.findIndex((o) => o.name === row.name) === index;
+  });
   if (aligned) return;
 
+  const foreignRows = rows.filter(
+    (row) => !manifestIdByName.has(row.name) && !retiredLaneMigrations.has(row.name),
+  );
+  const foreignIds = new Set(foreignRows.map((row) => row.migration_id));
   const appliedAtByName = new Map<string, string>();
   for (const row of rows) {
-    if (!appliedAtByName.has(row.name)) appliedAtByName.set(row.name, row.created_at);
+    if (manifestIdByName.has(row.name) && !appliedAtByName.has(row.name)) {
+      appliedAtByName.set(row.name, row.created_at);
+    }
   }
   const highestAppliedId = migrationEntries.reduce(
     (highest, [id, name]) => (appliedAtByName.has(name) && id > highest ? id : highest),
     0,
   );
+  const wantsSlot = (id: number, name: string) =>
+    appliedAtByName.has(name) || (id >= firstRerunnableMigrationId && id < highestAppliedId);
+  if (migrationEntries.some(([id, name]) => wantsSlot(id, name) && foreignIds.has(id))) {
+    yield* Effect.logWarning(
+      "Migration ledger has foreign rows on manifest slots; leaving it untouched",
+    ).pipe(Effect.annotateLogs({ foreign: foreignRows.map((r) => `${r.migration_id}_${r.name}`) }));
+    return;
+  }
+
   const dropped = rows
-    .filter((row) => !manifestIdByName.has(row.name))
+    .filter((row) => retiredLaneMigrations.has(row.name))
     .map((row) => `${row.migration_id}_${row.name}`);
   const backfilled: Array<string> = [];
 
   yield* sql.withTransaction(
     Effect.gen(function* () {
       yield* sql`DELETE FROM effect_sql_migrations`;
+      for (const row of foreignRows) {
+        yield* sql`
+          INSERT INTO effect_sql_migrations (migration_id, name, created_at)
+          VALUES (${row.migration_id}, ${row.name}, ${row.created_at})
+        `;
+      }
       for (const [id, name, migration] of migrationEntries) {
         const appliedAt = appliedAtByName.get(name);
         if (appliedAt !== undefined) {
@@ -199,7 +241,7 @@ export const reconcileMigrationLedger = Effect.fn("reconcileMigrationLedger")(fu
             INSERT INTO effect_sql_migrations (migration_id, name, created_at)
             VALUES (${id}, ${name}, ${appliedAt})
           `;
-        } else if (id < highestAppliedId) {
+        } else if (id >= firstRerunnableMigrationId && id < highestAppliedId) {
           yield* migration;
           backfilled.push(`${id}_${name}`);
           yield* sql`
