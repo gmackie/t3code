@@ -464,12 +464,14 @@ it.layer(NodeServices.layer)("GrokThreadImportSource", (it) => {
           yield* writeSession(home, id, `/work/project/${index}`, "2026-01-03T00:00:00Z", "");
         }
         let active = 0,
-          maximum = 0;
+          maximum = 0,
+          reads = 0;
         const source = yield* makeGrokThreadImportSource({
           provider,
           grokSettings: { homePath: home },
           onSummaryReadStart: () => {
             active++;
+            reads++;
             maximum = Math.max(maximum, active);
           },
           onSummaryReadEnd: () => {
@@ -477,7 +479,9 @@ it.layer(NodeServices.layer)("GrokThreadImportSource", (it) => {
           },
         });
         expect((yield* source.discover({ ...scope, limit: 100 })).candidates).toHaveLength(20);
+        expect((yield* source.discover({ ...scope, limit: 100 })).candidates).toHaveLength(20);
         expect(maximum).toBeLessThanOrEqual(8);
+        expect(reads).toBe(20);
         const directory = NodePath.join(
           home,
           "sessions",
