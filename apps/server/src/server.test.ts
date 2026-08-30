@@ -2051,7 +2051,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 
-  it.effect("rejects cloud link proofs for unsupported endpoint providers", () =>
+  it.effect("accepts cloud link proofs for relay endpoints", () =>
     Effect.gen(function* () {
       yield* buildAppUnderTest();
 
@@ -2072,7 +2072,6 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
             wsBaseUrl: linkProofUrl
               .replace("http://", "ws://")
               .replace("/api/connect/link-proof", "/ws"),
-            // "manual" and "cloudflare_tunnel" are supported; "t3_relay" is not.
             providerKind: "t3_relay",
           },
           origin: {
@@ -2081,14 +2080,10 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
           },
         }),
       });
-      const body = yield* responseJsonEffect<{
-        readonly _tag?: string;
-        readonly message?: string;
-      }>(linkProofResponse);
+      const body = yield* responseJsonEffect<string>(linkProofResponse);
 
-      assert.equal(linkProofResponse.status, 400);
-      assert.equal(body._tag, "EnvironmentHttpBadRequestError");
-      assert.equal(body.message, "Invalid managed endpoint origin.");
+      assert.equal(linkProofResponse.status, 200);
+      assert.equal(body.split(".").length, 3);
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 
