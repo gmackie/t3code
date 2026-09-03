@@ -28,9 +28,6 @@
 name: GMACKO Nightly
 
 on:
-  push:
-    branches:
-      - custom-local
   schedule:
     # 09:00 UTC ≈ 02:00 America/Los_Angeles.
     - cron: "0 9 * * *"
