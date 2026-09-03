@@ -740,7 +740,7 @@ importers:
         version: link:../../packages/shared
       alchemy:
         specifier: 2.0.0-beta.68
-        version: 2.0.0-beta.68(0885d8a95b948dcd9cb22ae87b3f43ad)
+        version: 2.0.0-beta.68(801c2989ae26474f7e4bbb96144869c9)
       drizzle-orm:
         specifier: 1.0.0-rc.4
         version: 1.0.0-rc.4(5e12850ccc97093662994947013b2e06)
@@ -897,7 +897,7 @@ importers:
         version: 24.12.4
       vite-plus:
         specifier: 'catalog:'
-        version: 0.2.2(@types/node@24.12.4)(bufferutil@4.1.0)(esbuild@0.28.1)(jiti@2.7.0)(msw@2.12.11(@types/node@24.12.4)(typescript@6.0.3))(terser@5.48.0)(typescript@6.0.3)(unrun@0.2.39)(utf-8-validate@6.0.6)(yaml@2.9.0)
+        version: 0.3.0(@types/node@24.12.4)(bufferutil@4.1.0)(esbuild@0.28.1)(jiti@2.7.0)(msw@2.12.11(@types/node@24.12.4)(typescript@6.0.3))(terser@5.48.0)(typescript@6.0.3)(unrun@0.2.39)(utf-8-validate@6.0.6)(yaml@2.9.0)
 
   packages/shared:
     dependencies:
@@ -2104,6 +2104,10 @@ packages:
 
   '@electric-sql/pglite@0.3.15':
     resolution: {integrity: sha512-Cj++n1Mekf9ETfdc16TlDi+cDDQF0W7EcbyRHYOAeZdsAe8M/FJg18itDTSwyHfar2WIezawM9o0EKaRGVKygQ==}
+
+  '@electron-internal/extract-zip@1.0.5':
+    resolution: {integrity: sha512-+bqFCP98pLI0Tt0XQo1TmlXtwjWchISndDOxCkEcIuUgXWpBnLyRI+2DU+mesvnMMX6L1XDqYNA0lXNDHd/yiA==}
+    engines: {node: '>=22.12.0'}
 
   '@electron/asar@3.4.1':
     resolution: {integrity: sha512-i4/rNPRS84t0vSRa2HorerGRXWyF4vThfHesw0dmcWHp+cspK743UanA0suA5Q5y8kzY2y6YKrvbIUn69BCAiA==}
@@ -4953,6 +4957,9 @@ packages:
   '@types/yargs@17.0.35':
     resolution: {integrity: sha512-qUHkeCyQFxMXg79wQfTtfndEC+N9ZZg76HJftDJp+qH2tV7Gj4OJi7l+PiWwJ+pWtW8GwSmqsDj/oymhrTWXjg==}
 
+  '@types/yauzl@2.10.3':
+    resolution: {integrity: sha512-oJoftv0LSuaDZE3Le4DbKX+KS9G36NzOeSap90UIK0yMA/NhKJhqlSGtNDORNRaIbQfzjXDrQa0ytJ6mNRGz/Q==}
+
   '@types/yauzl@3.4.0':
     resolution: {integrity: sha512-NRPn5w6h8dhcnmx3YIRQcqMywY/+nND/uOkJessedcrowO3C0AssHp3tMJpxKAwOhFOo0OV1y9VtsC5hbKKBAw==}
 
@@ -5866,6 +5873,9 @@ packages:
   bson@6.10.4:
     resolution: {integrity: sha512-WIsKqkSC0ABoBJuT1LEX+2HEvNmNKKgnTAyd0fL8qzK4SH2i9NXg+t08YtdZp/V9IZ33cxe3iV4yM0qg8lMQng==}
     engines: {node: '>=16.20.1'}
+
+  buffer-crc32@0.2.13:
+    resolution: {integrity: sha512-VO9Ht/+p3SN7SKWqcrgEzjGbRSJYTx+Q1pTQC0wrWqHx0vpJraQ6GtHx8tvcg1rlK1byhU5gccxgOgj7B0TDkQ==}
 
   buffer-from@1.1.2:
     resolution: {integrity: sha512-E+XQCRwSbaaiChtv6k6Dwgc+bx+Bs6vuKJHHl5kox/BaKbhiXzqQOwK4cO22yElGp2OCmjwVhT3HmxgyPGnJfQ==}
@@ -7086,6 +7096,11 @@ packages:
   extend@3.0.2:
     resolution: {integrity: sha512-fjquC59cD7CyW6urNXK0FBufkZcoiGG80wTuPujX590cB5Ttln20E2UB4S/WARVqhXffZl2LNgS+gQdPIIim/g==}
 
+  extract-zip@2.0.1:
+    resolution: {integrity: sha512-GDhU9ntwuKyGXdZBUgTIe+vXnWj0fppUEtMDL0+idd5Sta8TGpHssn/eusA9mrPr9qNDym6SxAYZjNvCn/9RBg==}
+    engines: {node: '>= 10.17.0'}
+    hasBin: true
+
   fast-check@4.9.0:
     resolution: {integrity: sha512-7ms6T7SybUev/PQITciI0yLM2pOSFy5zpG8Ty7tQofcVaQUvrMXp6CBwqF6fThLCLOrfBtuHAtwq6Yu4XPCllg==}
     engines: {node: '>=12.17.0'}
@@ -7146,6 +7161,9 @@ packages:
 
   fb-watchman@2.0.2:
     resolution: {integrity: sha512-p5161BqbuCaSnB8jIbzQHOlpgsPmK5rJVDfDKO91Axs5NC1uu3HRQm6wt9cd9/+GtQQIO53JdGXXoyDpTAsgYA==}
+
+  fd-slicer@1.1.0:
+    resolution: {integrity: sha512-cE1qsB/VwyQozZ+q1dGxR8LBYNZeofhEdUNGSMbQD3Gw2lAzX9Zb3uIU6Ebc/Fmyjo9AWWfnn0AUCHqtevs/8g==}
 
   fdir@6.5.0:
     resolution: {integrity: sha512-tIbYtZbucOs0BRGqPJkshJUYdL+SDH7dVM8gjy+ERp3WAUjLEFJE+02kanyHtwjWOnwrKYBiwAmM0p4kLJAnXg==}
@@ -10698,6 +10716,9 @@ packages:
     resolution: {integrity: sha512-7dSzzRQ++CKnNI/krKnYRV7JKKPUXMEh61soaHKg9mrWEhzFWhFnxPxGl+69cD1Ou63C13NUPCnmIcrvqCuM6w==}
     engines: {node: '>=12'}
 
+  yauzl@2.10.0:
+    resolution: {integrity: sha512-p4a9I6X6nu6IhoGmBqAcbJy1mlC4j27vEPZX9F4L4/vZT3Lyq1VkFHw/V/PUcB9Buo+DG3iHkT0x3Qya58zc3g==}
+
   yauzl@3.4.0:
     resolution: {integrity: sha512-jIH9yLR9wqr0wOS0TpBvo/g/2UgZH5qePVbjgRliiF0BYvOZyaBknKsF+x9Iht0O6sqgnB93rCICdOZFecJuDw==}
     engines: {node: '>=12'}
@@ -10724,6 +10745,12 @@ packages:
 
   yoga-layout@3.2.1:
     resolution: {integrity: sha512-0LPOt3AxKqMdFBZA3HBAt/t/8vIKq7VaQYbuA8WxCgung+p9TVyKRYdpvCb80HcdTN2NkbIKbhNwKUfm3tQywQ==}
+
+  yuku-codegen@0.5.48:
+    resolution: {integrity: sha512-p7HxD5Xl4jzDzqMrGePAOeSHmRY4g58h4HuGq15weQFPxuPWd/W6e7nqp/+Lea6JfpOdBwJOAyXFqIZ/J9Zfnw==}
+
+  yuku-parser@0.5.48:
+    resolution: {integrity: sha512-OWBfhrpgK9+/4+IXG9oT8Bao4AhViQA7vdyNNH7EUg8dQYgwa70XtIBWTpCEme1P1ECyoDNYkn0wT63f8XRcVA==}
 
   zeptomatch@2.1.0:
     resolution: {integrity: sha512-KiGErG2J0G82LSpniV0CtIzjlJ10E04j02VOudJsPyPwNZgGnRKQy7I1R7GMyg/QswnE4l7ohSGrQbQbjXPPDA==}
@@ -11935,7 +11962,7 @@ snapshots:
       - bufferutil
       - utf-8-validate
 
-  '@distilled.cloud/cloudflare-rolldown-plugin@0.16.0(@voidzero-dev/vite-plus-core@0.2.2(@types/node@24.12.4)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.48.0)(typescript@6.0.3)(unrun@0.2.39)(yaml@2.9.0))(rolldown@1.1.5)(workerd@1.20260704.1)':
+  '@distilled.cloud/cloudflare-rolldown-plugin@0.16.0(@voidzero-dev/vite-plus-core@0.3.0(@types/node@24.12.4)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.48.0)(typescript@6.0.3)(unrun@0.2.39)(yaml@2.9.0))(rolldown@1.1.5)(workerd@1.20260704.1)':
     dependencies:
       '@cloudflare/unenv-preset': 2.16.1(unenv@2.0.0-rc.24)(workerd@1.20260704.1)
       magic-string: 0.30.21
@@ -11963,10 +11990,10 @@ snapshots:
       - react-native-b4a
       - supports-color
 
-  '@distilled.cloud/cloudflare-vite-plugin@0.16.0(466bfa2f28ed423ab158ad3780d9e1ac)':
+  '@distilled.cloud/cloudflare-vite-plugin@0.16.0(c99249a8e7c73e0a56c26346de66f530)':
     dependencies:
       '@distilled.cloud/cloudflare': 1.0.0-rc.2(bufferutil@4.1.0)(utf-8-validate@6.0.6)
-      '@distilled.cloud/cloudflare-rolldown-plugin': 0.16.0(@voidzero-dev/vite-plus-core@0.2.2(@types/node@24.12.4)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.48.0)(typescript@6.0.3)(unrun@0.2.39)(yaml@2.9.0))(rolldown@1.1.5)(workerd@1.20260704.1)
+      '@distilled.cloud/cloudflare-rolldown-plugin': 0.16.0(@voidzero-dev/vite-plus-core@0.3.0(@types/node@24.12.4)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.48.0)(typescript@6.0.3)(unrun@0.2.39)(yaml@2.9.0))(rolldown@1.1.5)(workerd@1.20260704.1)
       '@distilled.cloud/cloudflare-runtime': 0.16.0(@distilled.cloud/cloudflare@1.0.0-rc.2(bufferutil@4.1.0)(utf-8-validate@6.0.6))(@effect/platform-bun@4.0.0-beta.103(bufferutil@4.1.0)(effect@4.0.0-beta.103(patch_hash=af36b7948b6f9c56623074662b51dade5699880c1a7c71245de73e13c3185fb6))(utf-8-validate@6.0.6))(@effect/platform-node@4.0.0-beta.103(bufferutil@4.1.0)(effect@4.0.0-beta.103(patch_hash=af36b7948b6f9c56623074662b51dade5699880c1a7c71245de73e13c3185fb6))(ioredis@5.11.0)(utf-8-validate@6.0.6))(effect@4.0.0-beta.103(patch_hash=af36b7948b6f9c56623074662b51dade5699880c1a7c71245de73e13c3185fb6))
       effect: 4.0.0-beta.103(patch_hash=af36b7948b6f9c56623074662b51dade5699880c1a7c71245de73e13c3185fb6)
       vite: '@voidzero-dev/vite-plus-core@0.3.0(@types/node@24.12.4)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.48.0)(typescript@6.0.3)(unrun@0.2.39)(yaml@2.9.0)'
@@ -12162,6 +12189,8 @@ snapshots:
       '@electric-sql/pglite': 0.3.15
 
   '@electric-sql/pglite@0.3.15': {}
+
+  '@electron-internal/extract-zip@1.0.5': {}
 
   '@electron/asar@3.4.1':
     dependencies:
@@ -12826,7 +12855,7 @@ snapshots:
       glob: 13.0.6
       hermes-parser: 0.36.1
       jsc-safe-url: 0.2.4
-      lightningcss: 1.32.0
+      lightningcss: 1.33.0
       picomatch: 4.0.7
       postcss: 8.5.15
       resolve-from: 5.0.0
@@ -15139,6 +15168,11 @@ snapshots:
     dependencies:
       '@types/yargs-parser': 21.0.3
 
+  '@types/yauzl@2.10.3':
+    dependencies:
+      '@types/node': 24.12.4
+    optional: true
+
   '@types/yauzl@3.4.0':
     dependencies:
       '@types/node': 24.12.4
@@ -15542,7 +15576,7 @@ snapshots:
       json-schema-traverse: 1.0.0
       require-from-string: 2.0.2
 
-  alchemy@2.0.0-beta.68(0885d8a95b948dcd9cb22ae87b3f43ad):
+  alchemy@2.0.0-beta.68(801c2989ae26474f7e4bbb96144869c9):
     dependencies:
       '@alchemy.run/node-utils': 0.0.5
       '@aws-sdk/credential-providers': 3.1062.0
@@ -15550,9 +15584,9 @@ snapshots:
       '@distilled.cloud/aws': 1.0.0-rc.2(effect@4.0.0-beta.103(patch_hash=af36b7948b6f9c56623074662b51dade5699880c1a7c71245de73e13c3185fb6))
       '@distilled.cloud/axiom': 1.0.0-rc.2(bufferutil@4.1.0)(utf-8-validate@6.0.6)
       '@distilled.cloud/cloudflare': 1.0.0-rc.2(bufferutil@4.1.0)(utf-8-validate@6.0.6)
-      '@distilled.cloud/cloudflare-rolldown-plugin': 0.16.0(@voidzero-dev/vite-plus-core@0.2.2(@types/node@24.12.4)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.48.0)(typescript@6.0.3)(unrun@0.2.39)(yaml@2.9.0))(rolldown@1.1.5)(workerd@1.20260704.1)
+      '@distilled.cloud/cloudflare-rolldown-plugin': 0.16.0(@voidzero-dev/vite-plus-core@0.3.0(@types/node@24.12.4)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.48.0)(typescript@6.0.3)(unrun@0.2.39)(yaml@2.9.0))(rolldown@1.1.5)(workerd@1.20260704.1)
       '@distilled.cloud/cloudflare-runtime': 0.16.0(@distilled.cloud/cloudflare@1.0.0-rc.2(bufferutil@4.1.0)(utf-8-validate@6.0.6))(@effect/platform-bun@4.0.0-beta.103(bufferutil@4.1.0)(effect@4.0.0-beta.103(patch_hash=af36b7948b6f9c56623074662b51dade5699880c1a7c71245de73e13c3185fb6))(utf-8-validate@6.0.6))(@effect/platform-node@4.0.0-beta.103(bufferutil@4.1.0)(effect@4.0.0-beta.103(patch_hash=af36b7948b6f9c56623074662b51dade5699880c1a7c71245de73e13c3185fb6))(ioredis@5.11.0)(utf-8-validate@6.0.6))(effect@4.0.0-beta.103(patch_hash=af36b7948b6f9c56623074662b51dade5699880c1a7c71245de73e13c3185fb6))
-      '@distilled.cloud/cloudflare-vite-plugin': 0.16.0(466bfa2f28ed423ab158ad3780d9e1ac)
+      '@distilled.cloud/cloudflare-vite-plugin': 0.16.0(c99249a8e7c73e0a56c26346de66f530)
       '@distilled.cloud/core': 1.0.0-rc.2(effect@4.0.0-beta.103(patch_hash=af36b7948b6f9c56623074662b51dade5699880c1a7c71245de73e13c3185fb6))
       '@distilled.cloud/neon': 1.0.0-rc.2(bufferutil@4.1.0)(utf-8-validate@6.0.6)
       '@distilled.cloud/planetscale': 1.0.0-rc.2(bufferutil@4.1.0)(utf-8-validate@6.0.6)
@@ -15590,7 +15624,7 @@ snapshots:
       mongodb: 6.21.0(@aws-sdk/credential-providers@3.1062.0)(socks@2.8.9)
       mysql2: 3.22.4(@types/node@24.12.4)
       pg: 8.22.0
-      vite: '@voidzero-dev/vite-plus-core@0.2.2(@types/node@24.12.4)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.48.0)(typescript@6.0.3)(unrun@0.2.39)(yaml@2.9.0)'
+      vite: '@voidzero-dev/vite-plus-core@0.3.0(@types/node@24.12.4)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.48.0)(typescript@6.0.3)(unrun@0.2.39)(yaml@2.9.0)'
       ws: 8.21.0(bufferutil@4.1.0)(utf-8-validate@6.0.6)
     transitivePeerDependencies:
       - '@types/react'
@@ -16087,6 +16121,8 @@ snapshots:
 
   bson@6.10.4:
     optional: true
+
+  buffer-crc32@0.2.13: {}
 
   buffer-from@1.1.2: {}
 
@@ -17434,6 +17470,16 @@ snapshots:
 
   extend@3.0.2: {}
 
+  extract-zip@2.0.1:
+    dependencies:
+      debug: 4.4.3
+      get-stream: 5.2.0
+      yauzl: 2.10.0
+    optionalDependencies:
+      '@types/yauzl': 2.10.3
+    transitivePeerDependencies:
+      - supports-color
+
   fast-check@4.9.0:
     dependencies:
       pure-rand: 8.4.0
@@ -17500,6 +17546,10 @@ snapshots:
   fb-watchman@2.0.2:
     dependencies:
       bser: 2.1.1
+
+  fd-slicer@1.1.0:
+    dependencies:
+      pend: 1.2.0
 
   fdir@6.5.0(picomatch@4.0.4):
     optionalDependencies:
@@ -17753,7 +17803,8 @@ snapshots:
 
   graphmatch@1.1.1: {}
 
-  graphql@16.14.1: {}
+  graphql@16.14.1:
+    optional: true
 
   h3@1.15.11:
     dependencies:
@@ -19940,7 +19991,8 @@ snapshots:
       end-of-stream: 1.4.5
       once: 1.4.0
 
-  punycode@2.3.1: {}
+  punycode@2.3.1:
+    optional: true
 
   pure-rand@8.4.0: {}
 
@@ -20984,7 +21036,8 @@ snapshots:
       - bare-abort-controller
       - react-native-b4a
 
-  strict-event-emitter@0.5.1: {}
+  strict-event-emitter@0.5.1:
+    optional: true
 
   strict-uri-encode@2.0.0: {}
 
@@ -21862,6 +21915,11 @@ snapshots:
       y18n: 5.0.8
       yargs-parser: 21.1.1
 
+  yauzl@2.10.0:
+    dependencies:
+      buffer-crc32: 0.2.13
+      fd-slicer: 1.1.0
+
   yauzl@3.4.0:
     dependencies:
       pend: 1.2.0
@@ -21880,6 +21938,38 @@ snapshots:
   yoctocolors@2.1.2: {}
 
   yoga-layout@3.2.1: {}
+
+  yuku-codegen@0.5.48:
+    dependencies:
+      '@yuku-toolchain/types': 0.5.43
+    optionalDependencies:
+      '@yuku-codegen/binding-darwin-arm64': 0.5.48
+      '@yuku-codegen/binding-darwin-x64': 0.5.48
+      '@yuku-codegen/binding-freebsd-x64': 0.5.48
+      '@yuku-codegen/binding-linux-arm-gnu': 0.5.48
+      '@yuku-codegen/binding-linux-arm-musl': 0.5.48
+      '@yuku-codegen/binding-linux-arm64-gnu': 0.5.48
+      '@yuku-codegen/binding-linux-arm64-musl': 0.5.48
+      '@yuku-codegen/binding-linux-x64-gnu': 0.5.48
+      '@yuku-codegen/binding-linux-x64-musl': 0.5.48
+      '@yuku-codegen/binding-win32-arm64': 0.5.48
+      '@yuku-codegen/binding-win32-x64': 0.5.48
+
+  yuku-parser@0.5.48:
+    dependencies:
+      '@yuku-toolchain/types': 0.5.43
+    optionalDependencies:
+      '@yuku-parser/binding-darwin-arm64': 0.5.48
+      '@yuku-parser/binding-darwin-x64': 0.5.48
+      '@yuku-parser/binding-freebsd-x64': 0.5.48
+      '@yuku-parser/binding-linux-arm-gnu': 0.5.48
+      '@yuku-parser/binding-linux-arm-musl': 0.5.48
+      '@yuku-parser/binding-linux-arm64-gnu': 0.5.48
+      '@yuku-parser/binding-linux-arm64-musl': 0.5.48
+      '@yuku-parser/binding-linux-x64-gnu': 0.5.48
+      '@yuku-parser/binding-linux-x64-musl': 0.5.48
+      '@yuku-parser/binding-win32-arm64': 0.5.48
+      '@yuku-parser/binding-win32-x64': 0.5.48
 
   zeptomatch@2.1.0:
     dependencies:
