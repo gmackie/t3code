@@ -1,4 +1,5 @@
 # GMACKO nightly: sync the release lane onto upstream main and cut a release.
+# Every custom-local push is a release input; the scheduled sync is simply one such push.
 #
 # Runs on ForgeGraph CI (Forgejo Actions at git.forgegraf.com) instead of
 # GitHub Actions. Runner topology:
