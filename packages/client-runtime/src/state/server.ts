@@ -517,7 +517,6 @@ export function createServerEnvironmentAtoms<R, E>(
   },
 ) {
   const configScheduler = createAtomCommandScheduler();
-  const pluginPackageScheduler = createAtomCommandScheduler();
   // Updates stay serial end-to-end, but only their handoff phase occupies the config lane.
   const updateScheduler = createAtomCommandScheduler();
   const configConcurrency = {
@@ -870,16 +869,6 @@ export function createServerEnvironmentAtoms<R, E>(
       tag: WS_METHODS.subscribeResourceTelemetry,
       idleTtlMs: 0,
     }),
-    pluginCommands: createEnvironmentRpcSubscriptionAtomFamily(runtime, {
-      label: "environment-data:server:plugin-commands",
-      tag: WS_METHODS.subscribePluginCommands,
-      idleTtlMs: 0,
-    }),
-    pluginPackages: createEnvironmentRpcQueryAtomFamily(runtime, {
-      label: "environment-data:server:plugin-packages",
-      tag: WS_METHODS.pluginPackagesStatus,
-      staleTimeMs: 1_000,
-    }),
     resourceTelemetryHistory: createEnvironmentRpcQueryAtomFamily(runtime, {
       label: "environment-data:server:resource-telemetry-history",
       tag: WS_METHODS.serverGetResourceTelemetryHistory,
@@ -891,14 +880,6 @@ export function createServerEnvironmentAtoms<R, E>(
       label: "environment-data:server:usage-summary",
       tag: WS_METHODS.serverGetUsageSummary,
       staleTimeMs: 60_000,
-    }),
-    listProjectIssues: createEnvironmentRpcCommand(runtime, {
-      label: "environment-data:server:list-project-issues",
-      tag: WS_METHODS.serverListProjectIssues,
-    }),
-    listProjectIssueStatuses: createEnvironmentRpcCommand(runtime, {
-      label: "environment-data:server:list-project-issue-statuses",
-      tag: WS_METHODS.serverListProjectIssueStatuses,
     }),
     configProjection,
     welcome: createEnvironmentRpcSubscriptionAtomFamily(runtime, {
@@ -922,32 +903,6 @@ export function createServerEnvironmentAtoms<R, E>(
             input.refreshModels ?? false,
           ]),
       },
-    }),
-    invokePluginCommand: createEnvironmentRpcCommand(runtime, {
-      label: "environment-data:server:invoke-plugin-command",
-      tag: WS_METHODS.pluginCommandsInvoke,
-      concurrency: {
-        mode: "serial",
-        key: ({ environmentId }) => environmentId,
-      },
-    }),
-    enablePluginPackage: createEnvironmentRpcCommand(runtime, {
-      label: "environment-data:server:enable-plugin-package",
-      tag: WS_METHODS.pluginPackagesEnable,
-      scheduler: pluginPackageScheduler,
-      concurrency: configConcurrency,
-    }),
-    disablePluginPackage: createEnvironmentRpcCommand(runtime, {
-      label: "environment-data:server:disable-plugin-package",
-      tag: WS_METHODS.pluginPackagesDisable,
-      scheduler: pluginPackageScheduler,
-      concurrency: configConcurrency,
-    }),
-    reloadPluginPackage: createEnvironmentRpcCommand(runtime, {
-      label: "environment-data:server:reload-plugin-package",
-      tag: WS_METHODS.pluginPackagesReload,
-      scheduler: pluginPackageScheduler,
-      concurrency: configConcurrency,
     }),
     updateProvider: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:server:update-provider",
@@ -973,14 +928,6 @@ export function createServerEnvironmentAtoms<R, E>(
       tag: WS_METHODS.serverUpdateSettings,
       scheduler: configScheduler,
       concurrency: configConcurrency,
-    }),
-    createProjectIssue: createEnvironmentRpcCommand(runtime, {
-      label: "environment-data:server:create-project-issue",
-      tag: WS_METHODS.serverCreateProjectIssue,
-    }),
-    updateProjectIssueStatus: createEnvironmentRpcCommand(runtime, {
-      label: "environment-data:server:update-project-issue-status",
-      tag: WS_METHODS.serverUpdateProjectIssueStatus,
     }),
     signalProcess: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:server:signal-process",

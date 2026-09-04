@@ -155,13 +155,25 @@ describe("refreshedSourceProfileDirectory", () => {
 describe("isRetryableReason", () => {
   it("offers a retry for failures a second attempt can clear", () => {
     expect(isRetryableReason("needsKeychainApproval")).toBe(true);
+    expect(isRetryableReason("keychainUnavailable")).toBe(true);
     expect(isRetryableReason("readFailed")).toBe(true);
   });
 
   it("does not offer a retry for a permanent failure", () => {
     expect(isRetryableReason("unsupportedPlatform")).toBe(false);
-    expect(isRetryableReason("keychainItemMissing")).toBe(false);
     expect(isRetryableReason("unknownSourceProfile")).toBe(false);
+    // Retrying the same new-profile import cannot lower the profile count.
+    expect(isRetryableReason("profileLimitReached")).toBe(false);
+  });
+
+  it("offers a retry once the user has signed in to create the missing key", () => {
+    // The blocked copy tells the user to sign in and retry, so the screen
+    // has to offer the retry it asks for.
+    expect(isRetryableReason("keychainItemMissing")).toBe(true);
+  });
+
+  it("offers a retry when the cookies landed but the new profile was not saved", () => {
+    expect(isRetryableReason("profileNotSaved")).toBe(true);
   });
 });
 

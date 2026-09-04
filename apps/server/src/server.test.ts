@@ -6,6 +6,7 @@ import { HostProcessEnvironment, HostProcessPlatform } from "@t3tools/shared/hos
 
 import {
   AuthAccessTokenType,
+  AuthStandardClientScopes,
   AuthEnvironmentBootstrapTokenType,
   AuthTokenExchangeGrantType,
   CommandId,
@@ -63,6 +64,7 @@ import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as PubSub from "effect/PubSub";
 import * as Ref from "effect/Ref";
+import * as Queue from "effect/Queue";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
@@ -86,46 +88,9 @@ const TEST_EPOCH = DateTime.makeUnsafe("1970-01-01T00:00:00.000Z");
 const decodeTransferThreadSnapshot = Schema.decodeUnknownEffect(
   Schema.fromJsonString(OrchestrationThreadDetailSnapshot),
 );
-
-const unavailableExternalThreadImportService: ExternalThreadImportService.ExternalThreadImportService["Service"] =
-  {
-    discover: () =>
-      Effect.die("ExternalThreadImportService not stubbed in this test") as ReturnType<
-        ExternalThreadImportService.ExternalThreadImportService["Service"]["discover"]
-      >,
-    importSelected: () =>
-      Effect.die("ExternalThreadImportService not stubbed in this test") as ReturnType<
-        ExternalThreadImportService.ExternalThreadImportService["Service"]["importSelected"]
-      >,
-  };
-
-const unavailableProjectSessionImportService: ProjectSessionImportService.ProjectSessionImportService["Service"] =
-  {
-    scan: () =>
-      Effect.die("ProjectSessionImportService not stubbed in this test") as ReturnType<
-        ProjectSessionImportService.ProjectSessionImportService["Service"]["scan"]
-      >,
-  };
-
-const collectQueueUntil = Effect.fn("TransferBudget.collectQueueUntil")(function* <A>(
-  queue: Queue.Queue<A>,
-  predicate: (value: A) => boolean,
-  waitDescription: string,
-) {
-  return yield* Effect.gen(function* () {
-    const values: A[] = [];
-    while (true) {
-      const value = yield* Queue.take(queue);
-      values.push(value);
-      if (predicate(value)) return values;
-    }
-  }).pipe(
-    Effect.timeoutOrElse({
-      duration: "10 seconds",
-      orElse: () => Effect.die(new Error(`Timed out waiting for ${waitDescription}`)),
-    }),
-  );
-});
+const decodeTransferShellSnapshot = Schema.decodeUnknownEffect(
+  Schema.fromJsonString(OrchestrationShellSnapshot),
+);
 
 import * as BackgroundPolicy from "./background/BackgroundPolicy.ts";
 import * as ServerConfig from "./config.ts";
@@ -150,7 +115,6 @@ import * as ProjectionSnapshotQuery from "./orchestration/Services/ProjectionSna
 import { ThreadDeletionReactor } from "./orchestration/Services/ThreadDeletionReactor.ts";
 import { SqlitePersistenceMemory } from "./persistence/Layers/Sqlite.ts";
 import { PersistenceSqlError } from "./persistence/Errors.ts";
-import { ProviderUnsupportedError } from "./provider/Errors.ts";
 import * as ProviderRegistry from "./provider/Services/ProviderRegistry.ts";
 import * as ProviderService from "./provider/Services/ProviderService.ts";
 import { ProviderAuthService } from "./provider/Services/ProviderAuthService.ts";
@@ -190,6 +154,7 @@ import * as ReviewService from "./review/ReviewService.ts";
 import * as SourceControlRepositoryService from "./sourceControl/SourceControlRepositoryService.ts";
 import * as ServerSecretStore from "./auth/ServerSecretStore.ts";
 import * as EnvironmentAuth from "./auth/EnvironmentAuth.ts";
+import * as PairingGrantStore from "./auth/PairingGrantStore.ts";
 import * as CloudManagedEndpointRuntime from "./cloud/ManagedEndpointRuntime.ts";
 import * as CloudCliTokenManager from "./cloud/CliTokenManager.ts";
 import * as ProcessDiagnostics from "./diagnostics/ProcessDiagnostics.ts";
@@ -201,8 +166,6 @@ import * as ResourceAttribution from "./resourceTelemetry/ResourceAttribution.ts
 import * as ResourceTelemetry from "./resourceTelemetry/ResourceTelemetry.ts";
 import * as UsageService from "./usage/UsageService.ts";
 import * as AnalyticsService from "./telemetry/AnalyticsService.ts";
-import * as ExternalThreadImportService from "./threadImport/ExternalThreadImportService.ts";
-import * as ProjectSessionImportService from "./projectImport/ProjectSessionImportService.ts";
 import * as Data from "effect/Data";
 
 import { makeOrchestrationIntegrationHarness } from "../integration/OrchestrationEngineHarness.integration.ts";
@@ -522,6 +485,7 @@ const makeBrowserOtlpPayload = (spanName: string) =>
   });
 
 const buildAppUnderTest = (options?: {
+  onPairingChangesSubscribed?: Effect.Effect<void>;
   config?: Partial<ServerConfig.ServerConfig["Service"]>;
   layers?: {
     keybindings?: Partial<Keybindings.Keybindings["Service"]>;
@@ -798,19 +762,20 @@ const buildAppUnderTest = (options?: {
           }),
           Layer.mock(ProviderService.ProviderService)({
             uploadFeedback: () => Effect.die("Provider feedback is not stubbed in this test"),
-            getInstanceInfo: (instanceId) =>
-              Effect.fail(new ProviderUnsupportedError({ provider: instanceId })),
-            streamEvents: Stream.empty,
             ...options?.layers?.providerService,
           }),
-          Layer.succeed(
-            ExternalThreadImportService.ExternalThreadImportService,
-            unavailableExternalThreadImportService,
-          ),
-          Layer.succeed(
-            ProjectSessionImportService.ProjectSessionImportService,
-            unavailableProjectSessionImportService,
-          ),
+          Layer.mock(ProviderAuthService)({
+            ...options?.layers?.providerAuth,
+          }),
+          Layer.mock(ProviderInstanceRegistry)({
+            getInstance: () => Effect.succeed(undefined),
+            listInstances: Effect.succeed([]),
+            ...options?.layers?.providerInstanceRegistry,
+          }),
+          Layer.mock(AntigravityInstallation)({
+            managedDirectory: "unused-test-antigravity-runtime",
+            ...options?.layers?.antigravityInstallation,
+          }),
         ),
       ),
       Layer.provide(
@@ -961,6 +926,7 @@ const buildAppUnderTest = (options?: {
       ),
       Layer.provide(
         Layer.mock(ProjectionSnapshotQuery.ProjectionSnapshotQuery)({
+          getUserInputActivity: () => Effect.die("unused"),
           getCommandReadModel: () => Effect.succeed(makeDefaultOrchestrationReadModel()),
           getSnapshot: () => Effect.succeed(makeDefaultOrchestrationReadModel()),
           getShellSnapshot: () =>
@@ -1147,6 +1113,24 @@ const buildAppUnderTest = (options?: {
           ...options?.layers?.cloudCliTokenManager,
         }),
       ),
+      Layer.updateService(PairingGrantStore.PairingGrantStore, (grants) => {
+        const subscribed = options?.onPairingChangesSubscribed;
+        if (!subscribed) return grants;
+        return {
+          ...grants,
+          streamChanges: Stream.unwrap(
+            Effect.gen(function* () {
+              const changes = yield* Queue.unbounded<PairingGrantStore.BootstrapCredentialChange>();
+              yield* grants.streamChanges.pipe(
+                Stream.runForEach((change) => Queue.offer(changes, change)),
+                Effect.forkScoped({ startImmediately: true }),
+              );
+              yield* subscribed;
+              return Stream.fromQueue(changes);
+            }),
+          ),
+        };
+      }),
       Layer.provideMerge(makeAuthTestLayer()),
       Layer.provideMerge(ServerSecretStore.layer),
       Layer.provide(workspaceAndProjectServicesLayer),
@@ -1173,16 +1157,19 @@ const parseSessionCookieFromWsUrl = (
   };
 };
 
-const wsRpcProtocolLayer = (wsUrl: string) => {
+const wsRpcProtocolLayer = (wsUrl: string, onMessage?: (message: string) => void) => {
   const { cookie, url } = parseSessionCookieFromWsUrl(wsUrl);
   const webSocketConstructorLayer = Layer.succeed(
     Socket.WebSocketConstructor,
-    (socketUrl, protocols) =>
-      new NodeSocket.NodeWS.WebSocket(
+    (socketUrl, protocols) => {
+      const socket = new NodeSocket.NodeWS.WebSocket(
         socketUrl,
         protocols,
         cookie ? { headers: { cookie } } : undefined,
-      ) as unknown as globalThis.WebSocket,
+      );
+      if (onMessage) socket.on("message", (data) => onMessage(data.toString()));
+      return socket as unknown as globalThis.WebSocket;
+    },
   );
 
   return RpcClient.layerProtocolSocket().pipe(
@@ -1198,7 +1185,8 @@ type WsRpcClient =
 const withWsRpcClient = <A, E, R>(
   wsUrl: string,
   f: (client: WsRpcClient) => Effect.Effect<A, E, R>,
-) => makeWsRpcClient.pipe(Effect.flatMap(f), Effect.provide(wsRpcProtocolLayer(wsUrl)));
+  onMessage?: (message: string) => void,
+) => makeWsRpcClient.pipe(Effect.flatMap(f), Effect.provide(wsRpcProtocolLayer(wsUrl, onMessage)));
 
 const appendSessionCookieToWsUrl = (url: string, sessionCookieHeader: string) => {
   const isAbsoluteUrl = /^[a-zA-Z][a-zA-Z\d+.-]*:/.test(url);
@@ -2247,7 +2235,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 
-  it.effect("accepts cloud link proofs for relay endpoints", () =>
+  it.effect("rejects cloud link proofs for unsupported endpoint providers", () =>
     Effect.gen(function* () {
       yield* buildAppUnderTest();
 
@@ -2268,6 +2256,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
             wsBaseUrl: linkProofUrl
               .replace("http://", "ws://")
               .replace("/api/connect/link-proof", "/ws"),
+            // "manual" and "cloudflare_tunnel" are supported; "t3_relay" is not.
             providerKind: "t3_relay",
           },
           origin: {
@@ -2276,10 +2265,14 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
           },
         }),
       });
-      const body = yield* responseJsonEffect<string>(linkProofResponse);
+      const body = yield* responseJsonEffect<{
+        readonly _tag?: string;
+        readonly message?: string;
+      }>(linkProofResponse);
 
-      assert.equal(linkProofResponse.status, 200);
-      assert.equal(body.split(".").length, 3);
+      assert.equal(linkProofResponse.status, 400);
+      assert.equal(body._tag, "EnvironmentHttpBadRequestError");
+      assert.equal(body.message, "Invalid managed endpoint origin.");
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 
@@ -3969,6 +3962,128 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 
+  it.effect("returns only pairing metadata to access-read HTTP sessions", () =>
+    Effect.gen(function* () {
+      yield* buildAppUnderTest();
+      const reader = yield* exchangeAccessToken(defaultDesktopBootstrapToken, {
+        scope: "access:read",
+      });
+      assert.equal(reader.response.status, 200);
+      assert.equal(reader.body.scope, "access:read");
+      const createdResponse = yield* HttpClient.post("/api/auth/pairing-token", {
+        headers: { cookie: yield* getAuthenticatedSessionCookieHeader() },
+        body: yield* HttpBody.json({ label: "Synthetic phone" }),
+      });
+      const created = (yield* createdResponse.json) as { id: string; credential: string };
+      assert.equal(createdResponse.status, 200);
+      const response = yield* HttpClient.get("/api/auth/pairing-links", {
+        headers: { authorization: `Bearer ${reader.body.access_token ?? ""}` },
+      });
+      assert.equal(response.status, 200);
+      const responseText = yield* response.text;
+      assert.notInclude(responseText, '"credential"');
+      assert.notInclude(responseText, created.credential);
+      const links = yield* responseJsonEffect<
+        ReadonlyArray<{
+          readonly id: string;
+          readonly label?: string;
+          readonly scopes: ReadonlyArray<string>;
+        }>
+      >(response);
+      const listed = links.find((link) => link.id === created.id);
+      assert.isDefined(listed);
+      assert.deepInclude(listed, {
+        label: "Synthetic phone",
+        scopes: [...AuthStandardClientScopes],
+      });
+
+      const unauthorizedCreate = yield* HttpClient.post("/api/auth/pairing-token", {
+        headers: { authorization: `Bearer ${reader.body.access_token ?? ""}` },
+        body: yield* HttpBody.json({}),
+      });
+      assert.equal(unauthorizedCreate.status, 403);
+      const idExchange = yield* exchangeAccessToken(created.id, { scope: "terminal:operate" });
+      assert.equal(idExchange.response.status, 401);
+      const authorized = yield* exchangeAccessToken(created.credential, {
+        scope: AuthStandardClientScopes.join(" "),
+      });
+      assert.equal(authorized.response.status, 200);
+      assert.equal(authorized.body.scope, AuthStandardClientScopes.join(" "));
+      const reused = yield* exchangeAccessToken(created.credential, { scope: "terminal:operate" });
+      assert.equal(reused.response.status, 401);
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
+  it.effect("returns only pairing metadata in access-read WebSocket snapshots and updates", () =>
+    Effect.gen(function* () {
+      const changesSubscribed = yield* Deferred.make<void>();
+      yield* buildAppUnderTest({
+        onPairingChangesSubscribed: Deferred.succeed(changesSubscribed, undefined).pipe(
+          Effect.asVoid,
+        ),
+      });
+      const ownerCookie = yield* getAuthenticatedSessionCookieHeader();
+      const createLink = Effect.gen(function* () {
+        const response = yield* HttpClient.post("/api/auth/pairing-token", {
+          headers: { cookie: ownerCookie },
+          body: yield* HttpBody.json({}),
+        });
+        assert.equal(response.status, 200);
+        return (yield* response.json) as { id: string; credential: string };
+      });
+      const initialLink = yield* createLink;
+      const reader = yield* exchangeAccessToken(defaultDesktopBootstrapToken, {
+        scope: "access:read",
+      });
+      assert.equal(reader.body.scope, "access:read");
+      const ticketResponse = yield* HttpClient.post("/api/auth/websocket-ticket", {
+        headers: { authorization: `Bearer ${reader.body.access_token ?? ""}` },
+      });
+      assert.equal(ticketResponse.status, 200);
+      const { ticket } = (yield* ticketResponse.json) as { ticket: string };
+      const wsUrl = `${yield* getWsServerUrl("/ws", { authenticated: false })}?wsTicket=${encodeURIComponent(ticket)}`;
+      const frames: string[] = [];
+      yield* withWsRpcClient(
+        wsUrl,
+        (client) =>
+          Effect.gen(function* () {
+            const snapshotReceived = yield* Deferred.make<void>();
+            const eventsFiber = yield* client.subscribeAuthAccess({}).pipe(
+              Stream.tap((event) =>
+                event.type === "snapshot"
+                  ? Deferred.succeed(snapshotReceived, undefined)
+                  : Effect.void,
+              ),
+              Stream.takeUntil((event) => event.type === "pairingLinkUpserted"),
+              Stream.runCollect,
+              Effect.forkChild,
+            );
+            yield* Deferred.await(snapshotReceived);
+            yield* Deferred.await(changesSubscribed);
+            const liveLink = yield* createLink;
+            const events = yield* Fiber.join(eventsFiber);
+            const snapshot = events.find((event) => event.type === "snapshot");
+            const update = events.find((event) => event.type === "pairingLinkUpserted");
+            assert.isDefined(snapshot);
+            assert.isDefined(update);
+            assert.isTrue(
+              snapshot?.payload.pairingLinks.some((link) => link.id === initialLink.id),
+            );
+            assert.equal(update?.payload.id, liveLink.id);
+            // Inspect the wire frames so client schema decoding cannot hide a leak.
+            assert.notInclude(frames.join(""), '"credential"');
+            assert.notInclude(frames.join(""), initialLink.credential);
+            assert.notInclude(frames.join(""), liveLink.credential);
+            const paired = yield* exchangeAccessToken(liveLink.credential, {
+              scope: AuthStandardClientScopes.join(" "),
+            });
+            assert.equal(paired.response.status, 200);
+          }),
+        (frame) => frames.push(frame),
+      );
+    }).pipe(Effect.scoped, Effect.provide(NodeHttpServer.layerTest)),
+  );
+
   it.effect("lists and revokes pairing links for access management sessions", () =>
     Effect.gen(function* () {
       yield* buildAppUnderTest({
@@ -3996,7 +4111,6 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
       });
       const listedLinks = (yield* listResponse.json) as ReadonlyArray<{
         readonly id: string;
-        readonly credential: string;
       }>;
 
       const revokeResponse = yield* HttpClient.post("/api/auth/pairing-links/revoke", {
@@ -5591,57 +5705,6 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
       const first = Array.from(events)[0];
       assert.equal(first?.type, "snapshot");
       if (first?.type === "snapshot") assert.equal(first.config.environmentThemes, undefined);
-    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
-  );
-
-  it.effect("lists, subscribes to, and invokes plugin commands over websocket rpc", () =>
-    Effect.gen(function* () {
-      yield* buildAppUnderTest();
-      const wsUrl = yield* getWsServerUrl("/ws");
-      const result = yield* Effect.scoped(
-        withWsRpcClient(wsUrl, (client) =>
-          Effect.gen(function* () {
-            const listed = yield* client[WS_METHODS.pluginCommandsList]({});
-            const streamed = yield* client[WS_METHODS.subscribePluginCommands]({}).pipe(
-              Stream.runHead,
-              Effect.map(Option.getOrThrow),
-            );
-            const invoked = yield* client[WS_METHODS.pluginCommandsInvoke]({
-              generation: listed.generation,
-              id: "t3.plugin-runtime.status",
-            });
-            return { invoked, listed, streamed };
-          }),
-        ),
-      );
-      assert.deepEqual(result.streamed, result.listed);
-      assert.deepEqual(result.invoked, {
-        message: "Plugin runtime is active.",
-        tone: "success",
-      });
-    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
-  );
-
-  it.effect("routes plugin package status and lifecycle errors over websocket rpc", () =>
-    Effect.gen(function* () {
-      yield* buildAppUnderTest();
-      const wsUrl = yield* getWsServerUrl("/ws");
-      const result = yield* Effect.scoped(
-        withWsRpcClient(wsUrl, (client) =>
-          Effect.gen(function* () {
-            const status = yield* client[WS_METHODS.pluginPackagesStatus]({});
-            const missing = yield* Effect.flip(
-              client[WS_METHODS.pluginPackagesEnable]({ id: "com.acme.missing" }),
-            );
-            return { missing, status };
-          }),
-        ),
-      );
-      assert.deepEqual(result.status, { errors: [], packages: [] });
-      assert.deepInclude(result.missing, {
-        _tag: "PluginPackageNotFoundError",
-        id: "com.acme.missing",
-      });
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 
@@ -7389,7 +7452,6 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
           projectionSnapshotQuery: {
             getThreadDetailSnapshot: () =>
               Effect.gen(function* () {
-                yield* Effect.sleep("25 millis");
                 yield* PubSub.publish(liveEvents, messageEvent);
                 return Option.some({ snapshotSequence: 1, thread });
               }),
@@ -7402,14 +7464,19 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
         withWsRpcClient(wsUrl, (client) =>
           client[ORCHESTRATION_WS_METHODS.subscribeThread]({
             threadId: defaultThreadId,
-          }).pipe(Stream.take(2), Stream.runCollect),
+            requestCompletionMarker: true,
+          }).pipe(
+            Stream.takeUntil((item) => item.kind === "synchronized"),
+            Stream.runCollect,
+          ),
         ),
-      ).pipe(Effect.timeout("2 seconds"));
+      );
 
       assert.equal(items[0]?.kind, "snapshot");
       assert.equal(items[1]?.kind, "event");
       assert.equal(items[1]?.kind === "event" ? items[1].event.sequence : null, 2);
-    }).pipe(Effect.provide(NodeHttpServer.layerTest), TestClock.withLive),
+      assert.equal(items[2]?.kind, "synchronized");
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 
   it.effect("coalesces buffered live tool updates to the latest state", () =>

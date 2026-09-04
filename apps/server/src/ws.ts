@@ -75,8 +75,6 @@ import * as CheckpointDiffQuery from "./checkpointing/CheckpointDiffQuery.ts";
 import * as ServerConfig from "./config.ts";
 import * as EnvironmentTheme from "./environmentTheme.ts";
 import * as Keybindings from "./keybindings.ts";
-import * as PluginCommandCatalog from "./plugins/PluginCommandCatalog.ts";
-import * as PluginPackageManager from "./plugins/PluginPackageManager.ts";
 import * as ExternalLauncher from "./process/externalLauncher.ts";
 import {
   projectActivityEvent,
@@ -97,8 +95,6 @@ import {
 } from "./observability/RpcInstrumentation.ts";
 import * as ProviderRegistry from "./provider/Services/ProviderRegistry.ts";
 import * as ProviderService from "./provider/Services/ProviderService.ts";
-import * as ProviderUsageService from "./provider/Services/ProviderUsageService.ts";
-import * as ProviderUsageServiceLayer from "./provider/Layers/ProviderUsageService.ts";
 import * as ProviderMaintenanceRunner from "./provider/providerMaintenanceRunner.ts";
 import { ProviderAuthService } from "./provider/Services/ProviderAuthService.ts";
 import { ProviderInstanceRegistry } from "./provider/Services/ProviderInstanceRegistry.ts";
@@ -120,7 +116,6 @@ import * as WorkspacePaths from "./workspace/WorkspacePaths.ts";
 import * as VcsStatusBroadcaster from "./vcs/VcsStatusBroadcaster.ts";
 import * as VcsProvisioningService from "./vcs/VcsProvisioningService.ts";
 import * as GitWorkflowService from "./git/GitWorkflowService.ts";
-import * as LinearIssueClient from "./issue/LinearIssueClient.ts";
 import * as ReviewService from "./review/ReviewService.ts";
 import * as ProjectSetupScriptRunner from "./project/ProjectSetupScriptRunner.ts";
 import * as ServerEnvironment from "./environment/ServerEnvironment.ts";
@@ -136,8 +131,6 @@ import * as UsageService from "./usage/UsageService.ts";
 import * as TraceDiagnostics from "./diagnostics/TraceDiagnostics.ts";
 import * as PullRequestService from "./pullRequest/PullRequestService.ts";
 import * as SourceControlDiscovery from "./sourceControl/SourceControlDiscovery.ts";
-import * as ExternalThreadImportService from "./threadImport/ExternalThreadImportService.ts";
-import * as ProjectSessionImportService from "./projectImport/ProjectSessionImportService.ts";
 import * as SourceControlRepositoryService from "./sourceControl/SourceControlRepositoryService.ts";
 import * as AzureDevOpsCli from "./sourceControl/AzureDevOpsCli.ts";
 import * as BitbucketApi from "./sourceControl/BitbucketApi.ts";
@@ -469,8 +462,6 @@ const makeWsRpcLayer = (
   clientOrigin: OrchestrationClientOrigin,
   clientAnalyticsProps: Readonly<Record<string, unknown>>,
   previewAutomationBroker: PreviewAutomationBroker.PreviewAutomationBroker["Service"],
-  pluginCommands: PluginCommandCatalog.PluginCommandCatalog["Service"],
-  pluginPackages: PluginPackageManager.PluginPackageManager["Service"],
 ) =>
   WsRpcGroup.toLayer(
     Effect.gen(function* () {
@@ -521,7 +512,6 @@ const makeWsRpcLayer = (
       const portDiscovery = yield* PortScanner.PortDiscovery;
       const providerRegistry = yield* ProviderRegistry.ProviderRegistry;
       const providerService = yield* ProviderService.ProviderService;
-      const providerUsage = yield* ProviderUsageService.ProviderUsageService;
       const providerMaintenanceRunner = yield* ProviderMaintenanceRunner.ProviderMaintenanceRunner;
       const providerAuth = yield* ProviderAuthService;
       const providerInstances = yield* ProviderInstanceRegistry;
@@ -589,8 +579,6 @@ const makeWsRpcLayer = (
       );
       const serverAuth = yield* EnvironmentAuth.EnvironmentAuth;
       const sourceControlDiscovery = yield* SourceControlDiscovery.SourceControlDiscovery;
-      const externalThreadImports = yield* ExternalThreadImportService.ExternalThreadImportService;
-      const projectSessionImports = yield* ProjectSessionImportService.ProjectSessionImportService;
       const automaticGitFetchInterval = serverSettings.getSettings.pipe(
         Effect.map(
           (settings) => resolveServerBackgroundActivitySettings(settings).automaticGitFetchInterval,
@@ -1561,7 +1549,9 @@ const makeWsRpcLayer = (
               // Attach live delivery before reading either replay or snapshot state.
               // Otherwise an event published while the snapshot is loading is lost.
               const liveBuffer = yield* makeThreadLiveEventCoalescer();
-              yield* Effect.forkScoped(liveStream.pipe(Stream.runForEach(liveBuffer.offer)));
+              yield* Effect.forkScoped(liveStream.pipe(Stream.runForEach(liveBuffer.offer)), {
+                startImmediately: true,
+              });
               const bufferedLiveStream = liveBuffer.stream;
 
               // When the client already loaded the snapshot over HTTP it passes
@@ -1682,48 +1672,6 @@ const makeWsRpcLayer = (
           observeRpcEffect(WS_METHODS.serverGetConfig, loadServerConfig, {
             "rpc.aggregate": "server",
           }),
-        [WS_METHODS.pluginCommandsList]: (_input) =>
-          observeRpcEffect(WS_METHODS.pluginCommandsList, pluginCommands.list, {
-            "rpc.aggregate": "pluginCommands",
-          }),
-        [WS_METHODS.pluginCommandsInvoke]: (input) =>
-          observeRpcEffect(WS_METHODS.pluginCommandsInvoke, pluginCommands.invoke(input), {
-            "rpc.aggregate": "pluginCommands",
-          }),
-        [WS_METHODS.pluginPackagesStatus]: (_input) =>
-          observeRpcEffect(WS_METHODS.pluginPackagesStatus, pluginPackages.status, {
-            "rpc.aggregate": "pluginPackages",
-          }),
-        [WS_METHODS.pluginPackagesEnable]: (input) =>
-          observeRpcEffect(WS_METHODS.pluginPackagesEnable, pluginPackages.enable(input.id), {
-            "rpc.aggregate": "pluginPackages",
-          }),
-        [WS_METHODS.pluginPackagesDisable]: (input) =>
-          observeRpcEffect(WS_METHODS.pluginPackagesDisable, pluginPackages.disable(input.id), {
-            "rpc.aggregate": "pluginPackages",
-          }),
-        [WS_METHODS.pluginPackagesReload]: (input) =>
-          observeRpcEffect(WS_METHODS.pluginPackagesReload, pluginPackages.reload(input.id), {
-            "rpc.aggregate": "pluginPackages",
-          }),
-        [WS_METHODS.externalThreadsDiscover]: (input) =>
-          observeRpcEffect(
-            WS_METHODS.externalThreadsDiscover,
-            externalThreadImports.discover(input),
-            { "rpc.aggregate": "externalThreads" },
-          ),
-        [WS_METHODS.projectSessionImportsScan]: (input) =>
-          observeRpcEffect(
-            WS_METHODS.projectSessionImportsScan,
-            projectSessionImports.scan(input),
-            { "rpc.aggregate": "projectSessionImports" },
-          ),
-        [WS_METHODS.externalThreadsImport]: (input) =>
-          observeRpcEffect(
-            WS_METHODS.externalThreadsImport,
-            externalThreadImports.importSelected(input),
-            { "rpc.aggregate": "externalThreads" },
-          ),
         [WS_METHODS.serverRefreshProviders]: (input) =>
           observeRpcEffect(
             WS_METHODS.serverRefreshProviders,
@@ -1780,26 +1728,6 @@ const makeWsRpcLayer = (
               ),
             ),
             { "rpc.aggregate": "provider" },
-          ),
-        [WS_METHODS.providerUsageGet]: (input) =>
-          observeRpcEffect(
-            WS_METHODS.providerUsageGet,
-            providerUsage.get(input.providerInstanceId),
-            {
-              "rpc.aggregate": "provider-usage",
-            },
-          ),
-        [WS_METHODS.providerUsageRefresh]: (input) =>
-          observeRpcEffect(
-            WS_METHODS.providerUsageRefresh,
-            providerUsage.refresh(input.providerInstanceId),
-            { "rpc.aggregate": "provider-usage" },
-          ),
-        [WS_METHODS.providerUsageSubscribe]: (input) =>
-          observeRpcStream(
-            WS_METHODS.providerUsageSubscribe,
-            providerUsage.stream(input.providerInstanceId),
-            { "rpc.aggregate": "provider-usage" },
           ),
         [WS_METHODS.serverUpdateProvider]: (input) =>
           observeRpcEffect(
@@ -1929,71 +1857,6 @@ const makeWsRpcLayer = (
             {
               "rpc.aggregate": "server",
             },
-          ),
-        [WS_METHODS.serverValidateLinearIssues]: (_input) =>
-          observeRpcEffect(
-            WS_METHODS.serverValidateLinearIssues,
-            serverSettings.getSettings.pipe(
-              Effect.flatMap(LinearIssueClient.validateLinearSettings),
-            ),
-            { "rpc.aggregate": "server" },
-          ),
-        [WS_METHODS.serverListProjectIssues]: (input) =>
-          observeRpcEffect(
-            WS_METHODS.serverListProjectIssues,
-            serverSettings.getSettings.pipe(
-              Effect.flatMap((settings) =>
-                LinearIssueClient.listMappedProjectIssues(settings, {
-                  projectId: input.projectId,
-                  ...(input.query === undefined ? {} : { query: input.query }),
-                  ...(input.limit === undefined ? {} : { limit: input.limit }),
-                }),
-              ),
-            ),
-            { "rpc.aggregate": "server" },
-          ),
-        [WS_METHODS.serverListProjectIssueStatuses]: (input) =>
-          observeRpcEffect(
-            WS_METHODS.serverListProjectIssueStatuses,
-            serverSettings.getSettings.pipe(
-              Effect.flatMap((settings) =>
-                LinearIssueClient.listMappedProjectIssueStatuses(settings, input),
-              ),
-            ),
-            { "rpc.aggregate": "server" },
-          ),
-        [WS_METHODS.serverCreateProjectIssue]: (input) =>
-          observeRpcEffect(
-            WS_METHODS.serverCreateProjectIssue,
-            serverSettings.getSettings.pipe(
-              Effect.flatMap((settings) =>
-                LinearIssueClient.createMappedProjectIssue(settings, {
-                  projectId: input.projectId,
-                  title: input.title,
-                  ...(input.descriptionMarkdown === undefined
-                    ? {}
-                    : { descriptionMarkdown: input.descriptionMarkdown }),
-                  ...(input.statusId === undefined ? {} : { statusId: input.statusId }),
-                  ...(input.statusName === undefined ? {} : { statusName: input.statusName }),
-                }),
-              ),
-            ),
-            { "rpc.aggregate": "server" },
-          ),
-        [WS_METHODS.serverUpdateProjectIssueStatus]: (input) =>
-          observeRpcEffect(
-            WS_METHODS.serverUpdateProjectIssueStatus,
-            serverSettings.getSettings.pipe(
-              Effect.flatMap((settings) =>
-                LinearIssueClient.updateMappedProjectIssueStatus(settings, {
-                  projectId: input.projectId,
-                  issueId: input.issueId,
-                  ...(input.statusId === undefined ? {} : { statusId: input.statusId }),
-                  ...(input.statusName === undefined ? {} : { statusName: input.statusName }),
-                }),
-              ),
-            ),
-            { "rpc.aggregate": "server" },
           ),
         [WS_METHODS.serverDiscoverSourceControl]: (_input) =>
           observeRpcEffect(
@@ -2809,10 +2672,6 @@ const makeWsRpcLayer = (
             ),
             { "rpc.aggregate": "server" },
           ),
-        [WS_METHODS.subscribePluginCommands]: (_input) =>
-          observeRpcStream(WS_METHODS.subscribePluginCommands, pluginCommands.changes, {
-            "rpc.aggregate": "pluginCommands",
-          }),
       });
     }),
   );
@@ -2820,9 +2679,32 @@ const makeWsRpcLayer = (
 export const websocketRpcRouteLayer = Layer.unwrap(
   Effect.gen(function* () {
     const previewAutomationBroker = yield* PreviewAutomationBroker.PreviewAutomationBroker;
-    const pluginCommands = yield* PluginCommandCatalog.PluginCommandCatalog;
-    const pluginPackages = yield* PluginPackageManager.PluginPackageManager;
-    const serverSelfUpdate = yield* ServerSelfUpdate.ServerSelfUpdate;
+    const baseServerSelfUpdate = yield* ServerSelfUpdate.ServerSelfUpdate;
+    const config = yield* ServerConfig.ServerConfig;
+    const startup = yield* ServerRuntimeStartup.ServerRuntimeStartup;
+    const serverSelfUpdate = yield* ServerSelfUpdate.withRunningThreadContinuation({
+      mode: config.mode,
+      selfUpdate: baseServerSelfUpdate,
+      prepare: startup.markRunningProviderSessionsForContinuation.pipe(
+        Effect.mapError(
+          (cause) =>
+            new ServerSelfUpdateError({
+              reason: "Could not prepare running threads to continue after the update.",
+              cause,
+            }),
+        ),
+      ),
+      clear: (threadIds) =>
+        startup.clearProviderSessionContinuationMarkers(threadIds).pipe(
+          Effect.mapError(
+            (cause) =>
+              new ServerSelfUpdateError({
+                reason: "Could not clear thread continuation markers after the update failed.",
+                cause,
+              }),
+          ),
+        ),
+    });
     const pullRequests = yield* PullRequestService.PullRequestService;
     return HttpRouter.add(
       "GET",
@@ -2856,12 +2738,9 @@ export const websocketRpcRouteLayer = Layer.unwrap(
               clientOrigin,
               clientAnalyticsProps,
               previewAutomationBroker,
-              pluginCommands,
-              pluginPackages,
             ).pipe(
               Layer.provideMerge(RpcSerialization.layerJson),
               Layer.provide(ProviderMaintenanceRunner.layer),
-              Layer.provide(ProviderUsageServiceLayer.layer),
               Layer.provide(Layer.succeed(ServerSelfUpdate.ServerSelfUpdate, serverSelfUpdate)),
               // One server-lifetime service means clients share the same PR caches, and a WS
               // mutation invalidates the HTTP diff cache that every client reads from.
@@ -2902,6 +2781,4 @@ export const websocketRpcRouteLayer = Layer.unwrap(
       ),
     );
   }),
-).pipe(
-  Layer.provide(PluginPackageManager.layer.pipe(Layer.provideMerge(PluginCommandCatalog.layer))),
 );

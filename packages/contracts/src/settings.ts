@@ -2,12 +2,7 @@ import * as Effect from "effect/Effect";
 import * as Duration from "effect/Duration";
 import * as Schema from "effect/Schema";
 import * as SchemaTransformation from "effect/SchemaTransformation";
-import {
-  ForwardCompatibleNullable,
-  ProjectId,
-  TrimmedNonEmptyString,
-  TrimmedString,
-} from "./baseSchemas.ts";
+import { ForwardCompatibleNullable, TrimmedNonEmptyString, TrimmedString } from "./baseSchemas.ts";
 import { EnvironmentMachineKind, ThreadEnvMode } from "./environment.ts";
 import {
   DEFAULT_TEXT_GENERATION_MODEL,
@@ -16,7 +11,6 @@ import {
 } from "./model.ts";
 import { ModelSelection } from "./orchestration.ts";
 import { BrowserProfile, BrowserProfileId, DEFAULT_BROWSER_PROFILE_ID } from "./browserProfile.ts";
-import { PluginPackageId } from "./pluginPackages.ts";
 import {
   DEFAULT_PREVIEW_APPEARANCE,
   DEFAULT_PREVIEW_ZOOM_FACTOR,
@@ -252,9 +246,11 @@ export const ClientSettingsSchema = Schema.Struct({
   browserDefaultProfileId: BrowserProfileId.pipe(
     Schema.withDecodingDefault(Effect.succeed(DEFAULT_BROWSER_PROFILE_ID)),
   ),
-  // Desktop-only: require holding the quit shortcut (Cmd/Ctrl+Q) before the
-  // app quits; a quick tap only shows a hint. Browser clients ignore it.
-  confirmQuit: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
+  // Desktop-only. Boolean values from older settings files decode to their
+  // equivalent mode and encode back as the canonical string value.
+  confirmQuit: QuitConfirmationModeSetting.pipe(
+    Schema.withDecodingDefault(Effect.succeed(DEFAULT_QUIT_CONFIRMATION_MODE)),
+  ),
   confirmThreadArchive: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   confirmThreadDelete: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
   confirmThreadUnpin: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
@@ -589,21 +585,13 @@ export const GrokSettings = makeProviderSettingsSchema(
         providerSettingsForm: { placeholder: "grok", clearWhenEmpty: "omit" },
       }),
     ),
-    homePath: TrimmedString.pipe(
-      Schema.withDecodingDefault(Effect.succeed("")),
-      Schema.annotateKey({
-        title: "GROK_HOME path",
-        description: "Custom Grok home and session directory.",
-        providerSettingsForm: { placeholder: "~/.grok", clearWhenEmpty: "omit" },
-      }),
-    ),
     customModels: Schema.Array(Schema.String).pipe(
       Schema.withDecodingDefault(Effect.succeed([])),
       Schema.annotateKey({ providerSettingsForm: { hidden: true } }),
     ),
   },
   {
-    order: ["binaryPath", "homePath"],
+    order: ["binaryPath"],
   },
 );
 export type GrokSettings = typeof GrokSettings.Type;
@@ -749,22 +737,6 @@ export const ObservabilitySettings = Schema.Struct({
 });
 export type ObservabilitySettings = typeof ObservabilitySettings.Type;
 
-export const LinearIssueSettings = Schema.Struct({
-  enabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
-  apiToken: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
-  domain: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed("linear.app"))),
-  defaultTeamKey: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
-  projectMappings: Schema.Record(
-    ProjectId,
-    Schema.Struct({
-      linearProjectId: TrimmedString,
-      linearProjectName: TrimmedString,
-      teamKey: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
-    }),
-  ).pipe(Schema.withDecodingDefault(Effect.succeed({}))),
-});
-export type LinearIssueSettings = typeof LinearIssueSettings.Type;
-
 export const SourceControlWritingStyleMode = Schema.Literals([
   "repo_conventions",
   "conventional_commits",
@@ -892,9 +864,6 @@ export const ServerSettings = Schema.Struct({
   newWorktreesStartFromOrigin: Schema.Boolean.pipe(
     Schema.withDecodingDefault(Effect.succeed(true)),
   ),
-  enabledPluginIds: Schema.Array(PluginPackageId).pipe(
-    Schema.withDecodingDefault(Effect.succeed([])),
-  ),
   addProjectBaseDirectory: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
   textGenerationModelSelection: ModelSelection.pipe(
     Schema.withDecodingDefault(
@@ -939,9 +908,6 @@ export const ServerSettings = Schema.Struct({
   providerInstances: Schema.Record(ProviderInstanceId, ProviderInstanceConfig).pipe(
     Schema.withDecodingDefault(Effect.succeed({})),
   ),
-  issues: Schema.Struct({
-    linear: LinearIssueSettings.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
-  }).pipe(Schema.withDecodingDefault(Effect.succeed({}))),
   observability: ObservabilitySettings.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
 });
 export type ServerSettings = typeof ServerSettings.Type;
@@ -1075,7 +1041,6 @@ const CursorSettingsPatch = Schema.Struct({
 const GrokSettingsPatch = Schema.Struct({
   enabled: Schema.optionalKey(Schema.Boolean),
   binaryPath: Schema.optionalKey(TrimmedString),
-  homePath: Schema.optionalKey(TrimmedString),
   customModels: Schema.optionalKey(Schema.Array(Schema.String)),
 });
 
@@ -1095,23 +1060,6 @@ const OpenCodeSettingsPatch = Schema.Struct({
   serverUrl: Schema.optionalKey(TrimmedString),
   serverPassword: Schema.optionalKey(TrimmedString),
   customModels: Schema.optionalKey(Schema.Array(Schema.String)),
-});
-
-const LinearIssueSettingsPatch = Schema.Struct({
-  enabled: Schema.optionalKey(Schema.Boolean),
-  apiToken: Schema.optionalKey(TrimmedString),
-  domain: Schema.optionalKey(TrimmedString),
-  defaultTeamKey: Schema.optionalKey(TrimmedString),
-  projectMappings: Schema.optionalKey(
-    Schema.Record(
-      ProjectId,
-      Schema.Struct({
-        linearProjectId: TrimmedString,
-        linearProjectName: TrimmedString,
-        teamKey: Schema.optionalKey(TrimmedString),
-      }),
-    ),
-  ),
 });
 
 export const ServerSettingsPatch = Schema.Struct({
@@ -1166,11 +1114,6 @@ export const ServerSettingsPatch = Schema.Struct({
   // patches risk leaving driver-specific config in a half-merged state.
   // The web UI sends a fully-formed map every time it edits this field.
   providerInstances: Schema.optionalKey(Schema.Record(ProviderInstanceId, ProviderInstanceConfig)),
-  issues: Schema.optionalKey(
-    Schema.Struct({
-      linear: Schema.optionalKey(LinearIssueSettingsPatch),
-    }),
-  ),
 });
 export type ServerSettingsPatch = typeof ServerSettingsPatch.Type;
 
@@ -1185,7 +1128,7 @@ export const ClientSettingsPatch = Schema.Struct({
   browserAutoShowFloatingPreview: Schema.optionalKey(Schema.Boolean),
   browserProfiles: Schema.optionalKey(Schema.Array(BrowserProfile)),
   browserDefaultProfileId: Schema.optionalKey(BrowserProfileId),
-  confirmQuit: Schema.optionalKey(Schema.Boolean),
+  confirmQuit: Schema.optionalKey(QuitConfirmationMode),
   confirmThreadArchive: Schema.optionalKey(Schema.Boolean),
   confirmThreadDelete: Schema.optionalKey(Schema.Boolean),
   confirmThreadUnpin: Schema.optionalKey(Schema.Boolean),

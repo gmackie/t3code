@@ -13,7 +13,6 @@ import { connectCommand } from "./cli/connect.ts";
 import { pairCommand } from "./cli/pair.ts";
 import { hasCloudPublicConfig } from "./cloud/publicConfig.ts";
 import { sharedServerCommandFlags } from "./cli/config.ts";
-import { maintenanceCommand } from "./cli/maintenance.ts";
 import { isEntrypoint } from "./entrypoint.ts";
 import { projectCommand } from "./cli/project.ts";
 import { runServerCommand, serveCommand, startCommand } from "./cli/server.ts";
@@ -59,7 +58,6 @@ export const makeCli = ({ cloudEnabled = hasCloudPublicConfig } = {}) =>
       pairCommand,
       authCommand,
       projectCommand,
-      maintenanceCommand,
       serviceCommand,
       servicePreflightCommand,
       themeCommand,

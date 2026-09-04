@@ -79,6 +79,7 @@ export function ServerUpdateAction({
   serverLabel,
   selfUpdate,
   desktopAppUpdate = false,
+  threadContinuation = false,
   targetVersion,
   label = "Update",
   variant = "outline",
@@ -90,12 +91,17 @@ export function ServerUpdateAction({
   /** The desktop app supervising this server accepts remote update
       requests (capabilities.desktopAppUpdate). */
   readonly desktopAppUpdate?: boolean;
+  /** The server can durably continue running provider turns after updating. */
+  readonly threadContinuation?: boolean;
   readonly targetVersion: string;
   readonly label?: string;
   readonly variant?: ComponentProps<typeof Button>["variant"];
   readonly size?: ComponentProps<typeof Button>["size"];
 }) {
   const isDesktopAppUpdate = selfUpdate === "desktop-managed";
+  const continueThreadsAfterServerUpdate = useClientSettings(
+    (settings) => settings.continueThreadsAfterServerUpdate,
+  );
   const updateServer = useAtomCommand(serverEnvironment.updateServer, {
     reportFailure: false,
   });
@@ -127,7 +133,7 @@ export function ServerUpdateAction({
       // remote machine installs without asking anyone there.
       const confirmed =
         (await requestConfirmDialog(
-          `Update the T3 Code desktop app on ${serverLabel}? It will close and relaunch on that machine.`,
+          `Update the T3 Code desktop app that runs the ${serverLabel}? It will close and relaunch on that machine.`,
         )) ?? true;
       if (!confirmed) {
         return;

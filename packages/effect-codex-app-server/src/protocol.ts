@@ -36,7 +36,6 @@ export interface CodexAppServerIncomingRequest {
 
 export interface CodexAppServerPatchedProtocolOptions {
   readonly stdio: Stdio.Stdio;
-  readonly maxIncomingFrameCharacters?: number;
   readonly terminationError?: Effect.Effect<CodexError.CodexAppServerError>;
   readonly logIncoming?: boolean;
   readonly logOutgoing?: boolean;
@@ -75,60 +74,6 @@ interface CodexAppServerPendingRequest {
   readonly deferred: Deferred.Deferred<unknown, CodexError.CodexAppServerError>;
   readonly method: string;
 }
-
-const DEFAULT_MAX_INCOMING_FRAME_CHARACTERS = 64 * 1024 * 1024;
-const FRAGMENT_BATCH_SIZE = 1024;
-
-export const makeJsonLineFramer = (options: { readonly maxFrameCharacters: number }) => {
-  const maximumCharacters = Math.max(1, Math.floor(options.maxFrameCharacters));
-  const blocks: Array<string> = [];
-  const fragments: Array<string> = [];
-  let pendingCharacters = 0;
-
-  const append = (fragment: string) => {
-    if (fragment.length === 0) return;
-    const observedCharacters = pendingCharacters + fragment.length;
-    if (observedCharacters > maximumCharacters) {
-      throw new CodexError.CodexAppServerIncomingFrameTooLargeError({
-        maximumCharacters,
-        observedCharacters,
-      });
-    }
-    pendingCharacters = observedCharacters;
-    fragments.push(fragment);
-    if (fragments.length >= FRAGMENT_BATCH_SIZE) {
-      blocks.push(fragments.join(""));
-      fragments.length = 0;
-    }
-  };
-
-  const takePending = (stripTrailingCarriageReturn = true) => {
-    const line =
-      blocks.length === 0 ? fragments.join("") : [...blocks, fragments.join("")].join("");
-    blocks.length = 0;
-    fragments.length = 0;
-    pendingCharacters = 0;
-    return stripTrailingCarriageReturn ? line.replace(/\r$/, "") : line;
-  };
-
-  return {
-    push(chunk: string): ReadonlyArray<string> {
-      const lines: Array<string> = [];
-      let start = 0;
-      for (;;) {
-        const newline = chunk.indexOf("\n", start);
-        if (newline === -1) {
-          append(chunk.slice(start));
-          return lines;
-        }
-        append(chunk.slice(start, newline));
-        lines.push(takePending());
-        start = newline + 1;
-      }
-    },
-    finish: () => takePending(false),
-  };
-};
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -219,10 +164,7 @@ export const makeCodexAppServerPatchedProtocol = Effect.fn("makeCodexAppServerPa
       yield* Queue.sliding<CodexAppServerIncomingRequest>(MAX_BUFFERED_RAW_MESSAGES);
     const pending = yield* Ref.make(new Map<string, CodexAppServerPendingRequest>());
     const nextRequestId = yield* Ref.make(1);
-    const lineFramer = makeJsonLineFramer({
-      maxFrameCharacters:
-        options.maxIncomingFrameCharacters ?? DEFAULT_MAX_INCOMING_FRAME_CHARACTERS,
-    });
+    const remainder: Array<string> = [];
     const terminationHandled = yield* Ref.make(false);
     const terminationFailure = yield* Ref.make(Option.none<CodexError.CodexAppServerError>());
     const terminationSignal = yield* Deferred.make<void>();
@@ -457,9 +399,24 @@ export const makeCodexAppServerPatchedProtocol = Effect.fn("makeCodexAppServerPa
       Stream.interruptWhen(Deferred.await(terminationSignal)),
       Stream.decodeText(),
       Stream.runForEach((chunk) =>
-        Effect.try({
-          try: () => lineFramer.push(chunk),
-          catch: (error) => normalizeIncomingError(error, "read-input-stream"),
+        Effect.sync(() => {
+          const lines: Array<string> = [];
+          let start = 0;
+          for (
+            let newline = chunk.indexOf("\n");
+            newline !== -1;
+            newline = chunk.indexOf("\n", start)
+          ) {
+            remainder.push(chunk.slice(start, newline));
+            lines.push(remainder.join("").replace(/\r$/, ""));
+            remainder.length = 0;
+            start = newline + 1;
+          }
+          // Keep unfinished lines in fragments so each chunk is scanned only once.
+          if (start < chunk.length) {
+            remainder.push(chunk.slice(start));
+          }
+          return lines;
         }).pipe(Effect.flatMap((lines) => Effect.forEach(lines, handleLine, { discard: true }))),
       ),
       Effect.matchEffect({
@@ -468,11 +425,12 @@ export const makeCodexAppServerPatchedProtocol = Effect.fn("makeCodexAppServerPa
             Effect.succeed(normalizeIncomingError(error, "read-input-stream")),
           ),
         onSuccess: () =>
-          Effect.try({
-            try: () => lineFramer.finish(),
-            catch: (error) => normalizeIncomingError(error, "read-input-stream"),
+          Effect.sync(() => {
+            const line = remainder.join("");
+            remainder.length = 0;
+            return line;
           }).pipe(
-            Effect.flatMap((line) => (line.trim().length === 0 ? Effect.void : handleLine(line))),
+            Effect.flatMap(handleLine),
             Effect.matchEffect({
               onFailure: (error) => handleTermination(() => Effect.succeed(error)),
               onSuccess: () =>

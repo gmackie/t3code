@@ -32,7 +32,6 @@ import * as Crypto from "effect/Crypto";
 import * as DateTime from "effect/DateTime";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
-import * as Encoding from "effect/Encoding";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Redacted from "effect/Redacted";
@@ -44,12 +43,7 @@ import * as HttpClientError from "effect/unstable/http/HttpClientError";
 import * as EnvironmentLinks from "./EnvironmentLinks.ts";
 import * as ManagedEndpointAllocations from "./ManagedEndpointAllocations.ts";
 import * as RelayConfiguration from "../Config.ts";
-import {
-  isManagedEndpointHostname,
-  managedEndpointDigestInput,
-  t3RelayEndpointForHostname,
-} from "../deploymentConfig.ts";
-import { relayEdgeEndpointHostname } from "../transport/routing.ts";
+import { isManagedEndpointHostname } from "../deploymentConfig.ts";
 
 function environmentConnectNotAuthorizedReasonMessage(
   reason: RelayEnvironmentConnectNotAuthorizedReason,
@@ -308,67 +302,9 @@ const make = Effect.gen(function* () {
   const resolveManagedEndpoint = Effect.fn("relay.environment_connector.resolve_managed_endpoint")(
     function* (input: {
       readonly operation: "connect" | "status";
-      readonly userId: string;
       readonly link: EnvironmentLinks.RelayLinkedEnvironmentRecord;
       readonly allocation: ManagedEndpointAllocations.ManagedEndpointAllocation | null;
     }) {
-      if (input.link.endpoint.providerKind === "t3_relay") {
-        if (!settings.managedEndpointBaseDomain || !settings.managedEndpointNamespace) {
-          return yield* new EnvironmentConnectNotAuthorized({
-            environmentId: input.link.environmentId,
-            operation: input.operation,
-            reason: "managed_endpoint_base_domain_not_configured",
-          });
-        }
-        const hostname = yield* Effect.try(
-          () => new URL(input.link.endpoint.httpBaseUrl).hostname,
-        ).pipe(Effect.orElseSucceed(() => ""));
-        if (!isManagedEndpointHostname(hostname, settings.managedEndpointBaseDomain)) {
-          return yield* new EnvironmentConnectNotAuthorized({
-            environmentId: input.link.environmentId,
-            operation: input.operation,
-            reason: "managed_endpoint_hostname_invalid",
-          });
-        }
-        const environmentHash = yield* crypto
-          .digest(
-            "SHA-256",
-            new TextEncoder().encode(
-              managedEndpointDigestInput(
-                settings.managedEndpointNamespace,
-                input.userId,
-                input.link.environmentId,
-              ),
-            ),
-          )
-          .pipe(Effect.map(Encoding.encodeHex), Effect.orDie);
-        if (
-          hostname !==
-          relayEdgeEndpointHostname(
-            settings.managedEndpointNamespace,
-            settings.managedEndpointBaseDomain,
-            environmentHash,
-          )
-        ) {
-          return yield* new EnvironmentConnectNotAuthorized({
-            environmentId: input.link.environmentId,
-            operation: input.operation,
-            reason: "managed_endpoint_mismatch",
-          });
-        }
-        const endpoint = t3RelayEndpointForHostname(hostname);
-        if (
-          endpoint.httpBaseUrl !== input.link.endpoint.httpBaseUrl ||
-          endpoint.wsBaseUrl !== input.link.endpoint.wsBaseUrl
-        ) {
-          return yield* new EnvironmentConnectNotAuthorized({
-            environmentId: input.link.environmentId,
-            operation: input.operation,
-            reason: "managed_endpoint_mismatch",
-          });
-        }
-        return endpoint;
-      }
       if (input.link.endpoint.providerKind !== "cloudflare_tunnel") {
         yield* Effect.annotateCurrentSpan({
           "relay.authorization.endpoint_provider_kind": input.link.endpoint.providerKind,
@@ -477,7 +413,6 @@ const make = Effect.gen(function* () {
       }
       const endpoint = yield* resolveManagedEndpoint({
         operation: "status",
-        userId: input.userId,
         link,
         allocation,
       });
@@ -633,7 +568,6 @@ const make = Effect.gen(function* () {
       }
       const endpoint = yield* resolveManagedEndpoint({
         operation: "connect",
-        userId: input.userId,
         link,
         allocation,
       });

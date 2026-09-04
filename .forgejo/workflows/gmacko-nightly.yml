@@ -150,8 +150,6 @@ jobs:
         if: steps.rebase_upstream.outputs.has_changes == 'true' && github.event_name != 'push'
         shell: bash
         working-directory: lane
-        env:
-          NODE_OPTIONS: "--max-old-space-size=4096"
         run: |
           set -euo pipefail
           LOCK_COMMIT_SUBJECT="chore: refresh lockfile after upstream rebase"
@@ -290,13 +288,11 @@ jobs:
 
       - name: Test
         shell: bash
+        env:
+          NODE_OPTIONS: "--max-old-space-size=4096"
         run: |
           set -euo pipefail
           sudo chown -R ubuntu:ubuntu "$GITHUB_WORKSPACE"
-          # sudo strips the environment, so pnpm's verify-deps check sees a
-          # fresh user and synchronously re-runs `pnpm install`, which has
-          # OOMed node at its default heap on a busy runner. Install already
-          # ran this job; skip the re-verify and give node headroom.
           sudo -u ubuntu -H env "PATH=$PATH" \
             "NODE_OPTIONS=--max-old-space-size=4096" \
             "npm_config_verify_deps_before_run=false" \

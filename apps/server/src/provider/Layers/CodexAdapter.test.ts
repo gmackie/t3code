@@ -10,7 +10,6 @@ import {
   ProviderDriverKind,
   ProviderInstanceId,
   ProviderItemId,
-  type ProviderUsageWindow,
   type ProviderApprovalDecision,
   type ProviderEvent,
   type ProviderSession,
@@ -229,14 +228,6 @@ const providerSessionDirectoryTestLayer = Layer.succeed(ProviderSessionDirectory
 });
 
 const validationRuntimeFactory = makeRuntimeFactory();
-const standaloneUsageWindows: ReadonlyArray<ProviderUsageWindow> = [
-  {
-    id: "primary",
-    label: "5-hour window",
-    usedPercent: 25,
-    remainingPercent: 75,
-  },
-];
 const validationLayer = it.layer(
   Layer.effect(
     CodexAdapter,
@@ -244,7 +235,6 @@ const validationLayer = it.layer(
       const codexConfig = decodeCodexSettings({});
       return yield* makeCodexAdapter(codexConfig, {
         makeRuntime: validationRuntimeFactory.factory,
-        queryUsage: () => Effect.succeed(standaloneUsageWindows),
       });
     }),
   ).pipe(
@@ -256,16 +246,6 @@ const validationLayer = it.layer(
 );
 
 validationLayer("CodexAdapterLive validation", (it) => {
-  it.effect("queries account quota before a chat session exists", () =>
-    Effect.gen(function* () {
-      const adapter = yield* CodexAdapter;
-      const queryUsage = adapter.queryUsage;
-      NodeAssert.ok(queryUsage);
-
-      NodeAssert.deepStrictEqual(yield* queryUsage(), standaloneUsageWindows);
-    }),
-  );
-
   it.effect("returns validation error for non-codex provider on startSession", () =>
     Effect.gen(function* () {
       const adapter = yield* CodexAdapter;
@@ -1666,6 +1646,81 @@ lifecycleLayer("CodexAdapterLive lifecycle", (it) => {
           });
         }
       }),
+  );
+
+  it.effect("maps async agent questions without ending the turn", () =>
+    Effect.gen(function* () {
+      const { adapter, runtime } = yield* startLifecycleRuntime();
+      const eventsFiber = yield* Stream.runCollect(Stream.take(adapter.streamEvents, 2)).pipe(
+        Effect.forkChild,
+      );
+      yield* runtime.emit({
+        id: asEventId("evt-async-question"),
+        kind: "notification",
+        provider: ProviderDriverKind.make("codex"),
+        threadId: asThreadId("thread-1"),
+        createdAt: "2026-01-01T00:00:00.000Z",
+        method: "item/completed",
+        payload: {
+          completedAtMs: 0,
+          threadId: "thread-1",
+          turnId: "turn-1",
+          item: {
+            type: "agentMessage",
+            id: "async-question-1",
+            text: "Which package manager?\n- pnpm\n- npm\n\nWhat should it be named?",
+            phase: "final_answer",
+            delivery: "async",
+            questions: [
+              { title: "Which package manager?", options: ["pnpm", "npm"] },
+              { title: "What should it be named?" },
+            ],
+          },
+        },
+      });
+      yield* runtime.emit({
+        id: asEventId("evt-async-continued"),
+        kind: "notification",
+        provider: ProviderDriverKind.make("codex"),
+        threadId: asThreadId("thread-1"),
+        createdAt: "2026-01-01T00:00:01.000Z",
+        method: "item/agentMessage/delta",
+        payload: {
+          threadId: "thread-1",
+          turnId: "turn-1",
+          itemId: "message-2",
+          delta: "I will keep working.",
+        },
+      });
+      const events = Array.from(yield* Fiber.join(eventsFiber));
+      NodeAssert.equal(events[0]?.type, "user-input.requested");
+      NodeAssert.equal(events[0]?.requestId, "codex-async:thread-1:async-question-1");
+      NodeAssert.deepEqual(events[0]?.payload, {
+        responseMode: "message",
+        questions: [
+          {
+            id: "0",
+            header: "Question",
+            question: "Which package manager?",
+            options: [
+              { label: "pnpm", description: "" },
+              { label: "npm", description: "" },
+            ],
+            allowCustomAnswer: true,
+            multiSelect: false,
+          },
+          {
+            id: "1",
+            header: "Question",
+            question: "What should it be named?",
+            options: [],
+            allowCustomAnswer: true,
+            multiSelect: false,
+          },
+        ],
+      });
+      NodeAssert.equal(events[1]?.type, "content.delta");
+    }),
   );
 
   it.effect("unwraps Codex token usage payloads for context window events", () =>

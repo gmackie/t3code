@@ -14,7 +14,6 @@ import type {
   OrchestrationClientOrigin,
   OrchestrationCommand,
   OrchestrationEvent,
-  ThreadId,
 } from "@t3tools/contracts";
 import * as Context from "effect/Context";
 import type * as Effect from "effect/Effect";
@@ -57,7 +56,7 @@ export interface OrchestrationEngineShape {
   readonly dispatch: (
     command: OrchestrationCommand,
     options?: { readonly origin?: OrchestrationClientOrigin },
-  ) => Effect.Effect<{ sequence: number; threadId?: ThreadId }, OrchestrationDispatchError, never>;
+  ) => Effect.Effect<{ sequence: number }, OrchestrationDispatchError, never>;
 
   /**
    * Stream persisted domain events in dispatch order.

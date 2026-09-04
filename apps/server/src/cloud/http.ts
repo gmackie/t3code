@@ -70,7 +70,6 @@ import {
   CLOUD_ENDPOINT_RUNTIME_CONFIG,
   CLOUD_LINKED_USER_ID,
   CLOUD_MINT_PUBLIC_KEY,
-  decodeRuntimeConfig,
   encodeEndpointRuntimeConfigJson,
   PUBLISH_AGENT_ACTIVITY_SECRET,
   RELAY_ENVIRONMENT_CREDENTIAL_SECRET,
@@ -320,7 +319,6 @@ function isAllowedEndpointOrigin(input: {
 export function isSupportedLinkProviderKind(request: RelayLinkProofRequest): boolean {
   return (
     request.endpoint.providerKind === "cloudflare_tunnel" ||
-    request.endpoint.providerKind === "t3_relay" ||
     request.endpoint.providerKind === "manual"
   );
 }
@@ -328,7 +326,7 @@ export function isSupportedLinkProviderKind(request: RelayLinkProofRequest): boo
 export function linkProofScopes(
   request: RelayLinkProofRequest,
 ): RelayEnvironmentLinkProofPayload["scopes"] {
-  return request.endpoint.providerKind !== "manual"
+  return request.endpoint.providerKind === "cloudflare_tunnel"
     ? ["agent_activity_notifications", "managed_tunnels"]
     : ["agent_activity_notifications"];
 }
@@ -577,15 +575,9 @@ const reconcileDesiredCloudLinkWith = Effect.fn("environment.cloud.reconcileDesi
         notificationsEnabled: true,
         liveActivitiesEnabled: true,
         managedTunnelsEnabled,
-        ...(managedTunnelsEnabled
-          ? {
-              supportedManagedEndpointProviders: ["cloudflare_tunnel", "t3_relay"] as const,
-            }
-          : {}),
       },
       schema: RelayEnvironmentLinkChallengeResponse,
     });
-    const managedEndpointProvider = challenge.managedEndpointProvider ?? "cloudflare_tunnel";
     const proof = yield* makeCloudLinkProof(
       dependencies,
       {
@@ -594,7 +586,7 @@ const reconcileDesiredCloudLinkWith = Effect.fn("environment.cloud.reconcileDesi
         endpoint: {
           httpBaseUrl: localOrigin,
           wsBaseUrl: localWsOrigin,
-          providerKind: managedTunnelsEnabled ? managedEndpointProvider : "manual",
+          providerKind: managedTunnelsEnabled ? "cloudflare_tunnel" : "manual",
         },
         origin: {
           localHttpHost: localUrl.hostname,
@@ -611,7 +603,6 @@ const reconcileDesiredCloudLinkWith = Effect.fn("environment.cloud.reconcileDesi
         notificationsEnabled: true,
         liveActivitiesEnabled: true,
         managedTunnelsEnabled,
-        ...(managedTunnelsEnabled ? { managedEndpointProvider } : {}),
       },
       schema: RelayEnvironmentLinkResponse,
     });
@@ -676,16 +667,16 @@ const pendingUpdateHandoffExists = Effect.gen(function* () {
   return !stopping;
 });
 
-// An environment that goes offline releases its managed connector. Cloudflare
-// deletes the billed tunnel while T3 relay conditionally revokes the current
-// connector lease; both keep the link so startup reconciliation can provision
-// the replacement under the same URL.
+// Cloudflare bills per provisioned tunnel, so an environment that goes offline
+// must not leave its tunnel behind. Releasing deletes only the tunnel — the
+// relay keeps the link and its hostname reservation, and the next startup's
+// link reconcile provisions a replacement tunnel under the same URL.
 export const releaseManagedTunnelOnShutdown = Effect.fn(
   "environment.cloud.releaseManagedTunnelOnShutdown",
 )(function* () {
   const dependencies = yield* cloudHttpDependencies;
   // Only a managed link stores a runtime config; publish-only links have no
-  // connector to release.
+  // tunnel to release.
   const runtimeConfig = yield* dependencies.secrets.get(CLOUD_ENDPOINT_RUNTIME_CONFIG);
   if (Option.isNone(runtimeConfig)) {
     return false;
@@ -722,21 +713,11 @@ export const releaseManagedTunnelOnShutdown = Effect.fn(
     return false;
   }
   const environmentId = yield* dependencies.environment.getEnvironmentId;
-  const decodedRuntimeConfig = decodeRuntimeConfig(bytesToString(runtimeConfig.value));
   // Stop the local connector before the relay deletes the tunnel it serves.
   yield* dependencies.endpointRuntime.applyConfig(null);
-  const releaseRequest = HttpClientRequest.delete(
+  const response = yield* HttpClientRequest.delete(
     `${bytesToString(relayUrl.value)}/v1/client/environment-links/${encodeURIComponent(environmentId)}/tunnel`,
-  );
-  const leaseBoundReleaseRequest =
-    Option.isSome(decodedRuntimeConfig) && decodedRuntimeConfig.value.connectorLeaseId
-      ? HttpClientRequest.setHeader(
-          releaseRequest,
-          "x-t3-relay-connector-lease-id",
-          decodedRuntimeConfig.value.connectorLeaseId,
-        )
-      : releaseRequest;
-  const response = yield* leaseBoundReleaseRequest.pipe(
+  ).pipe(
     HttpClientRequest.bearerToken(token.value.accessToken),
     dependencies.httpClient.execute,
     Effect.flatMap(HttpClientResponse.filterStatusOk),

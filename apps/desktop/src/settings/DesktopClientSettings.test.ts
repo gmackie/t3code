@@ -22,7 +22,7 @@ const clientSettings: ClientSettings = {
   browserAutoShowFloatingPreview: false,
   browserProfiles: [{ id: "work", name: "Work", kind: "persistent" }],
   browserDefaultProfileId: "work",
-  confirmQuit: true,
+  confirmQuit: "double-click",
   confirmThreadArchive: true,
   confirmThreadDelete: false,
   confirmThreadUnpin: false,

@@ -2619,6 +2619,59 @@ projectionSnapshotLayer("ProjectionSnapshotQuery windowed thread detail", (it) =
         assert.equal(ids.has(asEventId("user-input-closed")), false);
         assert.equal(ids.has(asEventId("user-input-tied-z-request")), true);
       }
+
+      const fullSnapshot = yield* snapshotQuery.getThreadDetailSnapshot(threadW);
+      assert.equal(fullSnapshot._tag, "Some");
+      if (
+        detailWithPinnedRequests._tag === "Some" &&
+        fullSnapshot._tag === "Some" &&
+        windowWithPinnedRequests._tag === "Some"
+      ) {
+        const projectedFullSnapshot = projectThreadDetailSnapshot(fullSnapshot.value);
+        const projectedRawBaseline = projectThreadDetailSnapshot({
+          snapshotSequence: fullSnapshot.value.snapshotSequence,
+          thread: detailWithPinnedRequests.value,
+        });
+        assert.deepStrictEqual(projectedFullSnapshot, projectedRawBaseline);
+
+        const rawActivitiesById = new Map(
+          detailWithPinnedRequests.value.activities.map((activity) => [activity.id, activity]),
+        );
+        const projectedWindowSnapshot = projectThreadDetailSnapshot(windowWithPinnedRequests.value);
+        const projectedWindowBaseline = projectThreadDetailSnapshot({
+          ...windowWithPinnedRequests.value,
+          thread: {
+            ...windowWithPinnedRequests.value.thread,
+            activities: windowWithPinnedRequests.value.thread.activities.map(
+              (activity) => rawActivitiesById.get(activity.id) ?? activity,
+            ),
+          },
+        });
+        assert.deepStrictEqual(projectedWindowSnapshot, projectedWindowBaseline);
+
+        const projectedIds = new Set(
+          projectedFullSnapshot.thread.activities.map((activity) => activity.id),
+        );
+        assert.equal(projectedIds.has(asEventId("activity-0002")), false);
+        assert.equal(projectedIds.has(asEventId("activity-0003")), false);
+        assert.equal(projectedIds.has(asEventId("activity-0070")), true);
+
+        const failedCommand = projectedFullSnapshot.thread.activities.find(
+          (activity) => activity.id === asEventId("activity-0011"),
+        );
+        assert.deepStrictEqual(failedCommand?.payload, {
+          itemType: "command_execution",
+          status: "failed",
+          data: {
+            item: {
+              command: "vp test run",
+              aggregatedOutput: "failed command",
+            },
+            files: [{ path: "apps/server/src/failed.ts" }],
+            rawOutput: { content: "failed output" },
+          },
+        });
+      }
     }),
   );
 

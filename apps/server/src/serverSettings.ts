@@ -16,7 +16,6 @@ import {
   DEFAULT_MODEL_BY_PROVIDER,
   DEFAULT_SERVER_SETTINGS,
   type ModelSelection,
-  type PluginPackageId,
   type ProviderInstanceConfig,
   type ProviderInstanceEnvironmentVariable,
   ProviderDriverKind,
@@ -180,11 +179,6 @@ export class ServerSettingsService extends Context.Service<
       patch: ServerSettingsPatch,
     ) => Effect.Effect<ServerSettings, ServerSettingsError>;
 
-    /** Replace the internal environment-scoped plugin enablement set. */
-    readonly setEnabledPluginIds: (
-      ids: ReadonlyArray<PluginPackageId>,
-    ) => Effect.Effect<ServerSettings, ServerSettingsError>;
-
     /** Stream of settings change events. */
     readonly streamChanges: Stream.Stream<ServerSettings>;
 
@@ -227,11 +221,6 @@ const makeTest = (overrides: DeepPartial<ServerSettings> = {}) =>
           Effect.tap((nextSettings) => Ref.set(currentSettingsRef, nextSettings)),
           Effect.map(resolveTextGenerationProvider),
         ),
-      setEnabledPluginIds: (ids) =>
-        Ref.updateAndGet(currentSettingsRef, (current) => ({
-          ...current,
-          enabledPluginIds: [...ids],
-        })).pipe(Effect.map(resolveTextGenerationProvider)),
       streamChanges: Stream.empty,
       subscribeChanges: Effect.succeed(Stream.empty),
     } satisfies ServerSettingsService["Service"];
@@ -739,22 +728,6 @@ const make = Effect.gen(function* () {
     yield* Deferred.succeed(startedDeferred, undefined).pipe(Effect.orDie);
   });
 
-  const mutateSettings = Effect.fn("ServerSettings.mutateSettings")(
-    (mutate: (current: ServerSettings) => ServerSettings) =>
-      writeSemaphore.withPermits(1)(
-        Effect.gen(function* () {
-          const current = yield* getSettingsFromCache;
-          const nextPersisted = yield* persistProviderEnvironmentSecrets(current, mutate(current));
-          const next = yield* normalizeServerSettings(nextPersisted);
-          yield* writeSettingsAtomically(next);
-          yield* Cache.set(settingsCache, cacheKey, next);
-          yield* emitChange(next);
-          const materialized = yield* materializeProviderEnvironmentSecrets(next);
-          return resolveTextGenerationProvider(materialized);
-        }),
-      ),
-  );
-
   return {
     start,
     ready: Deferred.await(startedDeferred),
@@ -763,9 +736,21 @@ const make = Effect.gen(function* () {
       Effect.map(resolveTextGenerationProvider),
     ),
     updateSettings: (patch) =>
-      mutateSettings((current) => applyServerSettingsPatch(current, patch)),
-    setEnabledPluginIds: (ids) =>
-      mutateSettings((current) => ({ ...current, enabledPluginIds: [...ids] })),
+      writeSemaphore.withPermits(1)(
+        Effect.gen(function* () {
+          const current = yield* getSettingsFromCache;
+          const nextPersisted = yield* persistProviderEnvironmentSecrets(
+            current,
+            applyServerSettingsPatch(current, patch),
+          );
+          const next = yield* normalizeServerSettings(nextPersisted);
+          yield* writeSettingsAtomically(next);
+          yield* Cache.set(settingsCache, cacheKey, next);
+          yield* emitChange(next);
+          const materialized = yield* materializeProviderEnvironmentSecrets(next);
+          return resolveTextGenerationProvider(materialized);
+        }),
+      ),
     get streamChanges() {
       return materializeChanges(Stream.fromPubSub(changesPubSub));
     },

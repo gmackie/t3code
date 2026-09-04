@@ -52,23 +52,7 @@ export interface ServerDerivedPaths {
 
 export interface DeriveServerPathsOptions {
   readonly baseDirIsExplicit?: boolean;
-  readonly stateDirName?: string;
 }
-
-// A bad name can only come from a mangled bootstrap or env override, so a
-// defect (with a clear message) is the right failure mode.
-const normalizeStateDirName = (value: string | undefined, fallback: string) => {
-  const stateDirName = value?.trim() || fallback;
-  if (
-    stateDirName === "." ||
-    stateDirName === ".." ||
-    stateDirName.includes("/") ||
-    stateDirName.includes("\\")
-  ) {
-    return Effect.die(new Error(`Invalid state directory name: ${stateDirName}`));
-  }
-  return Effect.succeed(stateDirName);
-};
 
 /**
  * ServerConfig - Service tag for server runtime configuration.
@@ -123,11 +107,9 @@ export const deriveServerPaths = Effect.fn(function* (
   options: DeriveServerPathsOptions = {},
 ): Effect.fn.Return<ServerDerivedPaths, never, Path.Path> {
   const { join } = yield* Path.Path;
-  const fallbackStateDirName =
-    devUrl !== undefined && !options.baseDirIsExplicit ? "dev" : "userdata";
   const stateDir = join(
     baseDir,
-    yield* normalizeStateDirName(options.stateDirName, fallbackStateDirName),
+    devUrl !== undefined && !options.baseDirIsExplicit ? "dev" : "userdata",
   );
   const dbPath = join(stateDir, "state.sqlite");
   const attachmentsDir = join(stateDir, "attachments");

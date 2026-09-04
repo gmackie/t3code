@@ -10,8 +10,6 @@
 
 import * as Migrator from "effect/unstable/sql/Migrator";
 import * as Effect from "effect/Effect";
-import * as Layer from "effect/Layer";
-import * as SqlClient from "effect/unstable/sql/SqlClient";
 
 // Import all migrations statically
 import Migration0001 from "./Migrations/001_OrchestrationEvents.ts";
@@ -57,8 +55,10 @@ import Migration0040 from "./Migrations/040_ProjectionProjectFaviconPath.ts";
 import Migration0041 from "./Migrations/041_AuthSessionClientConnection.ts";
 import Migration0042 from "./Migrations/042_ProjectionThreadLinkedPullRequest.ts";
 import Migration0043 from "./Migrations/043_ProjectionThreadsUnsettledAt.ts";
-import Migration0044 from "./Migrations/044_ExternalThreadImports.ts";
-import Migration0045 from "./Migrations/045_ExternalThreadImportEnvironments.ts";
+import Migration0044 from "./Migrations/044_ClearAutomaticProjectModelDefaults.ts";
+import Migration0045 from "./Migrations/045_ProjectionProjectsAutoPull.ts";
+import Migration0046 from "./Migrations/046_RepairAutomaticSettlementTimestamps.ts";
+import Migration0047 from "./Migrations/047_ProjectionProjectIcon.ts";
 
 /**
  * Migration loader with all migrations defined inline.
@@ -114,8 +114,10 @@ export const migrationEntries = [
   [41, "AuthSessionClientConnection", Migration0041],
   [42, "ProjectionThreadLinkedPullRequest", Migration0042],
   [43, "ProjectionThreadsUnsettledAt", Migration0043],
-  [44, "ExternalThreadImports", Migration0044],
-  [45, "ExternalThreadImportEnvironments", Migration0045],
+  [44, "ClearAutomaticProjectModelDefaults", Migration0044],
+  [45, "ProjectionProjectsAutoPull", Migration0045],
+  [46, "RepairAutomaticSettlementTimestamps", Migration0046],
+  [47, "ProjectionProjectIcon", Migration0047],
 ] as const;
 
 export const migrationManifest = migrationEntries.map(([id, name]) => [id, name] as const);
@@ -135,128 +137,6 @@ export const makeMigrationLoader = (throughId?: number) =>
  */
 const run = Migrator.make({});
 
-/**
- * Historic lane migrations whose effects are baked into existing profiles but
- * which the manifest no longer carries. Their ledger rows are safe to drop;
- * any OTHER unknown name is a foreign migration (another checkout's code) and
- * is left untouched so downstream collision checks stay loud.
- */
-const retiredLaneMigrations = new Set([
-  "RepairCustomLocalMigrationSchema",
-  "RepairCustomLocalProjectionIndexes",
-  "OrchestrationV2Events",
-]);
-
-/**
- * Migrations from the renumbering era onward are written re-runnable
- * (guarded column adds, CREATE INDEX IF NOT EXISTS), so the reconciler may
- * backfill them. Older migrations predate every renumbered ledger and must
- * never be re-executed.
- */
-const firstRerunnableMigrationId = 33;
-
-/**
- * The GMACKO lane rebases onto upstream, and upstream occasionally claims
- * migration ids the lane was using, so lane migrations get renumbered. The
- * migrator tracks applied migrations by numeric id only and skips every id at
- * or below the highest recorded one, which turns a renumbered ledger into
- * silently skipped migrations and a schema that lags the code (missing
- * columns surface later as runtime SQL errors, not migration failures).
- *
- * Reconcile the ledger by migration NAME before the migrator runs:
- * - rows whose name moved to a new id are re-keyed to the manifest id
- * - rows named in retiredLaneMigrations are dropped (their schema effects
- *   stay in place); rows with any other unknown name are left exactly where
- *   they are
- * - re-runnable manifest migrations below the highest applied id that were
- *   never applied by name ("holes" created by past renumbering) are executed
- *   and recorded
- *
- * Aligned ledgers (every fresh install, and every repaired profile after one
- * boot) short-circuit without writing anything, as does any ledger where a
- * foreign row occupies a slot the reconciliation would need.
- */
-export const reconcileMigrationLedger = Effect.fn("reconcileMigrationLedger")(function* () {
-  const sql = yield* SqlClient.SqlClient;
-  const ledgerTables = yield* sql<{ readonly name: string }>`
-    SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'effect_sql_migrations'
-  `;
-  if (ledgerTables.length === 0) return;
-  const rows = yield* sql<{
-    readonly migration_id: number;
-    readonly name: string;
-    readonly created_at: string;
-  }>`SELECT migration_id, name, created_at FROM effect_sql_migrations ORDER BY migration_id`;
-  const manifestIdByName = new Map<string, number>(
-    migrationEntries.map(([id, name]) => [name, id]),
-  );
-  const aligned = rows.every((row, index) => {
-    const manifestId = manifestIdByName.get(row.name);
-    if (manifestId === undefined) return !retiredLaneMigrations.has(row.name);
-    return manifestId === row.migration_id && rows.findIndex((o) => o.name === row.name) === index;
-  });
-  if (aligned) return;
-
-  const foreignRows = rows.filter(
-    (row) => !manifestIdByName.has(row.name) && !retiredLaneMigrations.has(row.name),
-  );
-  const foreignIds = new Set(foreignRows.map((row) => row.migration_id));
-  const appliedAtByName = new Map<string, string>();
-  for (const row of rows) {
-    if (manifestIdByName.has(row.name) && !appliedAtByName.has(row.name)) {
-      appliedAtByName.set(row.name, row.created_at);
-    }
-  }
-  const highestAppliedId = migrationEntries.reduce(
-    (highest, [id, name]) => (appliedAtByName.has(name) && id > highest ? id : highest),
-    0,
-  );
-  const wantsSlot = (id: number, name: string) =>
-    appliedAtByName.has(name) || (id >= firstRerunnableMigrationId && id < highestAppliedId);
-  if (migrationEntries.some(([id, name]) => wantsSlot(id, name) && foreignIds.has(id))) {
-    yield* Effect.logWarning(
-      "Migration ledger has foreign rows on manifest slots; leaving it untouched",
-    ).pipe(Effect.annotateLogs({ foreign: foreignRows.map((r) => `${r.migration_id}_${r.name}`) }));
-    return;
-  }
-
-  const dropped = rows
-    .filter((row) => retiredLaneMigrations.has(row.name))
-    .map((row) => `${row.migration_id}_${row.name}`);
-  const backfilled: Array<string> = [];
-
-  yield* sql.withTransaction(
-    Effect.gen(function* () {
-      yield* sql`DELETE FROM effect_sql_migrations`;
-      for (const row of foreignRows) {
-        yield* sql`
-          INSERT INTO effect_sql_migrations (migration_id, name, created_at)
-          VALUES (${row.migration_id}, ${row.name}, ${row.created_at})
-        `;
-      }
-      for (const [id, name, migration] of migrationEntries) {
-        const appliedAt = appliedAtByName.get(name);
-        if (appliedAt !== undefined) {
-          yield* sql`
-            INSERT INTO effect_sql_migrations (migration_id, name, created_at)
-            VALUES (${id}, ${name}, ${appliedAt})
-          `;
-        } else if (id >= firstRerunnableMigrationId && id < highestAppliedId) {
-          yield* migration;
-          backfilled.push(`${id}_${name}`);
-          yield* sql`
-            INSERT INTO effect_sql_migrations (migration_id, name, created_at)
-            VALUES (${id}, ${name}, CURRENT_TIMESTAMP)
-          `;
-        }
-      }
-    }),
-  );
-  yield* Effect.log("Reconciled migration ledger").pipe(
-    Effect.annotateLogs({ dropped, backfilled }),
-  );
-});
-
 export interface RunMigrationsOptions {
   readonly toMigrationInclusive?: number | undefined;
 }
@@ -274,7 +154,6 @@ export interface RunMigrationsOptions {
 export const runMigrations = Effect.fn("runMigrations")(function* ({
   toMigrationInclusive,
 }: RunMigrationsOptions = {}) {
-  yield* reconcileMigrationLedger();
   const executedMigrations = yield* run({ loader: makeMigrationLoader(toMigrationInclusive) });
   const migrations = executedMigrations.map(([id, name]) => `${id}_${name}`);
   yield* migrations.length === 0

@@ -36,7 +36,6 @@ import * as Scope from "effect/Scope";
 import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
 import * as SynchronizedRef from "effect/SynchronizedRef";
-import { HttpClient } from "effect/unstable/http";
 import * as ChildProcessSpawner from "effect/unstable/process/ChildProcessSpawner";
 import * as EffectAcpErrors from "effect-acp/errors";
 import type * as EffectAcpSchema from "effect-acp/schema";
@@ -75,7 +74,6 @@ import {
   extractPlanMarkdown,
   extractTodosAsPlan,
 } from "../acp/CursorAcpExtension.ts";
-import { queryCursorUsageRateLimits } from "../cursorUsageQuery.ts";
 import { type CursorAdapterShape } from "../Services/CursorAdapter.ts";
 import { resolveCursorAcpBaseModelId } from "./CursorProvider.ts";
 import { type EventNdjsonLogger, makeEventNdjsonLogger } from "./EventNdjsonLogger.ts";
@@ -451,44 +449,6 @@ export function makeCursorAdapter(
           }),
         );
       });
-
-    // Cursor's ACP surface carries no quota data, so plan usage is pulled
-    // from the dashboard API with the CLI's stored login. It only needs an
-    // HttpClient from the adapter's construction environment — without one
-    // it degrades to "no data".
-    const usageHttpClient = Option.getOrUndefined(
-      yield* Effect.serviceOption(HttpClient.HttpClient),
-    );
-    const queryUsage: NonNullable<CursorAdapterShape["queryUsage"]> = () =>
-      usageHttpClient === undefined
-        ? Effect.succeed([])
-        : queryCursorUsageRateLimits(options?.environment).pipe(
-            Effect.provideService(HttpClient.HttpClient, usageHttpClient),
-            Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, childProcessSpawner),
-            Effect.provideService(FileSystem.FileSystem, fileSystem),
-            Effect.provideService(Path.Path, path),
-          );
-
-    // Push-side companion to queryUsage: after session start and each
-    // settled turn the fresh windows are republished as the shared
-    // account.rate-limits.updated runtime event.
-    const queryPlanUsage = (threadId: ThreadId) =>
-      Effect.gen(function* () {
-        const rateLimits = yield* queryUsage();
-        if (rateLimits.length === 0) return;
-        yield* offerRuntimeEvent({
-          type: "account.rate-limits.updated",
-          ...(yield* makeEventStamp()),
-          provider: PROVIDER,
-          providerInstanceId: boundInstanceId,
-          threadId,
-          payload: { rateLimits },
-        });
-      }).pipe(
-        Effect.catchCause((cause) =>
-          Effect.logDebug("Failed to query Cursor plan usage.", { cause, threadId }),
-        ),
-      );
 
     const requireSession = (
       threadId: ThreadId,
@@ -956,7 +916,6 @@ export function makeCursorAdapter(
             threadId: input.threadId,
             payload: { providerThreadId: started.sessionId },
           });
-          yield* queryPlanUsage(input.threadId).pipe(Effect.forkIn(sessionScope));
 
           return session;
         }).pipe(Effect.scoped),
@@ -1122,7 +1081,6 @@ export function makeCursorAdapter(
                 stopReason: result.stopReason ?? null,
               },
             });
-            yield* queryPlanUsage(input.threadId).pipe(Effect.forkIn(ctx.scope));
           }
 
           return {
@@ -1258,7 +1216,6 @@ export function makeCursorAdapter(
       hasSession,
       stopAll,
       streamEvents,
-      queryUsage,
     } satisfies CursorAdapterShape;
   });
 }

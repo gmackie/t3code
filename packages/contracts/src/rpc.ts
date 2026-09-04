@@ -14,18 +14,6 @@ import {
 
 import { ExternalLauncherError, LaunchEditorInput } from "./editor.ts";
 import {
-  ExternalThreadImportBatchResult,
-  ExternalThreadImportDiscoveryInput,
-  ExternalThreadImportDiscoveryResult,
-  ExternalThreadImportRequestError,
-  ExternalThreadImportSelection,
-} from "./externalThreadImport.ts";
-import {
-  ProjectSessionImportRequestError,
-  ProjectSessionImportScanInput,
-  ProjectSessionImportScanResult,
-} from "./projectSessionImport.ts";
-import {
   AuthAccessStreamError,
   AuthAccessStreamEvent,
   EnvironmentAuthorizationError,
@@ -83,18 +71,6 @@ import {
 } from "./review.ts";
 import { KeybindingsConfigError } from "./keybindings.ts";
 import {
-  ProjectIssueCreateInput,
-  ProjectIssueCreateResult,
-  IssueListResult,
-  IssueProviderError,
-  LinearIssueValidationResult,
-  ProjectIssueListInput,
-  ProjectIssueStatusListInput,
-  ProjectIssueStatusListResult,
-  ProjectIssueStatusUpdateInput,
-  ProjectIssueStatusUpdateResult,
-} from "./issue.ts";
-import {
   ClientOrchestrationCommand,
   ORCHESTRATION_WS_METHODS,
   OrchestrationDispatchCommandError,
@@ -114,26 +90,6 @@ import {
   ProviderUploadFeedbackResult,
 } from "./provider.ts";
 import { ProviderInstanceId } from "./providerInstance.ts";
-import {
-  PluginCommandCatalog,
-  PluginCommandCatalogChangedError,
-  PluginCommandInvocationError,
-  PluginCommandInvocationResult,
-  PluginCommandInvokeInput,
-  PluginCommandNotFoundError,
-} from "./pluginCommands.ts";
-import {
-  PluginPackageActionInput,
-  PluginPackageNotFoundError,
-  PluginPackageOperationError,
-  PluginPackageStatusSnapshot,
-} from "./pluginPackages.ts";
-import {
-  ProviderUsageGetInput,
-  ProviderUsageRefreshResult,
-  ProviderUsageSnapshot,
-  ProviderUsageSubscribeInput,
-} from "./providerUsage.ts";
 import {
   PullRequestActionInput,
   PullRequestActivity,
@@ -275,10 +231,6 @@ export const WS_METHODS = {
   projectsSearchEntries: "projects.searchEntries",
   projectsWriteFile: "projects.writeFile",
 
-  externalThreadsDiscover: "externalThreads.discover",
-  projectSessionImportsScan: "projectSessionImports.scan",
-  externalThreadsImport: "externalThreads.import",
-
   // Shell methods
   shellOpenInEditor: "shell.openInEditor",
 
@@ -344,9 +296,6 @@ export const WS_METHODS = {
   serverProbe: "server.probe",
   serverGetConfig: "server.getConfig",
   serverRefreshProviders: "server.refreshProviders",
-  providerUsageGet: "providerUsage.get",
-  providerUsageRefresh: "providerUsage.refresh",
-  providerUsageSubscribe: "providerUsage.subscribe",
   serverUpdateProvider: "server.updateProvider",
   serverUpdateServer: "server.updateServer",
   serverUpdateServerWithProgress: "server.updateServerWithProgress",
@@ -355,11 +304,6 @@ export const WS_METHODS = {
   serverRemoveKeybinding: "server.removeKeybinding",
   serverGetSettings: "server.getSettings",
   serverUpdateSettings: "server.updateSettings",
-  serverValidateLinearIssues: "server.validateLinearIssues",
-  serverListProjectIssues: "server.listProjectIssues",
-  serverListProjectIssueStatuses: "server.listProjectIssueStatuses",
-  serverCreateProjectIssue: "server.createProjectIssue",
-  serverUpdateProjectIssueStatus: "server.updateProjectIssueStatus",
   serverDiscoverSourceControl: "server.discoverSourceControl",
   serverGetTraceDiagnostics: "server.getTraceDiagnostics",
   serverGetProcessDiagnostics: "server.getProcessDiagnostics",
@@ -372,16 +316,6 @@ export const WS_METHODS = {
   serverGetBackgroundPolicy: "server.getBackgroundPolicy",
   serverGetUsageSummary: "server.getUsageSummary",
   serverRefreshUsageRates: "server.refreshUsageRates",
-
-  // Plugin command methods
-  pluginCommandsList: "pluginCommands.list",
-  pluginCommandsInvoke: "pluginCommands.invoke",
-
-  // Plugin package lifecycle methods
-  pluginPackagesStatus: "pluginPackages.status",
-  pluginPackagesEnable: "pluginPackages.enable",
-  pluginPackagesDisable: "pluginPackages.disable",
-  pluginPackagesReload: "pluginPackages.reload",
 
   // Cloud environment methods
   cloudGetRelayClientStatus: "cloud.getRelayClientStatus",
@@ -425,26 +359,7 @@ export const WS_METHODS = {
   subscribeAuthAccess: "subscribeAuthAccess",
   subscribeBackgroundPolicy: "subscribeBackgroundPolicy",
   subscribeResourceTelemetry: "subscribeResourceTelemetry",
-  subscribePluginCommands: "subscribePluginCommands",
 } as const;
-
-export const WsExternalThreadsDiscoverRpc = Rpc.make(WS_METHODS.externalThreadsDiscover, {
-  payload: ExternalThreadImportDiscoveryInput,
-  success: ExternalThreadImportDiscoveryResult,
-  error: Schema.Union([ExternalThreadImportRequestError, EnvironmentAuthorizationError]),
-});
-
-export const WsProjectSessionImportsScanRpc = Rpc.make(WS_METHODS.projectSessionImportsScan, {
-  payload: ProjectSessionImportScanInput,
-  success: ProjectSessionImportScanResult,
-  error: Schema.Union([ProjectSessionImportRequestError, EnvironmentAuthorizationError]),
-});
-
-export const WsExternalThreadsImportRpc = Rpc.make(WS_METHODS.externalThreadsImport, {
-  payload: ExternalThreadImportSelection,
-  success: ExternalThreadImportBatchResult,
-  error: Schema.Union([ExternalThreadImportRequestError, EnvironmentAuthorizationError]),
-});
 
 export const WsServerUpsertKeybindingRpc = Rpc.make(WS_METHODS.serverUpsertKeybinding, {
   payload: ServerUpsertKeybindingInput,
@@ -470,44 +385,6 @@ export const WsServerGetConfigRpc = Rpc.make(WS_METHODS.serverGetConfig, {
   error: Schema.Union([KeybindingsConfigError, ServerSettingsError, EnvironmentAuthorizationError]),
 });
 
-export const WsPluginCommandsListRpc = Rpc.make(WS_METHODS.pluginCommandsList, {
-  payload: Schema.Struct({}),
-  success: PluginCommandCatalog,
-  error: EnvironmentAuthorizationError,
-});
-
-export const WsPluginCommandsInvokeRpc = Rpc.make(WS_METHODS.pluginCommandsInvoke, {
-  payload: PluginCommandInvokeInput,
-  success: PluginCommandInvocationResult,
-  error: Schema.Union([
-    PluginCommandCatalogChangedError,
-    PluginCommandInvocationError,
-    PluginCommandNotFoundError,
-    EnvironmentAuthorizationError,
-  ]),
-});
-
-export const WsPluginPackagesStatusRpc = Rpc.make(WS_METHODS.pluginPackagesStatus, {
-  payload: Schema.Struct({}),
-  success: PluginPackageStatusSnapshot,
-  error: Schema.Union([PluginPackageOperationError, EnvironmentAuthorizationError]),
-});
-
-const pluginPackageActionRpc = <const Method extends string>(method: Method) =>
-  Rpc.make(method, {
-    payload: PluginPackageActionInput,
-    success: PluginPackageStatusSnapshot,
-    error: Schema.Union([
-      PluginPackageNotFoundError,
-      PluginPackageOperationError,
-      EnvironmentAuthorizationError,
-    ]),
-  });
-
-export const WsPluginPackagesEnableRpc = pluginPackageActionRpc(WS_METHODS.pluginPackagesEnable);
-export const WsPluginPackagesDisableRpc = pluginPackageActionRpc(WS_METHODS.pluginPackagesDisable);
-export const WsPluginPackagesReloadRpc = pluginPackageActionRpc(WS_METHODS.pluginPackagesReload);
-
 export const WsServerRefreshProvidersRpc = Rpc.make(WS_METHODS.serverRefreshProviders, {
   payload: Schema.Struct({
     /**
@@ -523,25 +400,6 @@ export const WsServerRefreshProvidersRpc = Rpc.make(WS_METHODS.serverRefreshProv
   }),
   success: ServerProviderUpdatedPayload,
   error: Schema.Union([EnvironmentAuthorizationError, ProviderSetupError]),
-});
-
-export const WsProviderUsageGetRpc = Rpc.make(WS_METHODS.providerUsageGet, {
-  payload: ProviderUsageGetInput,
-  success: ProviderUsageSnapshot,
-  error: EnvironmentAuthorizationError,
-});
-
-export const WsProviderUsageRefreshRpc = Rpc.make(WS_METHODS.providerUsageRefresh, {
-  payload: ProviderUsageGetInput,
-  success: ProviderUsageRefreshResult,
-  error: EnvironmentAuthorizationError,
-});
-
-export const WsProviderUsageSubscribeRpc = Rpc.make(WS_METHODS.providerUsageSubscribe, {
-  payload: ProviderUsageSubscribeInput,
-  success: ProviderUsageSnapshot,
-  error: EnvironmentAuthorizationError,
-  stream: true,
 });
 
 export const WsServerUpdateProviderRpc = Rpc.make(WS_METHODS.serverUpdateProvider, {
@@ -641,42 +499,6 @@ export const WsServerUpdateSettingsRpc = Rpc.make(WS_METHODS.serverUpdateSetting
   success: ServerSettings,
   error: Schema.Union([ServerSettingsError, EnvironmentAuthorizationError]),
 });
-
-export const WsServerValidateLinearIssuesRpc = Rpc.make(WS_METHODS.serverValidateLinearIssues, {
-  payload: Schema.Struct({}),
-  success: LinearIssueValidationResult,
-  error: Schema.Union([IssueProviderError, ServerSettingsError, EnvironmentAuthorizationError]),
-});
-
-export const WsServerListProjectIssuesRpc = Rpc.make(WS_METHODS.serverListProjectIssues, {
-  payload: ProjectIssueListInput,
-  success: IssueListResult,
-  error: Schema.Union([IssueProviderError, ServerSettingsError, EnvironmentAuthorizationError]),
-});
-
-export const WsServerListProjectIssueStatusesRpc = Rpc.make(
-  WS_METHODS.serverListProjectIssueStatuses,
-  {
-    payload: ProjectIssueStatusListInput,
-    success: ProjectIssueStatusListResult,
-    error: Schema.Union([IssueProviderError, ServerSettingsError, EnvironmentAuthorizationError]),
-  },
-);
-
-export const WsServerCreateProjectIssueRpc = Rpc.make(WS_METHODS.serverCreateProjectIssue, {
-  payload: ProjectIssueCreateInput,
-  success: ProjectIssueCreateResult,
-  error: Schema.Union([IssueProviderError, ServerSettingsError, EnvironmentAuthorizationError]),
-});
-
-export const WsServerUpdateProjectIssueStatusRpc = Rpc.make(
-  WS_METHODS.serverUpdateProjectIssueStatus,
-  {
-    payload: ProjectIssueStatusUpdateInput,
-    success: ProjectIssueStatusUpdateResult,
-    error: Schema.Union([IssueProviderError, ServerSettingsError, EnvironmentAuthorizationError]),
-  },
-);
 
 export const WsServerDiscoverSourceControlRpc = Rpc.make(WS_METHODS.serverDiscoverSourceControl, {
   payload: Schema.Struct({}),
@@ -1328,29 +1150,10 @@ export const WsSubscribeResourceTelemetryRpc = Rpc.make(WS_METHODS.subscribeReso
   stream: true,
 });
 
-export const WsSubscribePluginCommandsRpc = Rpc.make(WS_METHODS.subscribePluginCommands, {
-  payload: Schema.Struct({}),
-  success: PluginCommandCatalog,
-  error: EnvironmentAuthorizationError,
-  stream: true,
-});
-
 export const WsRpcGroup = RpcGroup.make(
   WsServerProbeRpc,
-  WsExternalThreadsDiscoverRpc,
-  WsProjectSessionImportsScanRpc,
-  WsExternalThreadsImportRpc,
   WsServerGetConfigRpc,
-  WsPluginCommandsListRpc,
-  WsPluginCommandsInvokeRpc,
-  WsPluginPackagesStatusRpc,
-  WsPluginPackagesEnableRpc,
-  WsPluginPackagesDisableRpc,
-  WsPluginPackagesReloadRpc,
   WsServerRefreshProvidersRpc,
-  WsProviderUsageGetRpc,
-  WsProviderUsageRefreshRpc,
-  WsProviderUsageSubscribeRpc,
   WsServerUpdateProviderRpc,
   WsProviderAuthStartRpc,
   WsProviderAuthCompleteRpc,
@@ -1368,11 +1171,6 @@ export const WsRpcGroup = RpcGroup.make(
   WsServerRemoveKeybindingRpc,
   WsServerGetSettingsRpc,
   WsServerUpdateSettingsRpc,
-  WsServerValidateLinearIssuesRpc,
-  WsServerListProjectIssuesRpc,
-  WsServerListProjectIssueStatusesRpc,
-  WsServerCreateProjectIssueRpc,
-  WsServerUpdateProjectIssueStatusRpc,
   WsServerDiscoverSourceControlRpc,
   WsServerGetTraceDiagnosticsRpc,
   WsServerGetProcessDiagnosticsRpc,
@@ -1414,8 +1212,6 @@ export const WsRpcGroup = RpcGroup.make(
   WsProjectsReadFileRpc,
   WsProjectsSearchContentsRpc,
   WsProjectsSearchEntriesRpc,
-  WsProjectsListEntriesRpc,
-  WsProjectsReadFileRpc,
   WsProjectsWriteFileRpc,
   WsShellOpenInEditorRpc,
   WsFilesystemBrowseRpc,
@@ -1463,7 +1259,6 @@ export const WsRpcGroup = RpcGroup.make(
   WsSubscribeAuthAccessRpc,
   WsSubscribeBackgroundPolicyRpc,
   WsSubscribeResourceTelemetryRpc,
-  WsSubscribePluginCommandsRpc,
   WsOrchestrationDispatchCommandRpc,
   WsOrchestrationGetWorkflowScriptRpc,
   WsOrchestrationGetTurnDiffRpc,

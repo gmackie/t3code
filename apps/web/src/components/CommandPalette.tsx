@@ -31,8 +31,6 @@ import {
   type DesktopWslState,
   type EnvironmentId,
   type FilesystemBrowseResult,
-  type PluginCommand,
-  type PluginCommandCatalog,
   type ProjectId,
   type SourceControlDiscoveryResult,
   type SourceControlProviderKind,
@@ -51,8 +49,6 @@ import {
   LinkIcon,
   MessageSquareIcon,
   PaletteIcon,
-  PuzzleIcon,
-  ServerIcon,
   SettingsIcon,
   SquarePenIcon,
   TextSearchIcon,
@@ -70,7 +66,6 @@ import {
   type ReactNode,
 } from "react";
 import { useAtomValue } from "@effect/atom-react";
-import { AsyncResult, Atom } from "effect/unstable/reactivity";
 
 import { isDesktopLocalConnectionTarget } from "../connection/desktopLocal";
 import { useDesktopLocalBootstraps } from "../connection/useDesktopLocalBootstraps";
@@ -129,7 +124,6 @@ import {
   browseInputEndPaddingClass,
   buildBrowseGroups,
   buildProjectActionItems,
-  buildPluginCommandActionItems,
   buildRootGroups,
   buildThreadActionItems,
   enumerateCommandPaletteItems,
@@ -144,7 +138,6 @@ import {
   ITEM_ICON_CLASS,
   RECENT_THREAD_LIMIT,
   reduceCommandPaletteUiState,
-  resolvePluginCommandEnvironmentId,
   type SearchOverlayMode,
 } from "./CommandPalette.logic";
 import { orderItemsByPreferredIds, sortLogicalProjectsForSidebar } from "./Sidebar.logic";
@@ -164,16 +157,8 @@ import {
   ThreadCommandSubtitle,
 } from "./ThreadCommandSubtitle";
 import { ThreadRowLeadingStatus, ThreadRowTrailingStatus } from "./ThreadStatusIndicators";
-import {
-  primaryServerKeybindingsAtom,
-  primaryServerProvidersAtom,
-  serverEnvironment,
-} from "../state/server";
-import {
-  deriveProviderInstanceEntries,
-  resolveDefaultProviderModelSelection,
-  type ProviderInstanceEntry,
-} from "../providerInstances";
+import { primaryServerKeybindingsAtom, primaryServerProvidersAtom } from "../state/server";
+import { deriveProviderInstanceEntries, type ProviderInstanceEntry } from "../providerInstances";
 import { resolveShortcutCommand, threadJumpIndexFromCommand } from "../keybindings";
 import { CommandDialog, CommandDialogPopup, CommandFooterAction } from "./ui/command";
 import { Button } from "./ui/button";
@@ -191,10 +176,6 @@ import {
 import type { Project } from "../types";
 
 const EMPTY_BROWSE_ENTRIES: FilesystemBrowseResult["entries"] = [];
-const EMPTY_PLUGIN_COMMAND_CATALOG: PluginCommandCatalog = { commands: [], generation: 0 };
-const EMPTY_PLUGIN_COMMAND_CATALOG_ATOM = Atom.make(
-  AsyncResult.success(EMPTY_PLUGIN_COMMAND_CATALOG),
-).pipe(Atom.withLabel("plugin-commands:empty"));
 
 function projectFavicon(project: Project) {
   return (
@@ -617,21 +598,6 @@ function OpenCommandPaletteDialog(props: {
   const availableSettingsSearchItems = useAvailableSettingsSearchItems();
   const { activeDraftThread, activeThread, defaultProjectRef, handleNewThread } =
     useHandleNewThread();
-  const pluginCommandEnvironmentId = resolvePluginCommandEnvironmentId({
-    activeDraftEnvironmentId: activeDraftThread?.environmentId ?? null,
-    activeThreadEnvironmentId: activeThread?.environmentId ?? null,
-    primaryEnvironmentId,
-  });
-  const pluginCommandCatalogResult = useAtomValue(
-    pluginCommandEnvironmentId === null
-      ? EMPTY_PLUGIN_COMMAND_CATALOG_ATOM
-      : serverEnvironment.pluginCommands({ environmentId: pluginCommandEnvironmentId, input: {} }),
-  );
-  const pluginCommandCatalog =
-    Option.getOrNull(AsyncResult.value(pluginCommandCatalogResult)) ?? EMPTY_PLUGIN_COMMAND_CATALOG;
-  const invokePluginCommand = useAtomCommand(serverEnvironment.invokePluginCommand, {
-    reportFailure: false,
-  });
   const projects = useProjects();
   const changeRequestSnapshotByKey = useAtomValue(ThreadPr.threadChangeRequestSnapshotsAtom);
   const activeThreadProject = useProject(
@@ -1798,35 +1764,6 @@ function OpenCommandPaletteDialog(props: {
         });
       },
     });
-  }
-
-  if (pluginCommandEnvironmentId !== null) {
-    const commandEnvironmentId = pluginCommandEnvironmentId;
-    actionItems.push(
-      ...buildPluginCommandActionItems({
-        commands: pluginCommandCatalog.commands,
-        icon: <PuzzleIcon className={ITEM_ICON_CLASS} />,
-        surface:
-          typeof window !== "undefined" && window.desktopBridge !== undefined ? "desktop" : "web",
-        run: async (command: PluginCommand) => {
-          const result = await invokePluginCommand({
-            environmentId: commandEnvironmentId,
-            input: { generation: pluginCommandCatalog.generation, id: command.id },
-          });
-          if (result._tag === "Failure") {
-            if (isAtomCommandInterrupted(result)) return;
-            throw squashAtomCommandFailure(result);
-          }
-          toastManager.add(
-            stackedThreadToast({
-              type: result.value.tone === "success" ? "success" : "info",
-              title: command.label,
-              description: result.value.message,
-            }),
-          );
-        },
-      }),
-    );
   }
 
   const rootGroups = buildRootGroups({ actionItems, recentThreadItems });

@@ -1,5 +1,5 @@
 import {
-  type EnvironmentId,
+  ANTIGRAVITY_DEFAULT_MODEL,
   type ProviderInstanceId,
   type ProviderDriverKind,
   type ResolvedKeybindingsConfig,
@@ -27,7 +27,6 @@ import {
 import { composerFloatingLayerProps } from "./composerEventScope";
 
 export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
-  environmentId?: EnvironmentId;
   /**
    * The instance currently selected in the composer. Drives the trigger
    * icon, label and the default-highlighted combobox row.
@@ -228,7 +227,6 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
         viewportClassName="overflow-hidden! rounded-[calc(var(--radius-lg)-1px)] p-0 [clip-path:inset(0_round_calc(var(--radius-lg)-1px))]"
       >
         <ModelPickerContent
-          {...(props.environmentId ? { environmentId: props.environmentId } : {})}
           activeInstanceId={activeInstanceId}
           model={props.model}
           lockedProvider={props.lockedProvider}

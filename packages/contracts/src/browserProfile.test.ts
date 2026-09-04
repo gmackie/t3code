@@ -14,7 +14,6 @@ import {
 } from "./browserProfile.ts";
 
 const work: BrowserProfile = { id: "profile-work", name: "Work", kind: "persistent" };
-const isBrowserProfileId = Schema.is(BrowserProfileId);
 
 describe("resolveBrowserProfiles", () => {
   it("lists built-ins ahead of the user's own profiles", () => {
@@ -106,7 +105,7 @@ describe("BrowserProfileId", () => {
   it("rejects control characters", () => {
     // Ids are folded into delimiter-joined cache keys on the client, so one
     // carrying the delimiter would resolve to another profile's partition.
-    expect(isBrowserProfileId("profile-a\u0000b")).toBe(false);
-    expect(isBrowserProfileId("profile-a")).toBe(true);
+    expect(Schema.is(BrowserProfileId)("profile-a\u0000b")).toBe(false);
+    expect(Schema.is(BrowserProfileId)("profile-a")).toBe(true);
   });
 });

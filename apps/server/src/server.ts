@@ -94,9 +94,6 @@ import * as ProjectSetupScriptRunner from "./project/ProjectSetupScriptRunner.ts
 import { ObservabilityLive } from "./observability/Layers/Observability.ts";
 import * as ServerEnvironment from "./environment/ServerEnvironment.ts";
 import * as RemoteOpenTargets from "./environment/RemoteOpenTargets.ts";
-import * as ExternalThreadImportService from "./threadImport/ExternalThreadImportService.ts";
-import * as ExternalThreadImportCandidateToken from "./threadImport/ExternalThreadImportCandidateToken.ts";
-import * as ProjectSessionImportService from "./projectImport/ProjectSessionImportService.ts";
 import { authHttpApiLayer, environmentAuthenticatedAuthLayer } from "./auth/http.ts";
 import * as ServerSecretStore from "./auth/ServerSecretStore.ts";
 import * as EnvironmentAuth from "./auth/EnvironmentAuth.ts";
@@ -724,7 +721,7 @@ export const makeServerLayer = Layer.unwrap(
       }),
     );
 
-    const runtimeServicesWithoutExternalThreadImportsLive = ServerRuntimeStartup.layerWithOptions({
+    const runtimeServicesLive = ServerRuntimeStartup.layerWithOptions({
       activate: Deferred.succeed(activation, undefined).pipe(Effect.asVoid),
       abort: (error) => Deferred.die(activation, error).pipe(Effect.asVoid),
       awaitAuxiliaryParked: Effect.all(
@@ -737,16 +734,6 @@ export const makeServerLayer = Layer.unwrap(
         { concurrency: "unbounded" },
       ).pipe(Effect.asVoid),
     }).pipe(Layer.provideMerge(RuntimeDependenciesLive), Layer.provide(launcherLayer));
-    const runtimeServicesLive = Layer.merge(
-      ExternalThreadImportService.layer,
-      ProjectSessionImportService.layer,
-    ).pipe(
-      Layer.provideMerge(
-        ExternalThreadImportCandidateToken.layer.pipe(
-          Layer.provideMerge(runtimeServicesWithoutExternalThreadImportsLive),
-        ),
-      ),
-    );
 
     const routesLayer = HttpRouter.serve(makeRoutesLayer.pipe(Layer.provide(launcherLayer)), {
       disableLogger: !config.logWebSocketEvents,

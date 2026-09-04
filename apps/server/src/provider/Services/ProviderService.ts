@@ -23,7 +23,6 @@ import type {
   ProviderStopSessionInput,
   ProviderUploadFeedbackInput,
   ProviderUploadFeedbackResult,
-  ProviderUsageWindow,
   ThreadId,
   ProviderTurnStartResult,
 } from "@t3tools/contracts";
@@ -101,15 +100,11 @@ export interface ProviderServiceShape {
   ) => Effect.Effect<ProviderInstanceRoutingInfo, ProviderServiceError>;
 
   /**
-   * Query fresh quota usage from the adapter bound to a provider instance.
-   *
-   * Returns `undefined` when the adapter does not support on-demand usage
-   * queries (event-driven providers), and an empty array when the adapter
-   * supports queries but usage is currently unavailable.
+   * Reject unsupported rewind before files change, without resuming the session.
    */
-  readonly queryInstanceUsage: (
-    instanceId: ProviderInstanceId,
-  ) => Effect.Effect<ReadonlyArray<ProviderUsageWindow> | undefined, ProviderServiceError>;
+  readonly assertConversationRollbackSupported: (
+    threadId: ThreadId,
+  ) => Effect.Effect<void, ProviderServiceError>;
 
   /**
    * Roll back provider conversation state by a number of turns.

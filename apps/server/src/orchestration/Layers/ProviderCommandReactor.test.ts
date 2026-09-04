@@ -384,7 +384,6 @@ describe("ProviderCommandReactor", () => {
           },
         });
       },
-      queryInstanceUsage: () => Effect.succeed(undefined),
       rollbackConversation: () => unsupported(),
       uploadFeedback: () => unsupported(),
       get streamEvents() {

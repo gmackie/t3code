@@ -29,7 +29,7 @@ import type { CookieReadResult } from "./CookieDatabase.ts";
 import { FirefoxCookieReadError, readFirefoxCookies } from "./FirefoxCookies.ts";
 import {
   BROWSER_IMPORT_SOURCES,
-  cookieDatabasePath,
+  resolveCookieDatabase,
   isSourceInstalled,
   isSourceRunning,
   listSourceProfiles,
@@ -84,7 +84,11 @@ export class BrowserImport extends Context.Service<
 const unavailableReason = Effect.fn("BrowserImport.unavailableReason")(function* (
   definition: BrowserImportSourceDefinition,
   context: BrowserImportPathContext,
-): Effect.fn.Return<BrowserImportUnavailableReason | undefined, never, FileSystem.FileSystem> {
+): Effect.fn.Return<
+  BrowserImportUnavailableReason | undefined,
+  never,
+  FileSystem.FileSystem | ChildProcessSpawner.ChildProcessSpawner
+> {
   if (!definition.platforms.includes(context.platform)) return "unsupportedPlatform";
   if (!(yield* isSourceInstalled(definition, context))) return "notInstalled";
   if (yield* isSourceRunning(definition, context)) return "browserRunning";
@@ -101,7 +105,7 @@ const cookieHost = (url: string): string => {
 };
 
 export const writeCookies = Effect.fn("BrowserImport.writeCookies")(function* (
-  session: { readonly cookies: Pick<Session["cookies"], "set"> },
+  session: { readonly cookies: Pick<Session["cookies"], "set" | "flushStore"> },
   read: CookieReadResult,
 ) {
   let imported = 0;
@@ -135,6 +139,19 @@ export const writeCookies = Effect.fn("BrowserImport.writeCookies")(function* (
       skipped += 1;
       skippedDomains.add(cookieHost(cookie.url));
     }
+  }
+  // `set` resolves once the cookie is in memory; Chromium writes the store to
+  // disk on its own schedule. Flush before reporting "Done", so a crash right
+  // after does not lose what the user was just told was imported. A failed
+  // flush is logged rather than surfaced: the cookies are still in the
+  // session and land on disk at the next scheduled write.
+  if (imported > 0) {
+    yield* Effect.tryPromise(() => session.cookies.flushStore()).pipe(
+      Effect.tapError((error) =>
+        Effect.logWarning("Imported cookies could not be flushed to disk", { cause: error.cause }),
+      ),
+      Effect.ignore,
+    );
   }
   return { imported, skipped, skippedDomains: [...skippedDomains].slice(0, 20) };
 });
@@ -189,13 +206,15 @@ export const make = Effect.gen(function* BrowserImportMake() {
       return yield* new BrowserImportFailedError({ sourceId: definition.id, reason: blocked });
     }
 
-    // macOS attributes the Keychain prompt and the resulting ACL grant to the
-    // executable that asks, so record which one that was — in a packaged build
-    // it is the signed app, in dev whatever binary hosts the main process.
-    yield* Effect.logInfo("Reading browser cookie key from the keychain", {
-      sourceId: definition.id,
-      executablePath,
-    });
+    if (platform === "darwin" && definition.engine === "chromium") {
+      // macOS attributes the Keychain prompt and the resulting ACL grant to the
+      // executable that asks, so record which one that was — in a packaged build
+      // it is the signed app, in dev whatever binary hosts the main process.
+      yield* Effect.logInfo("Reading browser cookie key from the keychain", {
+        sourceId: definition.id,
+        executablePath,
+      });
+    }
 
     // The profile directory arrives over IPC, so it is only honoured when the
     // source itself reported it. Forwarding it unchecked would let `..`
@@ -214,18 +233,25 @@ export const make = Effect.gen(function* BrowserImportMake() {
       });
     }
 
-    const databasePath = cookieDatabasePath(definition, pathContext, requestedProfile.directory);
+    // The profile was listed against a database moments ago; resolve it again
+    // rather than assume a path, since a Chromium jar may sit under `Network/`.
+    const databasePath = yield* resolveCookieDatabase(
+      definition,
+      pathContext,
+      requestedProfile.directory,
+    ).pipe(Effect.provide(platformServices));
     if (databasePath === undefined) {
-      return yield* new BrowserImportFailedError({
-        sourceId: definition.id,
-        reason: "unsupportedPlatform",
-      });
+      // A profile we listed moments ago can lose its database before the
+      // import runs (browser data cleanup, a profile reset). That is a read
+      // failure, not a platform problem.
+      return yield* new BrowserImportFailedError({ sourceId: definition.id, reason: "readFailed" });
     }
 
     // Both branches fail with a tagged error, so the union stays structurally
     // identifiable and each tag is handled on its own below. The success side
     // is normalized to one shape too, so the skipped tally survives either
     // engine — Firefox stores plaintext, so nothing there is ever unreadable.
+    const userDataDirectory = definition.userDataDirectory(pathContext);
     const read: Effect.Effect<
       CookieReadResult,
       ChromiumCookieReadError | FirefoxCookieReadError,
@@ -240,6 +266,11 @@ export const make = Effect.gen(function* BrowserImportMake() {
             keychainService: definition.keychainService,
             keychainAccount: definition.keychainAccount,
             linuxSecretApplication: definition.linuxSecretApplication,
+            ...(platform === "win32" && userDataDirectory !== undefined
+              ? {
+                  windowsLocalStatePath: pathContext.path.join(userDataDirectory, "Local State"),
+                }
+              : {}),
             platform,
           });
 
