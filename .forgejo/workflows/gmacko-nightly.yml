@@ -148,7 +148,7 @@ jobs:
           echo "start_sha=$START_SHA" >> "$GITHUB_OUTPUT"
 
       - name: Refresh lockfile after rebase
-        if: steps.rebase_upstream.outputs.has_changes == 'true' && github.event_name != 'push'
+        if: steps.rebase_upstream.outputs.has_changes == 'true' && github.event_name != 'push' && inputs.skip_sync != 'true'
         shell: bash
         working-directory: lane
         run: |
