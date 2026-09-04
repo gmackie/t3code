@@ -281,6 +281,7 @@ describe("buildInitialGrokProviderSnapshot", () => {
       expect(snapshot.status).toBe("warning");
       expect(snapshot.version).toBeNull();
       expect(snapshot.message).toContain("Checking Grok");
+      expect(snapshot.requiresNewThreadForModelChange).toBeUndefined();
     }),
   );
 });
