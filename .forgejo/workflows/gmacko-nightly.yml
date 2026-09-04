@@ -288,10 +288,15 @@ jobs:
 
       - name: Test
         shell: bash
+        env:
+          NODE_OPTIONS: "--max-old-space-size=4096"
         run: |
           set -euo pipefail
           sudo chown -R ubuntu:ubuntu "$GITHUB_WORKSPACE"
-          sudo -u ubuntu -H env "PATH=$PATH" pnpm vp run test
+          sudo -u ubuntu -H env "PATH=$PATH" \
+            "NODE_OPTIONS=--max-old-space-size=4096" \
+            "npm_config_verify_deps_before_run=false" \
+            pnpm vp run test
 
   promote:
     name: Promote lane to GitHub
@@ -763,7 +768,7 @@ jobs:
     needs: [sync, promote, relay_public_config, build, build_macos_x64]
     if: ${{ !failure() && !cancelled() && needs.sync.outputs.should_release == 'true' && needs.promote.result == 'success' && needs.build.result == 'success' && needs.build_macos_x64.result == 'success' }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 60
     env:
       GH_TOKEN: ${{ secrets.GMACKO_GITHUB_TOKEN }}
     steps:

@@ -10,14 +10,11 @@ const workflowPath = NodeURL.fileURLToPath(
 describe("ForgeGraph GMACKO release workflow", () => {
   it("pins the Node runtime used by every release job", () => {
     const workflow = NodeFS.readFileSync(workflowPath, "utf8");
-
     expect(workflow.match(/node-version: 24\.14\.0/g) ?? []).toHaveLength(6);
     expect(workflow).not.toContain("node-version: 24\n");
   });
-
   it("cuts a release for every custom-local push", () => {
     const workflow = NodeFS.readFileSync(workflowPath, "utf8");
-
     expect(workflow).toContain("push:\n    branches:\n      - custom-local");
     expect(workflow).toContain('if [[ "${GITHUB_EVENT_NAME}" == "push" ]]');
     expect(workflow).toContain('git clone --branch custom-local "$forgejo_url" lane');
@@ -32,10 +29,8 @@ describe("ForgeGraph GMACKO release workflow", () => {
     );
     expect(workflow).toContain("group: gmacko-nightly\n  cancel-in-progress: true");
   });
-
   it("retries the current ForgeGraph lane on manual dispatch", () => {
     const workflow = NodeFS.readFileSync(workflowPath, "utf8");
-
     expect(workflow).toContain(
       'if [[ "${GITHUB_EVENT_NAME}" == "push" || "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]',
     );
@@ -46,27 +41,25 @@ describe("ForgeGraph GMACKO release workflow", () => {
       'if [[ "${GITHUB_EVENT_NAME}" != "push" && "$HAS_CHANGES" == "true" ]]',
     );
   });
-
-  it("runs repository tests as an unprivileged user", () => {
+  it("runs repository tests as an unprivileged user with bounded memory", () => {
     const workflow = NodeFS.readFileSync(workflowPath, "utf8");
     const preflightJob = workflow.slice(
       workflow.indexOf("  preflight:\n"),
       workflow.indexOf("  promote:\n"),
     );
-
     expect(preflightJob).toContain('sudo chown -R ubuntu:ubuntu "$GITHUB_WORKSPACE"');
-    expect(preflightJob).toContain('sudo -u ubuntu -H env "PATH=$PATH" pnpm vp run test');
+    expect(preflightJob).toContain('sudo -u ubuntu -H env "PATH=$PATH"');
+    expect(preflightJob).toContain('"NODE_OPTIONS=--max-old-space-size=4096"');
+    expect(preflightJob).toContain('"npm_config_verify_deps_before_run=false"');
+    expect(preflightJob).toContain("pnpm vp run test");
   });
-
   it("keeps GitHub promotion lease-protected", () => {
     const workflow = NodeFS.readFileSync(workflowPath, "utf8");
-
     expect(workflow).toContain(
       'git push --force-with-lease="refs/heads/custom-local:${START_SHA}" origin "${HEAD_SHA}:refs/heads/custom-local"',
     );
     expect(workflow).not.toContain('git push --force origin "${HEAD_SHA}:refs/heads/custom-local"');
   });
-
   it("aligns release package versions before installing macOS build dependencies", () => {
     const workflow = NodeFS.readFileSync(workflowPath, "utf8");
     const buildJob = workflow.slice(
@@ -77,7 +70,6 @@ describe("ForgeGraph GMACKO release workflow", () => {
       workflow.indexOf("  build_macos_x64:\n"),
       workflow.indexOf("  release:\n"),
     );
-
     for (const job of [buildJob, x64Job]) {
       expect(job.indexOf("Align package versions to release version")).toBeGreaterThan(-1);
       expect(job).toContain(
@@ -88,11 +80,9 @@ describe("ForgeGraph GMACKO release workflow", () => {
       );
     }
   });
-
   it("serializes desktop artifact uploads on constrained runner links", () => {
     const workflow = NodeFS.readFileSync(workflowPath, "utf8");
     const desktopUploadSteps = workflow.split("      - name: Upload build artifacts\n").slice(1);
-
     expect(desktopUploadSteps).toHaveLength(2);
     for (const step of desktopUploadSteps) {
       expect(step).toContain("uses: https://code.forgejo.org/forgejo/upload-artifact@v5");
@@ -100,11 +90,8 @@ describe("ForgeGraph GMACKO release workflow", () => {
       expect(step).toContain("ACTIONS_ARTIFACT_UPLOAD_TIMEOUT_MS: 1800000");
     }
   });
-
   it("leaves enough time to download and publish desktop artifacts", () => {
     const workflow = NodeFS.readFileSync(workflowPath, "utf8");
-    const releaseJob = workflow.slice(workflow.indexOf("  release:\n"));
-
-    expect(releaseJob).toContain("timeout-minutes: 45");
+    expect(workflow.slice(workflow.indexOf("  release:\n"))).toContain("timeout-minutes: 60");
   });
 });
