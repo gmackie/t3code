@@ -61,7 +61,7 @@ env:
 jobs:
   sync:
     name: Sync lane onto upstream
-    runs-on: ubuntu-24.04
+    runs-on: forgegraph-ci
     timeout-minutes: 40
     outputs:
       ref: ${{ steps.lane.outputs.head_sha }}
@@ -259,7 +259,7 @@ jobs:
     name: Preflight (check, typecheck, test)
     needs: sync
     if: ${{ needs.sync.outputs.should_release == 'true' }}
-    runs-on: ubuntu-24.04
+    runs-on: forgegraph-ci
     timeout-minutes: 45
     steps:
       - name: Checkout lane
@@ -303,7 +303,7 @@ jobs:
     name: Promote lane to GitHub
     needs: [sync, preflight]
     if: ${{ needs.sync.outputs.should_release == 'true' && needs.preflight.result == 'success' }}
-    runs-on: ubuntu-24.04
+    runs-on: forgegraph-ci
     timeout-minutes: 10
     steps:
       - name: Advance GitHub custom-local to the verified lane tip
@@ -334,7 +334,7 @@ jobs:
     name: Validate macOS signing secrets
     needs: sync
     if: ${{ needs.sync.outputs.should_release == 'true' }}
-    runs-on: ubuntu-24.04
+    runs-on: forgegraph-ci
     timeout-minutes: 5
     env:
       CSC_LINK: ${{ secrets.CSC_LINK }}
@@ -365,7 +365,7 @@ jobs:
     name: Resolve T3 Connect public config
     needs: [sync, preflight, signing_secrets]
     if: ${{ !failure() && !cancelled() && needs.sync.outputs.should_release == 'true' }}
-    runs-on: ubuntu-24.04
+    runs-on: forgegraph-ci
     timeout-minutes: 10
     outputs:
       clerk_publishable_key: ${{ steps.public_config.outputs.clerk_publishable_key }}
@@ -462,7 +462,7 @@ jobs:
             arch: arm64
             rust_target: aarch64-apple-darwin
           - label: Linux x64
-            runner: ubuntu-24.04
+            runner: forgegraph-ci
             platform: linux
             target: AppImage
             arch: x64
@@ -768,7 +768,7 @@ jobs:
     name: Publish GitHub Release
     needs: [sync, promote, relay_public_config, build, build_macos_x64]
     if: ${{ !failure() && !cancelled() && needs.sync.outputs.should_release == 'true' && needs.promote.result == 'success' && needs.build.result == 'success' && needs.build_macos_x64.result == 'success' }}
-    runs-on: ubuntu-24.04
+    runs-on: forgegraph-ci
     timeout-minutes: 60
     env:
       GH_TOKEN: ${{ secrets.GMACKO_GITHUB_TOKEN }}
