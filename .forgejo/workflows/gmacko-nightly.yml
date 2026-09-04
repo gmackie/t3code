@@ -281,6 +281,13 @@ jobs:
           corepack prepare "pnpm@${PNPM_VERSION}" --activate
           pnpm install --frozen-lockfile
 
+      - name: Install Linux native test dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          apt-get update
+          apt-get install -y --no-install-recommends libsecret-1-dev pkg-config
+
       - name: Check
         run: pnpm vp check
 
