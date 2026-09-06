@@ -12,6 +12,10 @@ describe("custom-local project import RPCs", () => {
   it("exposes project session scanning", () => {
     expect(WS_METHODS).toHaveProperty("projectSessionImportsScan", "projectSessionImports.scan");
   });
+
+  it("exposes plugin lifecycle management", () => {
+    expect(WS_METHODS).toHaveProperty("pluginList", "plugin.list");
+  });
 });
 
 /**
