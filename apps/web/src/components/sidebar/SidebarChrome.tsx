@@ -1,6 +1,7 @@
 import {
   ArrowLeftIcon,
   ChartNoAxesColumnIcon,
+  FolderGit2Icon,
   GitPullRequestIcon,
   SettingsIcon,
 } from "lucide-react";
@@ -137,8 +138,8 @@ export const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
     select: (location) =>
       /^\/settings(?:\/|$)/.test(location.pathname)
         ? "settings"
-        : /^\/projects\/[^/]+\/?$/.test(location.pathname)
-          ? "project-settings"
+        : /^\/projects(?:\/|$)/.test(location.pathname)
+          ? "projects"
           : location.pathname === "/usage"
             ? "usage"
             : location.pathname === "/pull-requests"
@@ -166,6 +167,11 @@ export const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
   const handleSettingsClick = useCallback(() => {
     closeMobileSidebar();
     void navigate({ to: "/settings" });
+  }, [closeMobileSidebar, navigate]);
+
+  const handleProjectsClick = useCallback(() => {
+    closeMobileSidebar();
+    void navigate({ to: "/projects" });
   }, [closeMobileSidebar, navigate]);
 
   const handleUsageClick = useCallback(() => {
@@ -199,6 +205,11 @@ export const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
             icon={<SettingsIcon />}
             label="Settings"
             onClick={handleSettingsClick}
+          />
+          <SidebarUtilityItem
+            icon={<FolderGit2Icon />}
+            label="Projects"
+            onClick={handleProjectsClick}
           />
           {pullRequestsSupported ? (
             <SidebarUtilityItem
