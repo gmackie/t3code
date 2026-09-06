@@ -316,6 +316,23 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
         ),
       );
 
+      const gmackoConfig = yield* resolveGitHubPublishConfig("gmacko").pipe(
+        Effect.provide(
+          ConfigProvider.layer(
+            ConfigProvider.fromEnv({
+              env: { T3CODE_DESKTOP_UPDATE_REPOSITORY: "gmackie/t3code" },
+            }),
+          ),
+        ),
+      );
+      assert.deepStrictEqual(gmackoConfig, {
+        provider: "github",
+        owner: "gmackie",
+        repo: "t3code",
+        releaseType: "prerelease",
+        channel: "gmacko",
+      });
+
       assert.deepStrictEqual(latestConfig, {
         provider: "github",
         owner: "pingdotgg",
