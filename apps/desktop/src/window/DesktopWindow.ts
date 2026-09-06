@@ -8,7 +8,7 @@ import * as Ref from "effect/Ref";
 
 import * as Electron from "electron";
 
-import { DEFAULT_CLIENT_SETTINGS } from "@t3tools/contracts";
+import { DEFAULT_CLIENT_SETTINGS, type WindowOpacity } from "@t3tools/contracts";
 
 import * as DesktopAssets from "../app/DesktopAssets.ts";
 import * as DesktopEnvironment from "../app/DesktopEnvironment.ts";
@@ -106,6 +106,7 @@ export class DesktopWindow extends Context.Service<
     // guest page instead of the app UI. The menu routes here to always target
     // the main window.
     readonly zoomMain: (direction: MainWindowZoomDirection) => Effect.Effect<void>;
+    readonly setWindowOpacity: (opacity: WindowOpacity) => Effect.Effect<void>;
     readonly syncAppearance: Effect.Effect<void>;
   }
 >()("@t3tools/desktop/window/DesktopWindow") {}
@@ -328,6 +329,16 @@ export const make = Effect.gen(function* () {
 
   const currentMainWindow = electronWindow.currentMainOrFirst.pipe(Effect.flatMap(withoutSplash));
   const focusedMainWindow = electronWindow.focusedMainOrFirst.pipe(Effect.flatMap(withoutSplash));
+  const syncPersistedWindowOpacity = Effect.gen(function* () {
+    if (environment.platform !== "darwin") return;
+    const settings = yield* clientSettings.get;
+    yield* electronWindow.setAllOpacity(
+      Option.match(settings, {
+        onNone: () => DEFAULT_CLIENT_SETTINGS.windowOpacity,
+        onSome: (value) => value.windowOpacity,
+      }),
+    );
+  });
 
   const createWindow = Effect.fn("desktop.window.createWindow")(function* (): Effect.fn.Return<
     Electron.BrowserWindow,
@@ -361,6 +372,7 @@ export const make = Effect.gen(function* () {
     if (persistedBounds !== null && initialBounds === DesktopAppSettings.DEFAULT_MAIN_WINDOW_SIZE) {
       yield* logWindowWarning("saved main window bounds could not be restored; using defaults");
     }
+    yield* syncPersistedWindowOpacity;
     const window = yield* electronWindow.create({
       ...initialBounds,
       minWidth: 840,
@@ -812,6 +824,7 @@ export const make = Effect.gen(function* () {
     if (Option.isSome(existingWindow)) return;
 
     const shouldUseDarkColors = yield* electronTheme.shouldUseDarkColors;
+    yield* syncPersistedWindowOpacity;
     const splash = yield* electronWindow.create({
       width: 360,
       height: 220,
@@ -924,6 +937,10 @@ export const make = Effect.gen(function* () {
       // the previewed page along with the app UI. The preview browser keeps its
       // own zoom, so put each guest back where the preview left it.
       yield* previewManager.reapplyZoom();
+    }),
+    setWindowOpacity: Effect.fn("desktop.window.setWindowOpacity")(function* (opacity) {
+      if (environment.platform !== "darwin") return;
+      yield* electronWindow.setAllOpacity(opacity);
     }),
     syncAppearance: Effect.gen(function* () {
       const shouldUseDarkColors = yield* electronTheme.shouldUseDarkColors;
