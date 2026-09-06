@@ -124,25 +124,27 @@ import {
 } from "./provider.ts";
 import { ProviderInstanceId } from "./providerInstance.ts";
 import {
-  PluginCommandCatalog,
-  PluginCommandCatalogChangedError,
-  PluginCommandInvocationError,
-  PluginCommandInvocationResult,
-  PluginCommandInvokeInput,
-  PluginCommandNotFoundError,
-} from "./pluginCommands.ts";
+  PluginCapabilityGrantInput,
+  PluginActionInput,
+  PluginActionResult,
+  PluginHealth,
+  PluginIdInput,
+  PluginInstallInput,
+  PluginRegistryEntry,
+  PluginSurfaceGetInput,
+  PluginSurfaceModel,
+  PluginPanelGetInput,
+  PluginPanelModel,
+  PluginWorkflowGetInput,
+  PluginWorkflowActionInput,
+  PluginWorkflowModel,
+} from "./pluginProtocol.ts";
 import {
-  PluginPackageActionInput,
-  PluginPackageNotFoundError,
-  PluginPackageOperationError,
-  PluginPackageStatusSnapshot,
-} from "./pluginPackages.ts";
-import {
-  ProviderUsageGetInput,
-  ProviderUsageRefreshResult,
-  ProviderUsageSnapshot,
-  ProviderUsageSubscribeInput,
-} from "./providerUsage.ts";
+  PluginSettingsGetInput,
+  PluginSettingsResetInput,
+  PluginSettingsSnapshot,
+  PluginSettingsUpdateInput,
+} from "./pluginSettings.ts";
 import {
   PullRequestActionInput,
   PullRequestActivity,
@@ -362,6 +364,21 @@ export const WS_METHODS = {
   serverProbe: "server.probe",
   serverGetConfig: "server.getConfig",
   serverRefreshProviders: "server.refreshProviders",
+  pluginList: "plugin.list",
+  pluginInstall: "plugin.install",
+  pluginEnable: "plugin.enable",
+  pluginDisable: "plugin.disable",
+  pluginGrant: "plugin.grant",
+  pluginRevoke: "plugin.revoke",
+  pluginHealth: "plugin.health",
+  pluginSettingsGet: "plugin.settings.get",
+  pluginSettingsUpdate: "plugin.settings.update",
+  pluginSettingsReset: "plugin.settings.reset",
+  pluginSurfaceGet: "plugin.surface.get",
+  pluginPanelGet: "plugin.panel.get",
+  pluginWorkflowGet: "plugin.workflow.get",
+  pluginWorkflowAction: "plugin.workflow.action",
+  pluginAction: "plugin.action",
   providerUsageGet: "providerUsage.get",
   providerUsageRefresh: "providerUsage.refresh",
   providerUsageSubscribe: "providerUsage.subscribe",
@@ -634,7 +651,83 @@ const WsProviderInstallRemoveRpc = Rpc.make(WS_METHODS.providerInstallRemove, {
   error: ProviderSetupRpcError,
 });
 
-const WsServerUpdateServerRpc = Rpc.make(WS_METHODS.serverUpdateServer, {
+export const WsPluginListRpc = Rpc.make(WS_METHODS.pluginList, {
+  payload: Schema.Struct({}),
+  success: Schema.Array(PluginRegistryEntry),
+  error: EnvironmentAuthorizationError,
+});
+export const WsPluginInstallRpc = Rpc.make(WS_METHODS.pluginInstall, {
+  payload: PluginInstallInput,
+  success: PluginRegistryEntry,
+  error: EnvironmentAuthorizationError,
+});
+export const WsPluginEnableRpc = Rpc.make(WS_METHODS.pluginEnable, {
+  payload: PluginIdInput,
+  success: PluginHealth,
+  error: EnvironmentAuthorizationError,
+});
+export const WsPluginDisableRpc = Rpc.make(WS_METHODS.pluginDisable, {
+  payload: PluginIdInput,
+  success: PluginHealth,
+  error: EnvironmentAuthorizationError,
+});
+export const WsPluginGrantRpc = Rpc.make(WS_METHODS.pluginGrant, {
+  payload: PluginCapabilityGrantInput,
+  success: PluginHealth,
+  error: EnvironmentAuthorizationError,
+});
+export const WsPluginRevokeRpc = Rpc.make(WS_METHODS.pluginRevoke, {
+  payload: PluginCapabilityGrantInput,
+  success: PluginHealth,
+  error: EnvironmentAuthorizationError,
+});
+export const WsPluginHealthRpc = Rpc.make(WS_METHODS.pluginHealth, {
+  payload: PluginIdInput,
+  success: PluginHealth,
+  error: EnvironmentAuthorizationError,
+});
+export const WsPluginSurfaceGetRpc = Rpc.make(WS_METHODS.pluginSurfaceGet, {
+  payload: PluginSurfaceGetInput,
+  success: PluginSurfaceModel,
+  error: EnvironmentAuthorizationError,
+});
+export const WsPluginPanelGetRpc = Rpc.make(WS_METHODS.pluginPanelGet, {
+  payload: PluginPanelGetInput,
+  success: PluginPanelModel,
+  error: EnvironmentAuthorizationError,
+});
+export const WsPluginWorkflowGetRpc = Rpc.make(WS_METHODS.pluginWorkflowGet, {
+  payload: PluginWorkflowGetInput,
+  success: PluginWorkflowModel,
+  error: EnvironmentAuthorizationError,
+});
+export const WsPluginWorkflowActionRpc = Rpc.make(WS_METHODS.pluginWorkflowAction, {
+  payload: PluginWorkflowActionInput,
+  success: PluginActionResult,
+  error: EnvironmentAuthorizationError,
+});
+export const WsPluginActionRpc = Rpc.make(WS_METHODS.pluginAction, {
+  payload: PluginActionInput,
+  success: PluginActionResult,
+  error: EnvironmentAuthorizationError,
+});
+export const WsPluginSettingsGetRpc = Rpc.make(WS_METHODS.pluginSettingsGet, {
+  payload: PluginSettingsGetInput,
+  success: PluginSettingsSnapshot,
+  error: EnvironmentAuthorizationError,
+});
+export const WsPluginSettingsUpdateRpc = Rpc.make(WS_METHODS.pluginSettingsUpdate, {
+  payload: PluginSettingsUpdateInput,
+  success: PluginSettingsSnapshot,
+  error: EnvironmentAuthorizationError,
+});
+export const WsPluginSettingsResetRpc = Rpc.make(WS_METHODS.pluginSettingsReset, {
+  payload: PluginSettingsResetInput,
+  success: PluginSettingsSnapshot,
+  error: EnvironmentAuthorizationError,
+});
+
+export const WsServerUpdateServerRpc = Rpc.make(WS_METHODS.serverUpdateServer, {
   payload: ServerSelfUpdateInput,
   success: ServerSelfUpdateResult,
   error: Schema.Union([ServerSelfUpdateError, EnvironmentAuthorizationError]),
@@ -1379,9 +1472,21 @@ export const WsRpcGroup = RpcGroup.make(
   WsPluginPackagesDisableRpc,
   WsPluginPackagesReloadRpc,
   WsServerRefreshProvidersRpc,
-  WsProviderUsageGetRpc,
-  WsProviderUsageRefreshRpc,
-  WsProviderUsageSubscribeRpc,
+  WsPluginListRpc,
+  WsPluginInstallRpc,
+  WsPluginEnableRpc,
+  WsPluginDisableRpc,
+  WsPluginGrantRpc,
+  WsPluginRevokeRpc,
+  WsPluginHealthRpc,
+  WsPluginSurfaceGetRpc,
+  WsPluginPanelGetRpc,
+  WsPluginWorkflowGetRpc,
+  WsPluginWorkflowActionRpc,
+  WsPluginActionRpc,
+  WsPluginSettingsGetRpc,
+  WsPluginSettingsUpdateRpc,
+  WsPluginSettingsResetRpc,
   WsServerUpdateProviderRpc,
   WsProviderConsumeResetCreditRpc,
   WsProviderAuthStartRpc,

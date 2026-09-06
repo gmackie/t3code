@@ -1,298 +1,247 @@
-import type { PluginPackageStatus } from "@t3tools/contracts";
-import {
-  isAtomCommandInterrupted,
-  squashAtomCommandFailure,
-} from "@t3tools/client-runtime/state/runtime";
-import {
-  CircleAlertIcon,
-  FolderCodeIcon,
-  RefreshCwIcon,
-  RotateCwIcon,
-  ShieldAlertIcon,
-} from "lucide-react";
-import { useCallback, useMemo, useState } from "react";
+import { CheckIcon, CircleAlertIcon, PowerIcon, ShieldCheckIcon } from "lucide-react";
+import { useMemo } from "react";
+import { useAtomRefresh } from "@effect/atom-react";
+import { Atom } from "effect/unstable/reactivity";
+import { Link } from "@tanstack/react-router";
 
-import { isElectron } from "../../env";
-import { usePrimarySessionState } from "../../environments/primary";
-import { usePrimaryEnvironmentId } from "../../state/environments";
+import type { PluginCapabilityRequest, PluginSettingValueMap } from "@t3tools/contracts";
+import type { ClientSettingsPatch } from "@t3tools/contracts/settings";
+import { usePrimarySettings, useUpdatePrimarySettings } from "../../hooks/useSettings";
+import { usePrimaryEnvironment } from "../../state/environments";
+import { useProjects } from "../../state/entities";
 import { useEnvironmentQuery } from "../../state/query";
-import { serverEnvironment } from "../../state/server";
+import { pluginEnvironment } from "../../state/plugins";
 import { useAtomCommand } from "../../state/use-atom-command";
-import { Alert, AlertDescription, AlertTitle } from "../ui/alert";
-import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
-import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "../ui/empty";
-import { Spinner } from "../ui/spinner";
-import { Switch } from "../ui/switch";
-import { toastManager } from "../ui/toast";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { SettingsPageContainer, SettingsRow, SettingsSection } from "./settingsLayout";
-import { resolvePrimaryOperateAccess } from "./ProviderSettingsPanel.logic";
-import { searchableSetting } from "./settingsSearch";
+import { PluginSettingsForm } from "./PluginSettingsForm";
 
-const statePresentation = {
-  active: { label: "Active", variant: "success" },
-  disabled: { label: "Disabled", variant: "secondary" },
-  error: { label: "Error", variant: "error" },
-} as const;
+const EMPTY_PLUGIN_REFRESH_ATOM = Atom.make(0);
 
-type PackageAction = "enable" | "disable" | "reload";
-
-function actionFailureMessage(action: PackageAction, error: unknown): string {
-  if (error instanceof Error && error.message.trim().length > 0) return error.message;
-  return `The plugin could not be ${action === "reload" ? "reloaded" : `${action}d`}.`;
+function capabilityLabel(capability: PluginCapabilityRequest): string {
+  switch (capability.kind) {
+    case "events.read":
+      return `Read events${capability.eventTypes.length ? ` (${capability.eventTypes.join(", ")})` : ""}`;
+    case "threads.read":
+      return "Read T3 threads";
+    case "threads.dispatch":
+      return "Dispatch T3 threads";
+    case "filesystem.read":
+    case "filesystem.write":
+      return `${capability.kind} (${capability.roots.join(", ")})`;
+    case "secrets.read":
+      return `Read secrets (${capability.names.join(", ")})`;
+    case "network.connect":
+      return `Connect to ${capability.hosts.join(", ")}`;
+    case "ui.embed":
+      return `Embed UI (${capability.surfaces.join(", ")})`;
+    case "provider.control":
+      return "Control provider instances";
+  }
 }
 
-function PluginPackageRow({
-  pluginPackage,
-  pendingAction,
-  readOnly,
-  onEnabledChange,
-  onReload,
+function PluginCapabilities({
+  capabilities,
 }: {
-  readonly pluginPackage: PluginPackageStatus;
-  readonly pendingAction: PackageAction | null;
-  readonly readOnly: boolean;
-  readonly onEnabledChange: (enabled: boolean) => void;
-  readonly onReload: () => void;
+  capabilities: readonly PluginCapabilityRequest[];
 }) {
-  const state = statePresentation[pluginPackage.state];
-  const commands = pluginPackage.contributions.commands;
-  const busy = pendingAction !== null;
-  const status = (
-    <div className="flex flex-wrap items-center gap-1.5">
-      <Badge variant={state.variant}>{state.label}</Badge>
-      <Badge variant="outline">v{pluginPackage.version}</Badge>
-      {pluginPackage.capabilities.map((capability) => (
-        <Badge key={capability} variant="info">
-          {capability}
-        </Badge>
-      ))}
-    </div>
-  );
-
   return (
-    <SettingsRow
-      title={<code className="text-[13px]">{pluginPackage.id}</code>}
-      description={
-        commands.length === 0
-          ? "No command contributions"
-          : `${commands.length} command${commands.length === 1 ? "" : "s"}: ${commands.join(", ")}`
-      }
-      status={status}
-      className="border border-border/60 bg-card/35"
-      control={
-        <div className="flex items-center gap-2">
-          {pluginPackage.enabled ? (
-            <Button
-              type="button"
-              size="icon-sm"
-              variant="ghost-muted"
-              aria-label={`Reload ${pluginPackage.id}`}
-              disabled={busy || readOnly}
-              onClick={onReload}
-            >
-              {pendingAction === "reload" ? (
-                <Spinner className="size-3.5" />
-              ) : (
-                <RotateCwIcon className="size-3.5" />
-              )}
-            </Button>
-          ) : null}
-          <Switch
-            checked={pluginPackage.enabled}
-            disabled={busy || readOnly}
-            aria-label={`${pluginPackage.enabled ? "Disable" : "Enable"} ${pluginPackage.id}`}
-            onCheckedChange={onEnabledChange}
-          />
-        </div>
-      }
+    <ul
+      className="mt-2 space-y-1 text-xs text-muted-foreground"
+      aria-label="Requested capabilities"
     >
-      {pluginPackage.error ? (
-        <Alert variant="error" className="mt-3">
-          <CircleAlertIcon />
-          <AlertDescription>{pluginPackage.error}</AlertDescription>
-        </Alert>
-      ) : null}
-    </SettingsRow>
+      {capabilities.map((capability) => (
+        <li
+          key={`${capability.kind}:${JSON.stringify(capability)}`}
+          className="flex items-start gap-1.5"
+        >
+          <ShieldCheckIcon className="mt-0.5 size-3.5 shrink-0 text-muted-foreground/70" />
+          <span>{capabilityLabel(capability)}</span>
+        </li>
+      ))}
+    </ul>
   );
 }
 
 export function PluginsSettingsPanel() {
-  const environmentId = usePrimaryEnvironmentId();
-  const primarySession = usePrimarySessionState();
-  const operateAccess = resolvePrimaryOperateAccess({
-    isPrimary: true,
-    hasDesktopBridge: isElectron,
-    session: primarySession.data,
-    isPending: primarySession.isPending,
-    hasError: primarySession.error !== null,
-  });
-  const readOnly = operateAccess !== "granted";
-  const status = useEnvironmentQuery(
-    environmentId === null ? null : serverEnvironment.pluginPackages({ environmentId, input: {} }),
+  const environment = usePrimaryEnvironment();
+  const projects = useProjects();
+  const primarySettings = usePrimarySettings();
+  const updatePrimarySettings = useUpdatePrimarySettings();
+  const target = environment ? { environmentId: environment.environmentId, input: {} } : null;
+  const listAtom = target ? pluginEnvironment.list(target) : null;
+  const plugins = useEnvironmentQuery(listAtom);
+  const refreshPlugins = useAtomRefresh(
+    (listAtom ?? EMPTY_PLUGIN_REFRESH_ATOM) as unknown as NonNullable<typeof listAtom>,
   );
-  const enablePlugin = useAtomCommand(serverEnvironment.enablePluginPackage, {
-    reportFailure: false,
-  });
-  const disablePlugin = useAtomCommand(serverEnvironment.disablePluginPackage, {
-    reportFailure: false,
-  });
-  const reloadPlugin = useAtomCommand(serverEnvironment.reloadPluginPackage, {
-    reportFailure: false,
-  });
-  const [pending, setPending] = useState<{
-    readonly id: string;
-    readonly action: PackageAction;
-  } | null>(null);
-  const packages = useMemo(
-    () => [...(status.data?.packages ?? [])].sort((left, right) => left.id.localeCompare(right.id)),
-    [status.data?.packages],
+  const enable = useAtomCommand(pluginEnvironment.enable, { reportFailure: false });
+  const disable = useAtomCommand(pluginEnvironment.disable, { reportFailure: false });
+  const grant = useAtomCommand(pluginEnvironment.grant, { reportFailure: false });
+  const enabledIds = useMemo(
+    () =>
+      new Set(
+        (plugins.data ?? [])
+          .filter((plugin) => plugin.health.state === "healthy")
+          .map((plugin) => plugin.pluginId),
+      ),
+    [plugins.data],
   );
-
-  const runAction = useCallback(
-    (pluginPackage: PluginPackageStatus, action: PackageAction) => {
-      if (environmentId === null || pending !== null || readOnly) return;
-      setPending({ id: pluginPackage.id, action });
-      const command =
-        action === "enable" ? enablePlugin : action === "disable" ? disablePlugin : reloadPlugin;
-      void (async () => {
-        const result = await command({
-          environmentId,
-          input: { id: pluginPackage.id },
-        });
-        setPending(null);
-        if (result._tag === "Success") {
-          status.refresh();
-          return;
-        }
-        if (!isAtomCommandInterrupted(result)) {
-          const error = squashAtomCommandFailure(result);
-          toastManager.add({
-            type: "error",
-            title: `Could not ${action} plugin`,
-            description: actionFailureMessage(action, error),
-          });
-        }
-      })();
-    },
-    [disablePlugin, enablePlugin, environmentId, pending, readOnly, reloadPlugin, status],
-  );
-
-  const countLabel = `${packages.length} ${packages.length === 1 ? "plugin" : "plugins"}`;
 
   return (
     <SettingsPageContainer>
-      <SettingsSection
-        {...searchableSetting("plugins")}
-        headerAction={
-          <div className="flex items-center gap-2">
-            <span className="text-[11px] text-muted-foreground">{countLabel}</span>
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <Button
-                    type="button"
-                    size="icon-micro"
-                    variant="ghost-muted"
-                    aria-label="Refresh plugins"
-                    disabled={status.isPending}
-                    onClick={status.refresh}
-                  >
-                    {status.isPending ? (
-                      <Spinner className="size-3" />
-                    ) : (
-                      <RefreshCwIcon className="size-3" />
-                    )}
-                  </Button>
-                }
-              />
-              <TooltipPopup side="top">Refresh plugins</TooltipPopup>
-            </Tooltip>
+      <SettingsSection title="Plugins" icon={<PowerIcon className="size-4" />}>
+        <SettingsRow
+          title="Installed plugins"
+          description="Plugins run as independent applications. Review their requested capabilities before enabling them."
+          status={
+            plugins.error ?? (environment ? null : "Connect an environment to manage plugins.")
+          }
+        >
+          {plugins.isPending ? (
+            <div className="px-4 py-3 text-sm text-muted-foreground">Loading plugins…</div>
+          ) : null}
+          {!plugins.isPending && plugins.data?.length === 0 ? (
+            <div className="rounded-xl border border-dashed border-border/70 px-4 py-5 text-sm text-muted-foreground">
+              No plugins are installed yet. Raw Git and curated repository installation will appear
+              here after review.
+            </div>
+          ) : null}
+          <div className="space-y-2">
+            {plugins.data?.map((plugin) => {
+              const enabled = enabledIds.has(plugin.pluginId);
+              const clientSettings = plugin.settings.filter(
+                (setting) => setting.scope === "client" && setting.storage?.kind === "client",
+              );
+              const clientValues = Object.fromEntries(
+                clientSettings.flatMap((setting) => {
+                  const key = setting.storage?.kind === "client" ? setting.storage.key : undefined;
+                  const value =
+                    key === undefined
+                      ? undefined
+                      : primarySettings[key as keyof typeof primarySettings];
+                  return typeof value === "string" ||
+                    typeof value === "number" ||
+                    typeof value === "boolean"
+                    ? [[setting.id, value]]
+                    : [];
+                }),
+              ) as PluginSettingValueMap;
+              const onClientValuesChange = (values: PluginSettingValueMap) => {
+                const patch = Object.fromEntries(
+                  clientSettings.flatMap((setting) => {
+                    const key =
+                      setting.storage?.kind === "client" ? setting.storage.key : undefined;
+                    const value = values[setting.id];
+                    return key !== undefined && value !== undefined ? [[key, value]] : [];
+                  }),
+                ) as ClientSettingsPatch;
+                updatePrimarySettings(patch);
+              };
+              return (
+                <div key={plugin.pluginId} className="rounded-xl border border-border/70 px-4 py-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <h3 className="truncate text-sm font-medium">{plugin.displayName}</h3>
+                        <span className="text-xs text-muted-foreground">v{plugin.version}</span>
+                        {plugin.health.state === "healthy" ? (
+                          <CheckIcon className="size-3.5 text-emerald-500" />
+                        ) : null}
+                        {plugin.health.state === "crashed" ? (
+                          <CircleAlertIcon className="size-3.5 text-destructive" />
+                        ) : null}
+                      </div>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {plugin.pluginId} · {plugin.source.kind}
+                      </p>
+                      <PluginCapabilities capabilities={plugin.capabilities} />
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        {plugin.capabilities.map((capability) => {
+                          const granted = plugin.grants.some(
+                            (item) => JSON.stringify(item) === JSON.stringify(capability),
+                          );
+                          return (
+                            <Button
+                              key={JSON.stringify(capability)}
+                              size="xs"
+                              variant={granted ? "outline" : "secondary"}
+                              disabled={granted}
+                              onClick={() => {
+                                void grant({
+                                  environmentId: environment?.environmentId ?? "",
+                                  input: { pluginId: plugin.pluginId, capability },
+                                }).then(() => refreshPlugins());
+                              }}
+                            >
+                              {granted
+                                ? `Granted: ${capability.kind}`
+                                : `Grant: ${capability.kind}`}
+                            </Button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-2">
+                      {plugin.navigation.length > 0 ? (
+                        <Link
+                          to="/plugins/$pluginId"
+                          params={{ pluginId: plugin.pluginId }}
+                          className="inline-flex h-7 items-center rounded-md px-2 text-xs font-medium text-muted-foreground hover:bg-accent hover:text-foreground"
+                        >
+                          Open workspace
+                        </Link>
+                      ) : null}
+                      {environment ? (
+                        <Button
+                          size="xs"
+                          variant={enabled ? "outline" : "default"}
+                          onClick={() => {
+                            const action = enabled ? disable : enable;
+                            void action({
+                              environmentId: environment.environmentId,
+                              input: { pluginId: plugin.pluginId },
+                            }).then(() => refreshPlugins());
+                          }}
+                        >
+                          {enabled ? "Disable" : "Enable"}
+                        </Button>
+                      ) : null}
+                    </div>
+                  </div>
+                  {environment && plugin.settings.length > 0 ? (
+                    <div className="mt-4 border-t border-border/60 pt-3">
+                      {plugin.settingsPanels.length > 0 ? (
+                        plugin.settingsPanels.map((panel) => (
+                          <PluginSettingsForm
+                            key={panel.id}
+                            environmentId={environment.environmentId}
+                            plugin={plugin}
+                            projects={projects}
+                            settingIds={panel.settingIds}
+                            title={panel.title}
+                            {...(panel.description !== undefined
+                              ? { description: panel.description }
+                              : {})}
+                            clientValues={clientValues}
+                            onClientValuesChange={onClientValuesChange}
+                          />
+                        ))
+                      ) : (
+                        <PluginSettingsForm
+                          environmentId={environment.environmentId}
+                          plugin={plugin}
+                          projects={projects}
+                          clientValues={clientValues}
+                          onClientValuesChange={onClientValuesChange}
+                        />
+                      )}
+                    </div>
+                  ) : null}
+                </div>
+              );
+            })}
           </div>
-        }
-      >
-        <Alert variant="warning" className="mb-3">
-          <ShieldAlertIcon />
-          <AlertTitle>Trusted local code</AlertTitle>
-          <AlertDescription>
-            Plugins run inside this environment's server process with its filesystem and network
-            access. Only install code you trust.
-          </AlertDescription>
-        </Alert>
-
-        {operateAccess === "denied" ? (
-          <Alert variant="info" className="mb-3" data-plugin-read-only>
-            <ShieldAlertIcon />
-            <AlertTitle>Limited permissions</AlertTitle>
-            <AlertDescription>
-              This session can inspect plugins, but it cannot enable, disable, or reload them.
-            </AlertDescription>
-          </Alert>
-        ) : null}
-
-        {status.error ? (
-          <Alert variant="error">
-            <CircleAlertIcon />
-            <AlertTitle>Could not load plugins</AlertTitle>
-            <AlertDescription>{status.error}</AlertDescription>
-          </Alert>
-        ) : null}
-
-        {status.data?.errors.map((error) => (
-          <Alert
-            key={error.directory}
-            variant="error"
-            className="mb-2"
-            data-plugin-error={error.directory}
-          >
-            <CircleAlertIcon />
-            <AlertTitle>{error.directory}</AlertTitle>
-            <AlertDescription>{error.error}</AlertDescription>
-          </Alert>
-        ))}
-
-        {status.isPending && status.data === null ? (
-          <Empty className="min-h-52 gap-2 text-sm text-muted-foreground">
-            <Spinner className="size-4" />
-            Loading plugins
-          </Empty>
-        ) : null}
-
-        {!status.isPending &&
-        status.error === null &&
-        packages.length === 0 &&
-        (status.data?.errors.length ?? 0) === 0 ? (
-          <Empty data-plugin-empty className="min-h-52">
-            <EmptyMedia variant="icon">
-              <FolderCodeIcon />
-            </EmptyMedia>
-            <EmptyHeader>
-              <EmptyTitle>No plugins found</EmptyTitle>
-              <EmptyDescription>
-                Add a trusted plugin package to this environment's userdata/plugins directory, then
-                refresh this page.
-              </EmptyDescription>
-            </EmptyHeader>
-          </Empty>
-        ) : null}
-
-        <div className="space-y-2">
-          {packages.map((pluginPackage) => (
-            <PluginPackageRow
-              key={pluginPackage.id}
-              pluginPackage={pluginPackage}
-              readOnly={readOnly || pending !== null}
-              pendingAction={
-                pending !== null && pending.id === pluginPackage.id ? pending.action : null
-              }
-              onEnabledChange={(enabled) =>
-                runAction(pluginPackage, enabled ? "enable" : "disable")
-              }
-              onReload={() => runAction(pluginPackage, "reload")}
-            />
-          ))}
-        </div>
+        </SettingsRow>
       </SettingsSection>
     </SettingsPageContainer>
   );
