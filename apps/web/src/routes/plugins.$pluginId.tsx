@@ -7,7 +7,7 @@ import {
   RefreshCwIcon,
 } from "lucide-react";
 import { createFileRoute, Link, useLocation } from "@tanstack/react-router";
-import type { ReactNode } from "react";
+import type { ComponentProps, ReactNode } from "react";
 
 import { useEnvironmentQuery } from "../state/query";
 import { usePrimaryEnvironment } from "../state/environments";
@@ -16,9 +16,26 @@ import { useAtomCommand } from "../state/use-atom-command";
 import type { PluginPanelModel, PluginSurfaceModel, PluginWorkflowModel } from "@t3tools/contracts";
 import { Button } from "../components/ui/button";
 import { Badge } from "../components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { SidebarInset } from "../components/ui/sidebar";
 import { cn } from "~/lib/utils";
+
+function Card({ className, ...props }: ComponentProps<"div">) {
+  return (
+    <div className={cn("rounded-xl border bg-card text-card-foreground", className)} {...props} />
+  );
+}
+
+function CardHeader({ className, ...props }: ComponentProps<"div">) {
+  return <div className={cn("space-y-1.5 p-6", className)} {...props} />;
+}
+
+function CardTitle({ className, ...props }: ComponentProps<"div">) {
+  return <div className={cn("text-lg font-semibold leading-none", className)} {...props} />;
+}
+
+function CardContent({ className, ...props }: ComponentProps<"div">) {
+  return <div className={cn("p-6 pt-0", className)} {...props} />;
+}
 
 export const Route = createFileRoute("/plugins/$pluginId")({
   component: PluginWorkspaceRoute,
@@ -32,11 +49,12 @@ function PluginWorkspaceRoute() {
   const plugins = useEnvironmentQuery(target ? pluginEnvironment.list(target) : null);
   const plugin = plugins.data?.find((entry) => entry.pluginId === pluginId);
   const navigation = plugin?.navigation ?? [];
-  const currentPath = new URLSearchParams(location.search).get("section") || "/";
+  const searchParams = new URLSearchParams(location.href.split("?")[1]?.split("#")[0] ?? "");
+  const currentPath = searchParams.get("section") || "/";
   const navigationItem =
     navigation.find((item) => (item.path || "/") === currentPath) ?? navigation[0];
-  const requestedPanelId = new URLSearchParams(location.search).get("panel");
-  const requestedWorkflowId = new URLSearchParams(location.search).get("workflow");
+  const requestedPanelId = searchParams.get("panel");
+  const requestedWorkflowId = searchParams.get("workflow");
   const selectedPanel = plugin?.panels.find((panel) => panel.id === requestedPanelId);
   const selectedWorkflow = plugin?.workflows.find(
     (workflow) => workflow.id === requestedWorkflowId,

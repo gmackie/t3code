@@ -19,6 +19,7 @@ import { Route as ProjectsIndexRouteImport } from './routes/projects.index'
 import { Route as ChatIndexRouteImport } from './routes/_chat.index'
 import { Route as SettingsSourceControlRouteImport } from './routes/settings.source-control'
 import { Route as SettingsProvidersRouteImport } from './routes/settings.providers'
+import { Route as SettingsPluginsRouteImport } from './routes/settings.plugins'
 import { Route as SettingsKeybindingsRouteImport } from './routes/settings.keybindings'
 import { Route as SettingsIntegrationsRouteImport } from './routes/settings.integrations'
 import { Route as SettingsGeneralRouteImport } from './routes/settings.general'
@@ -27,6 +28,7 @@ import { Route as SettingsConnectionsRouteImport } from './routes/settings.conne
 import { Route as SettingsArchivedRouteImport } from './routes/settings.archived'
 import { Route as SettingsAppearanceRouteImport } from './routes/settings.appearance'
 import { Route as ProjectsProjectKeyRouteImport } from './routes/projects.$projectKey'
+import { Route as PluginsPluginIdRouteImport } from './routes/plugins.$pluginId'
 import { Route as ConnectCallbackRouteImport } from './routes/connect_.callback'
 import { Route as ChatPullRequestsRouteImport } from './routes/_chat.pull-requests'
 import { Route as ChatDraftDraftIdRouteImport } from './routes/_chat.draft.$draftId'
@@ -81,6 +83,11 @@ const SettingsProvidersRoute = SettingsProvidersRouteImport.update({
   path: '/providers',
   getParentRoute: () => SettingsRoute,
 } as any)
+const SettingsPluginsRoute = SettingsPluginsRouteImport.update({
+  id: '/plugins',
+  path: '/plugins',
+  getParentRoute: () => SettingsRoute,
+} as any)
 const SettingsKeybindingsRoute = SettingsKeybindingsRouteImport.update({
   id: '/keybindings',
   path: '/keybindings',
@@ -121,6 +128,11 @@ const ProjectsProjectKeyRoute = ProjectsProjectKeyRouteImport.update({
   path: '/$projectKey',
   getParentRoute: () => ProjectsRoute,
 } as any)
+const PluginsPluginIdRoute = PluginsPluginIdRouteImport.update({
+  id: '/plugins/$pluginId',
+  path: '/plugins/$pluginId',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ConnectCallbackRoute = ConnectCallbackRouteImport.update({
   id: '/connect_/callback',
   path: '/connect/callback',
@@ -152,6 +164,7 @@ export interface FileRoutesByFullPath {
   '/usage': typeof UsageRoute
   '/pull-requests': typeof ChatPullRequestsRoute
   '/connect/callback': typeof ConnectCallbackRoute
+  '/plugins/$pluginId': typeof PluginsPluginIdRoute
   '/projects/$projectKey': typeof ProjectsProjectKeyRoute
   '/settings/appearance': typeof SettingsAppearanceRoute
   '/settings/archived': typeof SettingsArchivedRoute
@@ -160,6 +173,7 @@ export interface FileRoutesByFullPath {
   '/settings/general': typeof SettingsGeneralRoute
   '/settings/integrations': typeof SettingsIntegrationsRoute
   '/settings/keybindings': typeof SettingsKeybindingsRoute
+  '/settings/plugins': typeof SettingsPluginsRoute
   '/settings/providers': typeof SettingsProvidersRoute
   '/settings/source-control': typeof SettingsSourceControlRoute
   '/projects/': typeof ProjectsIndexRoute
@@ -173,6 +187,7 @@ export interface FileRoutesByTo {
   '/usage': typeof UsageRoute
   '/pull-requests': typeof ChatPullRequestsRoute
   '/connect/callback': typeof ConnectCallbackRoute
+  '/plugins/$pluginId': typeof PluginsPluginIdRoute
   '/projects/$projectKey': typeof ProjectsProjectKeyRoute
   '/settings/appearance': typeof SettingsAppearanceRoute
   '/settings/archived': typeof SettingsArchivedRoute
@@ -181,6 +196,7 @@ export interface FileRoutesByTo {
   '/settings/general': typeof SettingsGeneralRoute
   '/settings/integrations': typeof SettingsIntegrationsRoute
   '/settings/keybindings': typeof SettingsKeybindingsRoute
+  '/settings/plugins': typeof SettingsPluginsRoute
   '/settings/providers': typeof SettingsProvidersRoute
   '/settings/source-control': typeof SettingsSourceControlRoute
   '/': typeof ChatIndexRoute
@@ -198,6 +214,7 @@ export interface FileRoutesById {
   '/usage': typeof UsageRoute
   '/_chat/pull-requests': typeof ChatPullRequestsRoute
   '/connect_/callback': typeof ConnectCallbackRoute
+  '/plugins/$pluginId': typeof PluginsPluginIdRoute
   '/projects/$projectKey': typeof ProjectsProjectKeyRoute
   '/settings/appearance': typeof SettingsAppearanceRoute
   '/settings/archived': typeof SettingsArchivedRoute
@@ -206,6 +223,7 @@ export interface FileRoutesById {
   '/settings/general': typeof SettingsGeneralRoute
   '/settings/integrations': typeof SettingsIntegrationsRoute
   '/settings/keybindings': typeof SettingsKeybindingsRoute
+  '/settings/plugins': typeof SettingsPluginsRoute
   '/settings/providers': typeof SettingsProvidersRoute
   '/settings/source-control': typeof SettingsSourceControlRoute
   '/_chat/': typeof ChatIndexRoute
@@ -224,6 +242,7 @@ export interface FileRouteTypes {
     | '/usage'
     | '/pull-requests'
     | '/connect/callback'
+    | '/plugins/$pluginId'
     | '/projects/$projectKey'
     | '/settings/appearance'
     | '/settings/archived'
@@ -232,6 +251,7 @@ export interface FileRouteTypes {
     | '/settings/general'
     | '/settings/integrations'
     | '/settings/keybindings'
+    | '/settings/plugins'
     | '/settings/providers'
     | '/settings/source-control'
     | '/projects/'
@@ -245,6 +265,7 @@ export interface FileRouteTypes {
     | '/usage'
     | '/pull-requests'
     | '/connect/callback'
+    | '/plugins/$pluginId'
     | '/projects/$projectKey'
     | '/settings/appearance'
     | '/settings/archived'
@@ -253,6 +274,7 @@ export interface FileRouteTypes {
     | '/settings/general'
     | '/settings/integrations'
     | '/settings/keybindings'
+    | '/settings/plugins'
     | '/settings/providers'
     | '/settings/source-control'
     | '/'
@@ -269,6 +291,7 @@ export interface FileRouteTypes {
     | '/usage'
     | '/_chat/pull-requests'
     | '/connect_/callback'
+    | '/plugins/$pluginId'
     | '/projects/$projectKey'
     | '/settings/appearance'
     | '/settings/archived'
@@ -277,6 +300,7 @@ export interface FileRouteTypes {
     | '/settings/general'
     | '/settings/integrations'
     | '/settings/keybindings'
+    | '/settings/plugins'
     | '/settings/providers'
     | '/settings/source-control'
     | '/_chat/'
@@ -293,6 +317,7 @@ export interface RootRouteChildren {
   SettingsRoute: typeof SettingsRouteWithChildren
   UsageRoute: typeof UsageRoute
   ConnectCallbackRoute: typeof ConnectCallbackRoute
+  PluginsPluginIdRoute: typeof PluginsPluginIdRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -367,6 +392,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SettingsProvidersRouteImport
       parentRoute: typeof SettingsRoute
     }
+    '/settings/plugins': {
+      id: '/settings/plugins'
+      path: '/plugins'
+      fullPath: '/settings/plugins'
+      preLoaderRoute: typeof SettingsPluginsRouteImport
+      parentRoute: typeof SettingsRoute
+    }
     '/settings/keybindings': {
       id: '/settings/keybindings'
       path: '/keybindings'
@@ -422,6 +454,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/projects/$projectKey'
       preLoaderRoute: typeof ProjectsProjectKeyRouteImport
       parentRoute: typeof ProjectsRoute
+    }
+    '/plugins/$pluginId': {
+      id: '/plugins/$pluginId'
+      path: '/plugins/$pluginId'
+      fullPath: '/plugins/$pluginId'
+      preLoaderRoute: typeof PluginsPluginIdRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/connect_/callback': {
       id: '/connect_/callback'
@@ -492,6 +531,7 @@ interface SettingsRouteChildren {
   SettingsGeneralRoute: typeof SettingsGeneralRoute
   SettingsIntegrationsRoute: typeof SettingsIntegrationsRoute
   SettingsKeybindingsRoute: typeof SettingsKeybindingsRoute
+  SettingsPluginsRoute: typeof SettingsPluginsRoute
   SettingsProvidersRoute: typeof SettingsProvidersRoute
   SettingsSourceControlRoute: typeof SettingsSourceControlRoute
 }
@@ -504,6 +544,7 @@ const SettingsRouteChildren: SettingsRouteChildren = {
   SettingsGeneralRoute: SettingsGeneralRoute,
   SettingsIntegrationsRoute: SettingsIntegrationsRoute,
   SettingsKeybindingsRoute: SettingsKeybindingsRoute,
+  SettingsPluginsRoute: SettingsPluginsRoute,
   SettingsProvidersRoute: SettingsProvidersRoute,
   SettingsSourceControlRoute: SettingsSourceControlRoute,
 }
@@ -520,6 +561,7 @@ const rootRouteChildren: RootRouteChildren = {
   SettingsRoute: SettingsRouteWithChildren,
   UsageRoute: UsageRoute,
   ConnectCallbackRoute: ConnectCallbackRoute,
+  PluginsPluginIdRoute: PluginsPluginIdRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
