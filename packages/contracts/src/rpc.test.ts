@@ -16,6 +16,10 @@ describe("custom-local project import RPCs", () => {
   it("exposes plugin lifecycle management", () => {
     expect(WS_METHODS).toHaveProperty("pluginList", "plugin.list");
   });
+
+  it("exposes the project issue viewer", () => {
+    expect(WS_METHODS).toHaveProperty("serverListProjectIssues", "server.listProjectIssues");
+  });
 });
 
 /**
