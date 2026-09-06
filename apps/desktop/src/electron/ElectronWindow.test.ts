@@ -30,11 +30,15 @@ import * as ElectronWindow from "./ElectronWindow.ts";
 const TestLayer = ElectronWindow.layer.pipe(
   Layer.provide(Layer.succeed(HostProcessPlatform, "linux")),
 );
+const MacTestLayer = ElectronWindow.layer.pipe(
+  Layer.provide(Layer.succeed(HostProcessPlatform, "darwin")),
+);
 
 function makeBrowserWindow(input: { readonly id: number; readonly destroyed: boolean }) {
   return {
     id: input.id,
     isDestroyed: vi.fn(() => input.destroyed),
+    setOpacity: vi.fn(),
   } as unknown as Electron.BrowserWindow;
 }
 
@@ -126,6 +130,26 @@ describe("ElectronWindow", () => {
 
       assert.deepEqual(syncedWindows, [liveWindow]);
     }).pipe(Effect.provide(TestLayer)),
+  );
+
+  it.effect("applies macOS opacity to every live surface and windows created later", () =>
+    Effect.gen(function* () {
+      const existingWindow = makeBrowserWindow({ id: 1, destroyed: false });
+      const destroyedWindow = makeBrowserWindow({ id: 2, destroyed: true });
+      const futureWindow = makeBrowserWindow({ id: 3, destroyed: false });
+      getAllWindowsMock.mockReturnValue([destroyedWindow, existingWindow]);
+      browserWindowMock.mockImplementationOnce(function BrowserWindowWithOpacity() {
+        return futureWindow;
+      });
+
+      const electronWindow = yield* ElectronWindow.ElectronWindow;
+      yield* electronWindow.setAllOpacity(75);
+      yield* electronWindow.create({ title: "Preview" });
+
+      assert.deepEqual(vi.mocked(existingWindow.setOpacity).mock.calls, [[0.75]]);
+      assert.deepEqual(vi.mocked(destroyedWindow.setOpacity).mock.calls, []);
+      assert.deepEqual(vi.mocked(futureWindow.setOpacity).mock.calls, [[0.75]]);
+    }).pipe(Effect.provide(MacTestLayer)),
   );
 
   it.effect("preserves window enumeration failures as structured defects", () =>

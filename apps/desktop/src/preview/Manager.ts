@@ -32,7 +32,14 @@ import type {
 } from "@t3tools/contracts";
 import { HostProcessPlatform } from "@t3tools/shared/hostProcess";
 import { normalizePreviewUrl } from "@t3tools/shared/preview";
-import { BrowserWindow, type Session, clipboard, nativeImage, shell, webContents } from "electron";
+import {
+  type BrowserWindow,
+  type Session,
+  clipboard,
+  nativeImage,
+  shell,
+  webContents,
+} from "electron";
 import * as Cause from "effect/Cause";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
@@ -52,6 +59,7 @@ import * as Scope from "effect/Scope";
 import * as SynchronizedRef from "effect/SynchronizedRef";
 
 import * as DesktopEnvironment from "../app/DesktopEnvironment.ts";
+import * as ElectronWindow from "../electron/ElectronWindow.ts";
 import { PREVIEW_PICTURE_IN_PICTURE_FRAME_CHANNEL } from "../ipc/channels.ts";
 import * as BrowserSession from "./BrowserSession.ts";
 import {
@@ -578,6 +586,7 @@ const inputSignalsMatch = (left: PreviewInputSignal, right: PreviewInputSignal):
 const makeNativeOperations = Effect.fn("PreviewManager.makeOperations")(function* (
   artifactDirectory: string,
   pictureInPicturePreloadPath: string,
+  electronWindow: ElectronWindow.ElectronWindow["Service"],
 ) {
   const fileSystem = yield* FileSystem.FileSystem;
   const hostPlatform = yield* HostProcessPlatform;
@@ -1835,6 +1844,7 @@ const makeNativeOperations = Effect.fn("PreviewManager.makeOperations")(function
     // otherwise spawn native windows without limit. Nothing in an OAuth flow
     // opens a second popup, so the chain stops at the first one.
     const windowCreated = (window: Electron.BrowserWindow): void => {
+      runFork(electronWindow.applyCurrentOpacity(window).pipe(Effect.ignore));
       window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
     };
     const beforeInput = (event: Electron.Event, input: Electron.Input): void => {
@@ -3053,38 +3063,42 @@ const makeNativeOperations = Effect.fn("PreviewManager.makeOperations")(function
           },
           () => wc.getTitle().trim(),
         );
-        const pictureInPictureWindow = yield* attempt(
-          {
-            operation: "pictureInPicture.create",
-            tabId,
-            webContentsId: wc.id,
-          },
-          () =>
-            new BrowserWindow({
-              width: PICTURE_IN_PICTURE_INITIAL_WIDTH,
-              height: PICTURE_IN_PICTURE_INITIAL_HEIGHT,
-              minWidth: PICTURE_IN_PICTURE_MIN_WIDTH,
-              minHeight: PICTURE_IN_PICTURE_MIN_HEIGHT,
-              title: title.length > 0 ? `Preview · ${title}` : "Browser preview",
-              show: false,
-              alwaysOnTop: true,
-              autoHideMenuBar: true,
-              fullscreenable: false,
-              maximizable: false,
-              minimizable: false,
-              resizable: true,
-              skipTaskbar: true,
-              backgroundColor: "#111111",
-              ...(hostPlatform === "darwin" ? { type: "panel" as const } : {}),
-              webPreferences: {
-                preload: pictureInPicturePreloadPath,
-                backgroundThrottling: false,
-                contextIsolation: true,
-                nodeIntegration: false,
-                sandbox: true,
-              },
-            }),
-        );
+        const pictureInPictureWindow = yield* electronWindow
+          .create({
+            width: PICTURE_IN_PICTURE_INITIAL_WIDTH,
+            height: PICTURE_IN_PICTURE_INITIAL_HEIGHT,
+            minWidth: PICTURE_IN_PICTURE_MIN_WIDTH,
+            minHeight: PICTURE_IN_PICTURE_MIN_HEIGHT,
+            title: title.length > 0 ? `Preview · ${title}` : "Browser preview",
+            show: false,
+            alwaysOnTop: true,
+            autoHideMenuBar: true,
+            fullscreenable: false,
+            maximizable: false,
+            minimizable: false,
+            resizable: true,
+            skipTaskbar: true,
+            backgroundColor: "#111111",
+            ...(hostPlatform === "darwin" ? { type: "panel" as const } : {}),
+            webPreferences: {
+              preload: pictureInPicturePreloadPath,
+              backgroundThrottling: false,
+              contextIsolation: true,
+              nodeIntegration: false,
+              sandbox: true,
+            },
+          })
+          .pipe(
+            Effect.mapError(
+              (cause) =>
+                new PreviewOperationError({
+                  operation: "pictureInPicture.create",
+                  tabId,
+                  webContentsId: wc.id,
+                  cause,
+                }),
+            ),
+          );
         const initializationScope = yield* Scope.fork(parentScope, "sequential");
         const ready = yield* Deferred.make<void, PreviewManagerError>();
         const session: PictureInPictureSession = {
@@ -4583,10 +4597,12 @@ export class PreviewManager extends Context.Service<
 
 export const make = Effect.gen(function* PreviewManagerMake() {
   const environment = yield* DesktopEnvironment.DesktopEnvironment;
+  const electronWindow = yield* ElectronWindow.ElectronWindow;
   const browserSession = yield* BrowserSession.BrowserSession;
   const operations = yield* makeNativeOperations(
     environment.browserArtifactsDir,
     environment.path.join(environment.dirname, "preview-pip-preload.cjs"),
+    electronWindow,
   );
 
   return PreviewManager.of({

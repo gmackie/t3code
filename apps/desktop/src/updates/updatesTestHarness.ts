@@ -120,6 +120,8 @@ export function makeHarness(options: UpdatesHarnessOptions = {}) {
       installSteps.push("destroyAll");
     }),
     syncAllAppearance: () => Effect.void,
+    applyCurrentOpacity: () => Effect.void,
+    setAllOpacity: () => Effect.void,
   } satisfies ElectronWindow.ElectronWindow["Service"]);
 
   const stubBackendInstance: DesktopBackendPool.DesktopBackendInstance = {

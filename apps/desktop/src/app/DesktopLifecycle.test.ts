@@ -73,6 +73,8 @@ function makeElectronWindowLayer(destroyAll: Effect.Effect<void> = Effect.void) 
     sendAll: () => Effect.void,
     destroyAll,
     syncAllAppearance: () => Effect.void,
+    applyCurrentOpacity: () => Effect.void,
+    setAllOpacity: () => Effect.void,
   });
 }
 
@@ -94,6 +96,7 @@ function makeDesktopWindowLayer(
     flushMainWindowBounds: input.flushMainWindowBounds ?? Effect.void,
     dispatchMenuAction: () => Effect.void,
     zoomMain: () => Effect.void,
+    setWindowOpacity: () => Effect.void,
     syncAppearance: Effect.void,
   });
 }

@@ -97,6 +97,14 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["transparent transparency solid menus dialogs composer"],
   },
   {
+    id: "window-opacity",
+    title: "Window opacity",
+    to: "/settings/appearance",
+    searchTerms: ["transparent transparency full app glass glassy macos"],
+    desktopOnly: true,
+    macOnly: true,
+  },
+  {
     id: "panel-animations",
     title: "Panel animations",
     to: "/settings/appearance",

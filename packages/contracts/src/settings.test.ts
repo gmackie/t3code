@@ -137,6 +137,22 @@ describe("ClientSettings glass opacity", () => {
   });
 });
 
+describe("ClientSettings window opacity", () => {
+  it("defaults to a fully opaque window", () => {
+    expect(decodeClientSettings({}).windowOpacity).toBe(100);
+  });
+
+  it.each([39, 101, 72.5])("rejects an invalid window opacity: %s", (value) => {
+    expect(() => decodeClientSettings({ windowOpacity: value })).toThrow();
+    expect(() => decodeClientSettingsPatch({ windowOpacity: value })).toThrow();
+  });
+
+  it.each([40, 75, 100])("accepts a window opacity within the supported range: %s", (value) => {
+    expect(decodeClientSettings({ windowOpacity: value }).windowOpacity).toBe(value);
+    expect(decodeClientSettingsPatch({ windowOpacity: value }).windowOpacity).toBe(value);
+  });
+});
+
 describe("ClientSettings appearance contrast", () => {
   it("defaults to the theme's original contrast", () => {
     expect(decodeClientSettings({}).appearanceContrast).toBe(100);

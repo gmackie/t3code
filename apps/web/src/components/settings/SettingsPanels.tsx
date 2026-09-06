@@ -25,6 +25,7 @@ import {
   MAX_APPEARANCE_CONTRAST,
   MAX_CODE_FONT_SIZE,
   MAX_GLASS_OPACITY,
+  MAX_WINDOW_OPACITY,
   MAX_INTERFACE_FONT_SIZE,
   MAX_PANEL_ANIMATION_DURATION_MS,
   MAX_PROMPT_FONT_SIZE,
@@ -33,6 +34,7 @@ import {
   MIN_CODE_FONT_SIZE,
   MIN_APPEARANCE_CONTRAST,
   MIN_GLASS_OPACITY,
+  MIN_WINDOW_OPACITY,
   MIN_INTERFACE_FONT_SIZE,
   MIN_PANEL_ANIMATION_DURATION_MS,
   MIN_PROMPT_FONT_SIZE,
@@ -513,6 +515,9 @@ export function useSettingsRestore(onRestored?: () => void) {
         ? ["Contrast"]
         : []),
       ...(settings.glassOpacity !== DEFAULT_UNIFIED_SETTINGS.glassOpacity ? ["Glass opacity"] : []),
+      ...(settings.windowOpacity !== DEFAULT_UNIFIED_SETTINGS.windowOpacity
+        ? ["Window opacity"]
+        : []),
       ...(settings.panelAnimationDurationMs !== DEFAULT_UNIFIED_SETTINGS.panelAnimationDurationMs
         ? ["Panel animations"]
         : []),
@@ -629,6 +634,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       settings.fontSizePrompt,
       settings.fontSizeTerminal,
       settings.glassOpacity,
+      settings.windowOpacity,
       settings.panelAnimationDurationMs,
       settings.enableLegacyTokenStreaming,
       settings.enableProviderUpdateChecks,
@@ -721,6 +727,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       contextWindowMeterEnabled: DEFAULT_UNIFIED_SETTINGS.contextWindowMeterEnabled,
       environmentIdentificationMode: DEFAULT_UNIFIED_SETTINGS.environmentIdentificationMode,
       glassOpacity: DEFAULT_UNIFIED_SETTINGS.glassOpacity,
+      windowOpacity: DEFAULT_UNIFIED_SETTINGS.windowOpacity,
       panelAnimationDurationMs: DEFAULT_UNIFIED_SETTINGS.panelAnimationDurationMs,
       sidebarThreadPreviewCount: DEFAULT_UNIFIED_SETTINGS.sidebarThreadPreviewCount,
       sidebarProjectGroupingMode: DEFAULT_UNIFIED_SETTINGS.sidebarProjectGroupingMode,
@@ -1075,6 +1082,13 @@ export function AppearanceSettingsPanel() {
     "--settings-slider-progress": `${glassOpacityRatio * 100}%`,
     "--settings-slider-fill-offset": `${0.5 - glassOpacityRatio}rem`,
   } as CSSProperties;
+  const showWindowOpacity = isElectron && isMacPlatform(navigator.platform);
+  const windowOpacityRatio =
+    (settings.windowOpacity - MIN_WINDOW_OPACITY) / (MAX_WINDOW_OPACITY - MIN_WINDOW_OPACITY);
+  const windowOpacitySliderStyle = {
+    "--settings-slider-progress": `${windowOpacityRatio * 100}%`,
+    "--settings-slider-fill-offset": `${0.5 - windowOpacityRatio}rem`,
+  } as CSSProperties;
   const appearanceContrastRatio =
     (settings.appearanceContrast - MIN_APPEARANCE_CONTRAST) /
     (MAX_APPEARANCE_CONTRAST - MIN_APPEARANCE_CONTRAST);
@@ -1202,6 +1216,54 @@ export function AppearanceSettingsPanel() {
             </div>
           }
         />
+
+        {showWindowOpacity ? (
+          <SettingsRow
+            {...searchableSetting("window-opacity")}
+            description="Control the opacity of every T3 Code window on macOS, including the app shell, previews, popups, and connecting windows."
+            resetAction={
+              settings.windowOpacity !== DEFAULT_UNIFIED_SETTINGS.windowOpacity ? (
+                <SettingResetButton
+                  label="window opacity"
+                  onClick={() =>
+                    updateSettings({ windowOpacity: DEFAULT_UNIFIED_SETTINGS.windowOpacity })
+                  }
+                />
+              ) : null
+            }
+            control={
+              <div className="flex w-full items-center gap-3 sm:w-52">
+                <output
+                  className="min-w-12 rounded-md bg-muted px-2 py-1 text-center font-mono text-xs font-medium tabular-nums text-foreground"
+                  htmlFor="window-opacity-slider"
+                >
+                  {settings.windowOpacity}%
+                </output>
+                <input
+                  aria-label="Window opacity"
+                  className="settings-slider min-w-0 flex-1"
+                  id="window-opacity-slider"
+                  max={MAX_WINDOW_OPACITY}
+                  min={MIN_WINDOW_OPACITY}
+                  onChange={(event) => {
+                    const windowOpacity = Number(event.currentTarget.value);
+                    if (
+                      Number.isInteger(windowOpacity) &&
+                      windowOpacity >= MIN_WINDOW_OPACITY &&
+                      windowOpacity <= MAX_WINDOW_OPACITY
+                    ) {
+                      updateSettings({ windowOpacity });
+                    }
+                  }}
+                  step={5}
+                  style={windowOpacitySliderStyle}
+                  type="range"
+                  value={settings.windowOpacity}
+                />
+              </div>
+            }
+          />
+        ) : null}
 
         {showEnvironmentIdentification ? (
           <SettingsRow

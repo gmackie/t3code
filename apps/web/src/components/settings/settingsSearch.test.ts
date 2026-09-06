@@ -115,9 +115,19 @@ describe("searchSettings", () => {
     vi.stubGlobal("navigator", { platform: "Win32" });
     try {
       expect(searchSettings("font smoothing")).toEqual([]);
+      expect(searchSettings("window opacity")).toEqual([]);
     } finally {
       vi.unstubAllGlobals();
     }
+  });
+
+  it("registers window opacity as a macOS desktop setting", () => {
+    expect(SETTINGS_SEARCH_ITEMS.find((item) => item.id === "window-opacity")).toMatchObject({
+      id: "window-opacity",
+      title: "Window opacity",
+      desktopOnly: true,
+      macOnly: true,
+    });
   });
 
   it("registers the WSL backend as a desktop-only setting", () => {

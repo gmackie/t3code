@@ -9,6 +9,7 @@ import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
 
 import * as Electron from "electron";
+import type { WindowOpacity } from "@t3tools/contracts";
 
 const ElectronWindowCreateOptions = Schema.Struct({
   title: Schema.NullOr(Schema.String),
@@ -38,6 +39,7 @@ const ElectronWindowOperation = Schema.Literals([
   "inspect-window",
   "reveal-window",
   "send-window-message",
+  "set-window-opacity",
   "destroy-window",
 ]);
 
@@ -91,6 +93,8 @@ export class ElectronWindow extends Context.Service<
     readonly reveal: (window: Electron.BrowserWindow) => Effect.Effect<void>;
     readonly sendAll: (channel: string, ...args: readonly unknown[]) => Effect.Effect<void>;
     readonly destroyAll: Effect.Effect<void>;
+    readonly applyCurrentOpacity: (window: Electron.BrowserWindow) => Effect.Effect<void>;
+    readonly setAllOpacity: (opacity: WindowOpacity) => Effect.Effect<void>;
     readonly syncAllAppearance: <E, R>(
       sync: (window: Electron.BrowserWindow) => Effect.Effect<void, E, R>,
     ) => Effect.Effect<void, E, R>;
@@ -100,6 +104,7 @@ export class ElectronWindow extends Context.Service<
 export const make = Effect.gen(function* () {
   const platform = yield* HostProcessPlatform;
   const mainWindowRef = yield* Ref.make<Option.Option<Electron.BrowserWindow>>(Option.none());
+  const opacityRef = yield* Ref.make<WindowOpacity>(100);
 
   const listWindows = Effect.try({
     try: () => Electron.BrowserWindow.getAllWindows(),
@@ -125,6 +130,27 @@ export const make = Effect.gen(function* () {
           cause,
         }),
     }).pipe(Effect.orDie);
+
+  const applyOpacity = (window: Electron.BrowserWindow, opacity: WindowOpacity) =>
+    platform !== "darwin"
+      ? Effect.void
+      : Effect.try({
+          try: () => window.setOpacity(opacity / 100),
+          catch: (cause) =>
+            new ElectronWindowOperationError({
+              operation: "set-window-opacity",
+              platform,
+              windowId: window.id,
+              channel: null,
+              cause,
+            }),
+        }).pipe(Effect.orDie);
+
+  const applyCurrentOpacity = Effect.fn("desktop.electron.window.applyCurrentOpacity")(function* (
+    window: Electron.BrowserWindow,
+  ) {
+    yield* applyOpacity(window, yield* Ref.get(opacityRef));
+  });
 
   const liveMain = Effect.gen(function* () {
     const main = yield* Ref.get(mainWindowRef);
@@ -190,9 +216,13 @@ export const make = Effect.gen(function* () {
         },
       } satisfies typeof ElectronWindowCreateOptions.Type;
 
-      return Effect.try({
-        try: () => new Electron.BrowserWindow(options),
-        catch: (cause) => new ElectronWindowCreateError({ options: diagnosticOptions, cause }),
+      return Effect.gen(function* () {
+        const window = yield* Effect.try({
+          try: () => new Electron.BrowserWindow(options),
+          catch: (cause) => new ElectronWindowCreateError({ options: diagnosticOptions, cause }),
+        });
+        yield* applyCurrentOpacity(window);
+        return window;
       });
     },
     main: liveMain,
@@ -280,6 +310,14 @@ export const make = Effect.gen(function* () {
       }
       if (firstFailure !== undefined) {
         return yield* Effect.failCause(firstFailure);
+      }
+    }),
+    applyCurrentOpacity,
+    setAllOpacity: Effect.fn("desktop.electron.window.setAllOpacity")(function* (opacity) {
+      yield* Ref.set(opacityRef, opacity);
+      for (const window of yield* listWindows) {
+        if (yield* isWindowDestroyed(window)) continue;
+        yield* applyOpacity(window, opacity);
       }
     }),
     syncAllAppearance: Effect.fn("desktop.electron.window.syncAllAppearance")(function* <E, R>(
