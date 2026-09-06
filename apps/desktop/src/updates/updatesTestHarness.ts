@@ -112,6 +112,8 @@ export function makeHarness(options: UpdatesHarnessOptions = {}) {
       }),
     destroyAll: Effect.void,
     syncAllAppearance: () => Effect.void,
+    applyCurrentOpacity: () => Effect.void,
+    setAllOpacity: () => Effect.void,
   } satisfies ElectronWindow.ElectronWindow["Service"]);
 
   const stubBackendInstance: DesktopBackendPool.DesktopBackendInstance = {

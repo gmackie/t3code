@@ -275,6 +275,8 @@ function makeTestLayer(input: {
     reveal: (window) => Effect.sync(() => input.onReveal?.(window)),
     sendAll: () => Effect.void,
     destroyAll: Effect.void,
+    applyCurrentOpacity: () => Effect.void,
+    setAllOpacity: () => Effect.void,
     syncAllAppearance: (sync) => sync(input.window),
   } satisfies ElectronWindow.ElectronWindow["Service"]);
 
@@ -389,6 +391,8 @@ const makeSplashScenario = (createOutcomes: readonly (Electron.BrowserWindow | n
       reveal: (window) => Ref.update(revealedWindows, (windows) => [...windows, window]),
       sendAll: () => Effect.void,
       destroyAll: Effect.void,
+      applyCurrentOpacity: () => Effect.void,
+      setAllOpacity: () => Effect.void,
       syncAllAppearance: (sync) => (fallbackWindow ? sync(fallbackWindow) : Effect.void),
     } satisfies ElectronWindow.ElectronWindow["Service"];
 

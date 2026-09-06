@@ -102,6 +102,8 @@ function makeElectronWindowLayer(window: ReturnType<typeof makeTestWindow>["wind
       sendAll: () => Effect.void,
       destroyAll: Effect.void,
       syncAllAppearance: () => Effect.void,
+      applyCurrentOpacity: () => Effect.void,
+      setAllOpacity: () => Effect.void,
     }),
   );
 }

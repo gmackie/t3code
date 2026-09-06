@@ -266,6 +266,7 @@ const layer = PreviewManager.layer.pipe(
   Layer.provideMerge(environmentLayer),
   Layer.provideMerge(fileSystemLayer),
   Layer.provideMerge(Path.layer),
+  Layer.provideMerge(ElectronWindow.layer),
   Layer.provideMerge(Layer.succeed(HostProcessPlatform, "darwin")),
 );
 const encodePreviewManagerError = Schema.encodeSync(PreviewManager.PreviewManagerError);
@@ -511,7 +512,9 @@ const makeTestPictureInPictureWindow = (loadURL: () => Promise<void> = async () 
     send,
   };
   const pictureInPictureWindow = {
+    id: 91,
     isDestroyed: vi.fn(() => destroyed),
+    setOpacity: vi.fn(),
     once: vi.fn((event: string, listener: () => void) => {
       listeners.set(event, listener);
     }),
@@ -3023,7 +3026,9 @@ describe("PreviewManager", () => {
         const pictureInPictureListeners = new Map<string, () => void>();
         const pictureInPictureSend = vi.fn();
         const pictureInPictureWindow = {
+          id: 92,
           isDestroyed: vi.fn(() => false),
+          setOpacity: vi.fn(),
           once: vi.fn((event: string, listener: () => void) => {
             pictureInPictureListeners.set(event, listener);
           }),

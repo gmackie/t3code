@@ -93,7 +93,14 @@ export const GlassOpacity = Schema.Int.check(
   }),
 );
 export type GlassOpacity = typeof GlassOpacity.Type;
-const DEFAULT_GLASS_OPACITY: GlassOpacity = 80;
+export const DEFAULT_GLASS_OPACITY: GlassOpacity = 80;
+export const MIN_WINDOW_OPACITY = 40;
+export const MAX_WINDOW_OPACITY = 100;
+export const WindowOpacity = Schema.Int.check(
+  Schema.isBetween({ minimum: MIN_WINDOW_OPACITY, maximum: MAX_WINDOW_OPACITY }),
+);
+export type WindowOpacity = typeof WindowOpacity.Type;
+export const DEFAULT_WINDOW_OPACITY: WindowOpacity = 100;
 
 export const MIN_APPEARANCE_CONTRAST = 50;
 export const MAX_APPEARANCE_CONTRAST = 200;
@@ -361,6 +368,9 @@ export const ClientSettingsSchema = Schema.Struct({
   ),
   glassOpacity: GlassOpacity.pipe(
     Schema.withDecodingDefault(Effect.succeed(DEFAULT_GLASS_OPACITY)),
+  ),
+  windowOpacity: WindowOpacity.pipe(
+    Schema.withDecodingDefault(Effect.succeed(DEFAULT_WINDOW_OPACITY)),
   ),
   fontSizeInterface: InterfaceFontSize.pipe(
     Schema.withDecodingDefault(Effect.succeed(DEFAULT_INTERFACE_FONT_SIZE)),
@@ -1523,7 +1533,7 @@ export const ClientSettingsPatch = Schema.Struct({
   diffLayout: Schema.optionalKey(DiffLayout),
   environmentIdentificationMode: Schema.optionalKey(EnvironmentIdentificationMode),
   glassOpacity: Schema.optionalKey(GlassOpacity),
-  onboardingCompletedAt: Schema.optionalKey(Schema.NullOr(Schema.String)),
+  windowOpacity: Schema.optionalKey(WindowOpacity),
   fontSizeInterface: Schema.optionalKey(InterfaceFontSize),
   fontSizePrompt: Schema.optionalKey(PromptFontSize),
   fontSizeCode: Schema.optionalKey(CodeFontSize),
