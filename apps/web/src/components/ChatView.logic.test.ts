@@ -27,6 +27,7 @@ import {
   buildThreadTurnInterruptInput,
   createLocalDispatchSnapshot,
   deriveComposerSendState,
+  deriveLockedProvider,
   dismissBranchMismatchForSession,
   ENVIRONMENT_RECONNECT_WARNING_GRACE_MS,
   getAntigravitySendBlockReason,
@@ -1159,6 +1160,22 @@ describe("getStartedThreadModelChangeBlockReason", () => {
       description:
         "This provider does not allow switching models after a conversation has started.",
     });
+  });
+});
+
+describe("deriveLockedProvider", () => {
+  it("keeps a started thread unlocked so the composer can switch providers", () => {
+    expect(
+      deriveLockedProvider({
+        thread: {
+          latestTurn: null,
+          messages: [{ id: MessageId.make("message-1") }],
+          session: { providerName: "codex" },
+        } as unknown as Thread,
+        selectedProvider: "codex",
+        threadProvider: "codex",
+      }),
+    ).toBeNull();
   });
 });
 
