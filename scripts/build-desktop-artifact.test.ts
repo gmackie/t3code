@@ -646,20 +646,14 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
         { from: "apps/desktop/prod-resources/browser-secret", to: "browser-secret" },
       ]);
       assert.deepStrictEqual(win.extraResources, [
-        {
-          from: "apps/desktop/prod-resources/resource-monitor",
-          to: "resource-monitor",
-        },
+        ...DESKTOP_EXTRA_RESOURCES,
         ...WINDOWS_SERVER_EXTRA_RESOURCES,
         ...WSL_RUNTIME_EXTRA_RESOURCES,
       ]);
       // No Linux prebuild means the sidecar staging never writes the archive,
       // so listing it here would fail the build on a missing source file.
       assert.deepStrictEqual(winWithoutWslPrebuild.extraResources, [
-        {
-          from: "apps/desktop/prod-resources/resource-monitor",
-          to: "resource-monitor",
-        },
+        ...DESKTOP_EXTRA_RESOURCES,
         ...WINDOWS_SERVER_EXTRA_RESOURCES,
       ]);
       assert.deepStrictEqual(win.nsis, { differentialPackage: true });
@@ -1768,6 +1762,10 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
       {
         from: "apps/desktop/prod-resources/resource-monitor",
         to: "resource-monitor",
+      },
+      {
+        from: "apps/desktop/prod-resources/plugins",
+        to: "plugins",
       },
     ]);
     assert.deepStrictEqual(resolveResourceMonitorRustTargets("mac", "universal"), [
