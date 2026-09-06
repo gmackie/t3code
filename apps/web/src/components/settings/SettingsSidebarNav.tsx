@@ -18,7 +18,7 @@ import {
   PanelsTopLeftIcon,
   KeyboardIcon,
   Link2Icon,
-  PackageIcon,
+  PuzzleIcon,
   PaletteIcon,
   SearchIcon,
   Settings2Icon,
@@ -87,6 +87,7 @@ const SETTINGS_SECTION_ICONS: Readonly<
   "/settings/source-control": GitBranchIcon,
   "/settings/connections": Link2Icon,
   "/settings/archived": ArchiveIcon,
+  "/settings/plugins": PuzzleIcon,
 };
 
 const SETTINGS_NAV_ITEMS: ReadonlyArray<{
