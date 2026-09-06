@@ -57,6 +57,12 @@ env:
   UPSTREAM_REPO: pingdotgg/t3code
   FORGEJO_REPO_URL: https://git.forgegraf.com/gmackie/t3code.git
   PNPM_VERSION: 11.10.0
+  # Packaging installs from a temporary directory, outside repository npm config.
+  # Keep every child install independent of the host runner's private registry.
+  npm_config_registry: https://registry.npmjs.org/
+  npm_config_userconfig: /dev/null
+  PNPM_CONFIG_REGISTRY: https://registry.npmjs.org/
+  PNPM_CONFIG_USERCONFIG: /dev/null
 
 jobs:
   sync:
