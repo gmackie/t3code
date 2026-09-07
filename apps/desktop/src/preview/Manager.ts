@@ -1900,6 +1900,7 @@ const makeNativeOperations = Effect.fn("PreviewManager.makeOperations")(function
     // otherwise spawn native windows without limit. Nothing in an OAuth flow
     // opens a second popup, so the chain stops at the first one.
     const windowCreated = (window: Electron.BrowserWindow): void => {
+      window.webContents.setIgnoreMenuShortcuts(true);
       runFork(electronWindow.applyCurrentOpacity(window).pipe(Effect.ignore));
       window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
       window.webContents.on("before-input-event", (_event, input) => {
