@@ -38,7 +38,7 @@ import {
 } from "@t3tools/contracts";
 import { PREVIEW_VIEWPORT_PRESETS } from "@t3tools/shared/previewViewport";
 import { InfoIcon, MoreVertical, Plus as PlusIcon } from "lucide-react";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useRef, useState, type ReactNode } from "react";
 
 import { ScreenRotationIcon } from "~/browser/ScreenRotationIcon";
 import { resolveEnvironmentOptionLabel } from "~/components/BranchToolbar.logic";
@@ -770,11 +770,6 @@ function BrowserProfilesSetting({ disabled }: { readonly disabled: boolean }) {
       .then(setSources)
       .catch(() => setSources((previous) => previous ?? []));
   };
-
-  // Loaded once so the first open is instant instead of flashing a spinner.
-  useEffect(() => {
-    loadSources();
-  }, []);
 
   // Runs one import for the wizard. A new profile is registered only once the
   // import succeeds — the cookies land in its partition first — so a blocked
