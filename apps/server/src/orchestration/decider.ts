@@ -2244,3 +2244,7 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
     }
   }
 });
+
+const isScriptRunCommand = Schema.is(SCRIPT_RUN_COMMAND_PATTERN);
+
+const threadPullRequestLinksEqual = Schema.toEquivalence(Schema.NullOr(ThreadLinkedPullRequest));

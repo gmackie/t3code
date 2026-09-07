@@ -1537,13 +1537,21 @@ export const ThreadImportCommand = Schema.Struct({
 });
 export type ThreadImportCommand = typeof ThreadImportCommand.Type;
 
-const ThreadPullRequestLinkSyncCommand = Schema.Struct({
-  type: Schema.Literal("thread.pull-request-link.sync"),
+const ThreadPullRequestSyncCommand = Schema.Struct({
+  type: Schema.Literal("thread.pull-request.sync"),
   commandId: CommandId,
   threadId: ThreadId,
-  ...ThreadPullRequestKey.fields,
-  snapshot: ThreadPullRequestSnapshot,
-  stack: Schema.NullOr(ThreadPullRequestStack),
+  projectId: ProjectId,
+  snapshotSequence: NonNegativeInt,
+  expected: Schema.Struct({
+    workspaceRoot: TrimmedNonEmptyString,
+    branch: Schema.NullOr(TrimmedNonEmptyString),
+    worktreePath: Schema.NullOr(TrimmedNonEmptyString),
+    linkedPullRequest: Schema.NullOr(ThreadLinkedPullRequest),
+    branchPullRequest: Schema.NullOr(ThreadLinkedPullRequest),
+  }),
+  branchPullRequest: Schema.NullOr(ThreadLinkedPullRequest),
+  linkedPullRequest: Schema.optional(ThreadLinkedPullRequest),
 });
 
 const InternalOrchestrationCommand = Schema.Union([

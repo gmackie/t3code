@@ -1,3 +1,23 @@
+import {
+  ProviderUsageGetInput,
+  ProviderUsageSnapshot,
+  ProviderUsageRefreshResult,
+  ProviderUsageSubscribeInput,
+} from "./providerUsage.ts";
+import {
+  PluginPackageStatusSnapshot,
+  PluginPackageOperationError,
+  PluginPackageActionInput,
+  PluginPackageNotFoundError,
+} from "./pluginPackages.ts";
+import {
+  PluginCommandCatalog,
+  PluginCommandInvokeInput,
+  PluginCommandInvocationResult,
+  PluginCommandCatalogChangedError,
+  PluginCommandInvocationError,
+  PluginCommandNotFoundError,
+} from "./pluginCommands.ts";
 import * as Schema from "effect/Schema";
 import * as Rpc from "effect/unstable/rpc/Rpc";
 import * as RpcGroup from "effect/unstable/rpc/RpcGroup";
@@ -1636,6 +1656,9 @@ export const WsSubscribePluginCommandsRpc = Rpc.make(WS_METHODS.subscribePluginC
 });
 
 export const WsRpcGroup = RpcGroup.make(
+  WsProviderUsageGetRpc,
+  WsProviderUsageRefreshRpc,
+  WsProviderUsageSubscribeRpc,
   WsServerProbeRpc,
   WsExternalThreadsDiscoverRpc,
   WsProjectSessionImportsScanRpc,

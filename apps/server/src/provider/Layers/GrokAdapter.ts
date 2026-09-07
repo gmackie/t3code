@@ -949,7 +949,7 @@ export function makeGrokAdapter(grokSettings: GrokSettings, options?: GrokAdapte
           provider: PROVIDER,
           providerInstanceId: boundInstanceId,
           threadId: ctx.threadId,
-          payload: { rateLimits },
+          payload: { limits: { windows: [] }, usageWindows: rateLimits },
         });
       }).pipe(
         Effect.catchCause((cause) =>

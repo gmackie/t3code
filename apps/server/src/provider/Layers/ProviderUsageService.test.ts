@@ -1,3 +1,4 @@
+import { EventId, ThreadId } from "@t3tools/contracts";
 import {
   EnvironmentId,
   ProviderDriverKind,
@@ -114,15 +115,16 @@ describe("ProviderUsageService refresh", () => {
       Effect.gen(function* () {
         const event: ProviderRuntimeEvent = {
           type: "account.rate-limits.updated",
-          eventId: "event-1",
+          eventId: EventId.make("event-1"),
           provider: ProviderDriverKind.make("cursor"),
           providerInstanceId: INSTANCE_ID,
-          threadId: "thread-1",
+          threadId: ThreadId.make("thread-1"),
           createdAt: "2026-08-17T00:00:00.000Z",
           payload: {
-            rateLimits: [{ id: "included-usage", label: "Included usage", usedPercent: 10 }],
+            limits: { windows: [] },
+            usageWindows: [{ id: "included-usage", label: "Included usage", usedPercent: 10 }],
           },
-        } as ProviderRuntimeEvent;
+        };
         yield* usage.updateFromRuntimeEvent(event);
 
         const result = yield* usage.refresh(INSTANCE_ID);

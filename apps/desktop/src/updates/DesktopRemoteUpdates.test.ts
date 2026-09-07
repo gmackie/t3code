@@ -53,6 +53,8 @@ function runRemoteUpdatesTest(
           Effect.sync(() => {
             reports.push(report);
           }),
+        updateCommits: Stream.empty,
+        updateCancellations: Stream.empty,
         updateRequests: Stream.fromQueue(requests),
       });
 

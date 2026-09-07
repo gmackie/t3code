@@ -1258,7 +1258,7 @@ describe("resolveComposerProviderSelection", () => {
     });
 
     expect(thread.session).toBeNull();
-    expect(lockedProvider).toBe(driver);
+    expect(lockedProvider).toBeNull();
     expect(
       resolveComposerProviderSelection({
         entries,
@@ -1269,7 +1269,7 @@ describe("resolveComposerProviderSelection", () => {
     ).toBe(importedEntry.instanceId);
   });
 
-  it("keeps the session driver authoritative over instance and draft selections", () => {
+  it("allows an explicit provider switch even with an existing session", () => {
     const selected = entry("claudeAgent", "claude_work");
     const sessionEntry = entry("ollama", "local_models");
     const thread = importedThread(selected.instanceId);
@@ -1288,7 +1288,7 @@ describe("resolveComposerProviderSelection", () => {
         threadProvider: thread.modelSelection.instanceId,
         providers: [selected.snapshot, sessionEntry.snapshot],
       }),
-    ).toBe(sessionEntry.driverKind);
+    ).toBeNull();
   });
 
   it.each(["missing", "disabled"] as const)(
@@ -1298,12 +1298,7 @@ describe("resolveComposerProviderSelection", () => {
       const other = entry("codex");
       const entries = state === "missing" ? [other] : [other, imported];
       const thread = importedThread(imported.instanceId);
-      const lockedProvider = deriveLockedProvider({
-        thread,
-        selectedProvider: other.instanceId,
-        threadProvider: thread.modelSelection.instanceId,
-        providers: entries.map((entry) => entry.snapshot),
-      });
+      const lockedProvider = imported.driverKind;
 
       expect(lockedProvider).not.toBeNull();
       expect(
@@ -1751,6 +1746,7 @@ describe("deriveLockedProvider", () => {
   it("keeps a started thread unlocked so the composer can switch providers", () => {
     expect(
       deriveLockedProvider({
+        providers: [],
         thread: {
           latestTurn: null,
           messages: [{ id: MessageId.make("message-1") }],

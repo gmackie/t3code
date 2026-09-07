@@ -22,6 +22,7 @@ function makeState(overrides: Partial<DesktopUpdateState> = {}): DesktopUpdateSt
     availableVersion: null,
     downloadedVersion: null,
     releaseNotes: [],
+    omittedReleaseCount: 0,
     downloadPercent: null,
     checkedAt: null,
     message: null,

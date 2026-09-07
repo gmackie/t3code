@@ -1,3 +1,4 @@
+import { ANTIGRAVITY_DEFAULT_MODEL } from "@t3tools/contracts";
 import {
   type EnvironmentId,
   type ProviderInstanceId,

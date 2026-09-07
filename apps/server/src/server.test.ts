@@ -121,46 +121,6 @@ const unavailableProjectSessionImportService: ProjectSessionImportService.Projec
       >,
   };
 
-const collectQueueUntil = Effect.fn("TransferBudget.collectQueueUntil")(function* <A>(
-  queue: Queue.Queue<A>,
-  predicate: (value: A) => boolean,
-  waitDescription: string,
-) {
-  return yield* Effect.gen(function* () {
-    const values: A[] = [];
-    while (true) {
-      const value = yield* Queue.take(queue);
-      values.push(value);
-      if (predicate(value)) return values;
-    }
-  }).pipe(
-    Effect.timeoutOrElse({
-      duration: "10 seconds",
-      orElse: () => Effect.die(new Error(`Timed out waiting for ${waitDescription}`)),
-    }),
-  );
-});
-
-const unavailableExternalThreadImportService: ExternalThreadImportService.ExternalThreadImportService["Service"] =
-  {
-    discover: () =>
-      Effect.die("ExternalThreadImportService not stubbed in this test") as ReturnType<
-        ExternalThreadImportService.ExternalThreadImportService["Service"]["discover"]
-      >,
-    importSelected: () =>
-      Effect.die("ExternalThreadImportService not stubbed in this test") as ReturnType<
-        ExternalThreadImportService.ExternalThreadImportService["Service"]["importSelected"]
-      >,
-  };
-
-const unavailableProjectSessionImportService: ProjectSessionImportService.ProjectSessionImportService["Service"] =
-  {
-    scan: () =>
-      Effect.die("ProjectSessionImportService not stubbed in this test") as ReturnType<
-        ProjectSessionImportService.ProjectSessionImportService["Service"]["scan"]
-      >,
-  };
-
 import * as BackgroundPolicy from "./background/BackgroundPolicy.ts";
 import * as ServerConfig from "./config.ts";
 import * as DeviceService from "./device/DeviceService.ts";
@@ -930,6 +890,9 @@ const buildAppUnderTest = (options?: {
       ),
       Layer.provide([
         HostResources.layer,
+        Layer.mock(ProviderSessionDirectory.ProviderSessionDirectory)({
+          ...options?.layers?.providerSessionDirectory,
+        }),
         Layer.mock(ProcessResourceMonitor.ProcessResourceMonitor)({
           readHistory: (input) =>
             Effect.succeed({
@@ -6641,55 +6604,54 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
 
   it.effect("routes websocket rpc subscribeServerConfig emits provider status updates", () =>
     Effect.gen(function* () {
-      const nextProviders = [
-        {
-          instanceId: ProviderInstanceId.make("codex"),
-          driver: ProviderDriverKind.make("codex"),
-          enabled: true,
-          installed: true,
-          version: "1.0.0",
-          status: "ready" as const,
-          auth: { status: "authenticated" as const },
+      const codex = {
+        instanceId: ProviderInstanceId.make("codex"),
+        driver: ProviderDriverKind.make("codex"),
+        enabled: true,
+        installed: true,
+        version: "1.0.0",
+        status: "ready" as const,
+        auth: { status: "authenticated" as const },
+        checkedAt: "2026-04-11T00:00:00.000Z",
+        models: [],
+        slashCommands: [],
+        skills: [],
+        usageLimits: {
           checkedAt: "2026-04-11T00:00:00.000Z",
-          models: [],
-          slashCommands: [],
-          skills: [],
-          usageLimits: {
-            checkedAt: "2026-04-11T00:00:00.000Z",
-            windows: [{ id: "weekly", kind: "weekly" as const, label: "Weekly", usedPercent: 25 }],
+          windows: [{ id: "weekly", kind: "weekly" as const, label: "Weekly", usedPercent: 25 }],
+        },
+      };
+      yield* buildAppUnderTest({
+        layers: {
+          keybindings: {
+            loadConfigState: Effect.succeed({ keybindings: [], issues: [] }),
+            streamChanges: Stream.empty,
           },
-        };
-        yield* buildAppUnderTest({
-          layers: {
-            keybindings: {
-              loadConfigState: Effect.succeed({ keybindings: [], issues: [] }),
-              streamChanges: Stream.empty,
-            },
-            providerRegistry: {
-              getProviders: Effect.succeed([codex]),
-              streamChanges: Stream.succeed([{ ...codex, version: "1.0.1" }]),
-            },
+          providerRegistry: {
+            getProviders: Effect.succeed([codex]),
+            streamChanges: Stream.succeed([{ ...codex, version: "1.0.1" }]),
           },
-        });
+        },
+      });
 
-        const wsUrl = yield* getWsServerUrl("/ws");
-        const events = yield* Effect.scoped(
-          withWsRpcClient(wsUrl, (client) =>
-            client[WS_METHODS.subscribeServerConfig]({}).pipe(Stream.take(2), Stream.runCollect),
-          ),
-        );
+      const wsUrl = yield* getWsServerUrl("/ws");
+      const events = yield* Effect.scoped(
+        withWsRpcClient(wsUrl, (client) =>
+          client[WS_METHODS.subscribeServerConfig]({}).pipe(Stream.take(2), Stream.runCollect),
+        ),
+      );
 
-        const [first, second] = Array.from(events);
-        assert.equal(first?.type, "snapshot");
-        if (first?.type === "snapshot") {
-          assert.deepEqual(first.config.providers, [codex]);
-        }
-        assert.deepEqual(second, {
-          version: 1,
-          type: "providerStatuses",
-          payload: { providers: [{ ...codex, version: "1.0.1" }] },
-        });
-      }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+      const [first, second] = Array.from(events);
+      assert.equal(first?.type, "snapshot");
+      if (first?.type === "snapshot") {
+        assert.deepEqual(first.config.providers, [codex]);
+      }
+      assert.deepEqual(second, {
+        version: 1,
+        type: "providerStatuses",
+        payload: { providers: [{ ...codex, version: "1.0.1" }] },
+      });
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 
   it.effect(
@@ -12415,3 +12377,9 @@ it.live(
     }).pipe(Effect.provide(NodeServices.layer)),
   120_000,
 );
+
+const decodeTransferShellSnapshot = Schema.decodeUnknownEffect(
+  Schema.fromJsonString(OrchestrationShellSnapshot),
+);
+
+const encodeTestJson = Schema.encodeUnknownSync(Schema.fromJsonString(Schema.Unknown));

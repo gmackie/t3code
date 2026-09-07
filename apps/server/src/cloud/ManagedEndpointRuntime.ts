@@ -451,3 +451,9 @@ export const layerWithT3RelayConnectorFactory = (
 ) => Layer.effect(CloudManagedEndpointRuntime, make).pipe(Layer.provide(factory));
 
 export const layer = layerWithT3RelayConnectorFactory(T3RelayConnector.layer);
+
+const RELAY_RESTART_STABLE_UPTIME_MS = 30_000;
+
+const RELAY_RESTART_BACKOFF_BASE_MS = 1_000;
+
+const RELAY_RESTART_BACKOFF_MAX_MS = 60_000;

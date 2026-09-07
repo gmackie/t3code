@@ -1,3 +1,4 @@
+import { browseInputEndPaddingClass } from "./CommandPalette.logic";
 import { describe, expect, it, vi } from "vite-plus/test";
 import {
   EnvironmentId,

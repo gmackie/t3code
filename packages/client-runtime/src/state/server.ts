@@ -1067,14 +1067,6 @@ export function createServerEnvironmentAtoms<R, E>(
       label: "environment-data:server:list-project-issue-statuses",
       tag: WS_METHODS.serverListProjectIssueStatuses,
     }),
-    listProjectIssues: createEnvironmentRpcCommand(runtime, {
-      label: "environment-data:server:list-project-issues",
-      tag: WS_METHODS.serverListProjectIssues,
-    }),
-    listProjectIssueStatuses: createEnvironmentRpcCommand(runtime, {
-      label: "environment-data:server:list-project-issue-statuses",
-      tag: WS_METHODS.serverListProjectIssueStatuses,
-    }),
     configProjection,
     welcome,
     consumeResetCredit: createEnvironmentRpcCommand(runtime, {

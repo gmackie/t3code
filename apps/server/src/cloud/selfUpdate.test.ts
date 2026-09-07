@@ -377,6 +377,7 @@ it.layer(NodeServices.layer)("server self update", (it) => {
         mode: "desktop",
         desktopAppUpdate: {
           available: true,
+          commit: () => Effect.die("Unexpected commit"),
           run: (reportProgress) =>
             reportProgress("downloading").pipe(
               Effect.andThen(reportProgress("installing")),

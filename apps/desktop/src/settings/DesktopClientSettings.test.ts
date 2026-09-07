@@ -17,9 +17,7 @@ import * as DesktopEnvironment from "../app/DesktopEnvironment.ts";
 import * as DesktopClientSettings from "./DesktopClientSettings.ts";
 
 const clientSettings: ClientSettings = {
-  ...DEFAULT_CLIENT_SETTINGS,
-  notificationMode: "notifications-and-sound",
-  inAppNotificationsEnabled: true,
+  onboardingCompletedAt: null,
   appearanceContrast: 100,
   browserDefaultViewport: { _tag: "preset", width: 1024, height: 600, presetId: "nest-hub" },
   browserDefaultZoomFactor: 1.25,
@@ -29,7 +27,7 @@ const clientSettings: ClientSettings = {
   browserAutoShowFloatingPreview: false,
   browserProfiles: [{ id: "work", name: "Work", kind: "persistent" }],
   browserDefaultProfileId: "work",
-  confirmQuit: true,
+  confirmQuit: "hold",
   confirmThreadArchive: true,
   confirmThreadDelete: false,
   confirmThreadUnpin: false,

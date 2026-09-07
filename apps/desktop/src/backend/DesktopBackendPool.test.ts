@@ -74,6 +74,8 @@ function makePoolLayer(
           handleControlForSource: () => Effect.void,
           removeControlSource: () => Effect.void,
           publishUpdateReport: () => Effect.void,
+          updateCommits: Stream.empty,
+          updateCancellations: Stream.empty,
           updateRequests: Stream.empty,
         }),
         Layer.succeed(DesktopBackendConfiguration.DesktopBackendConfiguration, {

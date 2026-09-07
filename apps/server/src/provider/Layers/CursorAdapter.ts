@@ -485,7 +485,7 @@ export function makeCursorAdapter(
           provider: PROVIDER,
           providerInstanceId: boundInstanceId,
           threadId,
-          payload: { rateLimits },
+          payload: { limits: { windows: [] }, usageWindows: rateLimits },
         });
       }).pipe(
         Effect.catchCause((cause) =>

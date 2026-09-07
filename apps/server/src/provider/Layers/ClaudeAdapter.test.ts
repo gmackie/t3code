@@ -2107,7 +2107,8 @@ describe("ClaudeAdapterLive", () => {
     const harness = makeHarness();
     return Effect.gen(function* () {
       const adapter = yield* ClaudeAdapter;
-      const runtimeEventsFiber = yield* Stream.take(adapter.streamEvents, 8).pipe(
+      const runtimeEventsFiber = yield* adapter.streamEvents.pipe(
+        Stream.takeUntil((event) => event.type === "turn.completed"),
         Stream.runCollect,
         Effect.forkChild,
       );
@@ -2139,7 +2140,8 @@ describe("ClaudeAdapterLive", () => {
       harness.query.emit({
         type: "result",
         subtype: "success",
-        is_error: false,
+        is_error: true,
+        terminal_reason: "api_error",
         errors: [],
         session_id: "sdk-session-rate-limit",
         uuid: "result-after-rate-limit",
@@ -2154,7 +2156,7 @@ describe("ClaudeAdapterLive", () => {
           "session.state.changed",
           "turn.started",
           "thread.started",
-          "account.rate-limits.updated",
+          "runtime.warning",
           "runtime.error",
           "turn.completed",
         ],
@@ -2164,7 +2166,7 @@ describe("ClaudeAdapterLive", () => {
       if (completed?.type === "turn.completed") {
         assert.equal(String(completed.turnId), String(turn.turnId));
         assert.equal(completed.payload.state, "failed");
-        assert.match(completed.payload.errorMessage ?? "", /weekly limit/i);
+        assert.match(completed.payload.errorMessage ?? "", /usage limit reached/i);
       }
     }).pipe(
       Effect.provideService(Random.Random, makeDeterministicRandomService()),
