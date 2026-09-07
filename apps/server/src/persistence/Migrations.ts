@@ -10,7 +10,6 @@
 
 import * as Migrator from "effect/unstable/sql/Migrator";
 import * as Effect from "effect/Effect";
-import * as Layer from "effect/Layer";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 
 // Import all migrations statically
@@ -63,6 +62,8 @@ import Migration0046 from "./Migrations/046_RepairAutomaticSettlementTimestamps.
 import Migration0047 from "./Migrations/047_ProjectionProjectIcon.ts";
 import Migration0048 from "./Migrations/048_ExternalThreadImports.ts";
 import Migration0049 from "./Migrations/049_ExternalThreadImportEnvironments.ts";
+import Migration0050 from "./Migrations/048_ProjectionThreadBranchPullRequest.ts";
+import Migration0051 from "./Migrations/049_ProjectionThreadsActiveOrderKey.ts";
 
 /**
  * Migration loader with all migrations defined inline.
@@ -122,8 +123,10 @@ export const migrationEntries = [
   [45, "ProjectionProjectsAutoPull", Migration0045],
   [46, "RepairAutomaticSettlementTimestamps", Migration0046],
   [47, "ProjectionProjectIcon", Migration0047],
-  [48, "ExternalThreadImports", Migration0048],
-  [49, "ExternalThreadImportEnvironments", Migration0049],
+  [48, "ProjectionThreadBranchPullRequest", Migration0050],
+  [49, "ProjectionThreadsActiveOrderKey", Migration0051],
+  [50, "ExternalThreadImports", Migration0048],
+  [51, "ExternalThreadImportEnvironments", Migration0049],
 ] as const;
 
 export const migrationManifest = migrationEntries.map(([id, name]) => [id, name] as const);

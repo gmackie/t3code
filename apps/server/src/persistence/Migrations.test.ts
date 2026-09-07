@@ -26,6 +26,21 @@ const assertLedgerMatchesManifest = Effect.gen(function* () {
 });
 
 layer("migration ledger reconciliation", (it) => {
+  it.effect("adds upstream thread columns when lane imports occupied their migration ids", () =>
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* runMigrations({ toMigrationInclusive: 47 });
+      yield* sql`INSERT INTO effect_sql_migrations (migration_id, name, created_at) VALUES
+        (48, 'ExternalThreadImports', '2026-09-06 00:00:00'),
+        (49, 'ExternalThreadImportEnvironments', '2026-09-06 00:00:00')`;
+      yield* runMigrations();
+      yield* assertLedgerMatchesManifest;
+      const columns = yield* sql<{ readonly name: string }>`PRAGMA table_info(projection_threads)`;
+      assert.ok(columns.some((column) => column.name === "branch_pull_request_json"));
+      assert.ok(columns.some((column) => column.name === "active_order_key"));
+    }),
+  );
+
   it.effect("leaves an aligned ledger untouched", () =>
     Effect.gen(function* () {
       yield* runMigrations();
@@ -78,7 +93,7 @@ layer("migration ledger reconciliation", (it) => {
       const externalImports = rows.find((row) => row.name === "ExternalThreadImports");
       assert.deepStrictEqual(
         [externalImports?.migration_id, externalImports?.created_at],
-        [44, "2026-08-02 18:38:14"],
+        [50, "2026-08-02 18:38:14"],
       );
     }),
   );

@@ -121,7 +121,7 @@ it.layer(NodeServices.layer)("desktop app update", (it) => {
     }),
   );
 
-  it.effect("collapses state reports into progress stages and succeeds on installing", () =>
+  it.effect("collapses state reports into progress stages and returns an install token", () =>
     Effect.gen(function* () {
       const { service } = yield* makeHarness({
         reports: (requestId) => [
@@ -131,13 +131,17 @@ it.layer(NodeServices.layer)("desktop app update", (it) => {
           // Reports from another run must be ignored.
           report("other-run", makeState({ status: "error", message: "unrelated" })),
           report(requestId, makeState({ status: "downloaded", downloadedVersion: "1.2.4" }), {
-            outcome: "installing",
+            outcome: "ready-to-install",
           }),
         ],
       });
       const stages: string[] = [];
       const result = yield* service.run((stage) => Effect.sync(() => void stages.push(stage)));
-      expect(result).toEqual({ targetVersion: "1.2.4", method: "desktop-app" });
+      expect(result).toEqual({
+        targetVersion: "1.2.4",
+        method: "desktop-app",
+        desktopUpdateToken: expect.any(String),
+      });
       // "downloading" is not repeated for every download report.
       expect(stages).toEqual(["downloading", "installing"]);
 
