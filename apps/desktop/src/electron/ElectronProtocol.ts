@@ -64,7 +64,10 @@ export class ElectronProtocol extends Context.Service<
   }
 >()("@t3tools/desktop/electron/ElectronProtocol") {}
 
-export function makeDesktopContentSecurityPolicy(input: DesktopProtocolRegistrationInput): string {
+export function makeDesktopContentSecurityPolicy(
+  input: DesktopProtocolRegistrationInput,
+  documentPath = "/",
+): string {
   const clerkOrigin = input.clerkFrontendApiHostname
     ? `https://${input.clerkFrontendApiHostname}`
     : undefined;
@@ -91,7 +94,9 @@ export function makeDesktopContentSecurityPolicy(input: DesktopProtocolRegistrat
     "style-src 'self' 'unsafe-inline'",
     `font-src 'self' ${input.scheme}: data:`,
     "worker-src 'self' blob:",
-    "frame-src 'self' https://challenges.cloudflare.com",
+    documentPath === "/kicad.html"
+      ? "frame-src 'self' http: https:"
+      : "frame-src 'self' https://challenges.cloudflare.com",
     "form-action 'self'",
   ].join("; ");
 }
@@ -213,12 +218,19 @@ export const make = Effect.gen(function* () {
       if (yield* Ref.get(registered)) return;
 
       const contentSecurityPolicy = makeDesktopContentSecurityPolicy(input);
+      const cadContentSecurityPolicy = makeDesktopContentSecurityPolicy(input, "/kicad.html");
 
       yield* Effect.acquireRelease(
         Effect.try({
           try: () => {
             Electron.protocol.handle(input.scheme, (request) =>
-              proxyRequest(request, input.targetOrigin, contentSecurityPolicy),
+              proxyRequest(
+                request,
+                input.targetOrigin,
+                new URL(request.url).pathname === "/kicad.html"
+                  ? cadContentSecurityPolicy
+                  : contentSecurityPolicy,
+              ),
             );
           },
           catch: (cause) => new ElectronProtocolRegistrationError({ scheme: input.scheme, cause }),

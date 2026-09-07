@@ -192,6 +192,9 @@ import { PullRequestDetailGhost } from "./pullRequest/PullRequestGhosts";
 import { PullRequestsUnavailableState } from "./pullRequest/PullRequestsUnavailableState";
 import { RightPanelTabs } from "./RightPanelTabs";
 import { AgentsPanel } from "./AgentsPanel";
+const KiCadProjectPanel = lazy(() =>
+  import("./kicad/KiCadProjectPanel").then((module) => ({ default: module.KiCadProjectPanel })),
+);
 import {
   deriveAgentPanelModel,
   foldSubagentActivities,
@@ -3956,6 +3959,10 @@ export default function ChatView(props: ChatViewProps) {
     if (!activeThreadRef) return;
     useRightPanelStore.getState().open(activeThreadRef, "agents");
   }, [activeThreadRef]);
+  const addKiCadSurface = useCallback(() => {
+    if (!activeThreadRef || !activeProject) return;
+    useRightPanelStore.getState().open(activeThreadRef, "kicad");
+  }, [activeProject, activeThreadRef]);
   const openFileSurface = useCallback(
     (relativePath: string) => {
       if (!activeThreadRef || !activeProject) return;
@@ -7775,6 +7782,15 @@ export default function ChatView(props: ChatViewProps) {
         environmentId={activeThreadRef?.environmentId ?? null}
         threadId={activeThreadRef?.threadId ?? null}
       />
+    ) : renderedRightPanelSurface?.kind === "kicad" ? (
+      <Suspense fallback={null}>
+        <KiCadProjectPanel
+          key={`${activeThreadRef.environmentId}:${activeWorkspaceRoot}`}
+          mode="embedded"
+          threadRef={activeThreadRef}
+          projectPath={activeWorkspaceRoot ?? null}
+        />
+      </Suspense>
     ) : (renderedRightPanelSurface?.kind === "files" ||
         renderedRightPanelSurface?.kind === "file") &&
       ((activeProject && activeWorkspaceRoot) ||
@@ -8327,6 +8343,8 @@ export default function ChatView(props: ChatViewProps) {
           onAddFiles={addFilesSurface}
           onAddPullRequest={addPullRequestSurface}
           onAddAgents={addAgentsSurface}
+          onAddKiCad={addKiCadSurface}
+          kicadAvailable={activeProject !== null}
           browserAvailable={isPreviewSupportedInRuntime()}
           terminalAvailable={activeProject !== null}
           diffAvailable={isServerThread && isGitRepo}
@@ -8377,6 +8395,8 @@ export default function ChatView(props: ChatViewProps) {
             onAddFiles={addFilesSurface}
             onAddPullRequest={addPullRequestSurface}
             onAddAgents={addAgentsSurface}
+            onAddKiCad={addKiCadSurface}
+            kicadAvailable={activeProject !== null}
             browserAvailable={isPreviewSupportedInRuntime()}
             terminalAvailable={activeProject !== null}
             diffAvailable={isServerThread && isGitRepo}

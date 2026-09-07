@@ -22,6 +22,7 @@ const RIGHT_PANEL_KINDS = [
   "terminal",
   "pull-request",
   "agents",
+  "kicad",
 ] as const;
 export type RightPanelKind = (typeof RIGHT_PANEL_KINDS)[number];
 
@@ -66,7 +67,8 @@ export type RightPanelSurface =
       repository: string;
       number: number;
     }
-  | { id: "agents"; kind: "agents" };
+  | { id: "agents"; kind: "agents" }
+  | { id: "kicad"; kind: "kicad"; codePanel?: { isOpen: boolean; activeSurfaceId: string | null } };
 
 const RIGHT_PANEL_STORAGE_KEY = "t3code:right-panel-state:v2";
 // v9 removed the "plan" surface kind (plans render inline in the transcript).
@@ -104,6 +106,7 @@ interface RightPanelStoreState {
     ref: ScopedThreadRef,
     kind: Exclude<RightPanelKind, "file" | "terminal" | "pull-request">,
   ) => void;
+  returnToCode: (ref: ScopedThreadRef) => void;
   openBrowser: (ref: ScopedThreadRef, tabId: string | null) => void;
   openFile: (ref: ScopedThreadRef, relativePath: string, line?: number) => void;
   openAttachment: (ref: ScopedThreadRef, attachment: ChatFileAttachment) => void;
@@ -153,6 +156,8 @@ const singletonSurface = (
       return { id: "files", kind };
     case "agents":
       return { id: "agents", kind };
+    case "kicad":
+      return { id: "kicad", kind };
   }
 };
 
@@ -225,13 +230,23 @@ const upsertSurface = (
   current: ThreadRightPanelState,
   surface: RightPanelSurface,
   activate = true,
-): ThreadRightPanelState => ({
-  isOpen: true,
-  surfaces: current.surfaces.some((entry) => entry.id === surface.id)
-    ? current.surfaces
-    : [...current.surfaces, surface],
-  activeSurfaceId: activate ? surface.id : current.activeSurfaceId,
-});
+): ThreadRightPanelState => {
+  const existing = current.surfaces.find((entry) => entry.id === surface.id);
+  const nextSurface =
+    surface.kind === "kicad" && current.activeSurfaceId !== "kicad"
+      ? {
+          ...surface,
+          codePanel: { isOpen: current.isOpen, activeSurfaceId: current.activeSurfaceId },
+        }
+      : (existing ?? surface);
+  return {
+    isOpen: true,
+    surfaces: existing
+      ? current.surfaces.map((entry) => (entry.id === nextSurface.id ? nextSurface : entry))
+      : [...current.surfaces, nextSurface],
+    activeSurfaceId: activate ? surface.id : current.activeSurfaceId,
+  };
+};
 
 const updateThread = (
   byThreadKey: Record<string, ThreadRightPanelState>,
@@ -431,6 +446,25 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
             return upsertSurface(current, singletonSurface(kind));
           }),
         ),
+      returnToCode: (ref) =>
+        set((state) =>
+          userAction(state, scopedThreadKey(ref), (current) => {
+            if (current.activeSurfaceId !== "kicad") return current;
+            const cad = current.surfaces.find((surface) => surface.kind === "kicad");
+            const previous = cad?.kind === "kicad" ? cad.codePanel : undefined;
+            const activeSurfaceId =
+              current.surfaces.find(
+                (surface) => surface.kind !== "kicad" && surface.id === previous?.activeSurfaceId,
+              )?.id ??
+              current.surfaces.find((surface) => surface.kind !== "kicad")?.id ??
+              null;
+            return {
+              ...current,
+              activeSurfaceId,
+              isOpen: activeSurfaceId !== null && (previous?.isOpen ?? true),
+            };
+          }),
+        ),
       openBrowser: (ref, tabId) =>
         set((state) =>
           userAction(state, scopedThreadKey(ref), (current) => {
@@ -569,7 +603,9 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
         set((state) =>
           userAction(state, scopedThreadKey(ref), (current) =>
             current.surfaces.some((surface) => surface.id === surfaceId)
-              ? { ...current, isOpen: true, activeSurfaceId: surfaceId }
+              ? surfaceId === "kicad"
+                ? upsertSurface(current, singletonSurface("kicad"))
+                : { ...current, isOpen: true, activeSurfaceId: surfaceId }
               : current,
           ),
         ),

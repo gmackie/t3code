@@ -249,6 +249,9 @@ importers:
       '@react-native-menu/menu':
         specifier: ^2.0.0
         version: 2.0.0(patch_hash=f63d256bf6a97a873b5e628eb595bd6ef0075ddd5bdd890fc920f7a6024290dd)(react-native@0.86.3(@babel/core@7.29.7)(@react-native/metro-config@0.86.3(@babel/core@7.29.7)(bufferutil@4.1.0)(utf-8-validate@6.0.6))(@types/react@19.2.16)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(react@19.2.3)
+      '@react-navigation/core':
+        specifier: 7.21.2
+        version: 7.21.2(react@19.2.3)
       '@react-navigation/elements':
         specifier: 2.9.26
         version: 2.9.26(c10301b6e0c42fc6434d2b643197a81e)

@@ -17,6 +17,20 @@ vi.mock("electron", () => ({
 import * as ElectronProtocol from "./ElectronProtocol.ts";
 
 describe("ElectronProtocol", () => {
+  it("allows analysis dashboard frames only in the CAD document", () => {
+    const input = {
+      scheme: "t3code",
+      targetOrigin: new URL("http://localhost:3773"),
+      backendOrigin: new URL("http://localhost:3774"),
+      clerkFrontendApiHostname: undefined,
+    };
+    const cad = ElectronProtocol.makeDesktopContentSecurityPolicy(input, "/kicad.html");
+    assert.include(cad, "frame-src 'self' http: https:");
+    const app = ElectronProtocol.makeDesktopContentSecurityPolicy(input);
+    assert.include(app, "frame-src 'self' https://challenges.cloudflare.com");
+    assert.notInclude(app, "frame-src 'self' http: https:");
+  });
+
   beforeEach(() => {
     handleMock.mockReset();
     netFetchMock.mockReset();
