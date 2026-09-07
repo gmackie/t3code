@@ -17,6 +17,12 @@ const isResumeResponseCollabAgentToolCallStatus = Schema.is(
   CodexSchema.V2ThreadResumeResponse__CollabAgentToolCallStatus,
 );
 const isResumeResponse = Schema.is(CodexSchema.V2ThreadResumeResponse);
+const isThreadResumeResponse = isResumeResponse;
+const isThreadReadResponse = Schema.is(CodexSchema.V2ThreadReadResponse);
+const isThreadRollbackResponse = Schema.is(CodexSchema.V2ThreadRollbackResponse);
+const isThreadForkResponse = Schema.is(CodexSchema.V2ThreadForkResponse);
+const decodeThreadResumeResponse = Schema.decodeUnknownSync(CodexSchema.V2ThreadResumeResponse);
+const isTurnCompletedNotification = Schema.is(CodexSchema.V2TurnCompletedNotification);
 
 it("accepts Codex 0.150 multi-agent values", () => {
   const schemas = [
