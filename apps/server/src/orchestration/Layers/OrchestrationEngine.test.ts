@@ -1860,7 +1860,7 @@ describe("OrchestrationEngine", () => {
       const dbPath = path.join(tempDirectory, "orchestration.sqlite");
       yield* Effect.gen(function* () {
         const sql = yield* SqlClient.SqlClient;
-        yield* runMigrations({ toMigrationInclusive: 48 });
+        yield* runMigrations({ toMigrationInclusive: 50 });
         const now = "2026-01-01T00:00:00.000Z";
         const insertEvent = (input: {
           eventId: string;
