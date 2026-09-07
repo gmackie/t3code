@@ -1,3 +1,4 @@
+import { vi } from "vite-plus/test";
 import { assert, describe, it } from "@effect/vitest";
 import type {
   DesktopTelemetryRequestDesktopUpdate,
@@ -14,6 +15,10 @@ import * as DesktopTelemetryPublisher from "../telemetry/DesktopTelemetryPublish
 import * as DesktopRemoteUpdates from "./DesktopRemoteUpdates.ts";
 import * as DesktopUpdates from "./DesktopUpdates.ts";
 import { makeHarness } from "./updatesTestHarness.ts";
+
+// The harness supplies all Electron services; unit tests need no installed runtime.
+vi.mock("electron", () => ({}));
+vi.mock("electron-updater", () => ({ autoUpdater: {} }));
 
 // The remote flow hops between the test runtime's fibers and the updater's
 // runPromise-driven event handlers, so settling needs real microtask turns,

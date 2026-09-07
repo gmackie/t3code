@@ -1,3 +1,4 @@
+import { vi } from "vite-plus/test";
 import { assert, describe, it } from "@effect/vitest";
 import * as Cause from "effect/Cause";
 import * as Deferred from "effect/Deferred";
@@ -17,6 +18,10 @@ import * as DesktopAppSettings from "../settings/DesktopAppSettings.ts";
 import * as DesktopState from "../app/DesktopState.ts";
 import * as DesktopUpdates from "./DesktopUpdates.ts";
 import { flushCallbacks, makeHarness } from "./updatesTestHarness.ts";
+
+// The harness supplies all Electron services; unit tests need no installed runtime.
+vi.mock("electron", () => ({}));
+vi.mock("electron-updater", () => ({ autoUpdater: {} }));
 
 describe("DesktopUpdates", () => {
   it("preserves complete causes for update poller and event failures", () => {
