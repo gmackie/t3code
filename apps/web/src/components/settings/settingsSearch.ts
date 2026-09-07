@@ -531,18 +531,6 @@ export const SETTINGS_SEARCH_ITEMS = [
     targetId: "browser-profiles",
   },
   {
-    id: "browser-profiles",
-    title: "Browser profiles",
-    to: "/settings/integrations",
-    targetId: "browser",
-  },
-  {
-    id: "browser-default-profile",
-    title: "Default profile",
-    to: "/settings/integrations",
-    targetId: "browser-profiles",
-  },
-  {
     id: "browser-default-viewport",
     title: "Default browser viewport",
     to: "/settings/integrations",
@@ -739,11 +727,6 @@ export const SETTINGS_SEARCH_ITEMS = [
     title: "Archived threads",
     to: "/settings/archived",
     searchTerms: ["restore reopen deleted history projects"],
-  },
-  {
-    id: "plugins",
-    title: "Plugins",
-    to: "/settings/plugins",
   },
 ] as const satisfies ReadonlyArray<SettingsSearchItem>;
 
