@@ -1,3 +1,4 @@
+import { kicadVeritasRouteLayer } from "./kicad/veritasHttp.ts";
 import {
   kicadProjectRouteLayer,
   kicadViewerSessionRouteLayer,
@@ -559,6 +560,7 @@ export const makeRoutesLayer = Layer.mergeAll(
     assetRouteLayer,
     kicadProjectRouteLayer,
     kicadViewerSessionRouteLayer,
+    kicadVeritasRouteLayer,
     kicadModelRouteLayer,
     kicadGerberRouteLayer,
     attachmentUploadRouteLayer,

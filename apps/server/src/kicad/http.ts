@@ -5,7 +5,7 @@ import { kiCadBomCache } from "./KiCadBom.ts";
 import { kiCadModelCache } from "./KiCadModel.ts";
 import { discoverKiCadProject, resolveKiCadProjectFile } from "./KiCadProject.ts";
 import { renderPrismGerber, renderPrismGerberComposite } from "./PrismGerber.ts";
-import { AuthOrchestrationReadScope } from "@t3tools/contracts";
+import { AuthOrchestrationOperateScope, AuthOrchestrationReadScope } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Option from "effect/Option";
@@ -18,7 +18,15 @@ import {
 import { authenticateRawRouteWithScope } from "../http.ts";
 
 const KICAD_ROUTE_PREFIX = "/api/kicad";
-const kicadViewerSessions = new Map<string, { readonly cwd: string; readonly expiresAt: number }>();
+const kicadViewerSessions = new Map<
+  string,
+  { readonly cwd: string; readonly expiresAt: number; readonly canOperate: boolean }
+>();
+export const kicadViewerSession = (url: URL) => {
+  const token = url.searchParams.get("token");
+  const session = token ? kicadViewerSessions.get(token) : undefined;
+  return session && session.expiresAt > Date.now() ? session : undefined;
+};
 const kicadSessionCwd = (url: URL): string | undefined => {
   const token = url.searchParams.get("token");
   if (!token) return undefined;
@@ -34,7 +42,7 @@ export const kicadViewerSessionRouteLayer = HttpRouter.add(
   "POST",
   `${KICAD_ROUTE_PREFIX}/viewer-session`,
   Effect.gen(function* () {
-    yield* authenticateRawRouteWithScope(AuthOrchestrationReadScope);
+    const authorization = yield* authenticateRawRouteWithScope(AuthOrchestrationReadScope);
     const request = yield* HttpServerRequest.HttpServerRequest;
     const url = HttpServerRequest.toURL(request);
     if (Option.isNone(url)) return HttpServerResponse.text("Bad Request", { status: 400 });
@@ -47,7 +55,11 @@ export const kicadViewerSessionRouteLayer = HttpRouter.add(
     for (const [oldToken, session] of kicadViewerSessions) {
       if (session.expiresAt <= Date.now()) kicadViewerSessions.delete(oldToken);
     }
-    kicadViewerSessions.set(token, { cwd: canonical, expiresAt });
+    kicadViewerSessions.set(token, {
+      cwd: canonical,
+      expiresAt,
+      canOperate: authorization.scopes.includes(AuthOrchestrationOperateScope),
+    });
     return yield* HttpServerResponse.json(
       { token, expiresAt },
       { headers: { "Cache-Control": "no-store" } },

@@ -21,14 +21,25 @@ import { GerberBrowser } from "./GerberBrowser";
 import { NativeProjectViews } from "./NativeProjectViews";
 import { LibraryView } from "./LibraryView";
 import { AnalysisView } from "./AnalysisView";
+import { VeritasView } from "./VeritasView";
 import { BomView } from "./BomView";
 
-type View = "gerbers" | "pcb" | "schematic" | "3d" | "footprint" | "symbol" | "analysis" | "bom";
+type View =
+  | "gerbers"
+  | "pcb"
+  | "schematic"
+  | "3d"
+  | "footprint"
+  | "symbol"
+  | "analysis"
+  | "bom"
+  | "veritas";
 type Manifest = KiCadProjectManifest & {
   config?: { pcb?: string; schematic?: string; gerbers?: string[]; analysisUrl?: string };
   warnings?: string[];
 };
 const tabs = [
+  { id: "veritas", label: "Veritas", icon: Cpu },
   { id: "gerbers", label: "GERBERs", icon: Layers3 },
   { id: "pcb", label: "PCB", icon: CircuitBoard },
   { id: "schematic", label: "Schematic", icon: FileText },
@@ -298,7 +309,7 @@ function App() {
           <RefreshCw size={14} />
         </button>
       </div>
-      {view !== "analysis" && (
+      {view !== "analysis" && view !== "veritas" && (
         <div className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-1.5 text-xs">
           <select
             aria-label={view === "gerbers" ? "Gerber layer" : "KiCad file"}
@@ -328,6 +339,13 @@ function App() {
           <Notice text="Loading saved project…" />
         ) : (
           <>
+            {view === "veritas" && (
+              <VeritasView
+                endpoint={apiUrl("veritas")}
+                manifest={manifest}
+                assetUrl={(path) => apiUrl("assets", path, manifest.revision)}
+              />
+            )}
             {nativeVisited && (
               <div hidden={!nativeView} className="h-full">
                 <NativeProjectViews

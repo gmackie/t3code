@@ -53,3 +53,4 @@ export * from "./providerUsageLimits.ts";
 export * from "./pluginCommands.ts";
 export * from "./pluginPackages.ts";
 export * from "./kicad.ts";
+export * from "./veritasCad.ts";
