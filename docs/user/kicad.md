@@ -49,3 +49,21 @@ The analysis view creates a planar antenna starter specification with feed and g
 ```
 
 The dashboard service must allow embedding; **Open dashboard** opens it separately. The openEMS option currently prepares a specification only; an openEMS execution adapter is not included. Exporting a specification does not start a solver or training job or qualify an antenna design.
+
+## Connect CAD to Veritas
+
+Open **CAD → Veritas** to share saved design snapshots, see sourced parts and review evidence, and prepare a production run from a completed review's BOM. Each workspace keeps its linked Veritas project, review, and production run on the connected T3 server, so the same connection is available from web, desktop, and mobile.
+
+Configure the T3 server with:
+
+- `VERITAS_URL`: your Veritas application URL.
+- `VERITAS_API_TOKEN`: a Veritas service token with `forge:read` and `forge:write` access, plus access to production runs.
+- `VERITAS_CAD_PUBLIC_URL`: this T3 server's address reachable by your paired Veritas review agent. This may be a private network address if that agent shares the network.
+
+Restart the server after configuring these values. Credentials remain on that server. Read-only T3 connections can inspect linked results; submitting reviews, linking workspaces, and preparing production require workspace operation access.
+
+**Send saved design for review** sends a ZIP containing the workspace's discovered CAD files, up to 40 MB. The archive is immutable and available to the review agent for 30 minutes, including across T3 server restarts. Unrelated source files and environment files are excluded. Save edits before submitting, and use **Refresh status** to see processing results. A paired Veritas review agent and its KiCad tooling must be available to process the job.
+
+Parts and prices come from the linked review, and can be older than your current design. The panel shows when the workspace has changed since submission. Production requires a completed review with resolved part numbers and reference designators. Enter the board’s actual width, height, copper layer count, and finish for fabrication estimates. If the BOM reaches Veritas’s 500-line response limit, confirm the complete BOM and prepare production in Veritas. **Prepare production run** creates the fabrication, parts, and assembly work in Veritas; vendor orders are placed separately through its vendor workflow.
+
+To use an existing project, expand **Link an existing Veritas project** and enter its project, review, or production run IDs. If a submission loses its connection, T3 preserves the uncertain operation and prevents automatic resubmission. Check Veritas, then link the resulting review or run. **Unlink workspace** removes the local association; it does not delete Veritas data.

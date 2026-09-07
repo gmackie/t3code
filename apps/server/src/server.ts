@@ -1,8 +1,4 @@
-// @effect-diagnostics nodeBuiltinImport:off
-import * as NodeHttp from "node:http";
-
-import * as NodeHttpServer from "@effect/platform-node/NodeHttpServer";
-import * as NodeServices from "@effect/platform-node/NodeServices";
+import { kicadVeritasRouteLayer } from "./kicad/veritasHttp.ts";
 import {
   kicadProjectRouteLayer,
   kicadViewerSessionRouteLayer,
@@ -581,6 +577,7 @@ export const makeRoutesLayer = Layer.mergeAll(
     assetRouteLayer,
     kicadProjectRouteLayer,
     kicadViewerSessionRouteLayer,
+    kicadVeritasRouteLayer,
     kicadModelRouteLayer,
     kicadGerberRouteLayer,
     attachmentUploadRouteLayer,
