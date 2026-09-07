@@ -35,7 +35,7 @@ export const make = Effect.gen(function* () {
     if (event.type !== "account.rate-limits.updated") return Effect.void;
 
     const providerInstanceId = providerInstanceIdForEvent(event);
-    const windows = normalizeProviderRateLimits(event.payload.rateLimits);
+    const windows = event.payload.usageWindows ?? event.payload.limits.windows;
     const snapshot: ProviderUsageSnapshot = {
       environmentId,
       providerInstanceId,

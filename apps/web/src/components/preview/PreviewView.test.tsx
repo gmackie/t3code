@@ -1,3 +1,4 @@
+import { toastManager } from "~/components/ui/toast";
 import {
   BUILT_IN_BROWSER_PROFILES,
   DEFAULT_BROWSER_PROFILE_ID,

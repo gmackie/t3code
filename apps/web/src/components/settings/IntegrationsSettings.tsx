@@ -1,3 +1,10 @@
+import { Link } from "@tanstack/react-router";
+import {
+  type BrowserLinkTarget,
+  BROWSER_RECORDING_FRAME_RATES,
+  DEFAULT_BROWSER_LINK_TARGET,
+  DEFAULT_BROWSER_RECORDING_FRAME_RATE,
+} from "@t3tools/contracts";
 /**
  * Integrations settings - preferences for surfaces T3 Code embeds rather than
  * owns. Browser is the first section: the defaults a preview tab opens at,
@@ -146,7 +153,7 @@ const zoomLabel = (zoomFactor: number) => `${Math.round(zoomFactor * 100)}%`;
  * it. Anything unrecognised reads as a plain read failure rather than leaking
  * the raw message into a toast.
  */
-const importFailureReason = (cause: unknown): BrowserImportFailureReason => {
+export const importFailureReason = (cause: unknown): BrowserImportFailureReason => {
   const message = String((cause as { message?: unknown } | undefined)?.message ?? "");
   return (
     BrowserImportFailureReason.literals.find((reason) => message.includes(`failed: ${reason}.`)) ??
@@ -767,7 +774,6 @@ function BrowserProfilesSetting({ disabled }: { readonly disabled: boolean }) {
   // Loaded once so the first open is instant instead of flashing a spinner.
   useEffect(() => {
     loadSources();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Runs one import for the wizard. A new profile is registered only once the

@@ -372,7 +372,9 @@ export const make = Effect.gen(function* () {
     if (persistedBounds !== null && initialBounds === DesktopAppSettings.DEFAULT_MAIN_WINDOW_SIZE) {
       yield* logWindowWarning("saved main window bounds could not be restored; using defaults");
     }
-    yield* syncPersistedWindowOpacity;
+    yield* syncPersistedWindowOpacity.pipe(
+      Effect.catchCause((cause) => logWindowWarning("failed to restore window opacity", { cause })),
+    );
     const window = yield* electronWindow.create({
       ...initialBounds,
       minWidth: 840,
@@ -824,7 +826,9 @@ export const make = Effect.gen(function* () {
     if (Option.isSome(existingWindow)) return;
 
     const shouldUseDarkColors = yield* electronTheme.shouldUseDarkColors;
-    yield* syncPersistedWindowOpacity;
+    yield* syncPersistedWindowOpacity.pipe(
+      Effect.catchCause((cause) => logWindowWarning("failed to restore window opacity", { cause })),
+    );
     const splash = yield* electronWindow.create({
       width: 360,
       height: 220,

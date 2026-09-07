@@ -80,7 +80,7 @@ interface Props {
   ) => void;
 }
 
-function previewProfileName(
+export function previewProfileName(
   profiles: ReadonlyArray<{ readonly id: string; readonly name: string }>,
   profileId: string,
 ): string {

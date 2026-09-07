@@ -1264,3 +1264,5 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
     </PreviewPanelShell>
   );
 }
+
+export type PullRequestTabStatusSeed = Pick<PullRequestTabStatus, "state" | "isDraft">;

@@ -1,3 +1,4 @@
+import { shouldRetargetThreadPullRequestPanel } from "./ChatView.logic";
 import { useLoadBalancedEnvironment } from "../hooks/useLoadBalancedEnvironment";
 import type { UsageLimitSourceSnapshots } from "@t3tools/contracts";
 import {
@@ -435,7 +436,7 @@ import {
   AlertDialogTitle,
 } from "./ui/alert-dialog";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
-import { ServerUpdateAction } from "./ServerUpdateAction";
+import { ServerUpdateProgress, ServerUpdateAction } from "./ServerUpdateAction";
 import {
   ComposerServerUpdateIcon,
   ComposerServerUpdateStatus,
@@ -1919,6 +1920,15 @@ export default function ChatView(props: ChatViewProps) {
   const rightPanelPresent = rightPanelPresence.present;
   const rightPanelControlsInPanel = shouldUseRightPanelSheet && rightPanelPresent && rightPanelOpen;
   const rightPanelControlsAtRoot = rightPanelPresent && !shouldUseRightPanelSheet;
+  const openProviderSetup = useCallback(
+    (instanceId: ProviderInstanceId) => {
+      void navigate({
+        to: "/settings/providers",
+        search: { environmentId, instanceId },
+      });
+    },
+    [environmentId, navigate],
+  );
   const renderedRightPanelSurface = rightPanelPresence.value?.activeSurface ?? null;
   const renderedRightPanelSurfaces = rightPanelPresence.value?.surfaces ?? [];
   const previewMiniPlayerVisible = shouldRenderPreviewMiniPlayer(
@@ -2459,7 +2469,7 @@ export default function ChatView(props: ChatViewProps) {
             <ServerUpdateProgress state={serverUpdateState} />
           ) : versionMismatchSelfUpdate === "desktop-managed" &&
             !versionMismatchDesktopAppUpdate ? (
-            serverUpdateGuidance(versionMismatchSelfUpdate, versionMismatchServerLabel)
+            serverUpdateGuidance(versionMismatchSelfUpdate)
           ) : undefined,
         // The desktop-managed guidance is already the description; the action
         // slot would only repeat it. When the desktop app accepts remote

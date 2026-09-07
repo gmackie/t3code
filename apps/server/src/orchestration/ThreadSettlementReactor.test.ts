@@ -229,6 +229,8 @@ const makeHarness = Effect.fn("makeThreadSettlementHarness")(function* (options:
     ready: Effect.void,
     getSettings: Ref.get(settings).pipe(Effect.tap((value) => Queue.offer(settingsReads, value))),
     updateSettings,
+    setEnabledPluginIds: (ids) =>
+      Ref.updateAndGet(settings, (current) => ({ ...current, enabledPluginIds: [...ids] })),
     streamChanges: Stream.fromPubSub(settingsChanges),
     subscribeChanges: PubSub.subscribe(settingsChanges).pipe(
       Effect.map((subscription) => Stream.fromSubscription(subscription)),

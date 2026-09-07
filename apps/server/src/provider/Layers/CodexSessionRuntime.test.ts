@@ -810,7 +810,16 @@ describe("openCodexThread", () => {
       };
 
       const error = yield* openCodexThread({
-        client,
+        client: {
+          ...client,
+          raw: {
+            request: (_method, payload) =>
+              client.request(
+                "thread/resume",
+                payload as CodexRpc.ClientRequestParamsByMethod["thread/resume"],
+              ),
+          },
+        },
         threadId: ThreadId.make("imported-thread"),
         runtimeMode: "full-access",
         cwd: "/tmp/project",
@@ -1024,9 +1033,9 @@ describe("openCodexThread", () => {
         resumeThreadId: "existing-thread",
       }).pipe(Effect.flip);
 
-      NodeAssert.equal(error._tag, "CodexAppServerProtocolParseError");
-      if (error._tag === "CodexAppServerProtocolParseError") {
-        NodeAssert.equal(error.operation, "decode-response-payload");
+      NodeAssert.equal(error._tag, "CodexAppServerRequestError");
+      if (error._tag === "CodexAppServerRequestError") {
+        NodeAssert.equal(error.operation, "decode-payload");
         NodeAssert.equal(error.method, "thread/resume");
       }
       NodeAssert.deepStrictEqual(typedCalls, []);

@@ -696,6 +696,8 @@ const CodexThreadResumeMetadata = Schema.Struct({
 });
 const decodeCodexThreadResumeMetadata = Schema.decodeUnknownEffect(CodexThreadResumeMetadata);
 
+type CodexThreadOpenMethod = "thread/start" | "thread/resume";
+
 interface CodexThreadOpenClient {
   readonly raw: {
     readonly request: (
@@ -718,7 +720,7 @@ export const openCodexThread = (input: {
   readonly serviceTier: CodexServiceTier | undefined;
   readonly resumeThreadId: string | undefined;
   readonly resumeRequired?: boolean;
-}): Effect.Effect<CodexThreadOpenResponse, CodexErrors.CodexAppServerError> => {
+}): Effect.Effect<typeof CodexThreadResumeMetadata.Type, CodexErrors.CodexAppServerError> => {
   const resumeThreadId = input.resumeThreadId;
   const startParams = buildThreadStartParams({
     cwd: input.cwd,
@@ -741,6 +743,17 @@ export const openCodexThread = (input: {
       excludeTurns: true,
     })
     .pipe(
+      Effect.flatMap((response) =>
+        decodeCodexThreadResumeMetadata(response).pipe(
+          Effect.mapError((error) =>
+            CodexErrors.CodexAppServerRequestError.invalidPayload(
+              "thread/resume",
+              "decode-payload",
+              error,
+            ),
+          ),
+        ),
+      ),
       Effect.catchIf(
         (error) => !input.resumeRequired && isRecoverableThreadResumeError(error),
         (error) =>

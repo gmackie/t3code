@@ -1,3 +1,4 @@
+import type { MessageId } from "@t3tools/contracts";
 /**
  * ProviderService - Service interface for provider sessions, turns, and checkpoints.
  *
@@ -113,6 +114,10 @@ export interface ProviderServiceShape {
    * queries (event-driven providers), and an empty array when the adapter
    * supports queries but usage is currently unavailable.
    */
+  readonly assertConversationRollbackSupported: (
+    threadId: ThreadId,
+  ) => Effect.Effect<void, ProviderServiceError>;
+
   readonly queryInstanceUsage: (
     instanceId: ProviderInstanceId,
   ) => Effect.Effect<ReadonlyArray<ProviderUsageWindow> | undefined, ProviderServiceError>;

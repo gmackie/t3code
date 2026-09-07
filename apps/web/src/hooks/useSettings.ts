@@ -545,7 +545,7 @@ export function useUpdateClientSettings() {
 export function __resetClientSettingsPersistenceForTests(): void {
   clientSettingsHydrationGeneration += 1;
   clientSettingsSnapshot = DEFAULT_CLIENT_SETTINGS;
-  clientSettingsHydrated = false;
+  clientSettingsHydrationStatus = "pending";
   clientSettingsHydrationPromise = null;
   clientSettingsPersistenceQueue = Promise.resolve();
   clientSettingsListeners.clear();
@@ -555,6 +555,6 @@ export function __resetClientSettingsPersistenceForTests(): void {
 export function __setClientSettingsForTests(settings: ClientSettings): void {
   clientSettingsHydrationGeneration += 1;
   clientSettingsSnapshot = settings;
-  clientSettingsHydrated = true;
+  clientSettingsHydrationStatus = "ready";
   clientSettingsHydrationPromise = null;
 }
