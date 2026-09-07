@@ -202,27 +202,45 @@ const makeOrchestrationEngine = Effect.gen(function* () {
           }
         }
 
-        // New and moved projects do not carry a resolved identity in the event-derived
-        // command model. Legacy PR edits need it to identify the link they replace.
         if (
-          envelope.command.type === "thread.meta.update" &&
-          envelope.command.linkedPullRequest !== undefined
+          envelope.command.type === "thread.auto-settle" &&
+          (yield* eventStore.hasEventAfter({
+            aggregateKind: "thread",
+            aggregateId: envelope.command.threadId,
+            sequenceExclusive: envelope.command.snapshotSequence,
+          }))
         ) {
-          const threadId = envelope.command.threadId;
-          const thread = commandReadModel.threads.find((thread) => thread.id === threadId);
-          if (thread !== undefined) {
-            const project = yield* projectionSnapshotQuery.getProjectShellById(thread.projectId);
-            if (Option.isSome(project)) {
-              commandReadModel = {
-                ...commandReadModel,
-                projects: commandReadModel.projects.map((entry) =>
-                  entry.id === thread.projectId
-                    ? { ...entry, repositoryIdentity: project.value.repositoryIdentity }
-                    : entry,
-                ),
-              };
-            }
-          }
+          return yield* new OrchestrationCommandInvariantError({
+            commandType: envelope.command.type,
+            detail: `thread ${envelope.command.threadId} changed before automatic settlement`,
+          });
+        }
+
+        // The decider compares the lookup inputs. Only recreation needs an
+        // event check, since it can reset a thread to the same field values.
+        if (
+          envelope.command.type === "thread.pull-request.sync" &&
+          (yield* eventStore.hasEventAfter({
+            aggregateKind: "thread",
+            aggregateId: envelope.command.threadId,
+            sequenceExclusive: envelope.command.snapshotSequence,
+            type: "thread.created",
+          }))
+        ) {
+          return yield* new OrchestrationCommandInvariantError({
+            commandType: envelope.command.type,
+            detail: `thread ${envelope.command.threadId} was recreated before pull request discovery`,
+          });
+        }
+
+        if (
+          envelope.command.type === "thread.auto-settle" &&
+          threadBackgroundLiveness.getThreadBackgroundLiveness(envelope.command.threadId) !== null
+        ) {
+          return yield* new OrchestrationCommandInvariantError({
+            commandType: envelope.command.type,
+            detail: `thread ${envelope.command.threadId} has live background work`,
+          });
         }
 
         // Command snapshots omit activities at startup and cap them while running.
@@ -233,34 +251,6 @@ const makeOrchestrationEngine = Effect.gen(function* () {
             ? yield* projectionSnapshotQuery.getUserInputActivity(envelope.command)
             : Option.none();
 
-        if (envelope.command.type === "thread.import") {
-          const existingImport = yield* sql<{ threadId: string; eventSequence: number }>`
-            SELECT thread_id AS "threadId", event_sequence AS "eventSequence"
-            FROM projection_external_thread_imports
-            WHERE environment_id = ${envelope.command.environmentId}
-              AND continuation_group = ${envelope.command.provenance.continuationGroup}
-              AND provider_instance_id = ${envelope.command.provenance.provider.instanceId}
-              AND provider_driver = ${envelope.command.provenance.provider.driver}
-              AND native_thread_id = ${envelope.command.provenance.nativeThreadId}
-            LIMIT 1
-          `;
-          const duplicate = existingImport[0];
-          if (duplicate !== undefined) {
-            yield* commandReceiptRepository.upsert({
-              commandId: envelope.command.commandId,
-              aggregateKind: "thread",
-              aggregateId: ThreadId.make(duplicate.threadId),
-              acceptedAt: envelope.command.provenance.importedAt,
-              resultSequence: duplicate.eventSequence,
-              status: "accepted",
-              error: null,
-            });
-            return {
-              sequence: duplicate.eventSequence,
-              threadId: ThreadId.make(duplicate.threadId),
-            };
-          }
-        }
         const eventBase = yield* decideOrchestrationCommand({
           command: envelope.command,
           readModel: commandReadModel,
