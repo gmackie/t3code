@@ -1736,31 +1736,19 @@ function OpenCommandPaletteDialog(props: {
     });
   }
 
-  if (
-    activeThread !== null &&
-    threadPullRequestLinkMode(activeThreadServerConfig?.environment.capabilities) !== "unsupported"
-  ) {
-    const threadRef = scopeThreadRef(activeThread.environmentId, activeThread.id);
-    actionItems.push({
-      kind: "action",
-      value: "action:link-pull-request",
-      searchTerms: ["link", "pull request", "pr", "attach", "stack"],
-      title: "Link pull request to thread",
-      icon: <GitPullRequestArrowIcon className={ITEM_ICON_CLASS} />,
-      run: async () => {
-        openLinkPullRequestDialog(threadRef);
-      },
-    });
-    if (activeThreadServerConfig?.environment.capabilities.threadPullRequests === true) {
+  if (activeThread) {
+    const routeThreadRef = scopeThreadRef(activeThread.environmentId, activeThread.id);
+    for (const mode of ["Code", "CAD"] as const) {
       actionItems.push({
         kind: "action",
-        value: "action:open-thread-pull-requests",
-        searchTerms: ["pull requests", "linked", "stack", "prs"],
-        title: "Show linked pull requests",
-        disabled: visibleThreadPullRequests(activeThread.pullRequests).length === 0,
-        icon: <GitPullRequestArrowIcon className={ITEM_ICON_CLASS} />,
+        value: `action:workspace-mode-${mode.toLowerCase()}`,
+        title: `Switch to ${mode} mode`,
+        searchTerms: ["workspace mode", "t3cad", "kicad", "electronics", "pcb"],
+        icon: <FileSearchIcon className={ITEM_ICON_CLASS} />,
         run: async () => {
-          useRightPanelStore.getState().open(threadRef, "pull-requests");
+          const store = useRightPanelStore.getState();
+          if (mode === "CAD") store.open(routeThreadRef, "kicad");
+          else store.returnToCode(routeThreadRef);
         },
       });
     }

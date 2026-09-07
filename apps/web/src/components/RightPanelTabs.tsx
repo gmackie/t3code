@@ -19,6 +19,7 @@ import {
   ChevronDown,
   ChevronLeft,
   ChevronRight,
+  CircuitBoard,
   FileDiff,
   Files,
   GitPullRequest,
@@ -117,7 +118,8 @@ interface RightPanelTabsProps {
   onAddPullRequest: () => void;
   onAddPullRequests: () => void;
   onAddAgents: () => void;
-  onAddDevice: () => void;
+  onAddKiCad?: () => void;
+  kicadAvailable?: boolean;
   browserAvailable: boolean;
   terminalAvailable: boolean;
   diffAvailable: boolean;
@@ -154,7 +156,7 @@ const SURFACE_DISABLED_REASONS = {
   pullRequest: "This thread's branch has no pull request yet.",
   pullRequests: "No linked pull requests are available for this thread.",
   agents: "Agents are only available from a thread.",
-  device: "Devices are only available from a thread.",
+  kicad: "KiCad is only available when a project is open.",
 } as const;
 
 /** Overlays that must win over the launcher's letter shortcuts. */
@@ -178,7 +180,7 @@ const SURFACE_UNAVAILABLE_HINTS = {
   pullRequest: "No pull request on this branch yet.",
   pullRequests: "No linked pull requests available.",
   agents: "Available from a thread.",
-  device: "Available from a thread.",
+  kicad: "Available when a project is open.",
 } as const;
 
 type TabContextMenuAction =
@@ -318,7 +320,7 @@ function RightPanelEmptyState(props: {
   onAddPullRequest: () => void;
   onAddPullRequests: () => void;
   onAddAgents: () => void;
-  onAddDevice: () => void;
+  onAddKiCad: () => void;
   browserAvailable: boolean;
   terminalAvailable: boolean;
   diffAvailable: boolean;
@@ -326,7 +328,7 @@ function RightPanelEmptyState(props: {
   pullRequestAvailable: boolean;
   pullRequestsAvailable: boolean;
   agentsAvailable: boolean;
-  deviceAvailable: boolean;
+  kicadAvailable: boolean;
   liveAgentCount: number;
 }) {
   // -1 means no highlight: it only appears on hover or arrow use.
@@ -397,13 +399,13 @@ function RightPanelEmptyState(props: {
       badgeCount: props.liveAgentCount,
     },
     {
-      label: "Device",
-      description: "Watch an iOS Simulator or Android Emulator.",
-      icon: Smartphone,
-      shortcut: "M",
-      available: props.deviceAvailable,
-      disabledReason: SURFACE_UNAVAILABLE_HINTS.device,
-      onClick: props.onAddDevice,
+      label: "KiCad",
+      description: "Inspect the current electronics project.",
+      icon: CircuitBoard,
+      shortcut: "K",
+      available: props.kicadAvailable,
+      disabledReason: SURFACE_UNAVAILABLE_HINTS.kicad,
+      onClick: props.onAddKiCad ?? (() => undefined),
       badgeCount: 0,
     },
   ] as const;
@@ -628,8 +630,8 @@ function surfaceTitle(
       return "Pull requests";
     case "agents":
       return "Agents";
-    case "device":
-      return surface.title ?? surface.target?.name ?? "Device";
+    case "kicad":
+      return "KiCad";
     case "preview": {
       const snapshot = surface.resourceId ? sessions[surface.resourceId] : null;
       if (!snapshot || snapshot.navStatus._tag === "Idle") return "Browser";
@@ -709,8 +711,8 @@ function SurfaceIcon({
           seed={pullRequestStatusSeeds?.[surface.id]}
         />
       );
-    case "pull-requests":
-      return <GitPullRequestArrow className="size-3 shrink-0" />;
+    case "kicad":
+      return <CircuitBoard className="size-3.5 shrink-0" />;
     case "agents":
       return <Bot className="size-3 shrink-0" />;
     case "device":
@@ -916,12 +918,12 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
       onClick: props.onAddAgents,
     },
     {
-      label: "Device",
-      icon: Smartphone,
-      shortcut: "M",
-      available: props.deviceAvailable,
-      disabledReason: SURFACE_DISABLED_REASONS.device,
-      onClick: props.onAddDevice,
+      label: "KiCad",
+      icon: CircuitBoard,
+      shortcut: "K",
+      available: props.kicadAvailable ?? false,
+      disabledReason: SURFACE_DISABLED_REASONS.kicad,
+      onClick: props.onAddKiCad ?? (() => undefined),
     },
   ] as const;
 
@@ -1394,7 +1396,7 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
             onAddPullRequest={props.onAddPullRequest}
             onAddPullRequests={props.onAddPullRequests}
             onAddAgents={props.onAddAgents}
-            onAddDevice={props.onAddDevice}
+            onAddKiCad={props.onAddKiCad ?? (() => undefined)}
             browserAvailable={props.browserAvailable}
             terminalAvailable={props.terminalAvailable}
             diffAvailable={props.diffAvailable}
@@ -1402,7 +1404,7 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
             pullRequestAvailable={props.pullRequestAvailable}
             pullRequestsAvailable={props.pullRequestsAvailable}
             agentsAvailable={props.agentsAvailable}
-            deviceAvailable={props.deviceAvailable}
+            kicadAvailable={props.kicadAvailable ?? false}
             liveAgentCount={props.liveAgentCount}
           />
         ) : (

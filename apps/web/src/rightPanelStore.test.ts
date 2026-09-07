@@ -439,6 +439,77 @@ describe("rightPanelStore", () => {
     });
   });
 
+  it("returns to the Code panel without losing terminal sessions", () => {
+    const store = useRightPanelStore.getState;
+    store().openTerminal(refA, "shell-1");
+    const code = selectThreadRightPanelState(store().byThreadKey, refA);
+    store().open(refA, "kicad");
+    store().open(refA, "kicad");
+    store().returnToCode(refA);
+    expect(selectThreadRightPanelState(store().byThreadKey, refA)).toMatchObject({
+      isOpen: code.isOpen,
+      activeSurfaceId: code.activeSurfaceId,
+      surfaces: expect.arrayContaining(code.surfaces),
+    });
+    expect(selectThreadRightPanelState(store().byThreadKey, refB).surfaces).toEqual([]);
+  });
+
+  it("restores a closed Code panel after CAD mode", () => {
+    const store = useRightPanelStore.getState;
+    store().open(refA, "files");
+    store().close(refA);
+    store().open(refA, "kicad");
+    store().returnToCode(refA);
+    expect(selectThreadRightPanelState(store().byThreadKey, refA)).toMatchObject({
+      isOpen: false,
+      activeSurfaceId: "files",
+    });
+  });
+
+  it("captures the latest Code selection when reopening the CAD tab", () => {
+    const store = useRightPanelStore.getState;
+    store().open(refA, "files");
+    store().open(refA, "kicad");
+    store().open(refA, "agents");
+    store().activateSurface(refA, "kicad");
+    store().returnToCode(refA);
+    expect(selectActiveRightPanel(store().byThreadKey, refA)).toBe("agents");
+  });
+
+  it("does not restore a Code surface that was closed during CAD mode", () => {
+    const store = useRightPanelStore.getState;
+    store().open(refA, "files");
+    store().open(refA, "kicad");
+    store().closeSurface(refA, "files");
+    store().returnToCode(refA);
+    expect(selectActiveRightPanel(store().byThreadKey, refA)).toBeNull();
+  });
+
+  it("retains the Code selection across persisted CAD state migration", () => {
+    const store = useRightPanelStore.getState;
+    store().open(refA, "files");
+    store().open(refA, "kicad");
+    useRightPanelStore.setState(
+      migratePersistedRightPanelState(
+        JSON.parse(JSON.stringify({ byThreadKey: store().byThreadKey })),
+      ),
+    );
+    store().returnToCode(refA);
+    expect(selectActiveRightPanel(store().byThreadKey, refA)).toBe("files");
+  });
+
+  it("opens KiCad as a thread-scoped singleton surface", () => {
+    useRightPanelStore.getState().open(refA, "kicad");
+    useRightPanelStore.getState().open(refA, "kicad");
+
+    const state = selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, refA);
+    expect(state).toMatchObject({
+      isOpen: true,
+      activeSurfaceId: "kicad",
+      surfaces: [{ id: "kicad", kind: "kicad" }],
+    });
+  });
+
   it("replaces the standalone explorer with peer file surfaces", () => {
     useRightPanelStore.getState().open(refA, "files");
     useRightPanelStore.getState().openFile(refA, "src/index.ts");

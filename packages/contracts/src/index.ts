@@ -53,8 +53,7 @@ export * from "./pluginSettings.ts";
 export * from "./workItems.ts";
 
 export * from "./usageLimitSourceId.ts";
-
 export * from "./providerUsageLimits.ts";
 export * from "./pluginCommands.ts";
-
 export * from "./pluginPackages.ts";
+export * from "./kicad.ts";

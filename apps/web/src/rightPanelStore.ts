@@ -29,6 +29,7 @@ const RIGHT_PANEL_KINDS = [
   "pull-request",
   "pull-requests",
   "agents",
+  "kicad",
 ] as const;
 export type RightPanelKind = (typeof RIGHT_PANEL_KINDS)[number];
 
@@ -83,9 +84,8 @@ export type RightPanelSurface =
       number: number;
       url?: string;
     }
-  /** The thread's linked pull requests, one singleton tab beside any number of `pull-request` tabs. */
-  | { id: "pull-requests"; kind: "pull-requests" }
-  | { id: "agents"; kind: "agents" };
+  | { id: "agents"; kind: "agents" }
+  | { id: "kicad"; kind: "kicad"; codePanel?: { isOpen: boolean; activeSurfaceId: string | null } };
 
 const RIGHT_PANEL_STORAGE_KEY = "t3code:right-panel-state:v2";
 // v9 removed the "plan" surface kind (plans render inline in the transcript).
@@ -131,8 +131,7 @@ interface RightPanelStoreState {
     ref: ScopedThreadRef,
     kind: Exclude<RightPanelKind, "file" | "terminal" | "pull-request">,
   ) => void;
-  openDevice: (ref: ScopedThreadRef, target: DeviceTabTarget, automatic?: boolean) => void;
-  renameDevice: (ref: ScopedThreadRef, surfaceId: string, title: string) => void;
+  returnToCode: (ref: ScopedThreadRef) => void;
   openBrowser: (ref: ScopedThreadRef, tabId: string | null) => void;
   openFile: (ref: ScopedThreadRef, relativePath: string, line?: number) => void;
   openAttachment: (ref: ScopedThreadRef, attachment: ChatFileAttachment) => void;
@@ -191,8 +190,8 @@ const singletonSurface = (
       return { id: "pull-requests", kind };
     case "agents":
       return { id: "agents", kind };
-    case "device":
-      return { id: "device", kind };
+    case "kicad":
+      return { id: "kicad", kind };
   }
 };
 
@@ -271,13 +270,23 @@ const upsertSurface = (
   current: ThreadRightPanelState,
   surface: RightPanelSurface,
   activate = true,
-): ThreadRightPanelState => ({
-  isOpen: true,
-  surfaces: current.surfaces.some((entry) => entry.id === surface.id)
-    ? current.surfaces
-    : [...current.surfaces, surface],
-  activeSurfaceId: activate ? surface.id : current.activeSurfaceId,
-});
+): ThreadRightPanelState => {
+  const existing = current.surfaces.find((entry) => entry.id === surface.id);
+  const nextSurface =
+    surface.kind === "kicad" && current.activeSurfaceId !== "kicad"
+      ? {
+          ...surface,
+          codePanel: { isOpen: current.isOpen, activeSurfaceId: current.activeSurfaceId },
+        }
+      : (existing ?? surface);
+  return {
+    isOpen: true,
+    surfaces: existing
+      ? current.surfaces.map((entry) => (entry.id === nextSurface.id ? nextSurface : entry))
+      : [...current.surfaces, nextSurface],
+    activeSurfaceId: activate ? surface.id : current.activeSurfaceId,
+  };
+};
 
 const updateThread = (
   byThreadKey: Record<string, ThreadRightPanelState>,
@@ -515,39 +524,24 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
             return upsertSurface(current, singletonSurface(kind));
           }),
         ),
-      openDevice: (ref, target, automatic = false) =>
+      returnToCode: (ref) =>
         set((state) =>
-          (automatic ? automaticUpdate : userAction)(state, scopedThreadKey(ref), (current) => {
-            const id =
-              `device:${encodeURIComponent(target.hostId)}:${encodeURIComponent(target.deviceId)}` as const;
-            if (automatic && current.dismissedDeviceSurfaceIds?.includes(id)) return current;
-            const surface: RightPanelSurface = { id, kind: "device", target };
-            const existing = current.surfaces.find((entry) => entry.id === id);
-            const surfaces = existing
-              ? current.surfaces.filter((entry) => entry.id !== "device")
-              : current.surfaces.map((entry) => (entry.id === "device" ? surface : entry));
-            return upsertSurface(
-              {
-                ...current,
-                surfaces,
-                dismissedDeviceSurfaceIds: (current.dismissedDeviceSurfaceIds ?? []).filter(
-                  (entry) => entry !== id,
-                ),
-              },
-              existing ?? surface,
-            );
+          userAction(state, scopedThreadKey(ref), (current) => {
+            if (current.activeSurfaceId !== "kicad") return current;
+            const cad = current.surfaces.find((surface) => surface.kind === "kicad");
+            const previous = cad?.kind === "kicad" ? cad.codePanel : undefined;
+            const activeSurfaceId =
+              current.surfaces.find(
+                (surface) => surface.kind !== "kicad" && surface.id === previous?.activeSurfaceId,
+              )?.id ??
+              current.surfaces.find((surface) => surface.kind !== "kicad")?.id ??
+              null;
+            return {
+              ...current,
+              activeSurfaceId,
+              isOpen: activeSurfaceId !== null && (previous?.isOpen ?? true),
+            };
           }),
-        ),
-      renameDevice: (ref, surfaceId, title) =>
-        set((state) =>
-          userAction(state, scopedThreadKey(ref), (current) => ({
-            ...current,
-            surfaces: current.surfaces.map((surface) =>
-              surface.id === surfaceId && surface.kind === "device"
-                ? { ...surface, title: title.trim() || surface.target?.name || "Device" }
-                : surface,
-            ),
-          })),
         ),
       openBrowser: (ref, tabId) =>
         set((state) =>
@@ -696,7 +690,9 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
         set((state) =>
           userAction(state, scopedThreadKey(ref), (current) =>
             current.surfaces.some((surface) => surface.id === surfaceId)
-              ? { ...current, isOpen: true, activeSurfaceId: surfaceId }
+              ? surfaceId === "kicad"
+                ? upsertSurface(current, singletonSurface("kicad"))
+                : { ...current, isOpen: true, activeSurfaceId: surfaceId }
               : current,
           ),
         ),

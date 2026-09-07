@@ -4,10 +4,12 @@ import * as NodeHttp from "node:http";
 import * as NodeHttpServer from "@effect/platform-node/NodeHttpServer";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import {
-  EnvironmentHttpApi,
-  ProviderDriverKind,
-  type RepositoryIdentity,
-} from "@t3tools/contracts";
+  kicadProjectRouteLayer,
+  kicadViewerSessionRouteLayer,
+  kicadModelRouteLayer,
+  kicadGerberRouteLayer,
+} from "./kicad/http.ts";
+import { EnvironmentHttpApi, ProviderDriverKind } from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
 import * as Duration from "effect/Duration";
 import * as Deferred from "effect/Deferred";
@@ -577,6 +579,10 @@ export const makeRoutesLayer = Layer.mergeAll(
     ),
     otlpTracesProxyRouteLayer,
     assetRouteLayer,
+    kicadProjectRouteLayer,
+    kicadViewerSessionRouteLayer,
+    kicadModelRouteLayer,
+    kicadGerberRouteLayer,
     attachmentUploadRouteLayer,
     deviceHubProxyRouteLayer,
     staticAndDevRouteLayer,

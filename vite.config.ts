@@ -31,6 +31,10 @@ export default defineConfig({
   },
   fmt: {
     ignorePatterns: [
+      "apps/web/public/kicad-viewer/**",
+      "apps/web/src/kicad/vendor/**",
+      "apps/server/src/kicad/vendor/**",
+
       ".repos/**",
       ".alchemy",
       "dist",
@@ -56,6 +60,9 @@ export default defineConfig({
   },
   lint: {
     ignorePatterns: [
+      "apps/web/public/kicad-viewer/**",
+      "apps/web/src/kicad/vendor/**",
+      "apps/server/src/kicad/vendor/**",
       ".repos",
       ".repos/**",
       "dist",
@@ -161,6 +168,7 @@ export default defineConfig({
           "apps/mobile/src/features/home/HomeHeader.tsx",
           "apps/mobile/src/features/review/ReviewSheet.tsx",
           "apps/mobile/src/features/review/useNativeReviewDiffBridge.ts",
+          "apps/mobile/src/features/kicad/KiCadViewerRouteScreen.tsx",
           "apps/mobile/src/features/settings/SettingsEnvironmentsRouteScreen.tsx",
           "apps/mobile/src/features/settings/appearance/components/AppearancePreviews.tsx",
           "apps/mobile/src/features/threads/GitActionProgressOverlay.tsx",
