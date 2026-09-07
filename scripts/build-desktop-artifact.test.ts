@@ -328,7 +328,7 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
         ),
       );
 
-      const gmackoConfig = yield* resolveGitHubPublishConfig("gmacko").pipe(
+      const gmackoOverrideConfig = yield* resolveGitHubPublishConfig("gmacko").pipe(
         Effect.provide(
           ConfigProvider.layer(
             ConfigProvider.fromEnv({
@@ -337,7 +337,7 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
           ),
         ),
       );
-      assert.deepStrictEqual(gmackoConfig, {
+      assert.deepStrictEqual(gmackoOverrideConfig, {
         provider: "github",
         owner: "gmackie",
         repo: "t3code",
