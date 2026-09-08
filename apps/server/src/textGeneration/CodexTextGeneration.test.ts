@@ -143,18 +143,10 @@ function withFakeCodexEnv<A, E, R>(
     const tempDir = yield* fs.makeTempDirectoryScoped({ prefix: "t3code-codex-text-" });
     const codexPath = yield* makeFakeCodexBinary(tempDir, input);
     const config = decodeCodexSettings({ binaryPath: codexPath, launchArgs: input.launchArgs });
-    const textGeneration = yield* makeCodexTextGeneration(
-      config,
-      input.environment,
-      Effect.succeed(
-        (input.models ?? []).map((slug) => ({
-          slug,
-          name: slug,
-          isCustom: false,
-          capabilities: null,
-        })),
-      ),
-    );
+    const textGeneration = yield* makeCodexTextGeneration(config, {
+      ...process.env,
+      ...input.environment,
+    });
     return yield* effectFn(textGeneration);
   }).pipe(Effect.scoped);
 }
