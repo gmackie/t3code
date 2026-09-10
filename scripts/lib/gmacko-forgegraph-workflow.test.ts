@@ -20,9 +20,7 @@ describe("ForgeGraph GMACKO release workflow", () => {
 
     expect(workflow).toContain("push:\n    branches:\n      - custom-local");
     expect(workflow).toContain('if [[ "${GITHUB_EVENT_NAME}" == "push" ]]');
-    expect(workflow).toContain(
-      'git clone --branch custom-local --tags "$forgejo_url" lane',
-    );
+    expect(workflow).toContain('git clone --branch custom-local --tags "$forgejo_url" lane');
     expect(workflow).toContain(
       'START_SHA="$(git ls-remote "$github_url" refs/heads/custom-local | cut -f1)"',
     );
@@ -49,9 +47,7 @@ describe("ForgeGraph GMACKO release workflow", () => {
   it("retries the current ForgeGraph lane on manual dispatch", () => {
     const workflow = NodeFS.readFileSync(workflowPath, "utf8");
 
-    expect(workflow).toContain(
-      'git clone --branch custom-local --tags "$forgejo_url" lane',
-    );
+    expect(workflow).toContain('git clone --branch custom-local --tags "$forgejo_url" lane');
     expect(workflow).not.toContain(
       'if [[ "${GITHUB_EVENT_NAME}" == "schedule" && "$HAS_CHANGES" == "true" ]]',
     );
