@@ -350,6 +350,12 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["base directory folder browser path home"],
   },
   {
+    id: "diff-color-scheme",
+    title: "Diff color scheme",
+    to: "/settings/appearance",
+    searchTerms: ["red-green blue-orange git diff palette colorblind"],
+  },
+  {
     id: "unpin-confirmation",
     title: "Unpin confirmation",
     to: "/settings/general",

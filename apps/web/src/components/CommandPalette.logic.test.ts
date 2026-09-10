@@ -7,10 +7,11 @@ import {
   ThreadId,
   type PluginCommand,
 } from "@t3tools/contracts";
-import type { Thread } from "../types";
+import type { Project, Thread } from "../types";
 import {
   buildBrowseGroups,
   buildPluginCommandActionItems,
+  buildProjectActionItems,
   buildThreadActionItems,
   buildLinkedThreadActionItems,
   enumerateCommandPaletteItems,

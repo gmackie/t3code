@@ -548,6 +548,7 @@ export function buildLocalDraftThread(
     checkpoints: [],
     activities: [],
     proposedPlans: [],
+    pullRequests: [],
   };
 }
 

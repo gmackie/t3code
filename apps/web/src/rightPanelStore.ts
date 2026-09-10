@@ -85,6 +85,7 @@ export type RightPanelSurface =
       url?: string;
     }
   | { id: "agents"; kind: "agents" }
+  | { id: "pull-requests"; kind: "pull-requests" }
   | { id: "kicad"; kind: "kicad"; codePanel?: { isOpen: boolean; activeSurfaceId: string | null } };
 
 const RIGHT_PANEL_STORAGE_KEY = "t3code:right-panel-state:v2";

@@ -155,6 +155,10 @@
       "types": "./src/state/pullRequests.ts",
       "default": "./src/state/pullRequests.ts"
     },
+    "./thread-pull-request-compatibility": {
+      "types": "./src/threadPullRequestCompatibility.ts",
+      "default": "./src/threadPullRequestCompatibility.ts"
+    },
     "./state/project-grouping": {
       "types": "./src/state/projectGrouping.ts",
       "default": "./src/state/projectGrouping.ts"
