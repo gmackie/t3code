@@ -108,7 +108,7 @@ export const ExternalThreadImportBatchResult = Schema.Struct({
 });
 export type ExternalThreadImportBatchResult = typeof ExternalThreadImportBatchResult.Type;
 
-export class ExternalThreadImportRequestError extends Schema.TaggedErrorClass<ExternalThreadImportRequestError>()(
+export class ExternalThreadImportRequestError extends Schema.TaggedError<ExternalThreadImportRequestError>()(
   "ExternalThreadImportRequestError",
   {
     code: TrimmedNonEmptyString,

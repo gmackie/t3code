@@ -3,7 +3,16 @@ import { kicadState } from "../../state/kicad";
 import { EnvironmentId } from "@t3tools/contracts";
 import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
 import * as Option from "effect/Option";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ComponentType,
+  type ReactNode,
+  type Ref,
+} from "react";
 import { ActivityIndicator, Linking, Pressable, View } from "react-native";
 import { WebView } from "react-native-webview";
 import { useNavigation, type StaticScreenProps } from "@react-navigation/native";
@@ -20,6 +29,35 @@ type Props = StaticScreenProps<{
   readonly threadId: string;
   readonly cwd: string;
 }>;
+
+type KiCadWebViewRequest = {
+  readonly isTopFrame?: boolean;
+  readonly url: string;
+};
+
+type KiCadWebViewProps = {
+  readonly allowsBackForwardNavigationGestures?: boolean;
+  readonly allowsFullscreenVideo?: boolean;
+  readonly injectedJavaScriptBeforeContentLoaded?: string;
+  readonly onContentProcessDidTerminate?: () => void;
+  readonly onError?: () => void;
+  readonly onHttpError?: (event: { nativeEvent: { statusCode: number; url: string } }) => void;
+  readonly onLoadEnd?: () => void;
+  readonly onLoadProgress?: (event: { nativeEvent: { progress: number } }) => void;
+  readonly onLoadStart?: () => void;
+  readonly onShouldStartLoadWithRequest?: (request: KiCadWebViewRequest) => boolean;
+  readonly originWhitelist?: readonly string[];
+  readonly ref?: Ref<WebView>;
+  readonly renderLoading?: () => ReactNode;
+  readonly setSupportMultipleWindows?: boolean;
+  readonly source: { readonly uri: string };
+  readonly startInLoadingState?: boolean;
+  readonly style?: { backgroundColor: string; flex: number };
+};
+
+// react-native-webview's props collapse to `never` against this React Native
+// types combo after the upstream rebase. The CAD viewer still needs them.
+const KiCadWebView = WebView as unknown as ComponentType<KiCadWebViewProps>;
 
 export function KiCadViewerRouteScreen({ route }: Props) {
   const navigation = useNavigation();
@@ -120,7 +158,7 @@ export function KiCadViewerRouteScreen({ route }: Props) {
       </View>
       {progress > 0 && progress < 1 ? <LoadingStrip progress={progress} /> : null}
       {viewerUrl ? (
-        <WebView
+        <KiCadWebView
           ref={webViewRef}
           source={{ uri: viewerUrl }}
           originWhitelist={viewerOrigin ? ["http://*", "https://*", "about:blank", "blob:*"] : []}

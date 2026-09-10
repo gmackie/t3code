@@ -7,7 +7,7 @@ export interface PlannedComposition {
   readonly definitions: ReadonlyArray<PluginDefinition>;
 }
 
-export class DuplicatePluginIdError extends Schema.TaggedErrorClass<DuplicatePluginIdError>()(
+export class DuplicatePluginIdError extends Schema.TaggedError<DuplicatePluginIdError>()(
   "DuplicatePluginIdError",
   { pluginId: Schema.String },
 ) {
@@ -16,7 +16,7 @@ export class DuplicatePluginIdError extends Schema.TaggedErrorClass<DuplicatePlu
   }
 }
 
-export class DuplicateCapabilityError extends Schema.TaggedErrorClass<DuplicateCapabilityError>()(
+export class DuplicateCapabilityError extends Schema.TaggedError<DuplicateCapabilityError>()(
   "DuplicateCapabilityError",
   {
     capability: Schema.String,
@@ -29,7 +29,7 @@ export class DuplicateCapabilityError extends Schema.TaggedErrorClass<DuplicateC
   }
 }
 
-export class DependencyCycleError extends Schema.TaggedErrorClass<DependencyCycleError>()(
+export class DependencyCycleError extends Schema.TaggedError<DependencyCycleError>()(
   "DependencyCycleError",
   { cycle: Schema.Array(Schema.String) },
 ) {

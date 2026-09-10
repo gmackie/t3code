@@ -36,6 +36,7 @@ import { normalizePreviewUrl } from "@t3tools/shared/preview";
 import {
   type BrowserWindow,
   type Session,
+  ClipboardItem,
   clipboard,
   nativeImage,
   shell,

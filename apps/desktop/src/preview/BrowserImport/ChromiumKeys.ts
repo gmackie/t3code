@@ -37,6 +37,7 @@ const LINUX_FALLBACK_PASSPHRASE = "peanuts";
 export const ChromiumKeyFailure = Schema.Literals([
   "needsKeychainApproval",
   "keychainItemMissing",
+  "keychainUnavailable",
   "unsupportedPlatform",
   /** The key store itself could not be read, as opposed to holding no key. */
   "readFailed",

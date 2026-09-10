@@ -53,7 +53,7 @@ export type PluginPackageActionInput = typeof PluginPackageActionInput.Type;
 export const PluginPackageOperation = Schema.Literals(["status", "enable", "disable", "reload"]);
 export type PluginPackageOperation = typeof PluginPackageOperation.Type;
 
-export class PluginPackageNotFoundError extends Schema.TaggedErrorClass<PluginPackageNotFoundError>()(
+export class PluginPackageNotFoundError extends Schema.TaggedError<PluginPackageNotFoundError>()(
   "PluginPackageNotFoundError",
   { id: PluginPackageId },
 ) {
@@ -62,7 +62,7 @@ export class PluginPackageNotFoundError extends Schema.TaggedErrorClass<PluginPa
   }
 }
 
-export class PluginPackageOperationError extends Schema.TaggedErrorClass<PluginPackageOperationError>()(
+export class PluginPackageOperationError extends Schema.TaggedError<PluginPackageOperationError>()(
   "PluginPackageOperationError",
   {
     id: Schema.optional(PluginPackageId),

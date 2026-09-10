@@ -8,7 +8,11 @@ import * as Ref from "effect/Ref";
 
 import * as Electron from "electron";
 
-import { DEFAULT_CLIENT_SETTINGS, type WindowOpacity } from "@t3tools/contracts";
+import {
+  DEFAULT_CLIENT_SETTINGS,
+  type DesktopSnapShotEvent,
+  type WindowOpacity,
+} from "@t3tools/contracts";
 
 import * as DesktopAssets from "../app/DesktopAssets.ts";
 import * as DesktopEnvironment from "../app/DesktopEnvironment.ts";

@@ -215,9 +215,7 @@ export function ServerUpdateAction({
     environmentId,
     (settings) => settings.continueThreadsAfterServerUpdate,
   );
-  const updateServer = useAtomCommand(serverEnvironment.updateServer, {
-    reportFailure: false,
-  });
+  const update = useServerUpdate();
   const { copyToClipboard } = useCopyToClipboard<{ command: string }>({
     target: "update command",
     onCopy: ({ command }) => {

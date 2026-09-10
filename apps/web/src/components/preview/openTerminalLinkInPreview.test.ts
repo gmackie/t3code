@@ -88,6 +88,7 @@ describe("openTerminalLinkInPreview", () => {
           threadRef,
           openPreview,
           fallbackToBrowser,
+          forceBrowser: false,
         }),
       ).rejects.toBe(failure);
       expect(fallbackToBrowser).not.toHaveBeenCalled();

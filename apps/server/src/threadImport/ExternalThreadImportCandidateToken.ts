@@ -46,7 +46,7 @@ type CandidateClaims = typeof CandidateClaims.Type;
 const decodeCandidateClaims = Schema.decodeUnknownEffect(Schema.fromJsonString(CandidateClaims));
 const encodeCandidateClaims = Schema.encodeEffect(Schema.fromJsonString(CandidateClaims));
 
-export class ExternalThreadImportCandidateTokenMalformedError extends Schema.TaggedErrorClass<ExternalThreadImportCandidateTokenMalformedError>()(
+export class ExternalThreadImportCandidateTokenMalformedError extends Schema.TaggedError<ExternalThreadImportCandidateTokenMalformedError>()(
   "ExternalThreadImportCandidateTokenMalformedError",
   {},
 ) {
@@ -55,7 +55,7 @@ export class ExternalThreadImportCandidateTokenMalformedError extends Schema.Tag
   }
 }
 
-export class ExternalThreadImportCandidateTokenInvalidSignatureError extends Schema.TaggedErrorClass<ExternalThreadImportCandidateTokenInvalidSignatureError>()(
+export class ExternalThreadImportCandidateTokenInvalidSignatureError extends Schema.TaggedError<ExternalThreadImportCandidateTokenInvalidSignatureError>()(
   "ExternalThreadImportCandidateTokenInvalidSignatureError",
   {},
 ) {
@@ -64,7 +64,7 @@ export class ExternalThreadImportCandidateTokenInvalidSignatureError extends Sch
   }
 }
 
-export class ExternalThreadImportCandidateTokenExpiredError extends Schema.TaggedErrorClass<ExternalThreadImportCandidateTokenExpiredError>()(
+export class ExternalThreadImportCandidateTokenExpiredError extends Schema.TaggedError<ExternalThreadImportCandidateTokenExpiredError>()(
   "ExternalThreadImportCandidateTokenExpiredError",
   {},
 ) {
@@ -73,7 +73,7 @@ export class ExternalThreadImportCandidateTokenExpiredError extends Schema.Tagge
   }
 }
 
-export class ExternalThreadImportCandidateTokenNotYetValidError extends Schema.TaggedErrorClass<ExternalThreadImportCandidateTokenNotYetValidError>()(
+export class ExternalThreadImportCandidateTokenNotYetValidError extends Schema.TaggedError<ExternalThreadImportCandidateTokenNotYetValidError>()(
   "ExternalThreadImportCandidateTokenNotYetValidError",
   {},
 ) {
@@ -82,7 +82,7 @@ export class ExternalThreadImportCandidateTokenNotYetValidError extends Schema.T
   }
 }
 
-export class ExternalThreadImportCandidateTokenScopeMismatchError extends Schema.TaggedErrorClass<ExternalThreadImportCandidateTokenScopeMismatchError>()(
+export class ExternalThreadImportCandidateTokenScopeMismatchError extends Schema.TaggedError<ExternalThreadImportCandidateTokenScopeMismatchError>()(
   "ExternalThreadImportCandidateTokenScopeMismatchError",
   {},
 ) {
@@ -91,7 +91,7 @@ export class ExternalThreadImportCandidateTokenScopeMismatchError extends Schema
   }
 }
 
-export class ExternalThreadImportCandidateTokenUnsupportedVersionError extends Schema.TaggedErrorClass<ExternalThreadImportCandidateTokenUnsupportedVersionError>()(
+export class ExternalThreadImportCandidateTokenUnsupportedVersionError extends Schema.TaggedError<ExternalThreadImportCandidateTokenUnsupportedVersionError>()(
   "ExternalThreadImportCandidateTokenUnsupportedVersionError",
   { version: Schema.Number },
 ) {
@@ -100,7 +100,7 @@ export class ExternalThreadImportCandidateTokenUnsupportedVersionError extends S
   }
 }
 
-export class ExternalThreadImportCandidateTokenKeyError extends Schema.TaggedErrorClass<ExternalThreadImportCandidateTokenKeyError>()(
+export class ExternalThreadImportCandidateTokenKeyError extends Schema.TaggedError<ExternalThreadImportCandidateTokenKeyError>()(
   "ExternalThreadImportCandidateTokenKeyError",
   { operation: Schema.Literals(["issue", "verify"]) },
 ) {

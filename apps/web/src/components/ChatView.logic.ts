@@ -546,7 +546,6 @@ export function buildLocalDraftThread(
     branch: draftThread.branch,
     worktreePath: draftThread.worktreePath,
     checkpoints: [],
-    pullRequests: [],
     activities: [],
     proposedPlans: [],
   };
@@ -1061,6 +1060,22 @@ export function recallCheckoutIsRepo(
 export function threadHasStarted(thread: Thread | null | undefined): boolean {
   return Boolean(
     thread && (thread.latestTurn !== null || thread.messages.length > 0 || thread.session !== null),
+  );
+}
+
+export function threadShellHasStarted(
+  thread:
+    | {
+        readonly latestTurn: unknown;
+        readonly latestUserMessageAt: string | null;
+        readonly session: unknown;
+      }
+    | null
+    | undefined,
+): boolean {
+  return Boolean(
+    thread &&
+    (thread.latestTurn !== null || thread.latestUserMessageAt !== null || thread.session !== null),
   );
 }
 

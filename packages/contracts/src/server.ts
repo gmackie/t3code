@@ -232,6 +232,7 @@ export const ServerProvider = Schema.Struct({
   usageLimits: Schema.optional(ServerProviderUsageLimits),
   versionAdvisory: Schema.optionalKey(ServerProviderVersionAdvisory),
   updateState: Schema.optionalKey(ServerProviderUpdateState),
+  reportsContextWindow: Schema.optionalKey(Schema.Boolean),
 });
 export type ServerProvider = typeof ServerProvider.Type;
 

@@ -1170,6 +1170,7 @@ const ComposerFooterPrimaryActions = memo(function ComposerFooterPrimaryActions(
   onCompactContext?: (() => void) | undefined;
   compactDisabled: boolean;
   compactDisabledReason: string | null;
+  reserveContextWindowMeter: boolean;
 }) {
   return (
     <>
@@ -4925,6 +4926,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       ) : null}
       <ProviderModelPicker
         isComposerOwned
+        compact={composerControlsCompact}
         disabled={providerCatalogPending}
         activeInstanceId={
           providerCatalogPending
@@ -6882,6 +6884,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                       compactDisabled || noProviderAvailable || isSendBusy || isConnecting
                     }
                     compactDisabledReason={resolvedCompactDisabledReason}
+                    reserveContextWindowMeter={reserveContextWindowMeter}
                     {...(compactCommandAvailable ? { onCompactContext: compactThreadContext } : {})}
                   />
                 </div>

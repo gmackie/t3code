@@ -35,7 +35,7 @@ const ManagedEndpointConfigurationRequirement = Schema.Literals([
   "t3RelayEndpointControl",
 ]);
 
-export class ManagedEndpointProvisioningNotConfigured extends Schema.TaggedErrorClass<ManagedEndpointProvisioningNotConfigured>()(
+export class ManagedEndpointProvisioningNotConfigured extends Schema.TaggedError<ManagedEndpointProvisioningNotConfigured>()(
   "ManagedEndpointProvisioningNotConfigured",
   {
     userId: Schema.String,

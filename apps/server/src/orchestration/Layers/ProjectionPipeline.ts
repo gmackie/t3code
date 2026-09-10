@@ -8,6 +8,7 @@ import {
   MessageId,
   ThreadId,
   TurnId,
+  UserInputAttachmentAnswerPayload,
 } from "@t3tools/contracts";
 import { compareDateTimeStrings } from "@t3tools/shared/dateTime";
 import * as Effect from "effect/Effect";
@@ -18,7 +19,6 @@ import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
-import * as Schema from "effect/Schema";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 import {
   legacyThreadPullRequestKey,
@@ -2182,9 +2182,11 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
             if (activity.kind !== "user-input.answer-submitted") continue;
             const payload = decodeQuestionAttachmentAnswer(activity.payload);
             if (Option.isNone(payload)) continue;
-            for (const attachment of Object.values(payload.value.attachmentsByQuestionId).flat()) {
-              const relativePath = attachmentRelativePath(attachment);
-              if (relativePath) retainedPaths.add(relativePath);
+            for (const attachments of Object.values(payload.value.attachmentsByQuestionId)) {
+              for (const attachment of attachments) {
+                const relativePath = attachmentRelativePath(attachment);
+                if (relativePath) retainedPaths.add(relativePath);
+              }
             }
           }
           prunedThreadRelativePaths.set(threadId, retainedPaths);

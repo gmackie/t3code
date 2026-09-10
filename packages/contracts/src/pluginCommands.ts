@@ -34,7 +34,7 @@ export const PluginCommandInvocationResult = Schema.Struct({
 });
 export type PluginCommandInvocationResult = typeof PluginCommandInvocationResult.Type;
 
-export class PluginCommandNotFoundError extends Schema.TaggedErrorClass<PluginCommandNotFoundError>()(
+export class PluginCommandNotFoundError extends Schema.TaggedError<PluginCommandNotFoundError>()(
   "PluginCommandNotFoundError",
   { id: PluginCommandId },
 ) {
@@ -43,7 +43,7 @@ export class PluginCommandNotFoundError extends Schema.TaggedErrorClass<PluginCo
   }
 }
 
-export class PluginCommandCatalogChangedError extends Schema.TaggedErrorClass<PluginCommandCatalogChangedError>()(
+export class PluginCommandCatalogChangedError extends Schema.TaggedError<PluginCommandCatalogChangedError>()(
   "PluginCommandCatalogChangedError",
   {
     actualGeneration: NonNegativeInt,
@@ -55,7 +55,7 @@ export class PluginCommandCatalogChangedError extends Schema.TaggedErrorClass<Pl
   }
 }
 
-export class PluginCommandInvocationError extends Schema.TaggedErrorClass<PluginCommandInvocationError>()(
+export class PluginCommandInvocationError extends Schema.TaggedError<PluginCommandInvocationError>()(
   "PluginCommandInvocationError",
   {
     cause: Schema.Defect(),

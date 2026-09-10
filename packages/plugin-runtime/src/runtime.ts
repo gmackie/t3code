@@ -68,7 +68,7 @@ interface CleanupFailure {
   readonly pluginId: string;
 }
 
-class PluginResolutionError extends Schema.TaggedErrorClass<PluginResolutionError>()(
+class PluginResolutionError extends Schema.TaggedError<PluginResolutionError>()(
   "PluginResolutionError",
   { capability: Schema.String, pluginId: Schema.String },
 ) {
@@ -77,7 +77,7 @@ class PluginResolutionError extends Schema.TaggedErrorClass<PluginResolutionErro
   }
 }
 
-class PluginUndeclaredCapabilityError extends Schema.TaggedErrorClass<PluginUndeclaredCapabilityError>()(
+class PluginUndeclaredCapabilityError extends Schema.TaggedError<PluginUndeclaredCapabilityError>()(
   "PluginUndeclaredCapabilityError",
   { capability: Schema.String, pluginId: Schema.String },
 ) {
@@ -86,7 +86,7 @@ class PluginUndeclaredCapabilityError extends Schema.TaggedErrorClass<PluginUnde
   }
 }
 
-class PluginActivationContextExpiredError extends Schema.TaggedErrorClass<PluginActivationContextExpiredError>()(
+class PluginActivationContextExpiredError extends Schema.TaggedError<PluginActivationContextExpiredError>()(
   "PluginActivationContextExpiredError",
   {
     method: Schema.Literals(["resolve", "register", "onDispose"]),
@@ -98,29 +98,25 @@ class PluginActivationContextExpiredError extends Schema.TaggedErrorClass<Plugin
   }
 }
 
-class PluginCallbackError extends Schema.TaggedErrorClass<PluginCallbackError>()(
-  "PluginCallbackError",
-  {
-    callback: Schema.Literals(["activate", "finalizer"]),
-    cause: Schema.Defect(),
-    pluginId: Schema.String,
-  },
-) {
+class PluginCallbackError extends Schema.TaggedError<PluginCallbackError>()("PluginCallbackError", {
+  callback: Schema.Literals(["activate", "finalizer"]),
+  cause: Schema.Defect(),
+  pluginId: Schema.String,
+}) {
   override get message(): string {
     return `Plugin ${this.pluginId} ${this.callback} callback failed`;
   }
 }
 
-class PluginStagingError extends Schema.TaggedErrorClass<PluginStagingError>()(
-  "PluginStagingError",
-  { pluginId: Schema.String },
-) {
+class PluginStagingError extends Schema.TaggedError<PluginStagingError>()("PluginStagingError", {
+  pluginId: Schema.String,
+}) {
   override get message(): string {
     return `Plugin ${this.pluginId} was not staged`;
   }
 }
 
-export class PluginDuplicateContributionError extends Schema.TaggedErrorClass<PluginDuplicateContributionError>()(
+export class PluginDuplicateContributionError extends Schema.TaggedError<PluginDuplicateContributionError>()(
   "PluginDuplicateContributionError",
   {
     firstPluginId: Schema.String,
@@ -134,7 +130,7 @@ export class PluginDuplicateContributionError extends Schema.TaggedErrorClass<Pl
   }
 }
 
-class PluginRuntimeDisposedError extends Schema.TaggedErrorClass<PluginRuntimeDisposedError>()(
+class PluginRuntimeDisposedError extends Schema.TaggedError<PluginRuntimeDisposedError>()(
   "PluginRuntimeDisposedError",
   { operation: Schema.Literals(["reconcile", "dispose", "invoke"]) },
 ) {
@@ -143,7 +139,7 @@ class PluginRuntimeDisposedError extends Schema.TaggedErrorClass<PluginRuntimeDi
   }
 }
 
-class PluginRuntimeReentrancyError extends Schema.TaggedErrorClass<PluginRuntimeReentrancyError>()(
+class PluginRuntimeReentrancyError extends Schema.TaggedError<PluginRuntimeReentrancyError>()(
   "PluginRuntimeReentrancyError",
   {
     callback: Schema.Literals(["activate", "contribution", "finalizer"]),
@@ -156,7 +152,7 @@ class PluginRuntimeReentrancyError extends Schema.TaggedErrorClass<PluginRuntime
   }
 }
 
-class PluginRuntimeCleanupError extends Schema.TaggedErrorClass<PluginRuntimeCleanupError>()(
+class PluginRuntimeCleanupError extends Schema.TaggedError<PluginRuntimeCleanupError>()(
   "PluginRuntimeCleanupError",
   {
     failures: Schema.Array(
@@ -181,7 +177,7 @@ export type PluginRuntimeReconcileError =
   | PluginSnapshotValidationError
   | PluginStagingError;
 
-export class PluginSnapshotValidationError extends Schema.TaggedErrorClass<PluginSnapshotValidationError>()(
+export class PluginSnapshotValidationError extends Schema.TaggedError<PluginSnapshotValidationError>()(
   "PluginSnapshotValidationError",
   { cause: Schema.Defect() },
 ) {
@@ -192,7 +188,7 @@ export class PluginSnapshotValidationError extends Schema.TaggedErrorClass<Plugi
 
 export type PluginRuntimeDisposeError = PluginRuntimeCleanupError | PluginRuntimeReentrancyError;
 
-export class PluginContributionGenerationError extends Schema.TaggedErrorClass<PluginContributionGenerationError>()(
+export class PluginContributionGenerationError extends Schema.TaggedError<PluginContributionGenerationError>()(
   "PluginContributionGenerationError",
   { actual: Schema.Int, expected: Schema.Int },
 ) {
@@ -201,7 +197,7 @@ export class PluginContributionGenerationError extends Schema.TaggedErrorClass<P
   }
 }
 
-export class PluginContributionNotFoundError extends Schema.TaggedErrorClass<PluginContributionNotFoundError>()(
+export class PluginContributionNotFoundError extends Schema.TaggedError<PluginContributionNotFoundError>()(
   "PluginContributionNotFoundError",
   { id: Schema.String, slot: Schema.String },
 ) {

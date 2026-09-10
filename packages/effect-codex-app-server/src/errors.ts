@@ -264,7 +264,7 @@ export class CodexAppServerInputStreamEndedError extends Schema.TaggedError<Code
   }
 }
 
-export class CodexAppServerIncomingFrameTooLargeError extends Schema.TaggedErrorClass<CodexAppServerIncomingFrameTooLargeError>()(
+export class CodexAppServerIncomingFrameTooLargeError extends Schema.TaggedError<CodexAppServerIncomingFrameTooLargeError>()(
   "CodexAppServerIncomingFrameTooLargeError",
   {
     maximumCharacters: Schema.Int,
@@ -276,7 +276,7 @@ export class CodexAppServerIncomingFrameTooLargeError extends Schema.TaggedError
   }
 }
 
-export class CodexAppServerRequestError extends Schema.TaggedErrorClass<CodexAppServerRequestError>()(
+export class CodexAppServerRequestError extends Schema.TaggedError<CodexAppServerRequestError>()(
   "CodexAppServerRequestError",
   {
     code: Schema.Number,

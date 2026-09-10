@@ -14,7 +14,7 @@
   },
   "scripts": {
     "test": "vp test run",
-    "typecheck": "tsgo --noEmit"
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "effect": "catalog:"

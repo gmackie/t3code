@@ -50,7 +50,7 @@ export const ProjectSessionImportScanResult = Schema.Struct({
 });
 export type ProjectSessionImportScanResult = typeof ProjectSessionImportScanResult.Type;
 
-export class ProjectSessionImportRequestError extends Schema.TaggedErrorClass<ProjectSessionImportRequestError>()(
+export class ProjectSessionImportRequestError extends Schema.TaggedError<ProjectSessionImportRequestError>()(
   "ProjectSessionImportRequestError",
   {
     code: TrimmedNonEmptyString,

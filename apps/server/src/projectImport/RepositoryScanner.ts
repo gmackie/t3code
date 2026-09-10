@@ -4,7 +4,7 @@ import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
 
-export class RepositoryScanInputError extends Schema.TaggedErrorClass<RepositoryScanInputError>()(
+export class RepositoryScanInputError extends Schema.TaggedError<RepositoryScanInputError>()(
   "RepositoryScanInputError",
   { message: Schema.String },
 ) {}

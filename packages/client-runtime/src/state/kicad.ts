@@ -25,7 +25,7 @@ const kiCadEndpointUrl = (base: string, path: string, cwd: string): string => {
   return url.toString();
 };
 
-export class KiCadRequestError extends Schema.TaggedErrorClass<KiCadRequestError>()(
+export class KiCadRequestError extends Schema.TaggedError<KiCadRequestError>()(
   "KiCadRequestError",
   {
     message: Schema.String,

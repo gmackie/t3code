@@ -23,7 +23,9 @@ import {
   RuntimeMode,
 } from "./orchestration.ts";
 import { BrowserProfile, BrowserProfileId, DEFAULT_BROWSER_PROFILE_ID } from "./browserProfile.ts";
+import { KeybindingShortcut } from "./keybindings.ts";
 import { PluginPackageId } from "./pluginPackages.ts";
+import { PullRequestMergeMethod } from "./pullRequest.ts";
 import {
   DEFAULT_PREVIEW_APPEARANCE,
   DEFAULT_PREVIEW_ZOOM_FACTOR,
@@ -291,16 +293,7 @@ export const LoadBalancingWeights = Schema.Record(
   Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: 100 })),
 );
 
-export const DiffColorScheme = Schema.Literals(["red-green", "blue-orange"]);
-
 export const ClientSettingsSchema = Schema.Struct({
-  notificationMode: NotificationMode.pipe(
-    Schema.withDecodingDefault(Effect.succeed("off" as const)),
-  ),
-  inAppNotificationsEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
-  diffColorScheme: DiffColorScheme.pipe(
-    Schema.withDecodingDefault(Effect.succeed("red-green" as const)),
-  ),
   loadBalancingEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   loadBalancingWeights: LoadBalancingWeights.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
   appearanceContrast: AppearanceContrast.pipe(
@@ -1500,9 +1493,6 @@ export const ServerSettingsPatch = Schema.Struct({
 export type ServerSettingsPatch = typeof ServerSettingsPatch.Type;
 
 export const ClientSettingsPatch = Schema.Struct({
-  notificationMode: Schema.optionalKey(NotificationMode),
-  inAppNotificationsEnabled: Schema.optionalKey(Schema.Boolean),
-  diffColorScheme: Schema.optionalKey(DiffColorScheme),
   loadBalancingEnabled: Schema.optionalKey(Schema.Boolean),
   loadBalancingWeights: Schema.optionalKey(LoadBalancingWeights),
   appearanceContrast: Schema.optionalKey(AppearanceContrast),

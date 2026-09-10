@@ -45,7 +45,7 @@ const validateCommandSnapshot = (snapshot: PluginRuntimeSnapshot): void => {
   }
 };
 
-export class PluginCommandExecutionError extends Schema.TaggedErrorClass<PluginCommandExecutionError>()(
+export class PluginCommandExecutionError extends Schema.TaggedError<PluginCommandExecutionError>()(
   "PluginCommandExecutionError",
   { cause: Schema.Defect(), id: PluginCommandId },
 ) {
@@ -59,7 +59,7 @@ type PluginCommandHandler = Effect.Effect<
   PluginCommandExecutionError
 >;
 
-export class PluginCommandDefinitionError extends Schema.TaggedErrorClass<PluginCommandDefinitionError>()(
+export class PluginCommandDefinitionError extends Schema.TaggedError<PluginCommandDefinitionError>()(
   "PluginCommandDefinitionError",
   { cause: Schema.Defect(), id: Schema.String },
 ) {

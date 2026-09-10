@@ -6,7 +6,7 @@ import { Command, Flag } from "effect/unstable/cli";
 
 import { applyActivityRetention, inspectActivityRetention } from "../stateMaintenance.ts";
 
-class StateMaintenanceCommandError extends Schema.TaggedErrorClass<StateMaintenanceCommandError>()(
+class StateMaintenanceCommandError extends Schema.TaggedError<StateMaintenanceCommandError>()(
   "StateMaintenanceCommandError",
   { cause: Schema.Defect() },
 ) {

@@ -272,12 +272,12 @@ const threadImportSourceErrorFields = {
   retryable: Schema.Boolean,
 };
 
-export class ThreadImportDiscoveryError extends Schema.TaggedErrorClass<ThreadImportDiscoveryError>()(
+export class ThreadImportDiscoveryError extends Schema.TaggedError<ThreadImportDiscoveryError>()(
   "ThreadImportDiscoveryError",
   threadImportSourceErrorFields,
 ) {}
 
-export class ThreadImportLoadError extends Schema.TaggedErrorClass<ThreadImportLoadError>()(
+export class ThreadImportLoadError extends Schema.TaggedError<ThreadImportLoadError>()(
   "ThreadImportLoadError",
   {
     ...threadImportSourceErrorFields,
