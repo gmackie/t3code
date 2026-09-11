@@ -12,13 +12,20 @@ import {
   ServerSettingsPatch,
 } from "./settings.ts";
 
-const decodeClientSettings = Schema.decodeUnknownSync(ClientSettingsSchema);
-const decodeClientSettingsPatch = Schema.decodeUnknownSync(ClientSettingsPatch);
-const encodeClientSettings = Schema.encodeSync(ClientSettingsSchema);
-const decodeServerSettings = Schema.decodeUnknownSync(ServerSettings);
-const decodeServerSettingsPatch = Schema.decodeUnknownSync(ServerSettingsPatch);
-const encodeServerSettings = Schema.encodeSync(ServerSettings);
-const decodeClaudeSettings = Schema.decodeUnknownSync(ClaudeSettings);
+const decodeUnknown = Schema.decodeUnknownSync as (schema: unknown) => (u: unknown) => unknown;
+const encodeKnown = Schema.encodeSync as (schema: unknown) => (u: unknown) => unknown;
+
+const decodeClientSettings = decodeUnknown(ClientSettingsSchema) as (
+  u: unknown,
+) => import("./settings.ts").ClientSettings;
+const decodeClientSettingsPatch = decodeUnknown(ClientSettingsPatch);
+const encodeClientSettings = encodeKnown(ClientSettingsSchema);
+const decodeServerSettings = decodeUnknown(ServerSettings) as (
+  u: unknown,
+) => import("./settings.ts").ServerSettings;
+const decodeServerSettingsPatch = decodeUnknown(ServerSettingsPatch);
+const encodeServerSettings = encodeKnown(ServerSettings);
+const decodeClaudeSettings = decodeUnknown(ClaudeSettings);
 
 describe("ServerSettings default permissions", () => {
   it("keeps full access for settings saved before a default was configured", () => {

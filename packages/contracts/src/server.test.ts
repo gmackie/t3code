@@ -9,7 +9,7 @@ import {
   ServerProviders,
   ServerUpsertKeybindingResult,
 } from "./server.ts";
-import { ServerSettings } from "./settings.ts";
+import { ServerSettings, type ServerSettings as ServerSettingsType } from "./settings.ts";
 
 const decodeServerProvider = Schema.decodeUnknownSync(ServerProvider);
 const decodeServerProviders = Schema.decodeUnknownSync(ServerProviders);
@@ -179,7 +179,10 @@ describe("server config forward compatibility", () => {
 
 describe("resolveEnvironmentMachineKind", () => {
   const decodeDescriptor = Schema.decodeUnknownSync(ExecutionEnvironmentDescriptor);
-  const decodeSettings = Schema.decodeUnknownSync(ServerSettings);
+  const decodeSettings = Schema.decodeUnknownSync as (schema: unknown) => (u: unknown) => unknown;
+  const decodeServerSettings = decodeSettings(ServerSettings) as (
+    u: unknown,
+  ) => ServerSettingsType;
   const descriptor = (platform: Record<string, unknown>) =>
     decodeDescriptor({
       environmentId: "env-1",
@@ -193,7 +196,7 @@ describe("resolveEnvironmentMachineKind", () => {
     expect(
       resolveEnvironmentMachineKind({
         environment: descriptor({ machine: "mac-mini" }),
-        settings: decodeSettings({ environmentIcon: "laptop" }),
+        settings: decodeServerSettings({ environmentIcon: "laptop" }),
       }),
     ).toBe("laptop");
   });
@@ -202,7 +205,7 @@ describe("resolveEnvironmentMachineKind", () => {
     expect(
       resolveEnvironmentMachineKind({
         environment: descriptor({ machine: "mac-mini" }),
-        settings: decodeSettings({}),
+        settings: decodeServerSettings({}),
       }),
     ).toBe("mac-mini");
   });
@@ -211,7 +214,7 @@ describe("resolveEnvironmentMachineKind", () => {
     expect(
       resolveEnvironmentMachineKind({
         environment: descriptor({}),
-        settings: decodeSettings({}),
+        settings: decodeServerSettings({}),
       }),
     ).toBe("server");
     expect(resolveEnvironmentMachineKind(null)).toBe("server");
@@ -222,7 +225,7 @@ describe("resolveEnvironmentMachineKind", () => {
 
     expect(parsed.platform.machine).toBeUndefined();
     expect(
-      resolveEnvironmentMachineKind({ environment: parsed, settings: decodeSettings({}) }),
+      resolveEnvironmentMachineKind({ environment: parsed, settings: decodeServerSettings({}) }),
     ).toBe("server");
   });
 });
