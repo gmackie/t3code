@@ -674,23 +674,24 @@ export function PullRequestSummaryTab({
                     </button>
                     {/* Only where there is something to fix. A passing check has no failure to
                       reproduce, and the button would be an invitation to waste a thread. */}
-                {onFixFinding && failing ? (
-                  <Button
-                    size="xs"
-                    variant="ghost"
-                    className="shrink-0"
-                    disabled={pendingFinding !== null && pendingFinding !== undefined}
-                    onClick={() => onFixFinding(finding)}
-                  >
-                    <HammerIcon className="size-3" />
-                    {pendingFinding === pullRequestFindingKey(finding)
-                      ? "Preparing..."
-                      : fixCheckLabel}
-                  </Button>
-                ) : null}
-              </div>
-            );
-          })
+                    {onFixFinding && failing ? (
+                      <Button
+                        size="xs"
+                        variant="ghost"
+                        className="shrink-0"
+                        disabled={pendingFinding !== null && pendingFinding !== undefined}
+                        onClick={() => onFixFinding(finding)}
+                      >
+                        <HammerIcon className="size-3" />
+                        {pendingFinding === pullRequestFindingKey(finding)
+                          ? "Preparing..."
+                          : fixCheckLabel}
+                      </Button>
+                    ) : null}
+                  </div>
+                );
+              })}
+            </div>
         )}
       </Section>
 
