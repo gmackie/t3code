@@ -657,15 +657,6 @@ export function PullRequestSummaryTab({
                   key={`${check.name}:${check.status}:${check.description ?? ""}:${check.url ?? ""}`}
                   className="group flex items-center gap-1 rounded-md pr-1 hover:bg-accent/60"
                 >
-                  <button
-                    type="button"
-                    disabled={!check.url}
-                    onClick={() => check.url && openCheck(check.url)}
-                    className={cn(
-                      "flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs",
-                      check.url ? undefined : "cursor-default",
-                    )}
-                  >
                     <button
                       type="button"
                       disabled={!check.url}
