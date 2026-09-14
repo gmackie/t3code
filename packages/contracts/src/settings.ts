@@ -23,6 +23,7 @@ import {
   RuntimeMode,
 } from "./orchestration.ts";
 import { BrowserProfile, BrowserProfileId, DEFAULT_BROWSER_PROFILE_ID } from "./browserProfile.ts";
+import { SshDeviceHostConfigs } from "./device.ts";
 import { KeybindingShortcut } from "./keybindings.ts";
 import { PluginPackageId } from "./pluginPackages.ts";
 import {

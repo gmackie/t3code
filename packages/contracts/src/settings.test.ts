@@ -24,12 +24,16 @@ const decodeClientSettings = decodeUnknown(ClientSettingsSchema) as (u: unknown)
 const decodeClientSettingsPatch = decodeUnknown(ClientSettingsPatch) as (
   u: unknown,
 ) => ClientSettingsPatchType;
-const encodeClientSettings = encodeKnown(ClientSettingsSchema) as (u: ClientSettings) => unknown;
+const encodeClientSettings = encodeKnown(ClientSettingsSchema) as (
+  u: ClientSettings,
+) => ClientSettings;
 const decodeServerSettings = decodeUnknown(ServerSettings) as (u: unknown) => ServerSettingsType;
 const decodeServerSettingsPatch = decodeUnknown(ServerSettingsPatch) as (
   u: unknown,
 ) => ServerSettingsPatchType;
-const encodeServerSettings = encodeKnown(ServerSettings) as (u: ServerSettingsType) => unknown;
+const encodeServerSettings = encodeKnown(ServerSettings) as (
+  u: ServerSettingsType,
+) => ServerSettingsType;
 const decodeClaudeSettings = decodeUnknown(ClaudeSettings) as (u: unknown) => ClaudeSettingsType;
 
 describe("ServerSettings default permissions", () => {
