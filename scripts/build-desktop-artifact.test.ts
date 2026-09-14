@@ -510,34 +510,6 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
       },
       ...ignoredClaudeCliPackages,
     });
-    // The server sidecar stage bundles the same-architecture WSL (Linux,
-    // glibc) backend, so its install must fetch Linux native optional deps
-    // (e.g. ffi-rs) too — and must be hoisted so the tree survives asar
-    // packing and runtime extraction without symlinks.
-    assert.deepStrictEqual(
-      createStageWorkspaceConfig({ platform: "win", arch: "x64", linuxServerBackend: true }),
-      {
-        supportedArchitectures: {
-          os: ["win32", "linux"],
-          cpu: ["x64"],
-          libc: ["glibc"],
-        },
-        ...ignoredClaudeCliPackages,
-        nodeLinker: "hoisted",
-      },
-    );
-    assert.deepStrictEqual(
-      createStageWorkspaceConfig({ platform: "win", arch: "arm64", linuxServerBackend: true }),
-      {
-        supportedArchitectures: {
-          os: ["win32", "linux"],
-          cpu: ["arm64"],
-          libc: ["glibc"],
-        },
-        ...ignoredClaudeCliPackages,
-        nodeLinker: "hoisted",
-      },
-    );
     assert.deepStrictEqual(createStageWorkspaceConfig({ platform: "mac", arch: "universal" }), {
       supportedArchitectures: {
         os: ["darwin"],
@@ -713,7 +685,7 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
       ]);
       // No Linux prebuild means the sidecar staging never writes the archive,
       // so listing it here would fail the build on a missing source file.
-      assert.deepStrictEqual(winWithoutWslPrebuild.extraResources, [
+      assert.deepStrictEqual(winWithoutWslRuntime.extraResources, [
         ...DESKTOP_EXTRA_RESOURCES,
         ...WINDOWS_SERVER_EXTRA_RESOURCES,
       ]);
@@ -1658,6 +1630,7 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
           stageDistDir: fixture.stageDistDir,
           appExecutableName: fixture.appExecutableName,
           targetArch: "x64",
+          appVersion: WINDOWS_PAYLOAD_FIXTURE_VERSION,
         });
         assert.isDefined(withoutResourceMonitor);
       }),

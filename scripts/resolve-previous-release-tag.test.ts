@@ -65,14 +65,14 @@ it.effect("accepts legacy nightly tags when selecting the previous nightly", () 
   }),
 );
 
-it.effect("keeps preview tags in their own series", () =>
+it.effect("keeps gmacko tags in their own series", () =>
   Effect.gen(function* () {
-    const previous = yield* resolvePreviousReleaseTag("preview", "v1.2.0-preview.20260620.2", [
+    const previous = yield* resolvePreviousReleaseTag("gmacko", "v1.2.0-gmacko.2", [
       "v1.2.0-nightly.20260620.3",
-      "v1.2.0-preview.20260620.1",
+      "v1.2.0-gmacko.1",
       "v1.1.9",
     ]);
-    assert.equal(previous, "v1.2.0-preview.20260620.1");
+    assert.equal(previous, "v1.2.0-gmacko.1");
 
     const stable = yield* resolvePreviousReleaseTag("stable", "v1.2.0", [
       "v1.1.9",
