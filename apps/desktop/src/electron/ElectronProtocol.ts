@@ -268,15 +268,27 @@ export const make = Effect.gen(function* () {
       yield* Effect.acquireRelease(
         Effect.try({
           try: () => {
-            Electron.protocol.handle(input.scheme, (request) =>
-              proxyRequest(
-                request,
-                input.targetOrigin,
+            Electron.protocol.handle(input.scheme, (request) => {
+              const policy =
                 new URL(request.url).pathname === "/kicad.html"
                   ? cadContentSecurityPolicy
-                  : contentSecurityPolicy,
-              ),
-            );
+                  : contentSecurityPolicy;
+              if ("targetOrigin" in input) {
+                return proxyRequest(request, input.targetOrigin, policy);
+              }
+              return runPromise(
+                serveDesktopAsset(request, input.assetDirectory).pipe(
+                  Effect.map((response) => {
+                    const headers = new Headers(response.headers);
+                    headers.set("content-security-policy", policy);
+                    return new Response(response.body, {
+                      status: response.status,
+                      headers,
+                    });
+                  }),
+                ),
+              );
+            });
           },
           catch: (cause) => new ElectronProtocolRegistrationError({ scheme: input.scheme, cause }),
         }).pipe(Effect.andThen(Ref.set(registered, true))),

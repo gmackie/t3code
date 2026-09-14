@@ -4,7 +4,7 @@ const NIGHTLY_VERSION_PATTERN = /-nightly\.\d{8}\.\d+$/;
 const GMACKO_VERSION_PATTERN = /-gmacko\.\d+$/;
 
 export function isNightlyDesktopVersion(version: string): boolean {
-  return PRERELEASE_VERSION_PATTERN.test(version);
+  return NIGHTLY_VERSION_PATTERN.test(version);
 }
 
 export function isGmackoDesktopVersion(version: string): boolean {
