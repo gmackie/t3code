@@ -50,19 +50,25 @@ export const fetchKiCadJson = Effect.fn("clientRuntime.fetchKiCadJson")(function
       value !== null &&
       "status" in value &&
       (value as HttpClientResponse.HttpClientResponse).status === 401,
-    request: ({
-      headers,
-      url,
-    }): Effect.Effect<HttpClientResponse.HttpClientResponse, unknown, HttpClient.HttpClient> =>
+    request: ({ headers, url }) =>
       Effect.gen(function* () {
         const client = yield* HttpClient.HttpClient;
         let request = HttpClientRequest.make(input.method)(url);
         if (headers.authorization)
           request = HttpClientRequest.setHeader(request, "authorization", headers.authorization);
         if (headers.dpop) request = HttpClientRequest.setHeader(request, "dpop", headers.dpop);
-        return yield* client.execute(request);
+        return yield* client
+          .execute(request)
+          .pipe(Effect.mapError((cause) => new KiCadRequestError({ message: String(cause) })));
       }),
-  }) as Effect.Effect<HttpClientResponse.HttpClientResponse, unknown, HttpClient.HttpClient>;
+  }).pipe(
+    Effect.map((value) => value as HttpClientResponse.HttpClientResponse),
+    Effect.mapError((error) =>
+      error instanceof KiCadRequestError
+        ? error
+        : new KiCadRequestError({ message: String(error) }),
+    ),
+  );
   if (response.status < 200 || response.status >= 300) {
     return yield* new KiCadRequestError({
       message:
@@ -94,13 +100,13 @@ export function createKiCadState<R, E>(
           const prepared = Option.getOrNull(get(preparedFor(target.environmentId)));
           return prepared === null
             ? Effect.never
-            : (fetchKiCadJson({
+            : fetchKiCadJson({
                 prepared,
                 cwd: target.cwd,
                 path,
                 schema,
                 method,
-              }) as Effect.Effect<A, unknown, never>);
+              });
         })
         .pipe(
           Atom.swr({ staleTime: 1_000, revalidateOnMount: true }),
