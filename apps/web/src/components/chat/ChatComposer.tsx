@@ -230,7 +230,7 @@ import {
   usePullRequestList,
   type EnvironmentQueryTarget,
 } from "~/state/pullRequests";
-import { useEnvironmentQuery } from "~/state/query";
+import { useEnvironmentQuery } from "../../state/query";
 import { useDebouncedValue } from "~/state/queries";
 import { ProviderModelPicker } from "./ProviderModelPicker";
 import { type ComposerCommandItem, ComposerCommandMenu } from "./ComposerCommandMenu";
@@ -292,7 +292,6 @@ import { basenameOfPath } from "../../pierre-icons";
 import { cn, randomUUID } from "~/lib/utils";
 import { Separator } from "../ui/separator";
 import { providerUsage } from "../../state/providerUsage";
-import { useEnvironmentQuery } from "../../state/query";
 import { ProviderUsageStatus } from "./ProviderUsageStatus";
 import {
   getComposerPromptLengthValidationMessage,

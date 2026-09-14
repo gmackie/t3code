@@ -188,7 +188,6 @@ export const CodexDriver: ProviderDriver<CodexSettings, CodexDriverEnv> = {
         environment: processEnv,
         ...(eventLoggers.native ? { nativeEventLogger: eventLoggers.native } : {}),
       });
-      const textGeneration = yield* makeCodexTextGeneration(effectiveConfig, processEnv);
       const threadImportSource = makeCodexThreadImportSource({
         provider: { instanceId, driver: DRIVER_KIND },
         client: makeCodexThreadImportClient({
