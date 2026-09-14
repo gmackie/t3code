@@ -57,7 +57,7 @@ describe("CAD environment HTTP", () => {
           if (bearer)
             expect(new Headers(init.headers).get("authorization")).toBe("Bearer credential");
           else expect(init.credentials).toBe("include");
-        }) as never,
+        }),
     );
   }
   it.effect(
@@ -116,7 +116,7 @@ describe("CAD environment HTTP", () => {
         ]);
         expect(new Headers(init.headers).get("authorization")).toBe("DPoP relay-credential");
         expect(new Headers(init.headers).get("dpop")).toBe("signed-proof");
-      }) as never,
+      }),
   );
   it.effect(
     "explains when the connected server does not support CAD",
@@ -134,6 +134,6 @@ describe("CAD environment HTTP", () => {
         }).pipe(Effect.provide(remoteHttpClientLayer(fetchFn)), Effect.result);
         expect(result._tag).toBe("Failure");
         if (result._tag === "Failure") expect(String(result.failure)).toContain("CAD");
-      }) as never,
+      }),
   );
 });

@@ -1,18 +1,4 @@
 {
   "extends": "../../tsconfig.base.json",
-  "compilerOptions": {
-    "plugins": [
-      {
-        "name": "@effect/language-service",
-        "namespaceImportPackages": ["@effect/platform-node", "effect"],
-        "diagnosticSeverity": {
-          "leakingRequirements": "off",
-          "missingEffectServiceDependency": "off",
-          "missingEffectContext": "off",
-          "unsafeEffectTypeAssertion": "off"
-        }
-      }
-    ]
-  },
   "include": ["src"]
 }

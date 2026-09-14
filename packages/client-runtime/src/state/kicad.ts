@@ -2,7 +2,7 @@ import { EnvironmentId, KiCadProjectManifest, KiCadViewerSession } from "@t3tool
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
-import { HttpClient, HttpClientRequest, type HttpClientResponse } from "effect/unstable/http";
+import { HttpClient, HttpClientRequest } from "effect/unstable/http";
 import { Atom } from "effect/unstable/reactivity";
 import type { PreparedConnection } from "../connection/model.ts";
 import { EnvironmentRegistry } from "../connection/registry.ts";
@@ -45,11 +45,7 @@ export const fetchKiCadJson = Effect.fn("clientRuntime.fetchKiCadJson")(function
     method: input.method,
     url: (base) => kiCadEndpointUrl(base, input.path, input.cwd),
     timeoutMs: 15_000,
-    isUnauthorizedResponse: (value) =>
-      typeof value === "object" &&
-      value !== null &&
-      "status" in value &&
-      (value as HttpClientResponse.HttpClientResponse).status === 401,
+    isUnauthorizedResponse: (response) => response.status === 401,
     request: ({ headers, url }) =>
       Effect.gen(function* () {
         const client = yield* HttpClient.HttpClient;
@@ -62,7 +58,6 @@ export const fetchKiCadJson = Effect.fn("clientRuntime.fetchKiCadJson")(function
           .pipe(Effect.mapError((cause) => new KiCadRequestError({ message: String(cause) })));
       }),
   }).pipe(
-    Effect.map((value) => value as HttpClientResponse.HttpClientResponse),
     Effect.mapError((error) =>
       error instanceof KiCadRequestError
         ? error
