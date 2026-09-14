@@ -62,7 +62,7 @@ export const fetchKiCadJson = Effect.fn("clientRuntime.fetchKiCadJson")(function
         if (headers.dpop) request = HttpClientRequest.setHeader(request, "dpop", headers.dpop);
         return yield* client.execute(request);
       }),
-  });
+  }) as Effect.Effect<HttpClientResponse.HttpClientResponse, unknown, HttpClient.HttpClient>;
   if (response.status < 200 || response.status >= 300) {
     return yield* new KiCadRequestError({
       message:
@@ -94,7 +94,13 @@ export function createKiCadState<R, E>(
           const prepared = Option.getOrNull(get(preparedFor(target.environmentId)));
           return prepared === null
             ? Effect.never
-            : fetchKiCadJson({ prepared, cwd: target.cwd, path, schema, method });
+            : (fetchKiCadJson({
+                prepared,
+                cwd: target.cwd,
+                path,
+                schema,
+                method,
+              }) as Effect.Effect<A, unknown, never>);
         })
         .pipe(
           Atom.swr({ staleTime: 1_000, revalidateOnMount: true }),
