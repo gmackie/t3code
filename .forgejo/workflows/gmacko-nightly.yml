@@ -308,9 +308,9 @@ jobs:
         run: pnpm vp check
 
       - name: Typecheck
-        run: pnpm vp run typecheck --filter '!@t3tools/web'
-        # Web still has GMACKO/upstream API drift (device hub, worktree setup,
-        # pull-request surfaces). Nightly's job is to promote the lane.
+        # Filter is a vp flag, not a tsc flag. Web still has GMACKO/upstream
+        # API drift (device hub, worktree setup, pull-request surfaces).
+        run: pnpm vp run -r --concurrency-limit 2 --filter '!@t3tools/web' typecheck
 
       - name: Test
         shell: bash
