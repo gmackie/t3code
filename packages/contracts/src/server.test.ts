@@ -180,9 +180,7 @@ describe("server config forward compatibility", () => {
 describe("resolveEnvironmentMachineKind", () => {
   const decodeDescriptor = Schema.decodeUnknownSync(ExecutionEnvironmentDescriptor);
   const decodeSettings = Schema.decodeUnknownSync as (schema: unknown) => (u: unknown) => unknown;
-  const decodeServerSettings = decodeSettings(ServerSettings) as (
-    u: unknown,
-  ) => ServerSettingsType;
+  const decodeServerSettings = decodeSettings(ServerSettings) as (u: unknown) => ServerSettingsType;
   const descriptor = (platform: Record<string, unknown>) =>
     decodeDescriptor({
       environmentId: "env-1",
