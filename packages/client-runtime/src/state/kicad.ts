@@ -50,11 +50,10 @@ export const fetchKiCadJson = Effect.fn("clientRuntime.fetchKiCadJson")(function
       value !== null &&
       "status" in value &&
       (value as HttpClientResponse.HttpClientResponse).status === 401,
-    request: ({ headers, url }): Effect.Effect<
-      HttpClientResponse.HttpClientResponse,
-      unknown,
-      HttpClient.HttpClient
-    > =>
+    request: ({
+      headers,
+      url,
+    }): Effect.Effect<HttpClientResponse.HttpClientResponse, unknown, HttpClient.HttpClient> =>
       Effect.gen(function* () {
         const client = yield* HttpClient.HttpClient;
         let request = HttpClientRequest.make(input.method)(url);
