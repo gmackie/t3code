@@ -2,14 +2,13 @@ import { EnvironmentId, KiCadProjectManifest, KiCadViewerSession } from "@t3tool
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
-import { HttpClient, HttpClientRequest } from "effect/unstable/http";
+import { FetchHttpClient, HttpClient, HttpClientRequest } from "effect/unstable/http";
 import { Atom } from "effect/unstable/reactivity";
 import type { PreparedConnection } from "../connection/model.ts";
 import { EnvironmentRegistry } from "../connection/registry.ts";
 import { environmentEndpointUrl } from "../environment/endpoint.ts";
 import { ManagedRelayDpopSigner } from "../relay/managedRelay.ts";
-import { executeAuthenticatedEnvironmentHttpRequest } from "./environmentHttpAuth.ts";
-import { RemoteEnvironmentAuthorization } from "../authorization/service.ts";
+import { executeEnvironmentHttpRequest } from "../rpc/http.ts";
 import { createEnvironmentSessionAtoms } from "./session.ts";
 
 export type KiCadQueryTarget = { readonly environmentId: EnvironmentId; readonly cwd: string };
@@ -35,34 +34,45 @@ export const fetchKiCadJson = Effect.fn("clientRuntime.fetchKiCadJson")(function
   method: "GET" | "POST";
   signer?: Option.Option<ManagedRelayDpopSigner["Service"]>;
 }) {
-  const signer = input.signer ?? (yield* Effect.serviceOption(ManagedRelayDpopSigner));
-  const remoteAuthorization = yield* Effect.serviceOption(RemoteEnvironmentAuthorization);
-  const response = yield* executeAuthenticatedEnvironmentHttpRequest({
-    prepared: input.prepared,
-    signer,
-    remoteAuthorization,
-    group: "auth",
-    method: input.method,
-    url: (base) => kiCadEndpointUrl(base, input.path, input.cwd),
-    timeoutMs: 15_000,
-    isUnauthorizedResponse: (response) => response.status === 401,
-    request: ({ headers, url }) =>
-      Effect.gen(function* () {
-        const client = yield* HttpClient.HttpClient;
-        let request = HttpClientRequest.make(input.method)(url);
-        if (headers.authorization)
-          request = HttpClientRequest.setHeader(request, "authorization", headers.authorization);
-        if (headers.dpop) request = HttpClientRequest.setHeader(request, "dpop", headers.dpop);
-        return yield* client
-          .execute(request)
-          .pipe(Effect.mapError((cause) => new KiCadRequestError({ message: String(cause) })));
-      }),
-  }).pipe(
-    Effect.mapError((error) =>
-      error instanceof KiCadRequestError
-        ? error
-        : new KiCadRequestError({ message: String(error) }),
-    ),
+  const signer =
+    input.signer !== undefined ? input.signer : yield* Effect.serviceOption(ManagedRelayDpopSigner);
+  const url = kiCadEndpointUrl(input.prepared.httpBaseUrl, input.path, input.cwd);
+  const authorization = input.prepared.httpAuthorization;
+  const client = yield* HttpClient.HttpClient;
+  let request = HttpClientRequest.make(input.method)(url);
+  if (authorization?._tag === "Bearer") {
+    request = HttpClientRequest.setHeader(
+      request,
+      "authorization",
+      `Bearer ${authorization.token}`,
+    );
+  } else if (authorization?._tag === "Dpop") {
+    if (Option.isNone(signer)) {
+      return yield* new KiCadRequestError({
+        message: "No DPoP signer is available to authorize the CAD request.",
+      });
+    }
+    const proof = yield* signer.value
+      .createProof({
+        method: input.method,
+        url,
+        accessToken: authorization.accessToken,
+      })
+      .pipe(Effect.mapError((cause) => new KiCadRequestError({ message: String(cause) })));
+    request = HttpClientRequest.setHeader(
+      request,
+      "authorization",
+      `DPoP ${authorization.accessToken}`,
+    );
+    request = HttpClientRequest.setHeader(request, "dpop", proof);
+  }
+  const execute = client.execute(request);
+  const withCredentials =
+    authorization === null
+      ? execute.pipe(Effect.provideService(FetchHttpClient.RequestInit, { credentials: "include" }))
+      : execute;
+  const response = yield* executeEnvironmentHttpRequest(url, 15_000, withCredentials).pipe(
+    Effect.mapError((error) => new KiCadRequestError({ message: String(error) })),
   );
   if (response.status < 200 || response.status >= 300) {
     return yield* new KiCadRequestError({
