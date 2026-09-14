@@ -42,19 +42,15 @@ export const fetchKiCadJson = Effect.fn("clientRuntime.fetchKiCadJson")(function
 }) {
   const signer = input.signer ?? (yield* Effect.serviceOption(ManagedRelayDpopSigner));
   const remoteAuthorization = yield* Effect.serviceOption(RemoteEnvironmentAuthorization);
-  const response = yield* executeAuthenticatedEnvironmentHttpRequest<
-    HttpClientResponse.HttpClientResponse,
-    HttpClientError.HttpClientError,
-    HttpClient.HttpClient
-  >({
+  const response = yield* executeAuthenticatedEnvironmentHttpRequest({
     prepared: input.prepared,
     signer,
     remoteAuthorization,
+    group: "auth",
     method: input.method,
     url: (base) => kiCadEndpointUrl(base, input.path, input.cwd),
     timeoutMs: 15_000,
-    isUnauthorizedResponse: (response: HttpClientResponse.HttpClientResponse) =>
-      response.status === 401,
+    isUnauthorizedResponse: (value: HttpClientResponse.HttpClientResponse) => value.status === 401,
     request: ({ headers, url }) =>
       Effect.gen(function* () {
         const client = yield* HttpClient.HttpClient;
