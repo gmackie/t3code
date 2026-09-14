@@ -45,8 +45,16 @@ export const fetchKiCadJson = Effect.fn("clientRuntime.fetchKiCadJson")(function
     method: input.method,
     url: (base) => kiCadEndpointUrl(base, input.path, input.cwd),
     timeoutMs: 15_000,
-    isUnauthorizedResponse: (value: HttpClientResponse.HttpClientResponse) => value.status === 401,
-    request: ({ headers, url }) =>
+    isUnauthorizedResponse: (value) =>
+      typeof value === "object" &&
+      value !== null &&
+      "status" in value &&
+      (value as HttpClientResponse.HttpClientResponse).status === 401,
+    request: ({ headers, url }): Effect.Effect<
+      HttpClientResponse.HttpClientResponse,
+      unknown,
+      HttpClient.HttpClient
+    > =>
       Effect.gen(function* () {
         const client = yield* HttpClient.HttpClient;
         let request = HttpClientRequest.make(input.method)(url);
