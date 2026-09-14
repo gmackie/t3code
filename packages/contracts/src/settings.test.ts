@@ -10,22 +10,27 @@ import {
   resolveProviderInstanceEnabled,
   ServerSettings,
   ServerSettingsPatch,
+  type ClientSettings,
+  type ClientSettingsPatch as ClientSettingsPatchType,
+  type ClaudeSettings as ClaudeSettingsType,
+  type ServerSettings as ServerSettingsType,
+  type ServerSettingsPatch as ServerSettingsPatchType,
 } from "./settings.ts";
 
 const decodeUnknown = Schema.decodeUnknownSync as (schema: unknown) => (u: unknown) => unknown;
 const encodeKnown = Schema.encodeSync as (schema: unknown) => (u: unknown) => unknown;
 
-const decodeClientSettings = decodeUnknown(ClientSettingsSchema) as (
+const decodeClientSettings = decodeUnknown(ClientSettingsSchema) as (u: unknown) => ClientSettings;
+const decodeClientSettingsPatch = decodeUnknown(ClientSettingsPatch) as (
   u: unknown,
-) => import("./settings.ts").ClientSettings;
-const decodeClientSettingsPatch = decodeUnknown(ClientSettingsPatch);
-const encodeClientSettings = encodeKnown(ClientSettingsSchema);
-const decodeServerSettings = decodeUnknown(ServerSettings) as (
+) => ClientSettingsPatchType;
+const encodeClientSettings = encodeKnown(ClientSettingsSchema) as (u: ClientSettings) => unknown;
+const decodeServerSettings = decodeUnknown(ServerSettings) as (u: unknown) => ServerSettingsType;
+const decodeServerSettingsPatch = decodeUnknown(ServerSettingsPatch) as (
   u: unknown,
-) => import("./settings.ts").ServerSettings;
-const decodeServerSettingsPatch = decodeUnknown(ServerSettingsPatch);
-const encodeServerSettings = encodeKnown(ServerSettings);
-const decodeClaudeSettings = decodeUnknown(ClaudeSettings);
+) => ServerSettingsPatchType;
+const encodeServerSettings = encodeKnown(ServerSettings) as (u: ServerSettingsType) => unknown;
+const decodeClaudeSettings = decodeUnknown(ClaudeSettings) as (u: unknown) => ClaudeSettingsType;
 
 describe("ServerSettings default permissions", () => {
   it("keeps full access for settings saved before a default was configured", () => {
