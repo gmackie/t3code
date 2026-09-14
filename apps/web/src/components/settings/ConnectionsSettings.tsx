@@ -1558,13 +1558,7 @@ function SavedBackendListRow({
         </Tooltip>
       }
       below={
-        serverUpdateState.status !== "idle" ? (
-          <div className="mt-1 max-w-md">
-            <ServerUpdateProgress state={serverUpdateState} />
-          </div>
-          {metadataBits.length > 0 ? (
-            <p className="truncate text-xs text-muted-foreground">{metadataBits.join(" · ")}</p>
-          ) : null}
+        <>
           {isConnected ? (
             <div className="pt-1">
               <EnvironmentIconPicker
@@ -1575,7 +1569,7 @@ function SavedBackendListRow({
             </div>
           ) : null}
           {serverUpdateState.status !== "idle" ? (
-            <div className="max-w-md">
+            <div className="mt-1 max-w-md">
               <ServerUpdateProgress state={serverUpdateState} />
             </div>
           ) : versionMismatch ? (
@@ -1612,17 +1606,28 @@ function SavedBackendListRow({
               ) : null}
             </p>
           ) : null}
-        </div>
-        <div className="flex w-full shrink-0 items-center gap-1 sm:w-auto sm:justify-end">
-          {showUpdateAction ? (
-            <ServerUpdateAction
-              environmentId={environmentId}
-              serverLabel={`${environment.label} server`}
-              selfUpdate={resolveServerSelfUpdateCapability(environment.serverConfig)}
-              desktopAppUpdate={supportsDesktopAppUpdate(environment.serverConfig)}
-              targetVersion={versionMismatch.clientVersion}
-              label={serverUpdateState.status === "failed" ? "Retry update" : "Update"}
-              appearance="icon"
+        </>
+      }
+    >
+      {showUpdateAction && versionMismatch ? (
+        <ServerUpdateAction
+          environmentId={environmentId}
+          serverLabel={`${environment.label} server`}
+          selfUpdate={resolveServerSelfUpdateCapability(environment.serverConfig)}
+          desktopAppUpdate={supportsDesktopAppUpdate(environment.serverConfig)}
+          targetVersion={versionMismatch.clientVersion}
+          label={serverUpdateState.status === "failed" ? "Retry update" : "Update"}
+          appearance="icon"
+        />
+      ) : null}
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <Switch
+              aria-label={enabled ? "Switch off" : "Switch on"}
+              checked={enabled}
+              disabled={isRemoving}
+              onCheckedChange={(next) => onSetEnabled(environmentId, next)}
             />
           }
         />
