@@ -13,7 +13,6 @@ import {
   buildPluginCommandActionItems,
   buildProjectActionItems,
   buildThreadActionItems,
-  buildLinkedThreadActionItems,
   enumerateCommandPaletteItems,
   filterPinnedBrowseEntries,
   filterCommandPaletteGroups,
