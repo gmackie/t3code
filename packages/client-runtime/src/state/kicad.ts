@@ -2,12 +2,7 @@ import { EnvironmentId, KiCadProjectManifest, KiCadViewerSession } from "@t3tool
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
-import {
-  HttpClient,
-  HttpClientRequest,
-  type HttpClientResponse,
-  type HttpClientError,
-} from "effect/unstable/http";
+import { HttpClient, HttpClientRequest, type HttpClientResponse } from "effect/unstable/http";
 import { Atom } from "effect/unstable/reactivity";
 import type { PreparedConnection } from "../connection/model.ts";
 import { EnvironmentRegistry } from "../connection/registry.ts";
