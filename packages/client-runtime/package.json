@@ -63,6 +63,10 @@
       "types": "./src/errors/index.ts",
       "default": "./src/errors/index.ts"
     },
+    "./file-preview": {
+      "types": "./src/filePreview.ts",
+      "default": "./src/filePreview.ts"
+    },
     "./rpc": {
       "types": "./src/rpc/index.ts",
       "default": "./src/rpc/index.ts"
