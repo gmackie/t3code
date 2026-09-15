@@ -80,6 +80,15 @@ describe("ForgeGraph GMACKO release workflow", () => {
     expect(workflow).not.toContain('git push --force origin "${HEAD_SHA}:refs/heads/custom-local"');
   });
 
+  it("pins macOS desktop builds to gmacko-mini instead of the shared macos label", () => {
+    const workflow = NodeFS.readFileSync(workflowPath, "utf8");
+
+    expect(workflow).toContain("runner: gmacko-mini");
+    expect(workflow).toContain("runs-on: gmacko-mini");
+    expect(workflow).not.toContain("runner: macos");
+    expect(workflow).not.toMatch(/^    runs-on: macos$/m);
+  });
+
   it("aligns release package versions before installing macOS build dependencies", () => {
     const workflow = NodeFS.readFileSync(workflowPath, "utf8");
     const buildJob = workflow.slice(
