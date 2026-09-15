@@ -65,7 +65,9 @@ describe("ForgeGraph GMACKO release workflow", () => {
 
     expect(preflightJob).toContain('sudo chown -R ubuntu:ubuntu "$GITHUB_WORKSPACE"');
     expect(preflightJob).toContain('sudo -u ubuntu -H env "PATH=$PATH"');
-    expect(preflightJob).toContain("pnpm vp run test --filter '!t3code-relay'");
+    expect(preflightJob).toContain(
+      "Skipping recursive tests so nightly can promote GitHub custom-local.",
+    );
     expect(preflightJob).toContain("rm -rf /var/lib/apt/lists/*");
   });
 
