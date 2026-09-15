@@ -308,9 +308,9 @@ jobs:
         run: pnpm vp check
 
       - name: Typecheck
-        # Filter is a vp flag, not a tsc flag. Web still has GMACKO/upstream
+        # --filter cannot be combined with -r. Web still has GMACKO/upstream
         # API drift (device hub, worktree setup, pull-request surfaces).
-        run: pnpm vp run -r --concurrency-limit 2 --filter '!@t3tools/web' typecheck
+        run: pnpm vp run --concurrency-limit 2 --filter '!@t3tools/web' typecheck
 
       - name: Test
         shell: bash
