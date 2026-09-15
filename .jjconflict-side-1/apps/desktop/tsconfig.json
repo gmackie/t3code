@@ -1,0 +1,19 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "composite": true,
+    "types": ["node", "electron"],
+    "lib": ["ESNext", "DOM", "esnext.disposable"],
+    "plugins": [
+      {
+        "name": "@effect/language-service",
+        "namespaceImportPackages": ["@effect/platform-node", "effect"],
+        "diagnosticSeverity": {
+          "leakingRequirements": "off",
+          "missingEffectServiceDependency": "off"
+        }
+      }
+    ]
+  },
+  "include": ["src", "vite.config.ts", "../../scripts/lib"]
+}
