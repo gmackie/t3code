@@ -82,6 +82,7 @@ type ProviderIntentEvent = Extract<
       | "thread.approval-response-requested"
       | "thread.user-input-response-requested"
       | "thread.session-stop-requested"
+      | "thread.unsettled"
       | "thread.settled"
       | "thread.session-set";
   }
@@ -1794,6 +1795,15 @@ const make = Effect.gen(function* () {
         if (event.payload.session.status === "ready")
           yield* maybeRefineThreadTitle(event.payload.threadId);
         return;
+      case "thread.unsettled": {
+        const thread = yield* resolveThreadShell(event.payload.threadId);
+        if (!thread?.session) return;
+        const resume = ensureSessionForThread(event.payload.threadId, event.occurredAt);
+        yield* thread.worktreePath
+          ? withWorkspaceLease(path.resolve(thread.worktreePath), resume)
+          : resume;
+        return;
+      }
       case "thread.runtime-mode-set": {
         const thread = yield* resolveThreadShell(event.payload.threadId);
         if (!thread?.session || thread.session.status === "stopped") {
@@ -1897,7 +1907,8 @@ const make = Effect.gen(function* () {
         event.type === "thread.approval-response-requested" ||
         event.type === "thread.user-input-response-requested" ||
         event.type === "thread.session-stop-requested" ||
-        event.type === "thread.settled"
+        event.type === "thread.settled" ||
+        (event.type === "thread.unsettled" && event.payload.reason === "user")
       ) {
         return yield* worker.enqueue(event);
       }

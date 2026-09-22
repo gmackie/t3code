@@ -4296,6 +4296,20 @@ describe("ProviderCommandReactor", () => {
     }),
   );
 
+  it("does not start an unused thread when unsettled", async () => {
+    const harness = await createHarness();
+    await harness.runEffect(
+      harness.engine.dispatch({
+        type: "thread.unsettle",
+        commandId: CommandId.make("cmd-unused-unsettle"),
+        threadId: ThreadId.make("thread-1"),
+        reason: "user",
+      }),
+    );
+    await harness.drain();
+    expect(harness.startSession).not.toHaveBeenCalled();
+  });
+
   effectIt.effect("stops a ready provider session after automatic settlement", () =>
     Effect.gen(function* () {
       const sessionStopped = yield* Deferred.make<void>();
@@ -4339,6 +4353,63 @@ describe("ProviderCommandReactor", () => {
       expect(thread?.settledOverride).toBe("settled");
       expect(thread?.session?.status).toBe("stopped");
       expect(thread?.session?.providerInstanceId).toBe(ProviderInstanceId.make("codex_work"));
+    }),
+  );
+
+  effectIt.effect("resumes a settled thread using its current settings", () =>
+    Effect.gen(function* () {
+      const harness = yield* Effect.promise(() => createHarness());
+      const now = "2026-01-01T00:00:00.000Z";
+
+      yield* harness.engine.dispatch({
+        type: "thread.session.set",
+        commandId: CommandId.make("session-before-resume"),
+        threadId: ThreadId.make("thread-1"),
+        session: {
+          threadId: ThreadId.make("thread-1"),
+          status: "stopped",
+          providerName: "codex",
+          providerInstanceId: ProviderInstanceId.make("codex_work"),
+          runtimeMode: "approval-required",
+          activeTurnId: null,
+          lastError: null,
+          updatedAt: now,
+        },
+        createdAt: now,
+      });
+      yield* harness.engine.dispatch({
+        type: "thread.settle",
+        commandId: CommandId.make("settle-before-resume"),
+        threadId: ThreadId.make("thread-1"),
+      });
+      yield* Effect.promise(() => harness.drain());
+
+      yield* harness.engine.dispatch({
+        type: "thread.runtime-mode.set",
+        commandId: CommandId.make("change-settings-while-settled"),
+        threadId: ThreadId.make("thread-1"),
+        runtimeMode: "full-access",
+        createdAt: now,
+      });
+      yield* Effect.promise(() => harness.drain());
+      expect(harness.startSession).not.toHaveBeenCalled();
+
+      yield* harness.engine.dispatch({
+        type: "thread.unsettle",
+        commandId: CommandId.make("cmd-resume-after-auto-settle"),
+        threadId: ThreadId.make("thread-1"),
+        reason: "user",
+      });
+      yield* Effect.promise(() => harness.drain());
+      expect(harness.startSession).toHaveBeenCalledExactlyOnceWith(
+        ThreadId.make("thread-1"),
+        expect.objectContaining({ runtimeMode: "full-access" }),
+      );
+      const resumed = (yield* Effect.promise(() => harness.readModel())).threads.find(
+        (entry) => entry.id === ThreadId.make("thread-1"),
+      );
+      expect(resumed?.session?.status).toBe("ready");
+      expect(resumed?.settledOverride).toBe("active");
     }),
   );
 });
