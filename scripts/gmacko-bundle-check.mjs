@@ -1,15 +1,15 @@
-import { cp, mkdtemp, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { spawnSync } from "node:child_process";
+import * as NodeFSP from "node:fs/promises";
+import * as NodeOS from "node:os";
+import * as NodePath from "node:path";
+import * as NodeChildProcess from "node:child_process";
 
 // Check emitted application assets: source transpilation does not catch missing
 // imports. Copy outside hidden worktrees, which oxlint otherwise skips.
-const directory = await mkdtemp(join(tmpdir(), "gmacko-bundle-check-"));
+const directory = await NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "gmacko-bundle-check-"));
 try {
-  await cp("apps/web/dist/assets", join(directory, "assets"), { recursive: true });
-  const config = join(directory, "oxlint.json");
-  await writeFile(
+  await NodeFSP.cp("apps/web/dist/assets", NodePath.join(directory, "assets"), { recursive: true });
+  const config = NodePath.join(directory, "oxlint.json");
+  await NodeFSP.writeFile(
     config,
     JSON.stringify({
       env: { browser: true, node: true, worker: true },
@@ -23,9 +23,9 @@ try {
       rules: { "no-undef": "error" },
     }),
   );
-  const result = spawnSync(
+  const result = NodeChildProcess.spawnSync(
     "npx",
-    ["--yes", "oxlint@1.85.0", "--config", config, join(directory, "assets")],
+    ["--yes", "oxlint@1.85.0", "--config", config, NodePath.join(directory, "assets")],
     {
       cwd: directory,
       stdio: "inherit",
@@ -34,5 +34,5 @@ try {
   if (result.error) throw result.error;
   if (result.status !== 0) throw new Error("Release bundle contains undefined references");
 } finally {
-  await rm(directory, { recursive: true, force: true });
+  await NodeFSP.rm(directory, { recursive: true, force: true });
 }
