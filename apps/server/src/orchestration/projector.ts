@@ -1,3 +1,4 @@
+import { WORKTREE_SETUP_ACTIVITY_KIND } from "@t3tools/contracts";
 import type {
   OrchestrationEvent,
   OrchestrationProject,

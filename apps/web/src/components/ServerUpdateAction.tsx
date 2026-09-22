@@ -196,6 +196,8 @@ export function ServerUpdateAction({
   label = "Update",
   variant = "outline",
   size = "xs",
+  className,
+  appearance = "button",
 }: {
   readonly environmentId: EnvironmentId;
   readonly serverLabel: string;
@@ -209,6 +211,8 @@ export function ServerUpdateAction({
   readonly label?: string;
   readonly variant?: ComponentProps<typeof Button>["variant"];
   readonly size?: ComponentProps<typeof Button>["size"];
+  readonly className?: string;
+  readonly appearance?: "button" | "icon";
 }) {
   const isDesktopAppUpdate = selfUpdate === "desktop-managed";
   const continueThreadsAfterServerUpdate = useEnvironmentSettings(

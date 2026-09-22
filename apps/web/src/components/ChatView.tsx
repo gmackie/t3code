@@ -4574,6 +4574,10 @@ export default function ChatView(props: ChatViewProps) {
   );
   // The shell carries server PR updates even while thread detail is still loading.
   const activeThreadMetadata = activeThreadShell ?? activeThread;
+  const visiblePullRequests = visibleThreadPullRequests(activeThreadMetadata?.pullRequests ?? []);
+  const visiblePullRequestCount = visiblePullRequests.length;
+  const pullRequestsSurfaceAvailable =
+    isServerThread && supportsThreadPullRequests && visiblePullRequestCount > 0;
   const hasLinkedPullRequestDetail = activeThreadMetadata?.linkedPullRequest != null;
   const linkedThreadPullRequest =
     activeThreadMetadata?.linkedPullRequest ?? activeThreadMetadata?.branchPullRequest ?? null;
@@ -9664,29 +9668,6 @@ export default function ChatView(props: ChatViewProps) {
 
   return (
     <div className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden bg-background">
-      <Dialog
-        open={
-          deviceSetupThread !== null &&
-          deviceSetupThread.environmentId === activeThreadRef?.environmentId &&
-          deviceSetupThread.threadId === activeThreadRef?.threadId
-        }
-        onOpenChange={(open) => {
-          if (!open) setDeviceSetupThread(null);
-        }}
-      >
-        <WizardPopup>
-          {activeThreadRef ? (
-            <DeviceSetup
-              environmentId={activeThreadRef.environmentId}
-              state={deviceState}
-              onComplete={() => {
-                useRightPanelStore.getState().open(activeThreadRef, "device");
-                setDeviceSetupThread(null);
-              }}
-            />
-          ) : null}
-        </WizardPopup>
-      </Dialog>
       {rightPanelControlsAtRoot ? panelLayoutControls : null}
       <div
         className={cn(

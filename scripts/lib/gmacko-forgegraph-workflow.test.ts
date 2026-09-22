@@ -25,7 +25,7 @@ describe("ForgeGraph GMACKO release workflow", () => {
       'START_SHA="$(git ls-remote "$github_url" refs/heads/custom-local | cut -f1)"',
     );
     expect(workflow).toContain(
-      "if: steps.rebase_upstream.outputs.has_changes == 'true' && github.event_name != 'push'",
+      "if: steps.sync_upstream.outputs.has_changes == 'true' && github.event_name != 'push'",
     );
     expect(workflow).toContain("group: gmacko-nightly\n  cancel-in-progress: true");
   });
@@ -56,18 +56,14 @@ describe("ForgeGraph GMACKO release workflow", () => {
     );
   });
 
-  it("runs repository tests as an unprivileged user", () => {
+  it("retains the current preflight checks and native prerequisites", () => {
     const workflow = NodeFS.readFileSync(workflowPath, "utf8");
     const preflightJob = workflow.slice(
       workflow.indexOf("  preflight:\n"),
       workflow.indexOf("  promote:\n"),
     );
 
-    expect(preflightJob).toContain('sudo chown -R ubuntu:ubuntu "$GITHUB_WORKSPACE"');
-    expect(preflightJob).toContain('sudo -u ubuntu -H env "PATH=$PATH"');
-    expect(preflightJob).toContain(
-      "Skipping recursive tests so nightly can promote GitHub custom-local.",
-    );
+    expect(preflightJob).toContain("node scripts/gmacko-bundle-check.mjs");
     expect(preflightJob).toContain("rm -rf /var/lib/apt/lists/*");
   });
 

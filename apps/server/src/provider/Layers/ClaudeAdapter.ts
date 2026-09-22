@@ -1,3 +1,4 @@
+import * as ChildProcess from "effect/unstable/process/ChildProcess";
 // @effect-diagnostics nodeBuiltinImport:off
 /**
  * ClaudeAdapterLive - Scoped live implementation for the Claude Agent provider adapter.

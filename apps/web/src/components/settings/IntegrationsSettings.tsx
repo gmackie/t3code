@@ -1,3 +1,8 @@
+import { DeviceToolVersions } from "../device/DeviceToolVersions";
+import { DeviceHostUpdates } from "../device/DeviceHostUpdates";
+import { ScopedSwitch } from "./ScopedSwitch";
+import { useScopedSettings, useUpdateScopedSettings } from "./useScopedSettings";
+import { DeviceHostsSettings } from "./DeviceHostsSettings";
 import { Link } from "@tanstack/react-router";
 import {
   type BrowserLinkTarget,

@@ -16,18 +16,18 @@ class StateMaintenanceCommandError extends Schema.TaggedError<StateMaintenanceCo
 }
 
 const compactActivitiesCommand = Command.make("compact-activities", {
-  databasePath: Flag.string("database-path").pipe(
+  databasePath: Flag.String("database-path").pipe(
     Flag.withDescription("Path to the offline T3 state.sqlite database."),
   ),
-  retainPerThread: Flag.integer("retain-per-thread").pipe(
+  retainPerThread: Flag.Int("retain-per-thread").pipe(
     Flag.withDescription("Number of newest activity rows to retain per thread."),
     Flag.withDefault(500),
   ),
-  apply: Flag.boolean("apply").pipe(
+  apply: Flag.Boolean("apply").pipe(
     Flag.withDescription("Create a full backup, delete candidates, and vacuum the database."),
     Flag.withDefault(false),
   ),
-  backupPath: Flag.string("backup-path").pipe(
+  backupPath: Flag.String("backup-path").pipe(
     Flag.withDescription("Optional non-existing path for the pre-change SQLite backup."),
     Flag.optional,
   ),

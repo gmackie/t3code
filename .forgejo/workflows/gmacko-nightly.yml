@@ -1,6 +1,6 @@
 # GMACKO nightly: sync the release lane onto upstream main and cut a release.
 # Push and workflow_dispatch release the current ForgeGraph lane. The daily
-# schedule rebases onto upstream and must cut that release itself: a push
+# schedule merges upstream and must cut that release itself: a push
 # authenticated with the Actions token does not start a follow-up run.
 #
 # Runs on ForgeGraph CI (Forgejo Actions at git.forgegraf.com) instead of
@@ -46,7 +46,7 @@ on:
         default: false
         type: boolean
       skip_sync:
-        description: "Release the lane as-is without rebasing onto upstream"
+        description: "Release the lane as-is without merging upstream"
         required: false
         default: false
         type: boolean
@@ -74,8 +74,8 @@ jobs:
     timeout-minutes: 40
     outputs:
       ref: ${{ steps.lane.outputs.head_sha }}
-      start_sha: ${{ steps.rebase_upstream.outputs.start_sha }}
-      has_changes: ${{ steps.rebase_upstream.outputs.has_changes }}
+      start_sha: ${{ steps.sync_upstream.outputs.start_sha }}
+      has_changes: ${{ steps.sync_upstream.outputs.has_changes }}
       version: ${{ steps.release_meta.outputs.version }}
       tag: ${{ steps.release_meta.outputs.tag }}
       release_name: ${{ steps.release_meta.outputs.name }}
@@ -108,7 +108,7 @@ jobs:
           fi
           github_url="https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_FORK}.git"
           forgejo_url="${FORGEJO_REPO_URL/https:\/\//https://x-access-token:${FORGEJO_TOKEN}@}"
-          # Always rebase the ForgeGraph lane. Cloning GitHub on schedule
+          # Always sync the ForgeGraph lane. Cloning GitHub on schedule
           # overwrites Forgejo with a stale tip that never got promoted.
           git clone --branch custom-local --tags "$forgejo_url" lane
           cd lane
@@ -119,8 +119,8 @@ jobs:
           echo "Lane tip:     $(git rev-parse --short HEAD)"
           echo "Upstream tip: $(git rev-parse --short upstream/main)"
 
-      - id: rebase_upstream
-        name: Rebase custom-local onto upstream main
+      - id: sync_upstream
+        name: Merge upstream main into custom-local
         shell: bash
         working-directory: lane
         env:
@@ -148,21 +148,22 @@ jobs:
             echo "start_sha=$START_SHA" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          # Rebase reverses merge strategy labels: "theirs" is the GMACKO
-          # commit being replayed, while "ours" is the new upstream base.
-          git rebase --force-rebase -X theirs upstream/main
+          # Merge the final lane tree, preserving its customizations on overlap.
+          # Replaying history resurrects temporary .jjconflict-side-* trees
+          # from resolved historical conflicts and fails rename detection.
+          git merge --no-edit -X ours upstream/main
           echo "has_changes=true" >> "$GITHUB_OUTPUT"
           echo "start_sha=$START_SHA" >> "$GITHUB_OUTPUT"
 
-      - name: Refresh lockfile after rebase
-        if: steps.rebase_upstream.outputs.has_changes == 'true' && github.event_name != 'push' && inputs.skip_sync != 'true'
+      - name: Refresh lockfile after upstream merge
+        if: steps.sync_upstream.outputs.has_changes == 'true' && github.event_name != 'push' && inputs.skip_sync != 'true'
         shell: bash
         working-directory: lane
         env:
           NODE_OPTIONS: "--max-old-space-size=4096"
         run: |
           set -euo pipefail
-          LOCK_COMMIT_SUBJECT="chore: refresh lockfile after upstream rebase"
+          LOCK_COMMIT_SUBJECT="chore: refresh lockfile after upstream merge"
           pnpm install --lockfile-only --no-frozen-lockfile
           git add pnpm-lock.yaml
           if ! git diff --cached --quiet; then
@@ -186,7 +187,7 @@ jobs:
             echo "head_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          # The rebased lane is only a candidate until preflight passes: it is
+          # The merged lane is only a candidate until preflight passes: it is
           # mirrored here so downstream jobs can check it out, but the GitHub
           # lane is advanced by the promote job after preflight. The scheduled
           # workflow definition itself also lives on this branch here.
@@ -194,7 +195,7 @@ jobs:
           # Branch only: historical tags point at commits without
           # .forgejo/workflows, where Forgejo would fall back to the GitHub
           # workflow files and fire their tag-triggered release jobs.
-          git push --force "$mirror_url" "HEAD:refs/heads/custom-local"
+          git push "$mirror_url" "HEAD:refs/heads/custom-local"
           echo "head_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       - id: release_meta
@@ -226,10 +227,10 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GMACKO_GITHUB_TOKEN }}
           HEAD_SHA: ${{ steps.lane.outputs.head_sha }}
-          HAS_CHANGES: ${{ steps.rebase_upstream.outputs.has_changes }}
+          HAS_CHANGES: ${{ steps.sync_upstream.outputs.has_changes }}
         run: |
           set -euo pipefail
-          # Do not skip scheduled releases. The sync job mirrors the rebased
+          # Do not skip scheduled releases. The sync job mirrors the merged
           # lane with the Actions token, and Forgejo will not start a second
           # run from that push, so this run has to preflight, promote, and
           # publish. A GITHUB_TOKEN mirror also cannot retrigger this workflow,
@@ -262,7 +263,7 @@ jobs:
           fi
 
   preflight:
-    name: Preflight (check, typecheck, test)
+    name: Preflight (check, runtime tests, bundles)
     needs: sync
     if: ${{ needs.sync.outputs.should_release == 'true' }}
     runs-on: forgegraph-ci
@@ -308,15 +309,29 @@ jobs:
       - name: Check
         run: pnpm vp check
 
-      - name: Typecheck
-        # Web still has GMACKO/upstream API drift. vp cannot combine --filter
-        # with -r, and the root typecheck script is itself recursive.
-        run: echo "Skipping recursive typecheck so nightly can promote GitHub custom-local."
+      - name: Release runtime regression tests
+        working-directory: apps/server
+        run: >-
+          pnpm vp test run
+          src/persistence/Migrations/050_ProjectionThreadPullRequests.test.ts
+          src/persistence/Migrations/051_ProjectionThreadMessageContext.test.ts
+          src/git/linkCreatedPullRequest.test.ts
+          src/cli/config.test.ts
+          src/serverSettings.test.ts
+          src/persistence/Migrations.test.ts
 
-      - name: Test
-        # vp forwards extra args to vitest, which does not accept --filter.
-        # Relay and other packages still fail after the upstream rebase.
-        run: echo "Skipping recursive tests so nightly can promote GitHub custom-local."
+      - name: Build and verify release bundles
+        shell: bash
+        run: |
+          set -euo pipefail
+          pnpm vp run --filter @t3tools/web build
+          (cd apps/server && pnpm vp pack) 2>&1 | tee /tmp/gmacko-server-build.log
+          if grep -q 'IMPORT_IS_UNDEFINED' /tmp/gmacko-server-build.log; then
+            echo "Server bundle contains undefined imports." >&2
+            exit 1
+          fi
+          node apps/server/dist/bin.mjs --help
+          node scripts/gmacko-bundle-check.mjs
 
   promote:
     name: Promote lane to GitHub
@@ -339,8 +354,8 @@ jobs:
             echo "GitHub custom-local already at ${HEAD_SHA}; nothing to promote."
             exit 0
           fi
-          # A broken auto-rebase must never land on the GitHub lane: this only
-          # runs after check, typecheck, and the full test suite passed on the
+          # A broken upstream sync must never land on the GitHub lane: this only
+          # runs after checks, focused runtime tests, and bundle validation passed on the
           # candidate, and the lease guarantees nobody moved the lane meanwhile.
           git clone --branch custom-local \
             "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_FORK}.git" lane

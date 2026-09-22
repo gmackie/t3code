@@ -6,7 +6,7 @@ import * as SqlClient from "effect/unstable/sql/SqlClient";
 import { migrationManifest, reconcileMigrationLedger, runMigrations } from "./Migrations.ts";
 import * as NodeSqliteClient from "@t3tools/shared/nodeSqliteClient";
 
-const layer = it.layer(Layer.mergeAll(NodeSqliteClient.layerMemory()));
+const layer = it.layer(Layer.mergeAll(NodeSqliteClient.layer({ filename: ":memory:" })));
 
 const readLedger = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
@@ -38,6 +38,18 @@ layer("migration ledger reconciliation", (it) => {
       const columns = yield* sql<{ readonly name: string }>`PRAGMA table_info(projection_threads)`;
       assert.ok(columns.some((column) => column.name === "branch_pull_request_json"));
       assert.ok(columns.some((column) => column.name === "active_order_key"));
+    }),
+  );
+
+  it.effect("preserves a title state column installed by the local recovery", () =>
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* runMigrations();
+      yield* sql`DELETE FROM effect_sql_migrations WHERE migration_id >= 54`;
+      yield* runMigrations();
+      yield* assertLedgerMatchesManifest;
+      const columns = yield* sql<{ readonly name: string }>`PRAGMA table_info(projection_threads)`;
+      assert.equal(columns.filter((column) => column.name === "title_state_json").length, 1);
     }),
   );
 

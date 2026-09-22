@@ -15,7 +15,8 @@ import {
   DEFAULT_TEXT_GENERATION_MODEL_BY_PROVIDER,
   DEFAULT_MODEL_BY_PROVIDER,
   DEFAULT_SERVER_SETTINGS,
-  type ModelSelection,
+  ModelSelection,
+  ProjectScript,
   type PluginPackageId,
   type ProviderInstanceConfig,
   type ProviderInstanceEnvironmentVariable,
@@ -949,13 +950,13 @@ const make = Effect.gen(function* () {
     );
   };
 
-  const updateSettings = (
-    patch: ServerSettingsPatch,
+  const mutateSettings = (
+    mutate: (current: ServerSettings) => ServerSettings,
   ): Effect.Effect<ServerSettings, ServerSettingsError> =>
     writeSemaphore.withPermits(1)(
       Effect.gen(function* () {
         const current = yield* getSettingsFromCache;
-        const updated = applyServerSettingsPatch(current, patch);
+        const updated = mutate(current);
         const persisted = yield* persistProviderEnvironmentSecrets(current, updated);
         const next = yield* normalizeServerSettings(persisted.settings);
         const materialized = yield* Effect.uninterruptibleMask(() =>
@@ -1051,22 +1052,6 @@ const make = Effect.gen(function* () {
 
     yield* Deferred.succeed(startedDeferred, undefined).pipe(Effect.orDie);
   });
-
-  const mutateSettings = Effect.fn("ServerSettings.mutateSettings")(
-    (mutate: (current: ServerSettings) => ServerSettings) =>
-      writeSemaphore.withPermits(1)(
-        Effect.gen(function* () {
-          const current = yield* getSettingsFromCache;
-          const nextPersisted = yield* persistProviderEnvironmentSecrets(current, mutate(current));
-          const next = yield* normalizeServerSettings(nextPersisted);
-          yield* writeSettingsAtomically(next);
-          yield* Cache.set(settingsCache, cacheKey, next);
-          yield* emitChange(next);
-          const materialized = yield* materializeProviderEnvironmentSecrets(next);
-          return resolveTextGenerationProvider(materialized);
-        }),
-      ),
-  );
 
   return {
     start,

@@ -24,9 +24,9 @@ import { VeritasBridge } from "./VeritasBridge.ts";
 export const kicadVeritasRouteLayer = Layer.unwrap(
   Effect.gen(function* () {
     const config = yield* ServerConfig;
-    const url = yield* Config.string("VERITAS_URL").pipe(Config.withDefault(""));
-    const token = yield* Config.string("VERITAS_API_TOKEN").pipe(Config.withDefault(""));
-    const publicUrl = yield* Config.string("VERITAS_CAD_PUBLIC_URL").pipe(Config.withDefault(""));
+    const url = yield* Config.String("VERITAS_URL").pipe(Config.withDefault(""));
+    const token = yield* Config.String("VERITAS_API_TOKEN").pipe(Config.withDefault(""));
+    const publicUrl = yield* Config.String("VERITAS_CAD_PUBLIC_URL").pipe(Config.withDefault(""));
     const bridge = new VeritasBridge(
       config.stateDir,
       url && token ? { url, token, publicUrl } : null,

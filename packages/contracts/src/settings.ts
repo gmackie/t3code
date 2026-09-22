@@ -11,7 +11,7 @@ import {
   TrimmedNonEmptyString,
   TrimmedString,
 } from "./baseSchemas.ts";
-import { EnvironmentMachineKind, ThreadEnvMode } from "./environment.ts";
+import { EnvironmentMachineKind, ThreadEnvMode, WorktreeSubmodules } from "./environment.ts";
 import {
   CustomModelSetting,
   DEFAULT_TEXT_GENERATION_MODEL,

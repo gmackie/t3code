@@ -34,6 +34,8 @@ import {
   OrchestrationThreadSettleBlockedError,
   type OrchestrationCommandRejection,
 } from "./Errors.ts";
+const monogramSegmenter = new Intl.Segmenter(undefined, { granularity: "grapheme" });
+
 import {
   listThreadsByProjectId,
   requireActiveProjectWorkspaceRootAbsent,

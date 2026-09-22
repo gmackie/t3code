@@ -1,3 +1,4 @@
+import { supportsServerUpdateThreadContinuation } from "../../versionSkew";
 import {
   ChevronsLeftRightEllipsisIcon,
   EllipsisIcon,
@@ -1586,15 +1587,6 @@ function SavedBackendListRow({
       }
       below={
         <>
-          {isConnected ? (
-            <div className="pt-1">
-              <EnvironmentIconPicker
-                environmentId={environmentId}
-                serverConfig={environment.serverConfig}
-                size="xs"
-              />
-            </div>
-          ) : null}
           {serverUpdateState.status !== "idle" ? (
             <div className="mt-1 max-w-md">
               <ServerUpdateProgress state={serverUpdateState} />
