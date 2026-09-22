@@ -53,6 +53,7 @@ export interface ScreenHeaderSearch {
 }
 
 export interface ScreenHeaderProps {
+  readonly titleContent?: ReactNode;
   readonly title: string;
   readonly subtitle?: string;
   readonly actions?: ReadonlyArray<ScreenHeaderAction>;

@@ -6,6 +6,7 @@ import {
 } from "../../state/use-composer-drafts";
 import { useWorktreeSetup } from "./use-worktree-setup";
 import { worktreeSetupAgentStarted } from "@t3tools/client-runtime/worktree-setup";
+import { ThreadHeaderTitle } from "./ThreadHeaderTitle";
 import { ScreenHeader } from "../../components/ScreenHeader";
 import { ScreenHeaderButton } from "../../components/ScreenHeaderButton";
 import type { ScreenHeaderAction } from "../../components/ScreenHeader.types";
@@ -94,6 +95,7 @@ import { threadRouteIsHydrating } from "./thread-route-hydration";
 
 function ThreadHeader(
   props: Parameters<typeof useThreadHeaderOptions>[0] & {
+    readonly threadId: string;
     readonly hasThreadCwd: boolean;
     readonly hasWorkspaceRoot: boolean;
     readonly fileInspectorSupported: boolean;
@@ -150,14 +152,35 @@ function ThreadHeader(
     props.hasWorkspaceRoot,
   ]);
 
+  const titleContent = (
+    <ThreadHeaderTitle
+      key={props.threadId}
+      maxWidth={Platform.OS === "ios" ? native.titleMaxWidth : undefined}
+      threadId={props.threadId}
+      title={props.title}
+      subtitle={props.subtitle}
+    />
+  );
+
   return (
     <>
       <ScreenHeader
         title={props.title}
         subtitle={props.subtitle}
         sidebar={native.sidebar}
-        options={native.options}
-        optionsVersion={props.gitControls.projectScripts}
+        titleContent={titleContent}
+        options={{
+          ...native.options,
+          headerTitle: () => titleContent,
+          unstable_headerSubtitle: undefined,
+        }}
+        optionsVersion={[
+          props.gitControls.projectScripts,
+          native.titleMaxWidth,
+          props.threadId,
+          props.title,
+          props.subtitle,
+        ]}
         trailing={
           props.fileInspectorSupported && props.hasThreadCwd ? (
             <ScreenHeaderButton
@@ -1044,6 +1067,7 @@ function ThreadRouteContent(
     <>
       {activeInspectorRenderer ? <InspectorPaneRoleActivation /> : null}
       <ThreadHeader
+        threadId={selectedThread.id}
         title={selectedThread.title}
         subtitle={headerSubtitle}
         headerColor={headerColor}

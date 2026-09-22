@@ -108,7 +108,20 @@ export function useThreadHeaderOptions(props: {
     unstable_headerSubtitle: props.usesNativeHeaderGlass ? props.subtitle : undefined,
     contentStyle: undefined,
   };
+  // UIKit does not constrain custom titles around the native toolbar buttons.
+  const leftItems = layout.usesSplitView ? splitLeftHeaderItems : compactHomeHeaderItems;
+  const rightItems = layout.usesSplitView ? threadCenterHeaderItems : compactRightHeaderItems;
+  const headerActionCount = [...leftItems, ...rightItems].filter(
+    (item) => item.type !== "spacing",
+  ).length;
+  const titleMaxWidth = Math.max(
+    0,
+    panes.contentPaneWidth -
+      (panes.auxiliaryPaneVisible ? (panes.auxiliaryPaneWidth ?? 0) : 0) -
+      (headerActionCount * 56 + 36),
+  );
   return {
+    titleMaxWidth,
     options,
     sidebar: false,
     fallback:

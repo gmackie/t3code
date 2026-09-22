@@ -125,6 +125,7 @@ export function ScreenHeader(props: ScreenHeaderProps) {
   }
   const header = (
     <AndroidScreenHeader
+      titleContent={props.titleContent}
       title={props.title}
       subtitle={props.subtitle}
       onBack={props.onBack}

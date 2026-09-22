@@ -29,6 +29,7 @@ export function AndroidHeaderIconButton(props: {
 }
 
 export function AndroidScreenHeader(props: {
+  readonly titleContent?: ReactNode;
   readonly title: string;
   readonly subtitle?: string | null;
   readonly actions?: ReadonlyArray<AndroidHeaderAction>;
@@ -73,18 +74,22 @@ export function AndroidScreenHeader(props: {
         {props.leading}
 
         <View className={cn("min-w-0 flex-1", !props.onBack && "pl-1")}>
-          <Text numberOfLines={1} style={titleTypography} className="text-header-foreground">
-            {props.title}
-          </Text>
-          {props.subtitle ? (
-            <Text
-              numberOfLines={1}
-              style={subtitleTypography}
-              className="mt-px text-[13px] font-t3-medium text-foreground-muted"
-            >
-              {props.subtitle}
-            </Text>
-          ) : null}
+          {props.titleContent ?? (
+            <>
+              <Text numberOfLines={1} style={titleTypography} className="text-header-foreground">
+                {props.title}
+              </Text>
+              {props.subtitle ? (
+                <Text
+                  numberOfLines={1}
+                  style={subtitleTypography}
+                  className="mt-px text-[13px] font-t3-medium text-foreground-muted"
+                >
+                  {props.subtitle}
+                </Text>
+              ) : null}
+            </>
+          )}
         </View>
 
         {visibleActions.map((action) => (
