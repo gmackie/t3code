@@ -358,7 +358,7 @@ function ImportingStep() {
         <DialogDescription>This may take a moment.</DialogDescription>
       </DialogHeader>
       <DialogPanel className="flex items-center gap-3 py-6">
-        <Spinner className="size-4 text-muted-foreground" />
+        <Spinner size="md" tone="muted" />
         <span className="text-sm text-muted-foreground">Importing…</span>
       </DialogPanel>
     </>

@@ -15,6 +15,7 @@ import {
   BotIcon,
   createLucideIcon,
   GitBranchIcon,
+  HardDriveIcon,
   PanelsTopLeftIcon,
   KeyboardIcon,
   Link2Icon,
@@ -84,6 +85,7 @@ const SETTINGS_SECTION_ICONS: Readonly<
   "/settings/providers": BotIcon,
   "/settings/integrations": BlocksIcon,
   "/settings/source-control": GitBranchIcon,
+  "/settings/storage": HardDriveIcon,
   "/settings/connections": Link2Icon,
   "/settings/archived": ArchiveIcon,
   "/settings/plugins": PuzzleIcon,
@@ -344,7 +346,7 @@ export function SettingsSidebarNav({ pathname }: { pathname: string }) {
           )}
         </SidebarGroup>
       </SidebarContent>
-      <SidebarFooter className="px-[var(--sidebar-content-inset)] py-1">
+      <SidebarFooter>
         <Suspense fallback={null}>
           <T3ConnectSidebarSignIn />
         </Suspense>
