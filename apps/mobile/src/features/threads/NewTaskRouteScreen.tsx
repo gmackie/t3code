@@ -1,4 +1,5 @@
 import { MaterialListRow } from "../../components/MaterialListRow";
+import { ScreenHeaderButton } from "../../components/ScreenHeaderButton";
 import { ScreenHeader } from "../../components/ScreenHeader";
 import {
   StackActions,
@@ -8,8 +9,19 @@ import {
 } from "@react-navigation/native";
 import { SymbolView } from "../../components/AppSymbol";
 import type { EnvironmentProject } from "@t3tools/client-runtime/state/shell";
-import { useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Alert, Platform, Pressable, View } from "react-native";
+import { HeaderHeightContext } from "@react-navigation/elements";
+import { MaterialSearchField } from "../../components/MaterialSearchField";
+import { useCallback, useContext, useEffect, useRef, useState } from "react";
+import {
+  ActivityIndicator,
+  Alert,
+  BackHandler,
+  Keyboard,
+  Platform,
+  Pressable,
+  TextInput,
+  View,
+} from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { cn } from "../../lib/cn";
 import { MaterialScreenContent } from "../../components/MaterialScreenContent";
@@ -88,8 +100,8 @@ function NewTaskHeader(props: {
   readonly title: string;
   readonly subtitle: string | null;
   readonly canAddProject: boolean;
-  readonly searchText: string;
-  readonly onSearchTextChange: (text: string) => void;
+  readonly searchVisible: boolean;
+  readonly onToggleSearch: () => void;
 }) {
   const navigation = useNavigation();
   const { layout } = useAdaptiveWorkspaceLayout();
@@ -105,6 +117,13 @@ function NewTaskHeader(props: {
       options={{ headerBackVisible: !layout.usesSplitView }}
       hideBottomBorder
       onBack={() => navigation.goBack()}
+      leading={
+        <ScreenHeaderButton
+          accessibilityLabel={props.searchVisible ? "Close project search" : "Search projects"}
+          icon={props.searchVisible ? "xmark" : "magnifyingglass"}
+          onPress={props.onToggleSearch}
+        />
+      }
       actions={
         props.canAddProject
           ? [
@@ -116,22 +135,33 @@ function NewTaskHeader(props: {
             ]
           : []
       }
-      search={{
-        value: props.searchText,
-        onChangeText: props.onSearchTextChange,
-        placeholder: "Search projects",
-      }}
     />
   );
 }
 
 export function NewTaskRouteScreen({ route }: StaticScreenProps<NewTaskRouteParams | undefined>) {
   const projects = useProjects();
+  const isFocused = useIsFocused();
   const [searchText, setSearchText] = useState("");
+  const [searchVisible, setSearchVisible] = useState(false);
+  const inputRef = useRef<TextInput>(null);
+  const headerHeight = useContext(HeaderHeightContext) ?? 0;
+  const closeSearch = useCallback(() => {
+    setSearchText("");
+    setSearchVisible(false);
+    Keyboard.dismiss();
+  }, []);
+  useEffect(() => {
+    if (Platform.OS !== "android" || !searchVisible || !isFocused) return;
+    const subscription = BackHandler.addEventListener("hardwareBackPress", () => {
+      closeSearch();
+      return true;
+    });
+    return () => subscription.remove();
+  }, [searchVisible, closeSearch, isFocused]);
   const { projectScopes, selectedEnvironmentId, setProject } = useNewTaskFlow();
   const { state: catalogState } = useWorkspaceState();
   const navigation = useNavigation();
-  const isFocused = useIsFocused();
   const insets = useSafeAreaInsets();
   const { getShare, releaseShareReservation } = useIncomingShare();
   const routeShareId = Array.isArray(route.params?.incomingShareId)
@@ -225,13 +255,28 @@ export function NewTaskRouteScreen({ route }: StaticScreenProps<NewTaskRoutePara
         title={screenTitle}
         subtitle={incomingShareSubtitle}
         canAddProject={catalogState.hasReadyEnvironment}
-        searchText={searchText}
-        onSearchTextChange={setSearchText}
+        searchVisible={searchVisible}
+        onToggleSearch={() => (searchVisible ? closeSearch() : setSearchVisible(true))}
       />
 
       <MaterialScreenContent>
+        {searchVisible ? (
+          <View
+            className="flex-row px-5 pb-3"
+            style={{ paddingTop: Platform.OS === "ios" ? headerHeight + 8 : 8 }}
+          >
+            <MaterialSearchField
+              inputRef={inputRef}
+              accessibilityLabel="Search projects"
+              clearAccessibilityLabel="Clear project search"
+              placeholder="Search projects"
+              value={searchText}
+              onChangeText={setSearchText}
+            />
+          </View>
+        ) : null}
         <ScrollView
-          contentInsetAdjustmentBehavior="automatic"
+          contentInsetAdjustmentBehavior={searchVisible ? "never" : "automatic"}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"

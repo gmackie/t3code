@@ -128,7 +128,12 @@ export function ScreenHeader(props: ScreenHeaderProps) {
       title={props.title}
       subtitle={props.subtitle}
       onBack={props.onBack}
-      leading={props.sidebar !== false ? <AndroidWorkspaceSidebarButton /> : undefined}
+      leading={
+        <>
+          {props.sidebar !== false ? <AndroidWorkspaceSidebarButton /> : null}
+          {props.leading}
+        </>
+      }
       hideBottomBorder={props.hideBottomBorder}
       actions={
         search

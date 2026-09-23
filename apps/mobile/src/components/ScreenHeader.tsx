@@ -103,15 +103,18 @@ export function ScreenHeader(props: ScreenHeaderProps) {
           ...props.options,
         }}
       />
-      {layout.usesSplitView && (props.sidebar !== false || props.backInSplitView) ? (
+      {props.leading ||
+      (layout.usesSplitView && (props.sidebar !== false || props.backInSplitView)) ? (
         <NativeHeaderToolbar placement="left">
-          {props.backInSplitView && (props.backInSplitView.onPress || props.onBack) ? (
+          {layout.usesSplitView &&
+          props.backInSplitView &&
+          (props.backInSplitView.onPress || props.onBack) ? (
             <ScreenHeaderButton
               {...props.backInSplitView}
               onPress={props.backInSplitView.onPress ?? props.onBack}
             />
           ) : null}
-          {props.sidebar !== false ? (
+          {layout.usesSplitView && props.sidebar !== false ? (
             <ScreenHeaderButton
               accessibilityLabel={
                 panes.primarySidebarVisible
@@ -127,6 +130,7 @@ export function ScreenHeader(props: ScreenHeaderProps) {
               }
             />
           ) : null}
+          {props.leading}
         </NativeHeaderToolbar>
       ) : null}
       {(props.actions?.length ||
