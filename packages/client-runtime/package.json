@@ -296,10 +296,12 @@
     "micromark-extension-directive": "^4.0.0",
     "micromark-util-character": "^2.1.1",
     "remark-parse": "^11.0.0",
+    "three": "0.180.0",
     "unified": "^11.0.5"
   },
   "devDependencies": {
     "@effect/vitest": "catalog:",
+    "@types/three": "0.180.0",
     "micromark-util-types": "^2.0.2",
     "vite-plus": "catalog:"
   }
