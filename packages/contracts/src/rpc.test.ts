@@ -35,7 +35,7 @@ const decodeSubscribeServerConfigPayload = Schema.decodeUnknownSync(
 describe("subscribeServerConfig payload compatibility", () => {
   it("is accepted by a server whose schema predates the field", () => {
     const oldServerPayload = Schema.Struct({});
-    const decoded = Schema.decodeUnknownExit(oldServerPayload)({ environmentThemes: true });
+    const decoded = Schema.decodeExit(oldServerPayload)({ environmentThemes: true });
     expect(Exit.isSuccess(decoded)).toBe(true);
   });
 

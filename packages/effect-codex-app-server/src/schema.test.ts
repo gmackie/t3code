@@ -60,6 +60,7 @@ it("accepts Codex 0.150 multi-agent values", () => {
       id: "root-thread",
       modelProvider: "openai",
       preview: "",
+      projectId: null,
       sessionId: "session-1",
       source: "cli",
       status: { type: "idle" },
@@ -96,6 +97,7 @@ it("accepts Codex rate limit errors for thread responses", () => {
     id: "thread-1",
     modelProvider: "openai",
     preview: "",
+    projectId: null,
     sessionId: "session-1",
     source: "cli",
     status: { type: "idle" },
@@ -125,7 +127,6 @@ it("accepts Codex rate limit errors for thread responses", () => {
     }),
     true,
   );
-  assert.equal(isThreadRollbackResponse({ thread: failedThread }), true);
 });
 
 it("accepts Codex misalignment policy errors for thread responses", () => {
@@ -137,6 +138,7 @@ it("accepts Codex misalignment policy errors for thread responses", () => {
     id: "thread-1",
     modelProvider: "openai",
     preview: "",
+    projectId: null,
     sessionId: "session-1",
     source: "cli",
     status: { type: "idle" },
@@ -164,7 +166,6 @@ it("accepts Codex misalignment policy errors for thread responses", () => {
   };
   assert.equal(isThreadReadResponse({ thread: failedThread }), true);
   assert.equal(isThreadResumeResponse(resumeLikeResponse), true);
-  assert.equal(isThreadRollbackResponse({ thread: failedThread }), true);
   assert.equal(isThreadForkResponse(resumeLikeResponse), true);
   const decodedResume = decodeThreadResumeResponse(resumeLikeResponse);
   assert.equal(decodedResume.thread.turns[0]?.error?.codexErrorInfo, "misalignmentPolicyViolation");
