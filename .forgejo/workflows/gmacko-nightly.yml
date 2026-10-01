@@ -52,10 +52,6 @@ on:
         default: false
         type: boolean
 
-concurrency:
-  group: gmacko-nightly
-  cancel-in-progress: true
-
 env:
   GITHUB_FORK: gmackie/t3code
   UPSTREAM_REPO: pingdotgg/t3code
@@ -71,6 +67,11 @@ env:
 jobs:
   sync:
     name: Sync lane onto upstream
+    # Job-level, not workflow-level: Forgejo 15 never releases a run's later
+    # `needs` jobs while the run itself holds a workflow concurrency group.
+    concurrency:
+      group: gmacko-nightly
+      cancel-in-progress: true
     runs-on: forgegraph-ci
     timeout-minutes: 40
     outputs:

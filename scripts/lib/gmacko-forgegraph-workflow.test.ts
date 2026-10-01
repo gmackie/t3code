@@ -35,7 +35,8 @@ describe("ForgeGraph GMACKO release workflow", () => {
     expect(workflow).toContain(
       "if: steps.sync_upstream.outputs.has_changes == 'true' && github.event_name != 'push'",
     );
-    expect(workflow).toContain("group: gmacko-nightly\n  cancel-in-progress: true");
+    expect(workflow).toContain("group: gmacko-nightly\n      cancel-in-progress: true");
+    expect(workflow).not.toMatch(/^concurrency:/m);
   });
 
   it("releases from the scheduled run instead of waiting for a follow-up push", () => {
