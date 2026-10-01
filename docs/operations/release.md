@@ -19,11 +19,14 @@ upstream CLI or hosted web application.
 
 Each GMACKO release also uploads the `gmacko` iOS variant (`com.gmacko.t3code`) to TestFlight from
 `gmacko-mini` with `scripts/gmacko-ios-testflight.sh`; iOS failures never block the desktop
-release. Setup is one-time: the App Store Connect API key needs the Admin role so automatic signing
-can register the app, widget, share-extension, and app-group identifiers; the App Store Connect app
-record must exist before the first upload; and an internal TestFlight group with automatic
-distribution delivers builds to devices with TestFlight automatic updates on. The build is signed
-by the fork's team, so T3 relay push notifications and T3 Connect passkeys do not work in it.
+release. Signing is manual because the developer portal refuses xcodebuild's automatic
+provisioning with an API key: each run mints App Store profiles through the App Store Connect API
+and signs with an Apple Distribution identity kept in a dedicated keychain on the build Mac (see the
+script header). One-time setup: that keychain, the App IDs `com.gmacko.t3code`, `.widgets`, and
+`.sharing` with the App Group `group.com.gmacko.t3code` assigned (the API cannot assign App Groups),
+the App Store Connect app record, and an internal TestFlight group with automatic distribution. The
+build is signed by the fork's team, so T3 relay push notifications and T3 Connect passkeys do not
+work in it.
 
 ## What the workflow does
 
