@@ -11,6 +11,38 @@
       "types": "./src/device/hubAccess.ts",
       "default": "./src/device/hubAccess.ts"
     },
+    "./device/duo-control": {
+      "types": "./src/device/duoControl.ts",
+      "default": "./src/device/duoControl.ts"
+    },
+    "./device/duo-viewer": {
+      "types": "./src/device/duoViewer.ts",
+      "default": "./src/device/duoViewer.ts"
+    },
+    "./device/frame": {
+      "types": "./src/device/frame.ts",
+      "default": "./src/device/frame.ts"
+    },
+    "./device/model": {
+      "types": "./src/device/model.ts",
+      "default": "./src/device/model.ts"
+    },
+    "./device/phone-interaction": {
+      "types": "./src/device/phoneInteraction.ts",
+      "default": "./src/device/phoneInteraction.ts"
+    },
+    "./device/phone-viewer": {
+      "types": "./src/device/phoneViewer.ts",
+      "default": "./src/device/phoneViewer.ts"
+    },
+    "./device/screenshot": {
+      "types": "./src/device/screenshot.ts",
+      "default": "./src/device/screenshot.ts"
+    },
+    "./device/shape-profile": {
+      "types": "./src/device/shapeProfile.ts",
+      "default": "./src/device/shapeProfile.ts"
+    },
     "./worktree-setup": {
       "types": "./src/worktreeSetup.ts",
       "default": "./src/worktreeSetup.ts"

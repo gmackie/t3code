@@ -15,9 +15,14 @@ try {
       env: { browser: true, node: true, worker: true },
       // Guarded optional globals in React, ProseMirror and UMD dependencies.
       globals: Object.fromEntries(
-        ["__DEV__", "__BUILD_DISABLE_RHC__", "__REACT_DEVTOOLS_GLOBAL_HOOK__", "define", "os"].map(
-          (name) => [name, "readonly"],
-        ),
+        [
+          "__DEV__",
+          "__BUILD_DISABLE_RHC__",
+          "__REACT_DEVTOOLS_GLOBAL_HOOK__",
+          "__THREE_DEVTOOLS__",
+          "define",
+          "os",
+        ].map((name) => [name, "readonly"]),
       ),
       categories: { correctness: "off" },
       rules: { "no-undef": "error" },
