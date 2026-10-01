@@ -3,7 +3,7 @@ import type { ExpoConfig } from "expo/config";
 import { BRAND_ASSET_PATHS } from "../../scripts/lib/brand-assets.ts";
 import { loadRepoEnv } from "../../scripts/lib/public-config.ts";
 
-type AppVariant = "development" | "preview" | "production";
+type AppVariant = "development" | "preview" | "production" | "gmacko";
 
 const repoEnv = loadRepoEnv();
 Object.assign(process.env, repoEnv);
@@ -96,6 +96,16 @@ const VARIANT_CONFIG = {
     relyingParty: "clerk.t3.codes",
     assets: RELEASE_ASSETS,
   },
+  // Personal fork nightlies, signed by the fork owner's team and shipped
+  // through TestFlight (scripts/gmacko-ios-testflight.sh).
+  gmacko: {
+    appName: "T3 Code (gmacko)",
+    scheme: "t3code-gmacko",
+    iosBundleIdentifier: "com.gmacko.t3code",
+    androidPackage: "com.gmacko.t3code",
+    relyingParty: "clerk.t3.codes",
+    assets: PREVIEW_ASSETS,
+  },
 } as const;
 
 function resolveAppVariant(value: string | undefined): AppVariant {
@@ -103,6 +113,7 @@ function resolveAppVariant(value: string | undefined): AppVariant {
     case "development":
     case "preview":
     case "production":
+    case "gmacko":
       return value;
     default:
       return "production";
@@ -237,10 +248,11 @@ const config: ExpoConfig = {
     // showcase capture build requires full screen (see infoPlist below).
     requireFullScreen: process.env.T3_SHOWCASE_CAPTURE_BUILD === "1",
     bundleIdentifier: iosBundleIdentifier,
+    ...(repoEnv.T3CODE_IOS_BUILD_NUMBER ? { buildNumber: repoEnv.T3CODE_IOS_BUILD_NUMBER } : {}),
     // Pin code signing to the T3 Tools team so non-interactive `expo run:ios`
     // does not fall back to a personal team (which cannot sign app groups,
     // Sign in with Apple, or push notification entitlements).
-    appleTeamId: "ARK85ZXQ4Z",
+    appleTeamId: repoEnv.T3CODE_IOS_TEAM_ID?.trim() || "ARK85ZXQ4Z",
     associatedDomains: [
       `applinks:${variant.relyingParty}`,
       `webcredentials:${variant.relyingParty}`,

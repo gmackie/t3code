@@ -11,8 +11,16 @@ describe("ForgeGraph GMACKO release workflow", () => {
   it("pins the Node runtime used by every release job", () => {
     const workflow = NodeFS.readFileSync(workflowPath, "utf8");
 
-    expect(workflow.match(/node-version: 24\.14\.0/g) ?? []).toHaveLength(6);
+    expect(workflow.match(/node-version: 24\.14\.0/g) ?? []).toHaveLength(7);
     expect(workflow).not.toContain("node-version: 24\n");
+  });
+
+  it("uploads iOS to TestFlight without gating the desktop release", () => {
+    const workflow = NodeFS.readFileSync(workflowPath, "utf8");
+    const release = workflow.slice(workflow.indexOf("  release:\n"));
+
+    expect(workflow).toContain("scripts/gmacko-ios-testflight.sh");
+    expect(release.slice(0, release.indexOf("steps:"))).not.toContain("ios_testflight");
   });
 
   it("cuts a release for every custom-local push", () => {

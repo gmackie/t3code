@@ -17,6 +17,14 @@ isolated application and server state directories. Windows artifacts are best ef
 Linux artifacts remain required. The workflow owns fork releases only and does not publish the
 upstream CLI or hosted web application.
 
+Each GMACKO release also uploads the `gmacko` iOS variant (`com.gmacko.t3code`) to TestFlight from
+`gmacko-mini` with `scripts/gmacko-ios-testflight.sh`; iOS failures never block the desktop
+release. Setup is one-time: the App Store Connect API key needs the Admin role so automatic signing
+can register the app, widget, share-extension, and app-group identifiers; the App Store Connect app
+record must exist before the first upload; and an internal TestFlight group with automatic
+distribution delivers builds to devices with TestFlight automatic updates on. The build is signed
+by the fork's team, so T3 relay push notifications and T3 Connect passkeys do not work in it.
+
 ## What the workflow does
 
 - Workflow: `.github/workflows/release.yml`
