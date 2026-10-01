@@ -805,12 +805,13 @@ jobs:
           path: release-publish/*
           if-no-files-found: error
 
-  # TestFlight for the GMACKO iOS app. Chained after the x64 build because
-  # macOS jobs share one host workspace; never a dependency of the desktop
-  # release, so an iOS failure cannot hold desktop back.
+  # TestFlight for the GMACKO iOS app. Independent of the desktop builds in
+  # both directions: gmacko-mini runs one job at a time (runner capacity 1),
+  # so it cannot share the host workspace with a macOS build, and a desktop
+  # failure does not cost the phone its nightly.
   ios_testflight:
     name: Upload iOS to TestFlight
-    needs: [sync, preflight, build_macos_x64]
+    needs: [sync, preflight]
     if: ${{ !cancelled() && needs.sync.outputs.should_release == 'true' && needs.preflight.result == 'success' }}
     runs-on: gmacko-mini
     timeout-minutes: 90
