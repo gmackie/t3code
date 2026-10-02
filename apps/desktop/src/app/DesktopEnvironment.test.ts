@@ -139,8 +139,6 @@ describe("DesktopEnvironment", () => {
       assert.equal(environment.appUserModelId, "com.gmacko.t3code");
       assert.equal(environment.linuxDesktopEntryName, "t3code-gmacko.desktop");
       assert.equal(environment.linuxWmClass, "t3code-gmacko");
-      assert.equal(environment.userDataDirName, "t3code-gmacko");
-      assert.equal(environment.legacyUserDataDirName, "t3code-gmacko");
     }),
   );
 

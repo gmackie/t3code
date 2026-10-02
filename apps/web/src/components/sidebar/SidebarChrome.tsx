@@ -1,11 +1,11 @@
-import { ArrowLeftIcon, ChartNoAxesColumnIcon, FolderGit2Icon, SettingsIcon } from "lucide-react";
+import { ArrowLeftIcon, ChartNoAxesColumnIcon, SettingsIcon } from "lucide-react";
 import type { ReactNode } from "react";
 import { memo, useCallback } from "react";
 import { Link, useLocation, useNavigate } from "@tanstack/react-router";
 
 import { useEnvironmentIdentificationMode } from "../../hooks/useSettings";
 import { cn } from "../../lib/utils";
-import { useEnvironments } from "../../state/environments";
+import { usePullRequestsSupported } from "../../state/environments";
 import { T3Wordmark } from "../T3Wordmark";
 import {
   resolveEnvironmentIdentificationPillLabel,
@@ -41,10 +41,10 @@ export const SidebarChromeHeader = memo(function SidebarChromeHeader({
     stageLabel,
     environmentIdentificationMode === "artwork",
   );
-  const pillLabel = resolveEnvironmentIdentificationPillLabel(
-    stageLabel,
-    environmentIdentificationMode,
-  );
+  const pillLabel =
+    environmentIdentificationMode === "pill"
+      ? resolveEnvironmentIdentificationPillLabel(stageLabel)
+      : null;
 
   return (
     // The titlebar row, not a padded SidebarHeader: it aligns to the window controls.
@@ -133,24 +133,7 @@ export const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
   const isOnUtilityPage = useLocation({
     select: (location) => isSidebarUtilityPage(location.pathname),
   });
-  const currentFooterPage = useLocation({
-    select: (location) =>
-      /^\/settings(?:\/|$)/.test(location.pathname)
-        ? "settings"
-        : /^\/projects(?:\/|$)/.test(location.pathname)
-          ? "projects"
-          : location.pathname === "/usage"
-            ? "usage"
-            : location.pathname === "/pull-requests"
-              ? "pull-requests"
-              : null,
-  });
-  const { environments } = useEnvironments();
-  // The page reads every connected server, so one of them offering pull requests is enough for
-  // the link to lead somewhere.
-  const pullRequestsSupported = environments.some(
-    (environment) => environment.serverConfig?.environment.capabilities.pullRequests === true,
-  );
+  const pullRequestsSupported = usePullRequestsSupported();
   const closeMobileSidebar = useCallback(() => {
     if (isMobile) {
       setOpenMobile(false);
@@ -166,11 +149,6 @@ export const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
   const handleSettingsClick = useCallback(() => {
     closeMobileSidebar();
     void navigate({ to: "/settings" });
-  }, [closeMobileSidebar, navigate]);
-
-  const handleProjectsClick = useCallback(() => {
-    closeMobileSidebar();
-    void navigate({ to: "/projects" });
   }, [closeMobileSidebar, navigate]);
 
   const handleUsageClick = useCallback(() => {
@@ -200,11 +178,6 @@ export const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
             icon={<SettingsIcon />}
             label="Settings"
             onClick={handleSettingsClick}
-          />
-          <SidebarUtilityItem
-            icon={<FolderGit2Icon />}
-            label="Projects"
-            onClick={handleProjectsClick}
           />
           {pullRequestsSupported ? (
             <SidebarUtilityItem

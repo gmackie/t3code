@@ -11,7 +11,8 @@ import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
 
 import { remoteHttpClientLayer } from "../rpc/http.ts";
-import { ClientPresentation, SshEnvironmentGateway } from "../platform/capabilities.ts";
+import * as ClientCapabilities from "../platform/capabilities.ts";
+import { SshEnvironmentGateway } from "../platform/capabilities.ts";
 import * as Persistence from "../platform/persistence.ts";
 import {
   BearerConnectionCredential,
@@ -34,8 +35,8 @@ import * as ConnectionProfileStore from "./profileStore.ts";
 import * as ConnectionWakeups from "./wakeups.ts";
 
 const CLIENT_PRESENTATION_LAYER = Layer.succeed(
-  ClientPresentation,
-  ClientPresentation.of({
+  ClientCapabilities.ClientPresentation,
+  ClientCapabilities.ClientPresentation.of({
     metadata: {
       label: "T3 Code Test",
       deviceType: "desktop",
@@ -411,8 +412,8 @@ describe("connection onboarding", () => {
         target,
       }).pipe(
         Effect.provideService(
-          SshEnvironmentGateway,
-          SshEnvironmentGateway.of({
+          ClientCapabilities.SshEnvironmentGateway,
+          ClientCapabilities.SshEnvironmentGateway.of({
             provision: () =>
               Effect.succeed({
                 environmentId: EnvironmentId.make("environment-ssh"),

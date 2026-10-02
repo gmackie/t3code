@@ -306,7 +306,7 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
         tailscaleServeEnabled: true,
         tailscaleServePort: 8443,
       });
-      assert.equal(resolved.dbPath, join(baseDir, "userdata", "state.sqlite"));
+      assert.equal(resolved.dbPath, join(baseDir, "userdata", "statev2.sqlite"));
     }),
   );
 
@@ -395,7 +395,7 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
       );
 
       expect(resolved.stateDir).toBe(join(baseDir, "userdata-gmacko"));
-      expect(resolved.dbPath).toBe(join(baseDir, "userdata-gmacko", "state.sqlite"));
+      expect(resolved.dbPath).toBe(join(baseDir, "userdata-gmacko", "statev2.sqlite"));
     }),
   );
 
@@ -602,7 +602,7 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
       );
 
       expect(resolved.stateDir).toBe(join(baseDir, "userdata-gmacko"));
-      expect(resolved.dbPath).toBe(join(baseDir, "userdata-gmacko", "state.sqlite"));
+      expect(resolved.dbPath).toBe(join(baseDir, "userdata-gmacko", "statev2.sqlite"));
       expect(resolved.settingsPath).toBe(join(baseDir, "userdata-gmacko", "settings.json"));
     }),
   );

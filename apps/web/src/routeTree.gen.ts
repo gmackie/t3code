@@ -9,58 +9,38 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as ChatRouteImport } from './routes/_chat'
-import { Route as ConnectRouteImport } from './routes/connect'
-import { Route as PairRouteImport } from './routes/pair'
-import { Route as ProjectsRouteImport } from './routes/projects'
-import { Route as SettingsRouteImport } from './routes/settings'
-import { Route as UsageRouteImport } from './routes/usage'
 import { Route as WelcomeRouteImport } from './routes/welcome'
+import { Route as UsageRouteImport } from './routes/usage'
+import { Route as SettingsRouteImport } from './routes/settings'
+import { Route as PairRouteImport } from './routes/pair'
+import { Route as ConnectRouteImport } from './routes/connect'
+import { Route as ChatRouteImport } from './routes/_chat'
 import { Route as ChatIndexRouteImport } from './routes/_chat.index'
-import { Route as ChatPullRequestsRouteImport } from './routes/_chat.pull-requests'
-import { Route as PluginsPluginIdRouteImport } from './routes/plugins.$pluginId'
-import { Route as ProjectsIndexRouteImport } from './routes/projects.index'
-import { Route as ProjectsProjectKeyRouteImport } from './routes/projects.$projectKey'
-import { Route as SettingsAppearanceRouteImport } from './routes/settings.appearance'
-import { Route as SettingsArchivedRouteImport } from './routes/settings.archived'
-import { Route as SettingsConnectionsRouteImport } from './routes/settings.connections'
-import { Route as SettingsDiagnosticsRouteImport } from './routes/settings.diagnostics'
-import { Route as SettingsGeneralRouteImport } from './routes/settings.general'
-import { Route as SettingsIntegrationsRouteImport } from './routes/settings.integrations'
-import { Route as SettingsKeybindingsRouteImport } from './routes/settings.keybindings'
-import { Route as SettingsOpenSourceLicensesRouteImport } from './routes/settings.open-source-licenses'
-import { Route as SettingsPluginsRouteImport } from './routes/settings.plugins'
-import { Route as SettingsProjectsRouteImport } from './routes/settings.projects'
-import { Route as SettingsProvidersRouteImport } from './routes/settings.providers'
-import { Route as SettingsSnapShotRouteImport } from './routes/settings.snap-shot'
-import { Route as SettingsSourceControlRouteImport } from './routes/settings.source-control'
 import { Route as SettingsStorageRouteImport } from './routes/settings.storage'
-import { Route as ChatEnvironmentIdThreadIdRouteImport } from './routes/_chat.$environmentId.$threadId'
+import { Route as SettingsSourceControlRouteImport } from './routes/settings.source-control'
+import { Route as SettingsSnapShotRouteImport } from './routes/settings.snap-shot'
+import { Route as SettingsScheduledTasksRouteImport } from './routes/settings.scheduled-tasks'
+import { Route as SettingsProvidersRouteImport } from './routes/settings.providers'
+import { Route as SettingsProjectsRouteImport } from './routes/settings.projects'
+import { Route as SettingsPluginsRouteImport } from './routes/settings.plugins'
+import { Route as SettingsOpenSourceLicensesRouteImport } from './routes/settings.open-source-licenses'
+import { Route as SettingsKeybindingsRouteImport } from './routes/settings.keybindings'
+import { Route as SettingsIntegrationsRouteImport } from './routes/settings.integrations'
+import { Route as SettingsGeneralRouteImport } from './routes/settings.general'
+import { Route as SettingsDiagnosticsRouteImport } from './routes/settings.diagnostics'
+import { Route as SettingsConnectionsRouteImport } from './routes/settings.connections'
+import { Route as SettingsArchivedRouteImport } from './routes/settings.archived'
+import { Route as SettingsAppearanceRouteImport } from './routes/settings.appearance'
+import { Route as ProjectsProjectKeyRouteImport } from './routes/projects.$projectKey'
+import { Route as PluginsPluginIdRouteImport } from './routes/plugins.$pluginId'
+import { Route as ChatPullRequestsRouteImport } from './routes/_chat.pull-requests'
 import { Route as ChatDraftDraftIdRouteImport } from './routes/_chat.draft.$draftId'
+import { Route as ChatEnvironmentIdThreadIdRouteImport } from './routes/_chat.$environmentId.$threadId'
 import { Route as ChatProjectEnvironmentIdProjectIdRouteImport } from './routes/_chat.project.$environmentId.$projectId'
 
-const ChatRoute = ChatRouteImport.update({
-  id: '/_chat',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ConnectRoute = ConnectRouteImport.update({
-  id: '/connect',
-  path: '/connect',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const PairRoute = PairRouteImport.update({
-  id: '/pair',
-  path: '/pair',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ProjectsRoute = ProjectsRouteImport.update({
-  id: '/projects',
-  path: '/projects',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const SettingsRoute = SettingsRouteImport.update({
-  id: '/settings',
-  path: '/settings',
+const WelcomeRoute = WelcomeRouteImport.update({
+  id: '/welcome',
+  path: '/welcome',
   getParentRoute: () => rootRouteImport,
 } as any)
 const UsageRoute = UsageRouteImport.update({
@@ -68,9 +48,23 @@ const UsageRoute = UsageRouteImport.update({
   path: '/usage',
   getParentRoute: () => rootRouteImport,
 } as any)
-const WelcomeRoute = WelcomeRouteImport.update({
-  id: '/welcome',
-  path: '/welcome',
+const SettingsRoute = SettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PairRoute = PairRouteImport.update({
+  id: '/pair',
+  path: '/pair',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ConnectRoute = ConnectRouteImport.update({
+  id: '/connect',
+  path: '/connect',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ChatRoute = ChatRouteImport.update({
+  id: '/_chat',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ChatIndexRoute = ChatIndexRouteImport.update({
@@ -78,59 +72,39 @@ const ChatIndexRoute = ChatIndexRouteImport.update({
   path: '/',
   getParentRoute: () => ChatRoute,
 } as any)
-const ChatPullRequestsRoute = ChatPullRequestsRouteImport.update({
-  id: '/pull-requests',
-  path: '/pull-requests',
-  getParentRoute: () => ChatRoute,
-} as any)
-const PluginsPluginIdRoute = PluginsPluginIdRouteImport.update({
-  id: '/plugins/$pluginId',
-  path: '/plugins/$pluginId',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ProjectsIndexRoute = ProjectsIndexRouteImport.update({
-  id: '/',
-  path: '/',
-  getParentRoute: () => ProjectsRoute,
-} as any)
-const ProjectsProjectKeyRoute = ProjectsProjectKeyRouteImport.update({
-  id: '/$projectKey',
-  path: '/$projectKey',
-  getParentRoute: () => ProjectsRoute,
-} as any)
-const SettingsAppearanceRoute = SettingsAppearanceRouteImport.update({
-  id: '/appearance',
-  path: '/appearance',
+const SettingsStorageRoute = SettingsStorageRouteImport.update({
+  id: '/storage',
+  path: '/storage',
   getParentRoute: () => SettingsRoute,
 } as any)
-const SettingsArchivedRoute = SettingsArchivedRouteImport.update({
-  id: '/archived',
-  path: '/archived',
+const SettingsSourceControlRoute = SettingsSourceControlRouteImport.update({
+  id: '/source-control',
+  path: '/source-control',
   getParentRoute: () => SettingsRoute,
 } as any)
-const SettingsConnectionsRoute = SettingsConnectionsRouteImport.update({
-  id: '/connections',
-  path: '/connections',
+const SettingsSnapShotRoute = SettingsSnapShotRouteImport.update({
+  id: '/snap-shot',
+  path: '/snap-shot',
   getParentRoute: () => SettingsRoute,
 } as any)
-const SettingsDiagnosticsRoute = SettingsDiagnosticsRouteImport.update({
-  id: '/diagnostics',
-  path: '/diagnostics',
+const SettingsScheduledTasksRoute = SettingsScheduledTasksRouteImport.update({
+  id: '/scheduled-tasks',
+  path: '/scheduled-tasks',
   getParentRoute: () => SettingsRoute,
 } as any)
-const SettingsGeneralRoute = SettingsGeneralRouteImport.update({
-  id: '/general',
-  path: '/general',
+const SettingsProvidersRoute = SettingsProvidersRouteImport.update({
+  id: '/providers',
+  path: '/providers',
   getParentRoute: () => SettingsRoute,
 } as any)
-const SettingsIntegrationsRoute = SettingsIntegrationsRouteImport.update({
-  id: '/integrations',
-  path: '/integrations',
+const SettingsProjectsRoute = SettingsProjectsRouteImport.update({
+  id: '/projects',
+  path: '/projects',
   getParentRoute: () => SettingsRoute,
 } as any)
-const SettingsKeybindingsRoute = SettingsKeybindingsRouteImport.update({
-  id: '/keybindings',
-  path: '/keybindings',
+const SettingsPluginsRoute = SettingsPluginsRouteImport.update({
+  id: '/plugins',
+  path: '/plugins',
   getParentRoute: () => SettingsRoute,
 } as any)
 const SettingsOpenSourceLicensesRoute =
@@ -139,35 +113,60 @@ const SettingsOpenSourceLicensesRoute =
     path: '/open-source-licenses',
     getParentRoute: () => SettingsRoute,
   } as any)
-const SettingsPluginsRoute = SettingsPluginsRouteImport.update({
-  id: '/plugins',
-  path: '/plugins',
+const SettingsKeybindingsRoute = SettingsKeybindingsRouteImport.update({
+  id: '/keybindings',
+  path: '/keybindings',
   getParentRoute: () => SettingsRoute,
 } as any)
-const SettingsProjectsRoute = SettingsProjectsRouteImport.update({
-  id: '/projects',
-  path: '/projects',
+const SettingsIntegrationsRoute = SettingsIntegrationsRouteImport.update({
+  id: '/integrations',
+  path: '/integrations',
   getParentRoute: () => SettingsRoute,
 } as any)
-const SettingsProvidersRoute = SettingsProvidersRouteImport.update({
-  id: '/providers',
-  path: '/providers',
+const SettingsGeneralRoute = SettingsGeneralRouteImport.update({
+  id: '/general',
+  path: '/general',
   getParentRoute: () => SettingsRoute,
 } as any)
-const SettingsSnapShotRoute = SettingsSnapShotRouteImport.update({
-  id: '/snap-shot',
-  path: '/snap-shot',
+const SettingsDiagnosticsRoute = SettingsDiagnosticsRouteImport.update({
+  id: '/diagnostics',
+  path: '/diagnostics',
   getParentRoute: () => SettingsRoute,
 } as any)
-const SettingsSourceControlRoute = SettingsSourceControlRouteImport.update({
-  id: '/source-control',
-  path: '/source-control',
+const SettingsConnectionsRoute = SettingsConnectionsRouteImport.update({
+  id: '/connections',
+  path: '/connections',
   getParentRoute: () => SettingsRoute,
 } as any)
-const SettingsStorageRoute = SettingsStorageRouteImport.update({
-  id: '/storage',
-  path: '/storage',
+const SettingsArchivedRoute = SettingsArchivedRouteImport.update({
+  id: '/archived',
+  path: '/archived',
   getParentRoute: () => SettingsRoute,
+} as any)
+const SettingsAppearanceRoute = SettingsAppearanceRouteImport.update({
+  id: '/appearance',
+  path: '/appearance',
+  getParentRoute: () => SettingsRoute,
+} as any)
+const ProjectsProjectKeyRoute = ProjectsProjectKeyRouteImport.update({
+  id: '/projects/$projectKey',
+  path: '/projects/$projectKey',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PluginsPluginIdRoute = PluginsPluginIdRouteImport.update({
+  id: '/plugins/$pluginId',
+  path: '/plugins/$pluginId',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ChatPullRequestsRoute = ChatPullRequestsRouteImport.update({
+  id: '/pull-requests',
+  path: '/pull-requests',
+  getParentRoute: () => ChatRoute,
+} as any)
+const ChatDraftDraftIdRoute = ChatDraftDraftIdRouteImport.update({
+  id: '/draft/$draftId',
+  path: '/draft/$draftId',
+  getParentRoute: () => ChatRoute,
 } as any)
 const ChatEnvironmentIdThreadIdRoute =
   ChatEnvironmentIdThreadIdRouteImport.update({
@@ -175,11 +174,6 @@ const ChatEnvironmentIdThreadIdRoute =
     path: '/$environmentId/$threadId',
     getParentRoute: () => ChatRoute,
   } as any)
-const ChatDraftDraftIdRoute = ChatDraftDraftIdRouteImport.update({
-  id: '/draft/$draftId',
-  path: '/draft/$draftId',
-  getParentRoute: () => ChatRoute,
-} as any)
 const ChatProjectEnvironmentIdProjectIdRoute =
   ChatProjectEnvironmentIdProjectIdRouteImport.update({
     id: '/project/$environmentId/$projectId',
@@ -191,7 +185,6 @@ export interface FileRoutesByFullPath {
   '/': typeof ChatIndexRoute
   '/connect': typeof ConnectRoute
   '/pair': typeof PairRoute
-  '/projects': typeof ProjectsRouteWithChildren
   '/settings': typeof SettingsRouteWithChildren
   '/usage': typeof UsageRoute
   '/welcome': typeof WelcomeRoute
@@ -209,10 +202,10 @@ export interface FileRoutesByFullPath {
   '/settings/plugins': typeof SettingsPluginsRoute
   '/settings/projects': typeof SettingsProjectsRoute
   '/settings/providers': typeof SettingsProvidersRoute
+  '/settings/scheduled-tasks': typeof SettingsScheduledTasksRoute
   '/settings/snap-shot': typeof SettingsSnapShotRoute
   '/settings/source-control': typeof SettingsSourceControlRoute
   '/settings/storage': typeof SettingsStorageRoute
-  '/projects/': typeof ProjectsIndexRoute
   '/$environmentId/$threadId': typeof ChatEnvironmentIdThreadIdRoute
   '/draft/$draftId': typeof ChatDraftDraftIdRoute
   '/project/$environmentId/$projectId': typeof ChatProjectEnvironmentIdProjectIdRoute
@@ -237,11 +230,11 @@ export interface FileRoutesByTo {
   '/settings/plugins': typeof SettingsPluginsRoute
   '/settings/projects': typeof SettingsProjectsRoute
   '/settings/providers': typeof SettingsProvidersRoute
+  '/settings/scheduled-tasks': typeof SettingsScheduledTasksRoute
   '/settings/snap-shot': typeof SettingsSnapShotRoute
   '/settings/source-control': typeof SettingsSourceControlRoute
   '/settings/storage': typeof SettingsStorageRoute
   '/': typeof ChatIndexRoute
-  '/projects': typeof ProjectsIndexRoute
   '/$environmentId/$threadId': typeof ChatEnvironmentIdThreadIdRoute
   '/draft/$draftId': typeof ChatDraftDraftIdRoute
   '/project/$environmentId/$projectId': typeof ChatProjectEnvironmentIdProjectIdRoute
@@ -251,7 +244,6 @@ export interface FileRoutesById {
   '/_chat': typeof ChatRouteWithChildren
   '/connect': typeof ConnectRoute
   '/pair': typeof PairRoute
-  '/projects': typeof ProjectsRouteWithChildren
   '/settings': typeof SettingsRouteWithChildren
   '/usage': typeof UsageRoute
   '/welcome': typeof WelcomeRoute
@@ -269,11 +261,11 @@ export interface FileRoutesById {
   '/settings/plugins': typeof SettingsPluginsRoute
   '/settings/projects': typeof SettingsProjectsRoute
   '/settings/providers': typeof SettingsProvidersRoute
+  '/settings/scheduled-tasks': typeof SettingsScheduledTasksRoute
   '/settings/snap-shot': typeof SettingsSnapShotRoute
   '/settings/source-control': typeof SettingsSourceControlRoute
   '/settings/storage': typeof SettingsStorageRoute
   '/_chat/': typeof ChatIndexRoute
-  '/projects/': typeof ProjectsIndexRoute
   '/_chat/$environmentId/$threadId': typeof ChatEnvironmentIdThreadIdRoute
   '/_chat/draft/$draftId': typeof ChatDraftDraftIdRoute
   '/_chat/project/$environmentId/$projectId': typeof ChatProjectEnvironmentIdProjectIdRoute
@@ -284,7 +276,6 @@ export interface FileRouteTypes {
     | '/'
     | '/connect'
     | '/pair'
-    | '/projects'
     | '/settings'
     | '/usage'
     | '/welcome'
@@ -302,10 +293,10 @@ export interface FileRouteTypes {
     | '/settings/plugins'
     | '/settings/projects'
     | '/settings/providers'
+    | '/settings/scheduled-tasks'
     | '/settings/snap-shot'
     | '/settings/source-control'
     | '/settings/storage'
-    | '/projects/'
     | '/$environmentId/$threadId'
     | '/draft/$draftId'
     | '/project/$environmentId/$projectId'
@@ -330,11 +321,11 @@ export interface FileRouteTypes {
     | '/settings/plugins'
     | '/settings/projects'
     | '/settings/providers'
+    | '/settings/scheduled-tasks'
     | '/settings/snap-shot'
     | '/settings/source-control'
     | '/settings/storage'
     | '/'
-    | '/projects'
     | '/$environmentId/$threadId'
     | '/draft/$draftId'
     | '/project/$environmentId/$projectId'
@@ -343,7 +334,6 @@ export interface FileRouteTypes {
     | '/_chat'
     | '/connect'
     | '/pair'
-    | '/projects'
     | '/settings'
     | '/usage'
     | '/welcome'
@@ -361,11 +351,11 @@ export interface FileRouteTypes {
     | '/settings/plugins'
     | '/settings/projects'
     | '/settings/providers'
+    | '/settings/scheduled-tasks'
     | '/settings/snap-shot'
     | '/settings/source-control'
     | '/settings/storage'
     | '/_chat/'
-    | '/projects/'
     | '/_chat/$environmentId/$threadId'
     | '/_chat/draft/$draftId'
     | '/_chat/project/$environmentId/$projectId'
@@ -375,48 +365,20 @@ export interface RootRouteChildren {
   ChatRoute: typeof ChatRouteWithChildren
   ConnectRoute: typeof ConnectRoute
   PairRoute: typeof PairRoute
-  ProjectsRoute: typeof ProjectsRouteWithChildren
   SettingsRoute: typeof SettingsRouteWithChildren
   UsageRoute: typeof UsageRoute
   WelcomeRoute: typeof WelcomeRoute
   PluginsPluginIdRoute: typeof PluginsPluginIdRoute
+  ProjectsProjectKeyRoute: typeof ProjectsProjectKeyRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/_chat': {
-      id: '/_chat'
-      path: ''
-      fullPath: '/'
-      preLoaderRoute: typeof ChatRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/connect': {
-      id: '/connect'
-      path: '/connect'
-      fullPath: '/connect'
-      preLoaderRoute: typeof ConnectRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/pair': {
-      id: '/pair'
-      path: '/pair'
-      fullPath: '/pair'
-      preLoaderRoute: typeof PairRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/projects': {
-      id: '/projects'
-      path: '/projects'
-      fullPath: '/projects'
-      preLoaderRoute: typeof ProjectsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/settings': {
-      id: '/settings'
-      path: '/settings'
-      fullPath: '/settings'
-      preLoaderRoute: typeof SettingsRouteImport
+    '/welcome': {
+      id: '/welcome'
+      path: '/welcome'
+      fullPath: '/welcome'
+      preLoaderRoute: typeof WelcomeRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/usage': {
@@ -426,11 +388,32 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof UsageRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/welcome': {
-      id: '/welcome'
-      path: '/welcome'
-      fullPath: '/welcome'
-      preLoaderRoute: typeof WelcomeRouteImport
+    '/settings': {
+      id: '/settings'
+      path: '/settings'
+      fullPath: '/settings'
+      preLoaderRoute: typeof SettingsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/pair': {
+      id: '/pair'
+      path: '/pair'
+      fullPath: '/pair'
+      preLoaderRoute: typeof PairRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/connect': {
+      id: '/connect'
+      path: '/connect'
+      fullPath: '/connect'
+      preLoaderRoute: typeof ConnectRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/_chat': {
+      id: '/_chat'
+      path: ''
+      fullPath: '/'
+      preLoaderRoute: typeof ChatRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_chat/': {
@@ -440,116 +423,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ChatIndexRouteImport
       parentRoute: typeof ChatRoute
     }
-    '/_chat/pull-requests': {
-      id: '/_chat/pull-requests'
-      path: '/pull-requests'
-      fullPath: '/pull-requests'
-      preLoaderRoute: typeof ChatPullRequestsRouteImport
-      parentRoute: typeof ChatRoute
-    }
-    '/plugins/$pluginId': {
-      id: '/plugins/$pluginId'
-      path: '/plugins/$pluginId'
-      fullPath: '/plugins/$pluginId'
-      preLoaderRoute: typeof PluginsPluginIdRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/projects/': {
-      id: '/projects/'
-      path: '/'
-      fullPath: '/projects/'
-      preLoaderRoute: typeof ProjectsIndexRouteImport
-      parentRoute: typeof ProjectsRoute
-    }
-    '/projects/$projectKey': {
-      id: '/projects/$projectKey'
-      path: '/$projectKey'
-      fullPath: '/projects/$projectKey'
-      preLoaderRoute: typeof ProjectsProjectKeyRouteImport
-      parentRoute: typeof ProjectsRoute
-    }
-    '/settings/appearance': {
-      id: '/settings/appearance'
-      path: '/appearance'
-      fullPath: '/settings/appearance'
-      preLoaderRoute: typeof SettingsAppearanceRouteImport
-      parentRoute: typeof SettingsRoute
-    }
-    '/settings/archived': {
-      id: '/settings/archived'
-      path: '/archived'
-      fullPath: '/settings/archived'
-      preLoaderRoute: typeof SettingsArchivedRouteImport
-      parentRoute: typeof SettingsRoute
-    }
-    '/settings/connections': {
-      id: '/settings/connections'
-      path: '/connections'
-      fullPath: '/settings/connections'
-      preLoaderRoute: typeof SettingsConnectionsRouteImport
-      parentRoute: typeof SettingsRoute
-    }
-    '/settings/diagnostics': {
-      id: '/settings/diagnostics'
-      path: '/diagnostics'
-      fullPath: '/settings/diagnostics'
-      preLoaderRoute: typeof SettingsDiagnosticsRouteImport
-      parentRoute: typeof SettingsRoute
-    }
-    '/settings/general': {
-      id: '/settings/general'
-      path: '/general'
-      fullPath: '/settings/general'
-      preLoaderRoute: typeof SettingsGeneralRouteImport
-      parentRoute: typeof SettingsRoute
-    }
-    '/settings/integrations': {
-      id: '/settings/integrations'
-      path: '/integrations'
-      fullPath: '/settings/integrations'
-      preLoaderRoute: typeof SettingsIntegrationsRouteImport
-      parentRoute: typeof SettingsRoute
-    }
-    '/settings/keybindings': {
-      id: '/settings/keybindings'
-      path: '/keybindings'
-      fullPath: '/settings/keybindings'
-      preLoaderRoute: typeof SettingsKeybindingsRouteImport
-      parentRoute: typeof SettingsRoute
-    }
-    '/settings/open-source-licenses': {
-      id: '/settings/open-source-licenses'
-      path: '/open-source-licenses'
-      fullPath: '/settings/open-source-licenses'
-      preLoaderRoute: typeof SettingsOpenSourceLicensesRouteImport
-      parentRoute: typeof SettingsRoute
-    }
-    '/settings/plugins': {
-      id: '/settings/plugins'
-      path: '/plugins'
-      fullPath: '/settings/plugins'
-      preLoaderRoute: typeof SettingsPluginsRouteImport
-      parentRoute: typeof SettingsRoute
-    }
-    '/settings/projects': {
-      id: '/settings/projects'
-      path: '/projects'
-      fullPath: '/settings/projects'
-      preLoaderRoute: typeof SettingsProjectsRouteImport
-      parentRoute: typeof SettingsRoute
-    }
-    '/settings/providers': {
-      id: '/settings/providers'
-      path: '/providers'
-      fullPath: '/settings/providers'
-      preLoaderRoute: typeof SettingsProvidersRouteImport
-      parentRoute: typeof SettingsRoute
-    }
-    '/settings/snap-shot': {
-      id: '/settings/snap-shot'
-      path: '/snap-shot'
-      fullPath: '/settings/snap-shot'
-      preLoaderRoute: typeof SettingsSnapShotRouteImport
+    '/settings/storage': {
+      id: '/settings/storage'
+      path: '/storage'
+      fullPath: '/settings/storage'
+      preLoaderRoute: typeof SettingsStorageRouteImport
       parentRoute: typeof SettingsRoute
     }
     '/settings/source-control': {
@@ -559,18 +437,116 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SettingsSourceControlRouteImport
       parentRoute: typeof SettingsRoute
     }
-    '/settings/storage': {
-      id: '/settings/storage'
-      path: '/storage'
-      fullPath: '/settings/storage'
-      preLoaderRoute: typeof SettingsStorageRouteImport
+    '/settings/snap-shot': {
+      id: '/settings/snap-shot'
+      path: '/snap-shot'
+      fullPath: '/settings/snap-shot'
+      preLoaderRoute: typeof SettingsSnapShotRouteImport
       parentRoute: typeof SettingsRoute
     }
-    '/_chat/$environmentId/$threadId': {
-      id: '/_chat/$environmentId/$threadId'
-      path: '/$environmentId/$threadId'
-      fullPath: '/$environmentId/$threadId'
-      preLoaderRoute: typeof ChatEnvironmentIdThreadIdRouteImport
+    '/settings/scheduled-tasks': {
+      id: '/settings/scheduled-tasks'
+      path: '/scheduled-tasks'
+      fullPath: '/settings/scheduled-tasks'
+      preLoaderRoute: typeof SettingsScheduledTasksRouteImport
+      parentRoute: typeof SettingsRoute
+    }
+    '/settings/providers': {
+      id: '/settings/providers'
+      path: '/providers'
+      fullPath: '/settings/providers'
+      preLoaderRoute: typeof SettingsProvidersRouteImport
+      parentRoute: typeof SettingsRoute
+    }
+    '/settings/projects': {
+      id: '/settings/projects'
+      path: '/projects'
+      fullPath: '/settings/projects'
+      preLoaderRoute: typeof SettingsProjectsRouteImport
+      parentRoute: typeof SettingsRoute
+    }
+    '/settings/plugins': {
+      id: '/settings/plugins'
+      path: '/plugins'
+      fullPath: '/settings/plugins'
+      preLoaderRoute: typeof SettingsPluginsRouteImport
+      parentRoute: typeof SettingsRoute
+    }
+    '/settings/open-source-licenses': {
+      id: '/settings/open-source-licenses'
+      path: '/open-source-licenses'
+      fullPath: '/settings/open-source-licenses'
+      preLoaderRoute: typeof SettingsOpenSourceLicensesRouteImport
+      parentRoute: typeof SettingsRoute
+    }
+    '/settings/keybindings': {
+      id: '/settings/keybindings'
+      path: '/keybindings'
+      fullPath: '/settings/keybindings'
+      preLoaderRoute: typeof SettingsKeybindingsRouteImport
+      parentRoute: typeof SettingsRoute
+    }
+    '/settings/integrations': {
+      id: '/settings/integrations'
+      path: '/integrations'
+      fullPath: '/settings/integrations'
+      preLoaderRoute: typeof SettingsIntegrationsRouteImport
+      parentRoute: typeof SettingsRoute
+    }
+    '/settings/general': {
+      id: '/settings/general'
+      path: '/general'
+      fullPath: '/settings/general'
+      preLoaderRoute: typeof SettingsGeneralRouteImport
+      parentRoute: typeof SettingsRoute
+    }
+    '/settings/diagnostics': {
+      id: '/settings/diagnostics'
+      path: '/diagnostics'
+      fullPath: '/settings/diagnostics'
+      preLoaderRoute: typeof SettingsDiagnosticsRouteImport
+      parentRoute: typeof SettingsRoute
+    }
+    '/settings/connections': {
+      id: '/settings/connections'
+      path: '/connections'
+      fullPath: '/settings/connections'
+      preLoaderRoute: typeof SettingsConnectionsRouteImport
+      parentRoute: typeof SettingsRoute
+    }
+    '/settings/archived': {
+      id: '/settings/archived'
+      path: '/archived'
+      fullPath: '/settings/archived'
+      preLoaderRoute: typeof SettingsArchivedRouteImport
+      parentRoute: typeof SettingsRoute
+    }
+    '/settings/appearance': {
+      id: '/settings/appearance'
+      path: '/appearance'
+      fullPath: '/settings/appearance'
+      preLoaderRoute: typeof SettingsAppearanceRouteImport
+      parentRoute: typeof SettingsRoute
+    }
+    '/projects/$projectKey': {
+      id: '/projects/$projectKey'
+      path: '/projects/$projectKey'
+      fullPath: '/projects/$projectKey'
+      preLoaderRoute: typeof ProjectsProjectKeyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/plugins/$pluginId': {
+      id: '/plugins/$pluginId'
+      path: '/plugins/$pluginId'
+      fullPath: '/plugins/$pluginId'
+      preLoaderRoute: typeof PluginsPluginIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/_chat/pull-requests': {
+      id: '/_chat/pull-requests'
+      path: '/pull-requests'
+      fullPath: '/pull-requests'
+      preLoaderRoute: typeof ChatPullRequestsRouteImport
       parentRoute: typeof ChatRoute
     }
     '/_chat/draft/$draftId': {
@@ -578,6 +554,13 @@ declare module '@tanstack/react-router' {
       path: '/draft/$draftId'
       fullPath: '/draft/$draftId'
       preLoaderRoute: typeof ChatDraftDraftIdRouteImport
+      parentRoute: typeof ChatRoute
+    }
+    '/_chat/$environmentId/$threadId': {
+      id: '/_chat/$environmentId/$threadId'
+      path: '/$environmentId/$threadId'
+      fullPath: '/$environmentId/$threadId'
+      preLoaderRoute: typeof ChatEnvironmentIdThreadIdRouteImport
       parentRoute: typeof ChatRoute
     }
     '/_chat/project/$environmentId/$projectId': {
@@ -609,20 +592,6 @@ const ChatRouteChildren: ChatRouteChildren = {
 
 const ChatRouteWithChildren = ChatRoute._addFileChildren(ChatRouteChildren)
 
-interface ProjectsRouteChildren {
-  ProjectsProjectKeyRoute: typeof ProjectsProjectKeyRoute
-  ProjectsIndexRoute: typeof ProjectsIndexRoute
-}
-
-const ProjectsRouteChildren: ProjectsRouteChildren = {
-  ProjectsProjectKeyRoute: ProjectsProjectKeyRoute,
-  ProjectsIndexRoute: ProjectsIndexRoute,
-}
-
-const ProjectsRouteWithChildren = ProjectsRoute._addFileChildren(
-  ProjectsRouteChildren,
-)
-
 interface SettingsRouteChildren {
   SettingsAppearanceRoute: typeof SettingsAppearanceRoute
   SettingsArchivedRoute: typeof SettingsArchivedRoute
@@ -635,6 +604,7 @@ interface SettingsRouteChildren {
   SettingsPluginsRoute: typeof SettingsPluginsRoute
   SettingsProjectsRoute: typeof SettingsProjectsRoute
   SettingsProvidersRoute: typeof SettingsProvidersRoute
+  SettingsScheduledTasksRoute: typeof SettingsScheduledTasksRoute
   SettingsSnapShotRoute: typeof SettingsSnapShotRoute
   SettingsSourceControlRoute: typeof SettingsSourceControlRoute
   SettingsStorageRoute: typeof SettingsStorageRoute
@@ -652,6 +622,7 @@ const SettingsRouteChildren: SettingsRouteChildren = {
   SettingsPluginsRoute: SettingsPluginsRoute,
   SettingsProjectsRoute: SettingsProjectsRoute,
   SettingsProvidersRoute: SettingsProvidersRoute,
+  SettingsScheduledTasksRoute: SettingsScheduledTasksRoute,
   SettingsSnapShotRoute: SettingsSnapShotRoute,
   SettingsSourceControlRoute: SettingsSourceControlRoute,
   SettingsStorageRoute: SettingsStorageRoute,
@@ -665,11 +636,11 @@ const rootRouteChildren: RootRouteChildren = {
   ChatRoute: ChatRouteWithChildren,
   ConnectRoute: ConnectRoute,
   PairRoute: PairRoute,
-  ProjectsRoute: ProjectsRouteWithChildren,
   SettingsRoute: SettingsRouteWithChildren,
   UsageRoute: UsageRoute,
   WelcomeRoute: WelcomeRoute,
   PluginsPluginIdRoute: PluginsPluginIdRoute,
+  ProjectsProjectKeyRoute: ProjectsProjectKeyRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
