@@ -659,13 +659,51 @@ jobs:
           fi
           ls -la release-publish
 
+      # ForgeGraph drops large artifact uploads mid-transfer now and then. Retry
+      # under a fresh name: an interrupted upload never finalizes, and the
+      # release job merges every desktop-* artifact.
       - name: Upload build artifacts
+        id: upload
+        continue-on-error: true
         env:
           ACTIONS_ARTIFACT_UPLOAD_CONCURRENCY: 1
           ACTIONS_ARTIFACT_UPLOAD_TIMEOUT_MS: 1800000
         uses: https://code.forgejo.org/forgejo/upload-artifact@v5
         with:
           name: desktop-${{ matrix.platform }}-${{ matrix.arch }}
+          path: release-publish/*
+          if-no-files-found: error
+
+      - name: Wait before retrying artifact upload
+        if: steps.upload.outcome == 'failure'
+        run: sleep 90
+
+      - name: Upload build artifacts (retry)
+        id: upload_retry
+        if: steps.upload.outcome == 'failure'
+        continue-on-error: true
+        env:
+          ACTIONS_ARTIFACT_UPLOAD_CONCURRENCY: 1
+          ACTIONS_ARTIFACT_UPLOAD_TIMEOUT_MS: 1800000
+        uses: https://code.forgejo.org/forgejo/upload-artifact@v5
+        with:
+          name: desktop-${{ matrix.platform }}-${{ matrix.arch }}-retry1
+          path: release-publish/*
+          if-no-files-found: error
+
+      - name: Wait before retrying artifact upload
+        if: steps.upload_retry.outcome == 'failure'
+        run: sleep 90
+
+      - name: Upload build artifacts (retry)
+        id: upload_retry2
+        if: steps.upload_retry.outcome == 'failure'
+        env:
+          ACTIONS_ARTIFACT_UPLOAD_CONCURRENCY: 1
+          ACTIONS_ARTIFACT_UPLOAD_TIMEOUT_MS: 1800000
+        uses: https://code.forgejo.org/forgejo/upload-artifact@v5
+        with:
+          name: desktop-${{ matrix.platform }}-${{ matrix.arch }}-retry2
           path: release-publish/*
           if-no-files-found: error
 
@@ -795,13 +833,51 @@ jobs:
           done
           ls -la release-publish
 
+      # ForgeGraph drops large artifact uploads mid-transfer now and then. Retry
+      # under a fresh name: an interrupted upload never finalizes, and the
+      # release job merges every desktop-* artifact.
       - name: Upload build artifacts
+        id: upload
+        continue-on-error: true
         env:
           ACTIONS_ARTIFACT_UPLOAD_CONCURRENCY: 1
           ACTIONS_ARTIFACT_UPLOAD_TIMEOUT_MS: 1800000
         uses: https://code.forgejo.org/forgejo/upload-artifact@v5
         with:
           name: desktop-mac-x64
+          path: release-publish/*
+          if-no-files-found: error
+
+      - name: Wait before retrying artifact upload
+        if: steps.upload.outcome == 'failure'
+        run: sleep 90
+
+      - name: Upload build artifacts (retry)
+        id: upload_retry
+        if: steps.upload.outcome == 'failure'
+        continue-on-error: true
+        env:
+          ACTIONS_ARTIFACT_UPLOAD_CONCURRENCY: 1
+          ACTIONS_ARTIFACT_UPLOAD_TIMEOUT_MS: 1800000
+        uses: https://code.forgejo.org/forgejo/upload-artifact@v5
+        with:
+          name: desktop-mac-x64-retry1
+          path: release-publish/*
+          if-no-files-found: error
+
+      - name: Wait before retrying artifact upload
+        if: steps.upload_retry.outcome == 'failure'
+        run: sleep 90
+
+      - name: Upload build artifacts (retry)
+        id: upload_retry2
+        if: steps.upload_retry.outcome == 'failure'
+        env:
+          ACTIONS_ARTIFACT_UPLOAD_CONCURRENCY: 1
+          ACTIONS_ARTIFACT_UPLOAD_TIMEOUT_MS: 1800000
+        uses: https://code.forgejo.org/forgejo/upload-artifact@v5
+        with:
+          name: desktop-mac-x64-retry2
           path: release-publish/*
           if-no-files-found: error
 
