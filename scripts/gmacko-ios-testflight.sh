@@ -60,6 +60,8 @@ cleanup() {
 }
 trap cleanup EXIT
 
+# The runner's launchd environment has no locale; CocoaPods crashes without UTF-8.
+export LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8
 export APP_VARIANT=gmacko
 export T3CODE_IOS_TEAM_ID="$APPLE_TEAM_ID"
 export T3CODE_IOS_BUILD_NUMBER="$BUILD_NUMBER"
