@@ -117,6 +117,13 @@ function ThreadHeader(
         onPress: filesVisible ? toggleAuxiliaryPane : props.onOpenFilesInspector,
       });
     }
+    if (props.onOpenCad) {
+      actions.push({
+        accessibilityLabel: "Switch to CAD mode",
+        icon: "cpu",
+        onPress: props.onOpenCad,
+      });
+    }
     if (props.hasWorkspaceRoot) {
       actions.push({
         accessibilityLabel: "Open terminal",
@@ -141,6 +148,7 @@ function ThreadHeader(
     props.inspectorMode,
     panes.auxiliaryPaneVisible,
     props.onOpenFilesInspector,
+    props.onOpenCad,
     onOpenTerminal,
     onMergeBack,
     props.onOpenGitInspector,
@@ -543,6 +551,15 @@ function ThreadRouteContent(
     setInspectorSelection({ routeThreadIdentity, mode: "git" });
     showAuxiliaryPane("inspector");
   }, [fileInspector.supported, navigation, routeThreadIdentity, selectedThread, showAuxiliaryPane]);
+  // CAD mode: open the thread's checkout in the KiCad viewer.
+  const handleOpenCad = useCallback(() => {
+    if (selectedThread === null || selectedThreadCwd === null) return;
+    navigation.navigate("KiCadViewer", {
+      environmentId: String(selectedThread.environmentId),
+      threadId: String(selectedThread.id),
+      cwd: selectedThreadCwd,
+    });
+  }, [navigation, selectedThread, selectedThreadCwd]);
   const handleOpenFilesInspector = useCallback(() => {
     if (selectedThread === null || selectedThreadCwd === null) {
       return;
@@ -1098,6 +1115,7 @@ function ThreadRouteContent(
         onToggleInspector={handleToggleInspector}
         onOpenGitInspector={handleOpenGitInspector}
         onOpenFilesInspector={handleOpenFilesInspector}
+        {...(selectedThreadCwd !== null ? { onOpenCad: handleOpenCad } : {})}
         onReturnToThread={props.onReturnToThread}
       />
 

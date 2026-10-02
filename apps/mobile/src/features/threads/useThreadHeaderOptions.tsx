@@ -18,11 +18,37 @@ export function useThreadHeaderOptions(props: {
   readonly usesNativeHeaderGlass: boolean;
   readonly gitControls: Parameters<typeof ThreadGitControls>[0];
   readonly onReturnToThread?: () => void;
+  /** Opens the thread's checkout in the KiCad viewer; omitted without a checkout. */
+  readonly onOpenCad?: () => void;
 }) {
   const navigation = useNavigation();
   const { layout, panes, togglePrimarySidebar } = useAdaptiveWorkspaceLayout();
   const threadCenterHeaderItems = useThreadGitCenterHeaderItems(props.gitControls);
-  const compactRightHeaderItems = useThreadGitRightHeaderItems(props.gitControls);
+  const gitRightHeaderItems = useThreadGitRightHeaderItems(props.gitControls);
+  const onOpenCad = props.onOpenCad;
+  const cadHeaderItems = useMemo<NativeHeaderItems>(
+    () =>
+      onOpenCad
+        ? [
+            withNativeGlassHeaderItem({
+              accessibilityLabel: "Switch to CAD mode",
+              icon: { name: "cpu", type: "sfSymbol" as const },
+              identifier: "thread-right-cad",
+              onPress: onOpenCad,
+              type: "button" as const,
+            }),
+          ]
+        : [],
+    [onOpenCad],
+  );
+  const splitRightHeaderItems = useMemo(
+    () => [...threadCenterHeaderItems, ...cadHeaderItems],
+    [threadCenterHeaderItems, cadHeaderItems],
+  );
+  const compactRightHeaderItems = useMemo(
+    () => [...gitRightHeaderItems, ...cadHeaderItems],
+    [gitRightHeaderItems, cadHeaderItems],
+  );
   const splitLeftHeaderItems = useMemo<NativeHeaderItems>(
     () => [
       {
@@ -104,7 +130,7 @@ export function useThreadHeaderOptions(props: {
     // the git controls on the RIGHT (no center items — center space is
     // reserved for future breadcrumbs/status).
     unstable_headerRightItems: () =>
-      layout.usesSplitView ? threadCenterHeaderItems : compactRightHeaderItems,
+      layout.usesSplitView ? splitRightHeaderItems : compactRightHeaderItems,
     unstable_headerSubtitle: props.usesNativeHeaderGlass ? props.subtitle : undefined,
     contentStyle: undefined,
   };
