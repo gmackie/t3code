@@ -168,9 +168,9 @@ function makeTestInstance(input: MakeInstanceInput) {
       handleControlForSource: () => Effect.void,
       removeControlSource: () => Effect.void,
       publishUpdateReport: () => Effect.void,
+      updateRequests: Stream.empty,
       updateCommits: Stream.empty,
       updateCancellations: Stream.empty,
-      updateRequests: Stream.empty,
       ...input.desktopTelemetryPublisher,
     }),
     DesktopWslEnvironment.layerTest(

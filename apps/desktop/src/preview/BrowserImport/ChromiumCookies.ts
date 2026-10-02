@@ -27,6 +27,7 @@ import { ChildProcessSpawner } from "effect/unstable/process";
 import {
   ChromiumKeyError,
   ChromiumKeyFailure,
+  readWindowsKey,
   resolveChromiumKeys,
   type ChromiumKeyMaterial,
 } from "./ChromiumKeys.ts";
@@ -40,6 +41,9 @@ import {
 
 /** OSCrypt's CBC mode uses a fixed IV of 16 spaces rather than a per-record one. */
 const AES_CBC_IV = Buffer.alloc(16, 0x20);
+const AES_GCM_NONCE_LENGTH = 12;
+const AES_GCM_TAG_LENGTH = 16;
+const isChromiumKeyError = Schema.is(ChromiumKeyError);
 
 /**
  * Every way the read can fail: the key failures, plus the ones this module
@@ -95,14 +99,17 @@ const decodeSchemaVersion = Schema.decodeUnknownEffect(
 );
 
 /**
- * Chromium stores `SameSite` as an int; unspecified (-1) behaves as Lax in
- * modern Chromium, so it maps there rather than to `no_restriction`, which
- * would widen the cookie's scope on import.
+ * Chromium stores `SameSite` as an int: -1 = unspecified, 0 = none, 1 = lax,
+ * 2 = strict. Unspecified is imported as Electron's own `unspecified` rather
+ * than pinned to Lax, so the target browser applies its default just as the
+ * source did; anything unrecognised lands there too, since guessing "none"
+ * would widen a cookie's scope on import.
  */
 const sameSiteFromColumn = (value: number): ImportedCookie["sameSite"] => {
   if (value === 0) return "no_restriction";
+  if (value === 1) return "lax";
   if (value === 2) return "strict";
-  return "lax";
+  return "unspecified";
 };
 
 /**
@@ -149,6 +156,26 @@ const decryptCbc = (
   }
 };
 
+const decryptGcm = (
+  payload: Buffer,
+  key: Buffer,
+  domain: string,
+  schemaVersion: number,
+): string | null => {
+  if (payload.length < AES_GCM_NONCE_LENGTH + AES_GCM_TAG_LENGTH) return null;
+  try {
+    const nonce = payload.subarray(0, AES_GCM_NONCE_LENGTH);
+    const ciphertext = payload.subarray(AES_GCM_NONCE_LENGTH, -AES_GCM_TAG_LENGTH);
+    const tag = payload.subarray(-AES_GCM_TAG_LENGTH);
+    const decipher = NodeCrypto.createDecipheriv("aes-256-gcm", key, nonce);
+    decipher.setAuthTag(tag);
+    const plaintext = Buffer.concat([decipher.update(ciphertext), decipher.final()]);
+    return stripDomainBinding(plaintext, domain, schemaVersion)?.toString("utf8") ?? null;
+  } catch {
+    return null;
+  }
+};
+
 /**
  * Decrypts one stored value, choosing the scheme from its prefix. Returns null
  * when no key covers that scheme — including Windows' app-bound `v20`, which
@@ -166,13 +193,38 @@ export function decryptChromiumValue(
   const prefix = buffer.subarray(0, 3).toString("latin1");
   const payload = buffer.subarray(3);
 
+  // Windows' legacy v10 format is AES-256-GCM. App-bound records use v20 and
+  // intentionally have no key here, so they fall through as undecryptable.
+  if (platform === "win32") {
+    return prefix === "v10" && keys.gcmV10
+      ? decryptGcm(payload, keys.gcmV10, domain, schemaVersion)
+      : null;
+  }
+
+  // Chromium retries a failed record with a key derived from an empty
+  // passphrase, because some Linux clients wrote data that way
+  // (crbug.com/1195256). A record whose own key is missing entirely stays
+  // skipped, matching Chromium.
   if (prefix === "v10") {
-    return keys.cbcV10 ? decryptCbc(payload, keys.cbcV10, domain, schemaVersion) : null;
+    if (!keys.cbcV10) return null;
+    return (
+      decryptCbc(payload, keys.cbcV10, domain, schemaVersion) ??
+      (keys.cbcEmpty ? decryptCbc(payload, keys.cbcEmpty, domain, schemaVersion) : null)
+    );
   }
   if (prefix === "v11") {
-    return keys.cbcV11 ? decryptCbc(payload, keys.cbcV11, domain, schemaVersion) : null;
+    if (!keys.cbcV11) return null;
+    return (
+      decryptCbc(payload, keys.cbcV11, domain, schemaVersion) ??
+      (keys.cbcEmpty ? decryptCbc(payload, keys.cbcEmpty, domain, schemaVersion) : null)
+    );
   }
-  if (platform === "darwin") {
+  // No recognised prefix: Chromium on macOS and Linux both treat this as
+  // legacy data stored in the clear and return it as-is, so it is a readable
+  // cookie rather than an undecryptable one. Windows is the exception — its
+  // app-bound `v20` blobs also lack these prefixes and must not be read as
+  // plaintext — but Windows Chromium is not importable here at all.
+  if (platform === "darwin" || platform === "linux") {
     return stripDomainBinding(buffer, domain, schemaVersion)?.toString("utf8") ?? null;
   }
   return null;
@@ -236,6 +288,19 @@ export const readChromiumCookieDatabase = Effect.fn("ChromiumCookies.readChromiu
         sameSite: sameSiteFromColumn(row.samesite),
       });
     }
+    // Keep partial imports, but do not call a missing key a successful import
+    // when it prevented every otherwise importable cookie from being read.
+    if (
+      cookies.length === 0 &&
+      keys.cbcV11Error !== undefined &&
+      result.rows.some(
+        (row) =>
+          row.top_frame_site_key === "" &&
+          Buffer.from(row.encrypted_value.subarray(0, 3)).toString("latin1") === "v11",
+      )
+    ) {
+      return yield* keys.cbcV11Error;
+    }
     return {
       cookies,
       undecryptable,
@@ -249,6 +314,7 @@ export interface ChromiumCookieSource {
   readonly keychainService: string | undefined;
   readonly keychainAccount: string | undefined;
   readonly linuxSecretApplication: string | undefined;
+  readonly windowsLocalStatePath?: string;
   /** Supplied by the caller from `HostProcessPlatform` rather than read here. */
   readonly platform: NodeJS.Platform;
 }
@@ -260,12 +326,16 @@ export const readChromiumCookies = Effect.fn("ChromiumCookies.readChromiumCookie
   ChromiumCookieReadError,
   FileSystem.FileSystem | Path.Path | Scope.Scope | ChildProcessSpawner.ChildProcessSpawner
 > {
-  const keys = yield* resolveChromiumKeys({
-    platform: source.platform,
-    keychainService: source.keychainService,
-    keychainAccount: source.keychainAccount,
-    linuxSecretApplication: source.linuxSecretApplication,
-  }).pipe(
+  const keys = yield* (
+    source.platform === "win32" && source.windowsLocalStatePath
+      ? readWindowsKey(source.windowsLocalStatePath).pipe(Effect.map((gcmV10) => ({ gcmV10 })))
+      : resolveChromiumKeys({
+          platform: source.platform,
+          keychainService: source.keychainService,
+          keychainAccount: source.keychainAccount,
+          linuxSecretApplication: source.linuxSecretApplication,
+        })
+  ).pipe(
     Effect.mapError(
       (cause: ChromiumKeyError) =>
         new ChromiumCookieReadError({
@@ -291,7 +361,7 @@ export const readChromiumCookies = Effect.fn("ChromiumCookies.readChromiumCookie
     Effect.mapError(
       (cause) =>
         new ChromiumCookieReadError({
-          reason: "readFailed",
+          reason: isChromiumKeyError(cause) ? cause.reason : "readFailed",
           cookieDatabasePath: source.cookieDatabasePath,
           cause,
         }),

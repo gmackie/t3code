@@ -435,12 +435,12 @@ describe("DesktopTelemetryPublisher", () => {
             availableVersion: null,
             downloadedVersion: null,
             releaseNotes: [],
-            omittedReleaseCount: 0,
             downloadPercent: null,
             checkedAt: null,
             message: null,
             errorContext: null,
             canRetry: false,
+            omittedReleaseCount: 0,
           },
         } as const;
         yield* publisher.publishUpdateReport(report);
