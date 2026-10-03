@@ -165,11 +165,13 @@ import {
   usePrimaryEnvironment,
   useRelayEnvironmentDiscovery,
 } from "~/state/environments";
+import { APP_VERSION } from "~/branding";
 import { requestConfirmDialog } from "~/confirmDialog";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { primaryServerKeybindingsAtom, serverEnvironment } from "~/state/server";
 import { ConnectionStatusDot } from "../ConnectionStatusDot";
 import {
+  OutdatedServerUpdateAction,
   ServerUpdateAction,
   ServerUpdateProgress,
   ServerUpdatesAction,
