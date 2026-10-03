@@ -1,3 +1,5 @@
+import { usesExpoPush } from "../agent-awareness/ExpoPushCoordinator";
+import { SettingsExpoNotifications } from "./SettingsExpoNotifications";
 import { ScreenScrollView as ScrollView } from "../../components/ScreenScrollView";
 import { useAuth } from "@clerk/expo";
 import { useAtomSet, useAtomValue } from "@effect/atom-react";
@@ -57,6 +59,7 @@ function useDeviceRegistered(): boolean {
 }
 
 export function SettingsNotificationsRouteScreen() {
+  if (usesExpoPush()) return <SettingsExpoNotifications />;
   if (!hasCloudPublicConfig()) {
     return (
       <SettingsScreen title="Notifications">

@@ -57,6 +57,13 @@
       "channel": "production",
       "environment": "production",
       "autoIncrement": true
+    },
+    "gmacko": {
+      "extends": "production",
+      "env": {
+        "APP_VARIANT": "gmacko",
+        "T3CODE_MOBILE_UPDATES_ENABLED": "0"
+      }
     }
   },
   "submit": {

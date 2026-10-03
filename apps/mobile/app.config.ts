@@ -9,6 +9,10 @@ const repoEnv = loadRepoEnv();
 Object.assign(process.env, repoEnv);
 
 const APP_VARIANT = resolveAppVariant(repoEnv.APP_VARIANT);
+const expoProjectId =
+  APP_VARIANT === "gmacko"
+    ? "894f4bb4-090d-472b-a13b-c9f10fbee543"
+    : "d763fcb8-d37c-41ea-a773-b54a0ab4a454";
 const isIosPersonalTeamBuild = repoEnv.T3CODE_IOS_PERSONAL_TEAM === "1";
 const runtimeVersionPolicy =
   process.env.MOBILE_VERSION_POLICY ??
@@ -237,7 +241,7 @@ const sharingPlugin: NonNullable<ExpoConfig["plugins"]>[number] = [
 
 const config: ExpoConfig = {
   name: variant.appName,
-  slug: "t3-code",
+  slug: APP_VARIANT === "gmacko" ? "t3-code-gmacko" : "t3-code",
   platforms: ["ios", "android"],
   scheme: variant.scheme,
   version: "2.0.0",
@@ -251,8 +255,8 @@ const config: ExpoConfig = {
   icon: variant.assets.appIcon,
   userInterfaceStyle: "automatic",
   updates: {
-    enabled: repoEnv.T3CODE_MOBILE_UPDATES_ENABLED !== "0",
-    url: "https://u.expo.dev/d763fcb8-d37c-41ea-a773-b54a0ab4a454",
+    enabled: APP_VARIANT !== "gmacko" && repoEnv.T3CODE_MOBILE_UPDATES_ENABLED !== "0",
+    url: `https://u.expo.dev/${expoProjectId}`,
     checkAutomatically: "ON_LOAD",
     fallbackToCacheTimeout: 0,
   },
@@ -483,10 +487,10 @@ const config: ExpoConfig = {
       tracesToken: repoEnv.EXPO_PUBLIC_OTLP_TRACES_TOKEN ?? null,
     },
     eas: {
-      projectId: "d763fcb8-d37c-41ea-a773-b54a0ab4a454",
+      projectId: expoProjectId,
     },
   },
-  owner: "pingdotgg",
+  owner: APP_VARIANT === "gmacko" ? "gmacko" : "pingdotgg",
 };
 
 export default config;

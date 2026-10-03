@@ -1,3 +1,6 @@
+import * as ExpoPush from "./notifications/ExpoPush.ts";
+import * as AgentNotificationWorker from "./notifications/AgentNotificationWorker.ts";
+import { notificationsHttpApiLayer } from "./notifications/http.ts";
 import type { RelayManagedEndpointRuntimeConfig } from "@t3tools/contracts/relay";
 import * as Clock from "effect/Clock";
 import * as Random from "effect/Random";
@@ -513,6 +516,7 @@ const ProviderInstallationRefreshLive = Layer.effectDiscard(
 
 const RuntimeCoreDependenciesBaseLive = Layer.mergeAll(
   AgentAwarenessRelay.layer,
+  AgentNotificationWorker.layer.pipe(Layer.provideMerge(ExpoPush.layer)),
   ThreadSettlementWorkerLive,
   Layer.effectDiscard(StorageCleanup.make.pipe(Effect.flatMap((service) => service.start()))).pipe(
     Layer.provide(ProjectionStoreV2.layer),
@@ -633,6 +637,7 @@ const makeRoutesLayer = Layer.mergeAll(
     HttpApiBuilder.layer(EnvironmentHttpApi).pipe(
       Layer.provide(authHttpApiLayer),
       Layer.provide(connectHttpApiLayer),
+      Layer.provide(notificationsHttpApiLayer),
       Layer.provide(orchestrationHttpApiLayer),
       Layer.provide(pullRequestHttpApiLayer),
       Layer.provide(projectHttpApiLayer),

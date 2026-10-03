@@ -25,8 +25,14 @@ and signs with an Apple Distribution identity kept in a dedicated keychain on th
 script header). One-time setup: that keychain, the App IDs `com.gmacko.t3code`, `.widgets`, and
 `.sharing` with the App Group `group.com.gmacko.t3code` assigned (the API cannot assign App Groups),
 the App Store Connect app record, and an internal TestFlight group with automatic distribution. The
-build is signed by the fork's team, so T3 relay push notifications and T3 Connect passkeys do not
-work in it.
+GMACKO app uses Expo Push Service for ordinary alerts, independently of T3 Connect. Its Expo
+project is [@gmacko/t3-code-gmacko](https://expo.dev/accounts/gmacko/projects/t3-code-gmacko).
+Configure the Apple push key for `com.gmacko.t3code` with
+`APP_VARIANT=gmacko eas credentials --platform ios` from `apps/mobile` (select the `gmacko`
+profile). Expo manages delivery credentials; the existing local TestFlight build remains unchanged.
+The App Store Connect upload key is not an APNs key. The server must have outbound HTTPS access
+to `exp.host`. Live Activities still require the T3 relay, and T3 Connect passkeys require the
+authentication domain to authorize the fork's app identity.
 
 ## What the workflow does
 

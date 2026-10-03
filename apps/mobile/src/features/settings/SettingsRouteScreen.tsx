@@ -1,3 +1,4 @@
+import { usesExpoPush } from "../agent-awareness/ExpoPushCoordinator";
 import { ScreenScrollView as ScrollView } from "../../components/ScreenScrollView";
 import { useAuth, useUser } from "@clerk/expo";
 import { useNavigation } from "@react-navigation/native";
@@ -119,6 +120,9 @@ function LocalSettingsRouteScreen() {
             valuePosition="trailing"
             target="SettingsEnvironments"
           />
+          {usesExpoPush() ? (
+            <SettingsRow icon="bell.badge" label="Notifications" target="SettingsNotifications" />
+          ) : null}
         </SettingsSection>
 
         <SettingsIndexSections />

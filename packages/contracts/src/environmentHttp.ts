@@ -651,8 +651,41 @@ class EnvironmentConnectHttpApi extends HttpApiGroup.make("connect")
     }),
   ) {}
 
+export const ExpoPushRegistration = Schema.Struct({
+  token: Schema.NullOr(
+    Schema.String.check(
+      Schema.isMaxLength(256),
+      Schema.isPattern(/^(?:Expo|Exponent)PushToken\[[A-Za-z0-9_-]+\]$/),
+    ),
+  ),
+});
+export type ExpoPushRegistration = typeof ExpoPushRegistration.Type;
+
+export class ExpoPushError extends Schema.TaggedError<ExpoPushError>()("ExpoPushError", {
+  cause: Schema.Defect(),
+}) {
+  override get message(): string {
+    return "Could not update push notifications.";
+  }
+}
+
+class EnvironmentNotificationsHttpApi extends HttpApiGroup.make("notifications").add(
+  HttpApiEndpoint.post("register", "/api/notifications/expo", {
+    headers: OptionalBearerHeaders,
+    payload: ExpoPushRegistration,
+    success: Schema.Void,
+    error: [
+      ExpoPushError,
+      EnvironmentAuthInvalidError,
+      EnvironmentScopeRequiredError,
+      EnvironmentInternalError,
+    ],
+  }).middleware(EnvironmentAuthenticatedAuth),
+) {}
+
 export class EnvironmentHttpApi extends HttpApi.make("environment")
   .add(EnvironmentMetadataHttpApi)
+  .add(EnvironmentNotificationsHttpApi)
   .add(EnvironmentAuthHttpApi)
   .add(EnvironmentOrchestrationHttpApi)
   .add(EnvironmentPullRequestsHttpApi)
