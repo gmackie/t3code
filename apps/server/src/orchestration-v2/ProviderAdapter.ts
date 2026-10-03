@@ -379,6 +379,8 @@ export interface ProviderAdapterV2OpenSessionInput {
   readonly modelSelection: ModelSelection;
   readonly runtimePolicy: ProviderAdapterV2RuntimePolicy;
   readonly resumeFromSession?: OrchestrationV2ProviderSession;
+  /** Parent of a delegated or subagent thread, for adapters that forward lineage. */
+  readonly parentThreadId?: ThreadId;
   /** Native thread to activate while an eager adapter opens its provider process. */
   readonly initialNativeThreadId?: string;
   /** Preserves provider item identity across eager activation of a persisted thread. */

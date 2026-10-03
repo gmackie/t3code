@@ -947,6 +947,61 @@ describe("OpenCodeAdapterV2", () => {
     }).pipe(Effect.provide(IdAllocator.layer), Effect.scoped),
   );
 
+  it.effect("forwards thread lineage to the spawned server environment", () =>
+    Effect.gen(function* () {
+      const environments: Array<NodeJS.ProcessEnv | undefined> = [];
+      const idAllocator = yield* IdAllocator.IdAllocatorV2;
+      const instanceId = ProviderInstanceId.make("opencode-lineage");
+      const adapter = makeOpenCodeAdapterV2({
+        instanceId,
+        settings: OPEN_CODE_TEST_SETTINGS,
+        environment: { OPENCODE_CONFIG_CONTENT: "{}" },
+        runtime: {
+          connectToOpenCodeServer: (input: { environment?: NodeJS.ProcessEnv }) => {
+            environments.push(input.environment);
+            return Effect.succeed({ url: "http://test.invalid", external: true });
+          },
+          createOpenCodeSdkClient: () => {
+            const nativeEvents = asyncEventStream();
+            return {
+              event: {
+                subscribe: async (_input: unknown, options: { signal?: AbortSignal }) => {
+                  options.signal?.addEventListener("abort", () => nativeEvents.close(), {
+                    once: true,
+                  });
+                  return { stream: nativeEvents.stream };
+                },
+              },
+            };
+          },
+        } as unknown as OpenCodeRuntimeShape,
+        idAllocator,
+        serverConfig: {
+          cwd: "/workspace",
+          attachmentsDir: "/tmp/attachments",
+        } as ServerConfig.ServerConfig["Service"],
+      });
+      const open = (suffix: string, parentThreadId?: ThreadId) =>
+        adapter.openSession({
+          threadId: ThreadId.make(`thread-${suffix}`),
+          providerSessionId: ProviderSessionId.make(`session-${suffix}`),
+          modelSelection: { instanceId, model: "anthropic/claude-sonnet", options: [] },
+          runtimePolicy: runtimePolicy("full-access", { cwd: "/workspace" }),
+          ...(parentThreadId === undefined ? {} : { parentThreadId }),
+        });
+      yield* open("child", ThreadId.make("thread-parent"));
+      yield* open("root");
+      assert.deepEqual(environments, [
+        {
+          OPENCODE_CONFIG_CONTENT: "{}",
+          T3_THREAD_ID: "thread-child",
+          T3_PARENT_THREAD_ID: "thread-parent",
+        },
+        { OPENCODE_CONFIG_CONTENT: "{}", T3_THREAD_ID: "thread-root", T3_PARENT_THREAD_ID: "" },
+      ]);
+    }).pipe(Effect.provide(IdAllocator.layer), Effect.scoped),
+  );
+
   it.effect("sends unadvertised slash commands as ordinary prompts", () =>
     Effect.gen(function* () {
       const nativeEvents = asyncEventStream();
