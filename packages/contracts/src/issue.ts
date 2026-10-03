@@ -109,7 +109,7 @@ export const LinearIssueValidationResult = Schema.Struct({
 });
 export type LinearIssueValidationResult = typeof LinearIssueValidationResult.Type;
 
-export class IssueProviderError extends Schema.TaggedErrorClass<IssueProviderError>()(
+export class IssueProviderError extends Schema.TaggedError<IssueProviderError>()(
   "IssueProviderError",
   {
     provider: IssueProviderKind,

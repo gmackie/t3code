@@ -38,6 +38,7 @@ const baseThread = {
   cwd: "/work/project/packages/server",
   ephemeral: false,
   modelProvider: "openai",
+  projectId: null,
   preview: "Fix the import flow",
   sessionId: "session-1",
   source: "cli" as const,

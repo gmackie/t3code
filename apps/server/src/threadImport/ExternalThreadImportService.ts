@@ -2,16 +2,26 @@ import {
   DEFAULT_PROVIDER_INTERACTION_MODE,
   DEFAULT_RUNTIME_MODE,
   CommandId,
+  EventId,
   ExternalThreadImportRequestError,
+  MessageId,
+  TurnItemId,
   type EnvironmentId,
+  type ExternalThreadImportProvenance,
   type ExternalThreadImportBatchResult,
   type ExternalThreadImportCandidateToken,
   type ExternalThreadImportDiscoveryInput,
   type ExternalThreadImportDiscoveryResult,
   type ExternalThreadImportSelection,
   type ModelSelection,
+  type OrchestrationV2AppThread,
+  type OrchestrationV2ConversationMessage,
+  type OrchestrationV2DomainEvent,
+  type OrchestrationV2ProviderThread,
+  type OrchestrationV2TurnItem,
   type ProjectId,
   type ProviderInstanceRef,
+  type ProviderThreadId,
   type ThreadId,
   ThreadId as ThreadIdSchema,
 } from "@t3tools/contracts";
@@ -23,10 +33,14 @@ import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
+import * as Schema from "effect/Schema";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 
-import * as OrchestrationEngine from "../orchestration/Services/OrchestrationEngine.ts";
-import * as ProjectionSnapshotQuery from "../orchestration/Services/ProjectionSnapshotQuery.ts";
+import * as EventSink from "../orchestration-v2/EventSink.ts";
+import * as IdAllocator from "../orchestration-v2/IdAllocator.ts";
+import * as ProjectionStore from "../orchestration-v2/ProjectionStore.ts";
+import * as ProviderSessionRuntime from "../persistence/ProviderSessionRuntime.ts";
+import * as ProjectService from "../project/ProjectService.ts";
 import * as ProviderInstanceRegistry from "../provider/Services/ProviderInstanceRegistry.ts";
 import * as ServerEnvironment from "../environment/ServerEnvironment.ts";
 import * as VcsProcess from "../vcs/VcsProcess.ts";
@@ -39,6 +53,7 @@ import {
 import type {
   BoundedThreadImportJson,
   LoadedThreadImportSnapshot,
+  NormalizedThreadImportHistory,
   ThreadImportSource,
 } from "./ThreadImportSource.ts";
 
@@ -403,12 +418,285 @@ export class ExternalThreadImportService extends Context.Service<
   ExternalThreadImportServiceShape
 >()("t3/threadImport/ExternalThreadImportService") {}
 
+const IMPORT_EVENT_PREFIX = "external-thread-import:v2";
+const encodeJson = Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown));
+
+const historyItemAt = (importedAt: string, sequence: number): DateTime.Utc =>
+  DateTime.add(DateTime.makeUnsafe(importedAt), { milliseconds: sequence });
+
+const toolSummary = (value: unknown): string | undefined => {
+  if (typeof value === "string") return value;
+  if (value === undefined || value === null) return undefined;
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return undefined;
+  }
+};
+
+/**
+ * Translate a normalized import history into V2 domain events. Messages become
+ * conversation messages plus their turn items; everything else becomes a
+ * completed turn item so the imported transcript reads like a settled run.
+ * Imported items carry no run: the provider never ran them under T3 Code.
+ */
+export function buildImportedThreadEvents(input: {
+  readonly threadId: ThreadId;
+  readonly projectId: ProjectId;
+  readonly title: string;
+  readonly modelSelection: ModelSelection;
+  readonly providerThreadId: ProviderThreadId;
+  readonly provenance: ExternalThreadImportProvenance;
+  readonly history: NormalizedThreadImportHistory;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+}): ReadonlyArray<OrchestrationV2DomainEvent> {
+  const threadId = input.threadId;
+  const driver = input.provenance.provider.driver;
+  const providerInstanceId = input.provenance.provider.instanceId;
+  const createdAt = DateTime.makeUnsafe(input.createdAt);
+  const updatedAt = DateTime.makeUnsafe(input.updatedAt);
+  const appThread: OrchestrationV2AppThread = {
+    createdBy: "system",
+    creationSource: "server",
+    id: threadId,
+    projectId: input.projectId,
+    title: input.title.trim() === "" ? "Imported thread" : input.title,
+    providerInstanceId,
+    modelSelection: input.modelSelection,
+    runtimeMode: DEFAULT_RUNTIME_MODE,
+    interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+    branch: null,
+    worktreePath: null,
+    linkedPullRequest: null,
+    branchPullRequest: null,
+    activeProviderThreadId: input.providerThreadId,
+    historyOrigin: "v1_import",
+    lineage: { parentThreadId: null, relationshipToParent: null, rootThreadId: threadId },
+    forkedFrom: null,
+    createdAt,
+    updatedAt,
+    archivedAt: null,
+    settledOverride: "settled",
+    settledAt: updatedAt,
+    unsettledAt: null,
+    snoozedUntil: null,
+    snoozedAt: null,
+    pinnedAt: null,
+    pinOrderKey: null,
+    activeOrderKey: null,
+    lastVisitedAt: null,
+    deletedAt: null,
+  };
+  const providerThread: OrchestrationV2ProviderThread = {
+    id: input.providerThreadId,
+    driver,
+    providerInstanceId,
+    providerSessionId: null,
+    appThreadId: threadId,
+    ownerNodeId: null,
+    nativeThreadRef: { driver, nativeId: input.provenance.nativeThreadId, strength: "strong" },
+    nativeConversationHeadRef: null,
+    status: "idle",
+    firstRunOrdinal: null,
+    lastRunOrdinal: null,
+    handoffIds: [],
+    forkedFrom: null,
+    pendingBackgroundTasks: [],
+    createdAt,
+    updatedAt,
+  };
+  const events: Array<OrchestrationV2DomainEvent> = [
+    {
+      id: EventId.make(`${IMPORT_EVENT_PREFIX}:thread:${threadId}:created`),
+      type: "thread.created",
+      threadId,
+      providerInstanceId,
+      occurredAt: createdAt,
+      payload: appThread,
+    },
+  ];
+  const toolCallIds = new Map<string, TurnItemId>();
+  let ordinal = 0;
+  const base = (sequence: number) => {
+    ordinal += 1;
+    const at = historyItemAt(input.provenance.importedAt, sequence);
+    const suffix = String(sequence).padStart(8, "0");
+    return {
+      at,
+      suffix,
+      fields: {
+        id: TurnItemId.make(`${IMPORT_EVENT_PREFIX}:turn-item:${threadId}:${suffix}`),
+        threadId,
+        runId: null,
+        nodeId: null,
+        providerThreadId: input.providerThreadId,
+        providerTurnId: null,
+        nativeItemRef: null,
+        parentItemId: null,
+        ordinal,
+        status: "completed" as const,
+        title: null,
+        startedAt: at,
+        completedAt: at,
+        updatedAt: at,
+      },
+    };
+  };
+  const emitItem = (suffix: string, at: DateTime.Utc, turnItem: OrchestrationV2TurnItem) => {
+    events.push({
+      id: EventId.make(`${IMPORT_EVENT_PREFIX}:turn-item:${threadId}:${suffix}`),
+      type: "turn-item.updated",
+      threadId,
+      driver,
+      providerInstanceId,
+      occurredAt: at,
+      payload: turnItem,
+    });
+  };
+  for (const item of input.history) {
+    switch (item._tag) {
+      case "TurnLifecycle":
+        continue;
+      case "Message": {
+        const { at, suffix, fields } = base(item.sequence);
+        const messageId = MessageId.make(`import:${threadId}:message:${item.sequence}`);
+        const message: OrchestrationV2ConversationMessage = {
+          createdBy: item.role === "user" ? "user" : "agent",
+          creationSource: "server",
+          id: messageId,
+          threadId,
+          runId: null,
+          nodeId: null,
+          role: item.role,
+          text: item.text,
+          attachments: [],
+          streaming: false,
+          createdAt: at,
+          updatedAt: at,
+        };
+        events.push({
+          id: EventId.make(`${IMPORT_EVENT_PREFIX}:message:${threadId}:${suffix}`),
+          type: "message.updated",
+          threadId,
+          occurredAt: at,
+          payload: message,
+        });
+        emitItem(
+          suffix,
+          at,
+          item.role === "user"
+            ? {
+                ...fields,
+                createdBy: "user",
+                creationSource: "server",
+                type: "user_message",
+                messageId,
+                inputIntent: "turn_start",
+                text: item.text,
+                attachments: [],
+              }
+            : {
+                ...fields,
+                type: "assistant_message",
+                messageId,
+                text: item.text,
+                streaming: false,
+              },
+        );
+        continue;
+      }
+      case "Reasoning": {
+        const { at, suffix, fields } = base(item.sequence);
+        emitItem(suffix, at, { ...fields, type: "reasoning", text: item.text, streaming: false });
+        continue;
+      }
+      case "ToolCall": {
+        const { at, suffix, fields } = base(item.sequence);
+        toolCallIds.set(item.callId, fields.id);
+        emitItem(suffix, at, {
+          ...fields,
+          type: "dynamic_tool",
+          toolName: item.name.trim() === "" ? null : item.name,
+          input: item.input,
+        });
+        continue;
+      }
+      case "ToolResult": {
+        const { at, suffix, fields } = base(item.sequence);
+        const parentItemId = toolCallIds.get(item.callId) ?? null;
+        emitItem(suffix, at, {
+          ...fields,
+          parentItemId,
+          status: item.isError ? "failed" : "completed",
+          type: "dynamic_tool",
+          toolName: null,
+          input: { callId: item.callId },
+          output: item.output,
+        });
+        continue;
+      }
+      case "Approval": {
+        const { at, suffix, fields } = base(item.sequence);
+        emitItem(suffix, at, {
+          ...fields,
+          type: "system_notice",
+          message: `Approval ${item.decision}: ${item.prompt}`,
+        });
+        continue;
+      }
+      case "UserInput": {
+        const { at, suffix, fields } = base(item.sequence);
+        emitItem(suffix, at, {
+          ...fields,
+          type: "system_notice",
+          message: item.response === undefined ? item.prompt : `${item.prompt}\n\n${item.response}`,
+        });
+        continue;
+      }
+      case "Error": {
+        const { at, suffix, fields } = base(item.sequence);
+        emitItem(suffix, at, {
+          ...fields,
+          status: "failed",
+          type: "system_notice",
+          message: item.code === undefined ? item.message : `${item.code}: ${item.message}`,
+        });
+        continue;
+      }
+      case "Activity": {
+        const { at, suffix, fields } = base(item.sequence);
+        const detail = toolSummary(item.detail);
+        emitItem(suffix, at, {
+          ...fields,
+          type: "system_notice",
+          message: detail === undefined ? item.label : `${item.label}: ${detail}`,
+        });
+        continue;
+      }
+    }
+  }
+  events.push({
+    id: EventId.make(`${IMPORT_EVENT_PREFIX}:provider-thread:${input.providerThreadId}`),
+    type: "provider-thread.updated",
+    threadId,
+    driver,
+    providerInstanceId,
+    occurredAt: updatedAt,
+    payload: providerThread,
+  });
+  return events;
+}
+
 export const makeLive = Effect.gen(function* () {
   const environment = yield* ServerEnvironment.ServerEnvironment;
-  const projects = yield* ProjectionSnapshotQuery.ProjectionSnapshotQuery;
+  const projects = yield* ProjectService.ProjectService;
   const instances = yield* ProviderInstanceRegistry.ProviderInstanceRegistry;
   const tokenCodec = yield* CandidateToken.ExternalThreadImportCandidateTokenCodec;
-  const engine = yield* OrchestrationEngine.OrchestrationEngineService;
+  const projections = yield* ProjectionStore.ProjectionStoreV2;
+  const eventSink = yield* EventSink.EventSinkV2;
+  const idAllocator = yield* IdAllocator.IdAllocatorV2;
+  const runtimes = yield* ProviderSessionRuntime.ProviderSessionRuntimeRepository;
   const sql = yield* SqlClient.SqlClient;
   const crypto = yield* Crypto.Crypto;
   const fileSystem = yield* FileSystem.FileSystem;
@@ -426,7 +714,7 @@ export const makeLive = Effect.gen(function* () {
   const service = makeExternalThreadImportService({
     getEnvironmentId: environment.getEnvironmentId,
     getProjectRoot: (projectId) =>
-      projects.getProjectShellById(projectId).pipe(
+      projects.getById(projectId).pipe(
         Effect.mapError(() =>
           requestError("project_lookup_failed", "The project could not be loaded.", true),
         ),
@@ -466,24 +754,36 @@ export const makeLive = Effect.gen(function* () {
         ),
       ),
     findImportedThread: (identity) =>
-      instances.getInstance(identity.provider.instanceId).pipe(
-        Effect.flatMap((instance) =>
-          instance === undefined
-            ? Effect.succeed([])
-            : sql<{ readonly threadId: string }>`
-        SELECT thread_id AS "threadId"
-        FROM projection_external_thread_imports
-        WHERE environment_id = ${identity.environmentId}
-          AND continuation_group = ${instance.continuationIdentity.continuationKey}
-          AND provider_instance_id = ${identity.provider.instanceId}
-          AND provider_driver = ${identity.provider.driver}
-          AND native_thread_id = ${identity.nativeThreadId}
-        LIMIT 1
-      `,
-        ),
-        Effect.map((rows) =>
-          rows[0] === undefined ? undefined : ThreadIdSchema.make(rows[0].threadId),
-        ),
+      Effect.gen(function* () {
+        const instance = yield* instances.getInstance(identity.provider.instanceId);
+        if (instance === undefined) return undefined;
+        const rows = yield* sql<{ readonly threadId: string }>`
+          SELECT thread_id AS "threadId"
+          FROM projection_external_thread_imports
+          WHERE environment_id = ${identity.environmentId}
+            AND continuation_group = ${instance.continuationIdentity.continuationKey}
+            AND provider_instance_id = ${identity.provider.instanceId}
+            AND provider_driver = ${identity.provider.driver}
+            AND native_thread_id = ${identity.nativeThreadId}
+          LIMIT 1
+        `;
+        const row = rows[0];
+        if (row === undefined) return undefined;
+        const threadId = ThreadIdSchema.make(row.threadId);
+        // The provenance row outlives the thread when the user deletes it.
+        // Treat a deleted or vanished thread as never imported so the native
+        // thread can be imported again, and drop the stale row.
+        const existing = yield* projections.getThread(threadId).pipe(
+          Effect.map((thread) => thread.deletedAt === null),
+          Effect.orElseSucceed(() => false),
+        );
+        if (existing) return threadId;
+        yield* sql`
+          DELETE FROM projection_external_thread_imports
+          WHERE thread_id = ${threadId}
+        `;
+        return undefined;
+      }).pipe(
         Effect.mapError(() =>
           requestError("import_lookup_failed", "Existing imports could not be checked.", true),
         ),
@@ -527,48 +827,85 @@ export const makeLive = Effect.gen(function* () {
         const createdAt = iso(input.snapshot.metadata.createdAt ?? input.now);
         const updatedAt = iso(input.snapshot.metadata.updatedAt);
         const importedAt = iso(input.now);
-        const result = yield* engine
-          .dispatch({
-            type: "thread.import",
-            commandId: CommandId.make(input.commandId),
-            threadId: input.threadId,
-            projectId: input.identity.projectId,
-            environmentId: input.identity.environmentId,
-            title:
-              input.snapshot.metadata.title ??
-              input.snapshot.metadata.firstPromptPreview ??
-              "Imported thread",
-            modelSelection: input.modelSelection,
-            runtimeMode: DEFAULT_RUNTIME_MODE,
-            interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
-            branch: null,
-            worktreePath: null,
-            originalCwd: input.snapshot.recordedCwd,
-            normalizedHistory: input.snapshot.normalizedHistory,
-            provenance: {
-              provider: input.identity.provider,
-              nativeThreadId: input.identity.nativeThreadId,
-              continuationGroup: instance.continuationIdentity.continuationKey,
-              originalCwd: input.snapshot.recordedCwd,
-              ...(input.snapshot.resumeCursor === undefined
-                ? {}
-                : { resumeCursor: input.snapshot.resumeCursor }),
-              decoderVersion: input.snapshot.decoderVersion,
-              importedAt,
-            },
-            createdAt,
-            updatedAt,
-          })
-          .pipe(
-            Effect.mapError(() =>
-              requestError(
-                "import_persistence_failed",
-                "The imported thread could not be saved.",
-                true,
-              ),
-            ),
+        const provenance: ExternalThreadImportProvenance = {
+          provider: input.identity.provider,
+          nativeThreadId: input.identity.nativeThreadId,
+          continuationGroup: instance.continuationIdentity.continuationKey,
+          originalCwd: input.snapshot.recordedCwd,
+          ...(input.snapshot.resumeCursor === undefined
+            ? {}
+            : { resumeCursor: input.snapshot.resumeCursor }),
+          decoderVersion: input.snapshot.decoderVersion,
+          importedAt,
+        };
+        const persistenceError = () =>
+          requestError(
+            "import_persistence_failed",
+            "The imported thread could not be saved.",
+            true,
           );
-        return result.threadId ?? input.threadId;
+        const driver = input.identity.provider.driver;
+        const providerThreadId = idAllocator.derive.providerThread({
+          driver,
+          nativeThreadId: input.identity.nativeThreadId,
+          providerInstanceId: input.identity.provider.instanceId,
+        });
+        const events = buildImportedThreadEvents({
+          threadId: input.threadId,
+          projectId: input.identity.projectId,
+          title:
+            input.snapshot.metadata.title ??
+            input.snapshot.metadata.firstPromptPreview ??
+            "Imported thread",
+          modelSelection: input.modelSelection,
+          providerThreadId,
+          provenance,
+          history: input.snapshot.normalizedHistory,
+          createdAt,
+          updatedAt,
+        });
+        const stored = yield* eventSink
+          .write({ commandId: CommandId.make(input.commandId), events })
+          .pipe(Effect.mapError(persistenceError));
+        yield* runtimes
+          .upsert({
+            threadId: input.threadId,
+            providerName: driver,
+            providerInstanceId: input.identity.provider.instanceId,
+            adapterKey: driver,
+            runtimeMode: DEFAULT_RUNTIME_MODE,
+            status: "stopped",
+            lastSeenAt: importedAt,
+            resumeCursor: input.snapshot.resumeCursor ?? null,
+            runtimePayload: {
+              cwd: input.snapshot.recordedCwd,
+              modelSelection: input.modelSelection,
+            },
+          })
+          .pipe(Effect.mapError(persistenceError));
+        const resumeCursorJson =
+          provenance.resumeCursor === undefined
+            ? null
+            : yield* encodeJson(provenance.resumeCursor).pipe(Effect.mapError(persistenceError));
+        yield* sql`
+          INSERT INTO projection_external_thread_imports (
+            thread_id, environment_id, provider_instance_id, provider_driver, continuation_group,
+            native_thread_id, original_cwd, resume_cursor_json, decoder_version,
+            imported_at, event_sequence
+          ) VALUES (
+            ${input.threadId}, ${input.identity.environmentId}, ${provenance.provider.instanceId},
+            ${provenance.provider.driver}, ${provenance.continuationGroup},
+            ${provenance.nativeThreadId}, ${provenance.originalCwd},
+            ${resumeCursorJson},
+            ${provenance.decoderVersion}, ${provenance.importedAt}, ${stored.at(-1)?.sequence ?? 0}
+          )
+          ON CONFLICT(thread_id) DO UPDATE SET
+            resume_cursor_json = excluded.resume_cursor_json,
+            decoder_version = excluded.decoder_version,
+            imported_at = excluded.imported_at,
+            event_sequence = excluded.event_sequence
+        `.pipe(Effect.mapError(persistenceError));
+        return input.threadId;
       }),
     randomId: crypto.randomUUIDv4.pipe(
       Effect.mapError(() =>

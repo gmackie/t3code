@@ -1,12 +1,13 @@
 import { describe, expect, it } from "vite-plus/test";
 import * as Schema from "effect/Schema";
-import * as EffectAcpSchema from "effect-acp/schema";
+import type * as EffectAcpSchema from "effect-acp/compat";
+import * as AcpWireSchema from "effect-acp/schema-v1";
 
 import {
   extractAntigravityUserInputQuestion,
   isAntigravityOpenCommand,
   antigravityApprovalOptions,
-  antigravitySubagentResult,
+  antigravitySubagentOutput,
   isAntigravitySubagentReplayStart,
   classifyAntigravitySubagentToolCall,
   isAntigravityUserInputRequest,
@@ -18,7 +19,7 @@ import {
 } from "./AntigravityProtocol.ts";
 import { mergeToolCallState, parseSessionUpdateEvent } from "./AcpRuntimeModel.ts";
 
-const isSessionNotification = Schema.is(EffectAcpSchema.SessionNotification);
+const isSessionNotification = Schema.is(AcpWireSchema.SessionNotification);
 
 describe("native Antigravity subagent tools", () => {
   it("recognizes only native invocation titles and excludes MCP tools", () => {
@@ -48,7 +49,7 @@ describe("native Antigravity subagent tools", () => {
     ).toBeUndefined();
   });
 
-  it("recognizes history starts and bounds the native result", () => {
+  it("recognizes history starts and bounds the launch output", () => {
     expect(
       isAntigravitySubagentReplayStart({
         update: { sessionUpdate: "tool_call", status: "completed", rawOutput: "Done." },
@@ -65,19 +66,19 @@ describe("native Antigravity subagent tools", () => {
       }),
     ).toBe(false);
     expect(
-      antigravitySubagentResult({
+      antigravitySubagentOutput({
         toolCallId: "trajectory:4",
         data: { rawOutput: "  Finished review.  " },
       }),
     ).toBe("Finished review.");
-    const result = antigravitySubagentResult({
+    const result = antigravitySubagentOutput({
       toolCallId: "trajectory:4",
       data: { rawOutput: `${"x".repeat(16_000)}The result.` },
     });
     expect(result?.length).toBeLessThan(8_100);
     expect(result?.endsWith("The result.")).toBe(true);
     expect(
-      antigravitySubagentResult({ toolCallId: "trajectory:4", data: { rawOutput: {} } }),
+      antigravitySubagentOutput({ toolCallId: "trajectory:4", data: { rawOutput: {} } }),
     ).toBeUndefined();
   });
 });

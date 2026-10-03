@@ -12,6 +12,7 @@ import {
   type NormalizedThreadImportHistoryItem,
   type ThreadImportCandidateMetadata,
   type ThreadImportSource,
+  THREAD_IMPORT_PARSE_OPTIONS,
 } from "../ThreadImportSource.ts";
 
 type CodexImportMethod = "thread/list" | "thread/read";
@@ -30,7 +31,10 @@ export interface CodexThreadImportClient {
 
 const decodeListResponse = Schema.decodeUnknownEffect(CodexSchema.V2ThreadListResponse);
 const decodeReadResponse = Schema.decodeUnknownEffect(CodexSchema.V2ThreadReadResponse);
-const decodeHistory = Schema.decodeUnknownEffect(NormalizedThreadImportHistory);
+const decodeHistory = Schema.decodeUnknownEffect(
+  NormalizedThreadImportHistory,
+  THREAD_IMPORT_PARSE_OPTIONS,
+);
 const DECODER_VERSION = "codex-app-server-v1";
 const MAX_CODEX_CURSOR_CHARS = 4_096;
 const MAX_CODEX_METADATA_CHARS = 4_096;
@@ -359,6 +363,19 @@ function mapItem(
           label: `Sub-agent ${item.kind}`,
         },
       ];
+    default: {
+      // Item kinds added by newer Codex app-server schemas still deserve a
+      // placeholder so the transcript keeps its shape.
+      const unknown = item as { readonly type: string; readonly id: string };
+      return [
+        {
+          _tag: "Activity",
+          sequence: next(),
+          activityId: unknown.id,
+          label: `Codex ${unknown.type}`,
+        },
+      ];
+    }
   }
 }
 

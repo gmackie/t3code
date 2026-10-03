@@ -18,6 +18,7 @@ import {
   type ThreadImportCandidate,
   type ThreadImportCandidateMetadata,
   type ThreadImportSource,
+  THREAD_IMPORT_PARSE_OPTIONS,
 } from "../ThreadImportSource.ts";
 
 export const MAX_CLAUDE_TRANSCRIPT_BYTES = 1 * 1_024 * 1_024 * 1_024;
@@ -29,7 +30,10 @@ const MAX_CLAUDE_INDEX_BYTES = 2 * 1_024 * 1_024;
 const MAX_METADATA_CHARS = 4_096;
 const DECODER_VERSION = "claude-code-jsonl-v1";
 const SESSION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const decodeHistory = Schema.decodeUnknownEffect(NormalizedThreadImportHistory);
+const decodeHistory = Schema.decodeUnknownEffect(
+  NormalizedThreadImportHistory,
+  THREAD_IMPORT_PARSE_OPTIONS,
+);
 
 interface TranscriptLocation {
   readonly sessionId: string;

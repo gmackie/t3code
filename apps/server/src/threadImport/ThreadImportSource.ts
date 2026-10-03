@@ -128,6 +128,14 @@ export const BoundedThreadImportJson = Schema.declare<Schema.Json>(
 );
 export type BoundedThreadImportJson = typeof BoundedThreadImportJson.Type;
 
+/**
+ * Imported history is untrusted provider output. Decoders must reject unmodeled
+ * keys so raw transcripts, paths, or secrets cannot ride along inside a
+ * normalized item; effect no longer reads this from a schema annotation, so
+ * every decode site passes these options explicitly.
+ */
+export const THREAD_IMPORT_PARSE_OPTIONS = { onExcessProperty: "error" } as const;
+
 const sequence = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0));
 const boundedIdentifier = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(4_096));
 const boundedText = Schema.String.check(
@@ -144,54 +152,54 @@ export const NormalizedThreadImportHistoryItem = Schema.Union([
     sequence,
     turnId: boundedIdentifier,
     phase: Schema.Literals(["started", "completed", "failed", "interrupted"]),
-  }).annotate({ parseOptions: { onExcessProperty: "error" } }),
+  }),
   Schema.TaggedStruct("Message", {
     sequence,
     messageId: Schema.optional(boundedIdentifier),
     role: Schema.Literals(["user", "assistant"]),
     text: boundedText,
-  }).annotate({ parseOptions: { onExcessProperty: "error" } }),
+  }),
   Schema.TaggedStruct("Reasoning", {
     sequence,
     ...optionalActivityId,
     text: boundedText,
-  }).annotate({ parseOptions: { onExcessProperty: "error" } }),
+  }),
   Schema.TaggedStruct("ToolCall", {
     sequence,
     callId: boundedIdentifier,
     name: boundedIdentifier,
     input: BoundedThreadImportJson,
-  }).annotate({ parseOptions: { onExcessProperty: "error" } }),
+  }),
   Schema.TaggedStruct("ToolResult", {
     sequence,
     callId: boundedIdentifier,
     output: BoundedThreadImportJson,
     isError: Schema.Boolean,
-  }).annotate({ parseOptions: { onExcessProperty: "error" } }),
+  }),
   Schema.TaggedStruct("Approval", {
     sequence,
     activityId: boundedIdentifier,
     prompt: boundedText,
     decision: Schema.Literals(["approved", "denied", "cancelled", "pending"]),
-  }).annotate({ parseOptions: { onExcessProperty: "error" } }),
+  }),
   Schema.TaggedStruct("UserInput", {
     sequence,
     activityId: boundedIdentifier,
     prompt: boundedText,
     response: Schema.optional(boundedText),
-  }).annotate({ parseOptions: { onExcessProperty: "error" } }),
+  }),
   Schema.TaggedStruct("Error", {
     sequence,
     ...optionalActivityId,
     message: boundedText,
     code: Schema.optional(boundedIdentifier),
-  }).annotate({ parseOptions: { onExcessProperty: "error" } }),
+  }),
   Schema.TaggedStruct("Activity", {
     sequence,
     ...optionalActivityId,
     label: boundedIdentifier,
     detail: Schema.optional(boundedText),
-  }).annotate({ parseOptions: { onExcessProperty: "error" } }),
+  }),
 ]);
 export type NormalizedThreadImportHistoryItem = typeof NormalizedThreadImportHistoryItem.Type;
 
@@ -222,7 +230,7 @@ export const ThreadImportProvenance = Schema.Struct({
   parentNativeThreadId: Schema.optional(boundedIdentifier),
   sourceFormat: Schema.optional(boundedIdentifier),
   sourceVersion: Schema.optional(boundedIdentifier),
-}).annotate({ parseOptions: { onExcessProperty: "error" } });
+});
 export type ThreadImportProvenance = typeof ThreadImportProvenance.Type;
 
 export interface ThreadImportDiscoveryInput {
@@ -272,12 +280,12 @@ const threadImportSourceErrorFields = {
   retryable: Schema.Boolean,
 };
 
-export class ThreadImportDiscoveryError extends Schema.TaggedErrorClass<ThreadImportDiscoveryError>()(
+export class ThreadImportDiscoveryError extends Schema.TaggedError<ThreadImportDiscoveryError>()(
   "ThreadImportDiscoveryError",
   threadImportSourceErrorFields,
 ) {}
 
-export class ThreadImportLoadError extends Schema.TaggedErrorClass<ThreadImportLoadError>()(
+export class ThreadImportLoadError extends Schema.TaggedError<ThreadImportLoadError>()(
   "ThreadImportLoadError",
   {
     ...threadImportSourceErrorFields,
