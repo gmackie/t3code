@@ -648,11 +648,17 @@ jobs:
       # this release by version. Mirrors the cli_archive steps of upstream's
       # release-desktop.yml. The macOS binary is signed ad hoc: curl downloads
       # carry no quarantine attribute, so Gatekeeper never assesses it.
+      # Single executables need Node 25.7+ (`exe` in tsdown); the desktop build
+      # above stays on 24. Upstream gets this Node through Setup Vite+'s
+      # VP_NODE_VERSION, which a node_modules vp does not honor.
+      - name: Setup Node for the CLI single-executable
+        uses: actions/setup-node@v4
+        with:
+          # Keep in step with SEA_NODE_VERSION in apps/server/vite.config.ts.
+          node-version: 26.8.2
+
       - name: Build CLI single-executable
         shell: bash
-        env:
-          # Keep in step with SEA_NODE_VERSION in apps/server/vite.config.ts.
-          VP_NODE_VERSION: "26.8.2"
         run: node apps/server/scripts/cli.ts build-exe --verbose
 
       - name: Build CLI archive
