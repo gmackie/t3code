@@ -2156,6 +2156,30 @@ describe("OpenCode2 adapter", () => {
     }).pipe(Effect.scoped),
   );
 
+  it.effect("tags a new session with its T3 thread and parent", () =>
+    Effect.gen(function* () {
+      const runtime = yield* openCode2ReplayRuntime([
+        ...opening,
+        out("agent.list", "<any>"),
+        reply("agent.list", agentList),
+        out("session.create", {
+          location: { directory: WORK },
+          model: { providerID: "opencode", id: "big-pickle" },
+          permissions: supervisedRules,
+          metadata: { t3ThreadId: threadId, t3ParentThreadId: "thread-opencode2-parent" },
+        }),
+        replyData("session.create", sessionInfo({ permissions: supervisedRules })),
+      ]);
+      const created = yield* runtime.ensureThread({
+        threadId,
+        parentThreadId: ThreadId.make("thread-opencode2-parent"),
+        modelSelection: bigPickle,
+        runtimePolicy: policy("approval-required"),
+      });
+      assert.equal(created.nativeThreadRef?.nativeId, SESSION);
+    }).pipe(Effect.scoped),
+  );
+
   it.effect("reads the agents again while a fresh server still lists none", () =>
     Effect.gen(function* () {
       // 2.0.18 answers `/api/agent` with `[]` for a moment after it starts;

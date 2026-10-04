@@ -389,6 +389,8 @@ export interface ProviderAdapterV2OpenSessionInput {
 
 export interface ProviderAdapterV2EnsureThreadInput {
   readonly threadId: ThreadId;
+  /** Parent of a delegated or subagent thread, for adapters that forward lineage. */
+  readonly parentThreadId?: ThreadId;
   readonly modelSelection: ModelSelection;
   readonly runtimePolicy: ProviderAdapterV2RuntimePolicy;
   readonly providerSessionId?: ProviderSessionId;
@@ -529,6 +531,7 @@ export interface ProviderAdapterV2SessionRuntime {
   readonly resumeThread: (input: {
     readonly providerThread: OrchestrationV2ProviderThread;
     readonly threadId?: ThreadId;
+    readonly parentThreadId?: ThreadId;
     readonly modelSelection?: ModelSelection;
     readonly runtimePolicy?: ProviderAdapterV2RuntimePolicy;
   }) => Effect.Effect<OrchestrationV2ProviderThread, ProviderAdapterV2Error>;
