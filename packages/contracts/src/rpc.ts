@@ -349,6 +349,12 @@ import {
   ProviderConsumeResetCreditResult,
 } from "./providerUsageLimits.ts";
 import { UsagePricing, UsageReadError, UsageSummary, UsageSummaryInput } from "./usage.ts";
+import {
+  RoutingOverview,
+  RoutingSourceError,
+  RoutingThreadHistory,
+  RoutingThreadHistoryInput,
+} from "./routing.ts";
 import { ServerSettings, ServerSettingsError, ServerSettingsPatch } from "./settings.ts";
 import {
   ScheduledTaskDeleteInput,
@@ -533,6 +539,10 @@ export const WS_METHODS = {
   serverGetBackgroundPolicy: "server.getBackgroundPolicy",
   serverGetUsageSummary: "server.getUsageSummary",
   serverRefreshUsageRates: "server.refreshUsageRates",
+
+  // Routing (Pistache) methods
+  routingGetOverview: "routing.getOverview",
+  routingGetThreadHistory: "routing.getThreadHistory",
 
   // Plugin command methods
   pluginCommandsList: "pluginCommands.list",
@@ -1072,6 +1082,20 @@ const WsServerRefreshUsageRatesRpc = Rpc.make(WS_METHODS.serverRefreshUsageRates
   payload: Schema.Struct({}),
   success: UsagePricing,
   error: EnvironmentAuthorizationError,
+});
+
+/** The environment's Pistache router rollups, windows, and alerts. */
+const WsRoutingGetOverviewRpc = Rpc.make(WS_METHODS.routingGetOverview, {
+  payload: Schema.Struct({}),
+  success: RoutingOverview,
+  error: Schema.Union([EnvironmentAuthorizationError, RoutingSourceError]),
+});
+
+/** Routing decisions the router recorded for one T3 thread, newest first. */
+const WsRoutingGetThreadHistoryRpc = Rpc.make(WS_METHODS.routingGetThreadHistory, {
+  payload: RoutingThreadHistoryInput,
+  success: RoutingThreadHistory,
+  error: Schema.Union([EnvironmentAuthorizationError, RoutingSourceError]),
 });
 
 const WsServerSignalProcessRpc = Rpc.make(WS_METHODS.serverSignalProcess, {
@@ -1991,6 +2015,8 @@ export const WsRpcGroup = RpcGroup.make(
   WsServerRetryResourceTelemetryRpc,
   WsServerGetUsageSummaryRpc,
   WsServerRefreshUsageRatesRpc,
+  WsRoutingGetOverviewRpc,
+  WsRoutingGetThreadHistoryRpc,
   WsServerSignalProcessRpc,
   WsScheduledTasksListRpc,
   WsScheduledTasksSubscribeRpc,

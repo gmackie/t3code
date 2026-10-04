@@ -1085,6 +1085,18 @@ export function createServerEnvironmentAtoms<R, E>(
       staleTimeMs: 60_000,
       refreshTrigger: ({ environmentId }) => usageScanSettingsAtom(environmentId),
     }),
+    // The server polls the router on its own interval; a short stale time
+    // keeps the page and the composer badge within one poll of each other.
+    routingOverview: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:server:routing-overview",
+      tag: WS_METHODS.routingGetOverview,
+      staleTimeMs: 15_000,
+    }),
+    routingThreadHistory: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:server:routing-thread-history",
+      tag: WS_METHODS.routingGetThreadHistory,
+      staleTimeMs: 15_000,
+    }),
     resourceTelemetry: createEnvironmentRpcSubscriptionAtomFamily(runtime, {
       label: "environment-data:server:resource-telemetry",
       tag: WS_METHODS.subscribeResourceTelemetry,
