@@ -54,14 +54,22 @@ export function cliArchiveFileName(version: string, platformKey: CliArchivePlatf
   return `t3-${version}-${platformKey}.${platformKey.startsWith("win32") ? "zip" : "tar.gz"}`;
 }
 
-const CLI_RELEASE_DEFAULT_BASE_URL = `https://github.com/${CLI_RELEASE_REPOSITORY}/releases/download`;
+// GMACKO fork releases (0.0.45-gmacko.202610031642) attach their archives to
+// the fork's GitHub releases; upstream has no tag for them.
+const GMACKO_RELEASE_REPOSITORY = "gmackie/t3code";
+const GMACKO_VERSION_PATTERN = /-gmacko\.\d+$/;
+
+/** Where a version's release archives live when no mirror is configured. */
+export function cliReleaseDefaultBaseUrl(version: string): string {
+  const repository = GMACKO_VERSION_PATTERN.test(version)
+    ? GMACKO_RELEASE_REPOSITORY
+    : CLI_RELEASE_REPOSITORY;
+  return `https://github.com/${repository}/releases/download`;
+}
 
 /** Directory that `releases/download/<tag>/<asset>` lives under. */
-export function cliReleaseDownloadBaseUrl(
-  version: string,
-  baseUrl: string | undefined = CLI_RELEASE_DEFAULT_BASE_URL,
-): string {
-  return `${(baseUrl?.trim() || CLI_RELEASE_DEFAULT_BASE_URL).replace(/\/+$/, "")}/v${version}`;
+export function cliReleaseDownloadBaseUrl(version: string, baseUrl?: string): string {
+  return `${(baseUrl?.trim() || cliReleaseDefaultBaseUrl(version)).replace(/\/+$/, "")}/v${version}`;
 }
 
 /**

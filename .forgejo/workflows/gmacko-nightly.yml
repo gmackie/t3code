@@ -497,12 +497,14 @@ jobs:
             target: dmg
             arch: arm64
             rust_target: aarch64-apple-darwin
+            resource_key: darwin-arm64
           - label: Linux x64
             runner: forgegraph-ci
             platform: linux
             target: AppImage
             arch: x64
             rust_target: x86_64-unknown-linux-gnu
+            resource_key: linux-x64
     steps:
       - name: Checkout lane
         uses: actions/checkout@v4
@@ -641,13 +643,46 @@ jobs:
 
           pnpm vp run dist:desktop:artifact "${args[@]}"
 
+      # SSH environments install the remote runtime from this archive (see
+      # REMOTE_RUNNER_SCRIPT in packages/ssh/src/tunnel.ts), downloaded from
+      # this release by version. Mirrors the cli_archive steps of upstream's
+      # release-desktop.yml. The macOS binary is signed ad hoc: curl downloads
+      # carry no quarantine attribute, so Gatekeeper never assesses it.
+      - name: Build CLI single-executable
+        shell: bash
+        env:
+          # Keep in step with SEA_NODE_VERSION in apps/server/vite.config.ts.
+          VP_NODE_VERSION: "26.8.2"
+        run: node apps/server/scripts/cli.ts build-exe --verbose
+
+      - name: Build CLI archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          binary_name="t3-resource-monitor"
+          monitor_dir="$RUNNER_TEMP/cli-resource-monitor"
+          rm -rf "$monitor_dir" release-cli
+          mkdir -p "$monitor_dir/${{ matrix.resource_key }}"
+          cp "native/resource-monitor/target/${{ matrix.rust_target }}/release/${binary_name}" \
+            "$monitor_dir/${{ matrix.resource_key }}/${binary_name}"
+          node scripts/build-cli-archive.ts \
+            --platform "${{ matrix.platform }}" \
+            --arch "${{ matrix.arch }}" \
+            --version "${{ needs.sync.outputs.version }}" \
+            --resource-monitor-dir "$monitor_dir" \
+            --output-dir release-cli
+
+      - name: Smoke-test CLI archive
+        shell: bash
+        run: node scripts/smoke-cli-archive.ts --archive release-cli/* --expect-version "${{ needs.sync.outputs.version }}"
+
       - name: Collect release assets
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p release-publish
           shopt -s nullglob
-          for pattern in "release/*.dmg" "release/*.zip" "release/*.AppImage" "release/*.exe" "release/*.blockmap" "release/*.yml"; do
+          for pattern in "release/*.dmg" "release/*.zip" "release/*.AppImage" "release/*.exe" "release/*.blockmap" "release/*.yml" "release-cli/t3-*"; do
             for file in $pattern; do
               cp "$file" release-publish/
             done
@@ -989,6 +1024,21 @@ jobs:
           done
           ls -la release-assets
 
+      # Remote runtime installers verify every archive against this file.
+      - name: Write CLI archive checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          cd release-assets
+          archives=(t3-*.tar.gz)
+          if (( ${#archives[@]} == 0 )); then
+            echo "No CLI archives were produced." >&2
+            exit 1
+          fi
+          sha256sum "${archives[@]}" > SHA256SUMS
+          cat SHA256SUMS
+
       - name: Publish release
         shell: bash
         env:
@@ -1010,7 +1060,7 @@ jobs:
           if [[ -n "${PREVIOUS_TAG:-}" ]]; then
             notes_args+=(--notes-start-tag "$PREVIOUS_TAG")
           fi
-          assets=(release-assets/*.dmg release-assets/*.zip release-assets/*.AppImage release-assets/*.exe release-assets/*.blockmap release-assets/*.yml)
+          assets=(release-assets/*.dmg release-assets/*.zip release-assets/*.AppImage release-assets/*.exe release-assets/*.blockmap release-assets/*.yml release-assets/t3-*.tar.gz release-assets/SHA256SUMS)
           gh release create "$TAG" "${assets[@]}" \
             --repo "$GITHUB_FORK" \
             --target "$TARGET" \

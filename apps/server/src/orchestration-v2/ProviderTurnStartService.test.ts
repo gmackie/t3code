@@ -161,6 +161,8 @@ function makeLocalCommandHarness(input: {
   readonly openFailure?: unknown;
   /** Opens the session, then fails loading its provider thread. */
   readonly ensureThreadFailure?: unknown;
+  /** The stored session id is live for another thread on a single-thread runtime. */
+  readonly storedSessionHeldByOtherThread?: boolean;
   /**
    * Resumes a thread that has a native ref: resume fails, the fresh-thread
    * fallback succeeds, then reading history for its handoff fails.
@@ -393,7 +395,7 @@ function makeLocalCommandHarness(input: {
       ),
     ensureThread: () => Effect.succeed(providerThread),
   };
-  const open = vi.fn(() =>
+  const openStoredSession = () =>
     input.interruptOpen === true
       ? Effect.interrupt
       : "historyReadFailureAfterFallback" in input
@@ -431,7 +433,17 @@ function makeLocalCommandHarness(input: {
                   },
                   ensureThread: () => Effect.succeed(providerThread),
                 } as never)
-              : Effect.die("A local command must not open a native session."),
+              : Effect.die("A local command must not open a native session.");
+  const open = vi.fn((request: { readonly providerSessionId: ProviderSessionId }) =>
+    input.storedSessionHeldByOtherThread === true && request.providerSessionId === providerSessionId
+      ? Effect.fail(
+          new ProviderSessionManager.ProviderSessionHeldByOtherThreadError({
+            instanceId: newInstanceId,
+            providerSessionId,
+            threadId,
+          }),
+        )
+      : openStoredSession(),
   );
   const startRootRun = vi.fn<
     (input: RunExecutionService.RunExecutionServiceV2StartRootRunInput) => Effect.Effect<void>
@@ -532,6 +544,8 @@ function makeLocalCommandHarness(input: {
   );
   return {
     open,
+    ensureThread,
+    providerSessionId,
     writeIfRunCurrent,
     startRootRun,
     tryHandlePromptCommand,
@@ -585,6 +599,28 @@ effectIt.effect("terminalizes a starting run when its provider session cannot op
       },
     ]);
   }),
+);
+
+effectIt.effect(
+  "moves a thread to its own session when its stored shared session serves another thread",
+  () =>
+    Effect.gen(function* () {
+      const harness = makeLocalCommandHarness({
+        text: "Continue",
+        storedSessionHeldByOtherThread: true,
+        ensureThreadFailure: new Error("stop after the thread loads"),
+      });
+
+      yield* harness.start;
+
+      expect(harness.open).toHaveBeenCalledTimes(2);
+      const reopenedSessionId = harness.open.mock.calls[1]?.[0].providerSessionId;
+      expect(reopenedSessionId).toBeDefined();
+      expect(reopenedSessionId).not.toBe(harness.providerSessionId);
+      expect(harness.ensureThread).toHaveBeenCalledWith(
+        expect.objectContaining({ providerSessionId: reopenedSessionId }),
+      );
+    }),
 );
 
 effectIt.effect("leaves the run starting when a session-open failure will be retried", () =>

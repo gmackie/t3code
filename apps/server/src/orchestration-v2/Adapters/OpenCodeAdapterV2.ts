@@ -23,6 +23,7 @@ import {
   type OrchestrationV2ProviderCapabilities,
   type OrchestrationV2ProviderFailure,
   type OrchestrationV2ProviderRef,
+  type OrchestrationV2ProviderRetry,
   type OrchestrationV2ProviderSession,
   type OrchestrationV2ProviderThread,
   type OrchestrationV2ProviderTurn,
@@ -68,7 +69,7 @@ import { t3OrchestrationSystemPrompt } from "../../provider/T3OrchestrationInstr
 import { buildRuntimeInstructions } from "../../provider/RuntimeInstructions.ts";
 import * as OpenCodeRuntime from "../../provider/opencodeRuntime.ts";
 import * as IdAllocator from "../IdAllocator.ts";
-import { makeProviderFailure } from "../ProviderFailure.ts";
+import { makeProviderFailure, makeProviderRetryTurnItem } from "../ProviderFailure.ts";
 import { turnScopedSelectionTransition } from "../ProviderSelectionTransition.ts";
 import { providerMessageTextWithAttachmentPaths } from "../AttachmentPrompt.ts";
 import * as ProviderAdapter from "../ProviderAdapter.ts";
@@ -301,6 +302,12 @@ interface ActiveOpenCodeTurn {
   idleDuringAdmission: boolean;
   admissionSettled: Deferred.Deferred<void>;
   admissionAbortController: AbortController | null;
+  /** OpenCode is retrying a failed model request; cleared once the turn makes progress. */
+  retry: {
+    readonly startedAt: DateTime.Utc;
+    readonly failure: OrchestrationV2ProviderFailure;
+    readonly retry: OrchestrationV2ProviderRetry;
+  } | null;
 }
 
 type OpenCodeAdmissionSignal =
@@ -2005,6 +2012,39 @@ export function makeOpenCodeAdapterV2(
           );
         });
 
+        /**
+         * The turn's retry notice. It shares the terminal failure's item, so a
+         * turn that runs out of retries shows the failure in its place.
+         */
+        const emitRetry = Effect.fnUntraced(function* (
+          state: OpenCodeThreadState,
+          turn: ActiveOpenCodeTurn,
+          status: "running" | "completed" | "interrupted",
+        ) {
+          const retry = turn.retry;
+          if (retry === null) return;
+          if (status !== "running") turn.retry = null;
+          yield* emitProviderEvent({
+            type: "turn_item.updated",
+            driver: OPENCODE_PROVIDER,
+            turnItem: makeProviderRetryTurnItem({
+              idAllocator,
+              driver: OPENCODE_PROVIDER,
+              threadId: turn.threadId,
+              runId: turn.runId,
+              nodeId: turn.rootNodeId,
+              providerThreadId: state.providerThread.id,
+              providerTurnId: turn.providerTurnId,
+              itemOrdinal: itemOrdinal(turn, `terminal-failure:${turn.providerTurnId}`),
+              failure: retry.failure,
+              retry: retry.retry,
+              status,
+              startedAt: retry.startedAt,
+              updatedAt: yield* DateTime.now,
+            }),
+          });
+        });
+
         const finalizeTurn = Effect.fnUntraced(function* (
           state: OpenCodeThreadState,
           turn: ActiveOpenCodeTurn,
@@ -2020,6 +2060,10 @@ export function makeOpenCodeAdapterV2(
             terminal = { failure: nativeStreamFailure, threadDisposition: "broken" };
           }
           turn.finalized = true;
+          // A failed turn's terminal failure takes over the retry notice's item.
+          if (status !== "failed") {
+            yield* emitRetry(state, turn, status === "completed" ? "completed" : "interrupted");
+          }
           const completedAt = yield* DateTime.now;
           for (const part of turn.parts.values()) {
             if (part.type === "text" || part.type === "reasoning") {
@@ -2242,6 +2286,7 @@ export function makeOpenCodeAdapterV2(
             idleDuringAdmission: false,
             admissionSettled: Deferred.makeUnsafe<void>(),
             admissionAbortController: null,
+            retry: null,
           };
           state.activeTurn = turn;
           state.providerTurns.set(String(providerTurnId), providerTurn);
@@ -2432,6 +2477,16 @@ export function makeOpenCodeAdapterV2(
             if (!turn.isRoot) yield* projectChildUserPart(state, turn, part);
             return;
           }
+          // New output after a retry means the request went through.
+          if (
+            turn.retry !== null &&
+            (part.type === "text" ||
+              part.type === "reasoning" ||
+              part.type === "tool" ||
+              part.type === "step-finish")
+          ) {
+            yield* emitRetry(state, turn, "completed");
+          }
           if (part.type === "step-finish") {
             const usage = turn.usage;
             const ownership = usage.assistantOwnershipByMessageId.get(part.messageID);
@@ -2603,6 +2658,28 @@ export function makeOpenCodeAdapterV2(
               }
               const state = threads.get(sessionId);
               if (state === undefined) return;
+              const status = event.properties.status;
+              if (
+                status.type === "retry" &&
+                state.activeTurn !== null &&
+                !state.activeTurn.finalized
+              ) {
+                const now = yield* DateTime.now;
+                state.activeTurn.retry = {
+                  startedAt: state.activeTurn.retry?.startedAt ?? now,
+                  failure: makeProviderFailure({
+                    message: status.message,
+                    class: "provider_error",
+                  }),
+                  retry: {
+                    attempt: status.attempt,
+                    maxAttempts: null,
+                    retryDelayMs: Math.max(0, status.next - DateTime.toEpochMillis(now)),
+                  },
+                };
+                yield* emitRetry(state, state.activeTurn, "running");
+                return;
+              }
               if (event.properties.status.type === "busy") {
                 yield* updateProviderThread(state, { status: "active" });
                 return;
@@ -3176,6 +3253,7 @@ export function makeOpenCodeAdapterV2(
                 idleDuringAdmission: false,
                 admissionSettled: Deferred.makeUnsafe<void>(),
                 admissionAbortController: new AbortController(),
+                retry: null,
               };
               if (turn.admissionMessageId !== null)
                 turn.usage.promptMessageIds.add(turn.admissionMessageId);

@@ -441,6 +441,51 @@ describe("OpenCode2 adapter", () => {
     }).pipe(Effect.scoped),
   );
 
+  it.effect("shows a request retry while OpenCode retries it, then marks it recovered", () =>
+    Effect.gen(function* () {
+      const assistantMessageID = "msg_0eb735d5b001oAFVeY5jz3WD4Z";
+      const { runtime, thread } = yield* resumed([
+        out("session.prompt", { sessionID: SESSION, text: "<any>" }),
+        promptAccepted,
+        event("session.execution.started", { sessionID: SESSION }),
+        event("session.retry.scheduled", {
+          sessionID: SESSION,
+          assistantMessageID,
+          attempt: 2,
+          at: 0,
+          error: { type: "provider.internal", message: "Provider request failed with HTTP 502" },
+        }),
+        event("session.text.started", { sessionID: SESSION, assistantMessageID, ordinal: 0 }),
+        event("session.text.ended", {
+          sessionID: SESSION,
+          assistantMessageID,
+          ordinal: 0,
+          text: "DONE",
+        }),
+        event("session.execution.succeeded", { sessionID: SESSION }),
+      ]);
+      const collected = yield* runtime.events.pipe(
+        Stream.takeUntil((event) => event.type === "turn.terminal"),
+        Stream.runCollect,
+        Effect.forkScoped,
+      );
+      yield* runtime.startTurn(turnInput(thread));
+      const retries = (yield* Fiber.join(collected)).flatMap((event) =>
+        event.type === "turn_item.updated" && event.turnItem.type === "error"
+          ? [event.turnItem]
+          : [],
+      );
+      assert.deepEqual(
+        retries.map((item) => [item.status, item.title, item.retry?.attempt]),
+        [
+          ["running", "Provider retry", 2],
+          ["completed", "Provider recovered", 2],
+        ],
+      );
+      assert.equal(retries[0]?.failure.message, "Provider request failed with HTTP 502");
+    }).pipe(Effect.scoped),
+  );
+
   it.effect("keeps a turn running through a start event this build cannot decode", () =>
     Effect.gen(function* () {
       const { runtime, thread } = yield* resumed([
