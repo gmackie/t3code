@@ -66,6 +66,8 @@ import * as McpHttpServer from "./mcp/McpHttpServer.ts";
 import * as McpSessionRegistry from "./mcp/McpSessionRegistry.ts";
 import * as PreviewAutomationBroker from "./mcp/PreviewAutomationBroker.ts";
 import * as DeviceService from "./device/DeviceService.ts";
+import * as PreflightDeviceSessions from "./device/PreflightDeviceSessions.ts";
+import * as PreflightDeviceSource from "./device/PreflightDeviceSource.ts";
 import { deviceHubProxyRouteLayer } from "./device/DeviceHubProxy.ts";
 import * as PreviewManager from "./preview/Manager.ts";
 import * as PortScanner from "./preview/PortScanner.ts";
@@ -404,6 +406,13 @@ const PreviewLayerLive = Layer.empty.pipe(
 );
 
 const DeviceLayerLive = DeviceService.layer.pipe(
+  Layer.provide(PreflightDeviceSessions.configurationLayer),
+  Layer.provide(
+    PreflightDeviceSource.layer.pipe(
+      Layer.provide(Layer.merge(ProjectionStoreV2.layer, ProjectStore.layer)),
+      Layer.provide(ProcessRunner.layer),
+    ),
+  ),
   Layer.provide(ServerSettingsLayerLive),
   Layer.provide(ProcessRunner.layer),
   Layer.provide(NetService.layer),

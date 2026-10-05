@@ -61,14 +61,14 @@ const DeviceOpenTool = Tool.make("device_open", {
 
 export const DeviceScreenshotTool = Tool.make("device_screenshot", {
   description:
-    "Capture the current screen of an open device as a PNG image. Use it to see what the user sees; for taps and text use the agent-device CLI.",
+    "Capture the current screen of an open device as a PNG image. Preflight-bound captures are stored as pending evidence. For taps and text use the returned agent-device launcher.",
   parameters: DeviceToolTargetInput,
   success: DeviceToolScreenshotResult,
   failure: DeviceToolError,
   dependencies,
 })
   .annotate(Tool.Title, "Screenshot device")
-  .annotate(Tool.Readonly, true)
+  .annotate(Tool.Readonly, false)
   .annotate(Tool.Destructive, false)
   .annotate(Tool.Idempotent, true)
   .annotate(Tool.OpenWorld, true);
