@@ -151,3 +151,19 @@ The logger filters those notifications before traversal when an older provider s
 
 Model classification has its own [manifest constraints](./model-manifest.md). Assistant-reference
 handling is documented under [citations](./assistant-citations.md).
+
+## Pistache routing reads the provider instance, not its own settings
+
+The Routing page and composer badge read a Pistache router through
+[`PistacheSource`](../../apps/server/src/routing/PistacheSource.ts). It has no
+settings of its own on purpose: the router's origin and key live on the OpenCode
+provider instance `pistache`, because that instance is already what sends traffic
+through the router, and a second copy would drift. The base URL comes from
+`PISTACHE_BASE_URL` or, failing that, the `baseURL` inside the instance's
+`OPENCODE_CONFIG_CONTENT` (both the 1.x `provider.*.options` and 2.x
+`providers.*.settings` shapes), with the gateway's `/v1` stripped since the
+management API sits at the origin. Without an instance, key, or URL the source
+reports `configured: false` and never makes a request. Per-thread history is
+filtered from the cached `/api/v1/snapshot` decisions rather than the router's
+`/threads/{id}/history` endpoint, which only carries event titles; it is keyed by
+the T3 thread id the OpenCode lineage plugin forwards as `x-pistache-thread-id`.

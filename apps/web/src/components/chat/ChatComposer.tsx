@@ -289,6 +289,8 @@ import {
   renderProviderTraitsPicker,
 } from "./composerProviderState";
 import { ContextWindowMeter, ContextWindowMeterPlaceholder } from "./ContextWindowMeter";
+import { RoutingBadge } from "./RoutingBadge";
+import { shouldShowRoutingBadge } from "./RoutingBadge.logic";
 import {
   providerSupportsManualCompaction,
   resolveContextWindowModelDisplayName,
@@ -1349,6 +1351,8 @@ const ComposerFooterPrimaryActions = memo(function ComposerFooterPrimaryActions(
   compact: boolean;
   activeContextWindow: ContextWindowSnapshot | null;
   reserveContextWindowMeter: boolean;
+  /** Set when the thread runs through the Pistache router, which decides its model per turn. */
+  routingThread: { environmentId: EnvironmentId; threadId: ThreadId } | null;
   activeThreadModelDisplayName: string | null;
   isPreparingWorktree: boolean;
   pendingAction: {
@@ -1383,6 +1387,12 @@ const ComposerFooterPrimaryActions = memo(function ComposerFooterPrimaryActions(
 }) {
   return (
     <>
+      {props.routingThread ? (
+        <RoutingBadge
+          environmentId={props.routingThread.environmentId}
+          threadId={props.routingThread.threadId}
+        />
+      ) : null}
       {props.activeContextWindow ? (
         <ContextWindowMeter
           usage={props.activeContextWindow}
@@ -2306,6 +2316,13 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const activeThreadModelDisplayName = useMemo(
     () => resolveContextWindowModelDisplayName(activeThreadModelSelection, modelOptionsByInstance),
     [activeThreadModelSelection, modelOptionsByInstance],
+  );
+  const routingThread = useMemo(
+    () =>
+      activeThreadId !== null && shouldShowRoutingBadge(activeThreadModelSelection?.instanceId)
+        ? { environmentId, threadId: activeThreadId }
+        : null,
+    [activeThreadId, activeThreadModelSelection?.instanceId, environmentId],
   );
   const reserveContextWindowMeter = shouldReserveContextWindowMeter({
     meterEnabled: settings.contextWindowMeterEnabled,
@@ -7238,12 +7255,14 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                   "relative",
                   isComposerResting && "flex min-w-0 items-center gap-1",
                   isComposerResting &&
-                    ((settings.contextWindowMeterEnabled && activeContextWindow) ||
-                    reserveContextWindowMeter
-                      ? "pr-28"
-                      : showComposerAttachAction
-                        ? "pr-20"
-                        : "pr-12"),
+                    (routingThread !== null
+                      ? "pr-44"
+                      : (settings.contextWindowMeterEnabled && activeContextWindow) ||
+                          reserveContextWindowMeter
+                        ? "pr-28"
+                        : showComposerAttachAction
+                          ? "pr-20"
+                          : "pr-12"),
                 )}
               >
                 {previewFile ? (
@@ -7471,6 +7490,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                       settings.contextWindowMeterEnabled ? activeContextWindow : null
                     }
                     reserveContextWindowMeter={reserveContextWindowMeter}
+                    routingThread={routingThread}
                     activeThreadModelDisplayName={activeThreadModelDisplayName}
                     pendingAction={pendingPrimaryAction}
                     isRunning={phase === "running"}

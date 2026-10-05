@@ -48,6 +48,7 @@ import * as Option from "effect/Option";
 import {
   ArrowLeftIcon,
   ChartNoAxesColumnIcon,
+  WaypointsIcon,
   CheckIcon,
   ChevronRightIcon,
   CornerLeftUpIcon,
@@ -578,6 +579,13 @@ export function CommandPalette({ children }: { children: ReactNode }) {
         event.stopPropagation();
         setOpen(false);
         void navigate({ to: "/usage" });
+        return;
+      }
+      if (command === "routing.open") {
+        event.preventDefault();
+        event.stopPropagation();
+        setOpen(false);
+        void navigate({ to: "/routing" });
         return;
       }
       const mode = overlayModeForCommand(command);
@@ -2258,6 +2266,18 @@ function OpenCommandPaletteDialog(props: {
     shortcutCommand: "usage.open",
     run: async () => {
       await navigate({ to: "/usage" });
+    },
+  });
+
+  actionItems.push({
+    kind: "action",
+    value: "action:routing",
+    searchTerms: ["routing", "router", "pistache", "tier", "model routing", "downgrade", "windows"],
+    title: "Open routing",
+    icon: <WaypointsIcon className={ITEM_ICON_CLASS} />,
+    shortcutCommand: "routing.open",
+    run: async () => {
+      await navigate({ to: "/routing" });
     },
   });
 

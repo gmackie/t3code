@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as WelcomeRouteImport } from './routes/welcome'
 import { Route as UsageRouteImport } from './routes/usage'
+import { Route as RoutingRouteImport } from './routes/routing'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as PairRouteImport } from './routes/pair'
 import { Route as ConnectRouteImport } from './routes/connect'
@@ -46,6 +47,11 @@ const WelcomeRoute = WelcomeRouteImport.update({
 const UsageRoute = UsageRouteImport.update({
   id: '/usage',
   path: '/usage',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const RoutingRoute = RoutingRouteImport.update({
+  id: '/routing',
+  path: '/routing',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SettingsRoute = SettingsRouteImport.update({
@@ -187,6 +193,7 @@ export interface FileRoutesByFullPath {
   '/pair': typeof PairRoute
   '/settings': typeof SettingsRouteWithChildren
   '/usage': typeof UsageRoute
+  '/routing': typeof RoutingRoute
   '/welcome': typeof WelcomeRoute
   '/pull-requests': typeof ChatPullRequestsRoute
   '/plugins/$pluginId': typeof PluginsPluginIdRoute
@@ -215,6 +222,7 @@ export interface FileRoutesByTo {
   '/pair': typeof PairRoute
   '/settings': typeof SettingsRouteWithChildren
   '/usage': typeof UsageRoute
+  '/routing': typeof RoutingRoute
   '/welcome': typeof WelcomeRoute
   '/pull-requests': typeof ChatPullRequestsRoute
   '/plugins/$pluginId': typeof PluginsPluginIdRoute
@@ -246,6 +254,7 @@ export interface FileRoutesById {
   '/pair': typeof PairRoute
   '/settings': typeof SettingsRouteWithChildren
   '/usage': typeof UsageRoute
+  '/routing': typeof RoutingRoute
   '/welcome': typeof WelcomeRoute
   '/_chat/pull-requests': typeof ChatPullRequestsRoute
   '/plugins/$pluginId': typeof PluginsPluginIdRoute
@@ -278,6 +287,7 @@ export interface FileRouteTypes {
     | '/pair'
     | '/settings'
     | '/usage'
+    | '/routing'
     | '/welcome'
     | '/pull-requests'
     | '/plugins/$pluginId'
@@ -306,6 +316,7 @@ export interface FileRouteTypes {
     | '/pair'
     | '/settings'
     | '/usage'
+    | '/routing'
     | '/welcome'
     | '/pull-requests'
     | '/plugins/$pluginId'
@@ -336,6 +347,7 @@ export interface FileRouteTypes {
     | '/pair'
     | '/settings'
     | '/usage'
+    | '/routing'
     | '/welcome'
     | '/_chat/pull-requests'
     | '/plugins/$pluginId'
@@ -367,6 +379,7 @@ export interface RootRouteChildren {
   PairRoute: typeof PairRoute
   SettingsRoute: typeof SettingsRouteWithChildren
   UsageRoute: typeof UsageRoute
+  RoutingRoute: typeof RoutingRoute
   WelcomeRoute: typeof WelcomeRoute
   PluginsPluginIdRoute: typeof PluginsPluginIdRoute
   ProjectsProjectKeyRoute: typeof ProjectsProjectKeyRoute
@@ -386,6 +399,13 @@ declare module '@tanstack/react-router' {
       path: '/usage'
       fullPath: '/usage'
       preLoaderRoute: typeof UsageRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/routing': {
+      id: '/routing'
+      path: '/routing'
+      fullPath: '/routing'
+      preLoaderRoute: typeof RoutingRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/settings': {
@@ -638,6 +658,7 @@ const rootRouteChildren: RootRouteChildren = {
   PairRoute: PairRoute,
   SettingsRoute: SettingsRouteWithChildren,
   UsageRoute: UsageRoute,
+  RoutingRoute: RoutingRoute,
   WelcomeRoute: WelcomeRoute,
   PluginsPluginIdRoute: PluginsPluginIdRoute,
   ProjectsProjectKeyRoute: ProjectsProjectKeyRoute,

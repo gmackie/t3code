@@ -253,6 +253,7 @@ import {
 import * as AgentSessionScanner from "./project/AgentSessionScanner.ts";
 import * as AgentSessionImporter from "./project/AgentSessionImporter.ts";
 import * as UsageLimitSources from "./usage/UsageLimitSources.ts";
+import * as PistacheSource from "./routing/PistacheSource.ts";
 import { createLocalPluginPackageReader, PluginPackageManager } from "./plugins/packageManager.ts";
 import { BUNDLED_PLUGINS } from "./plugins/bundledCatalog.ts";
 import { PluginLifecycle } from "./plugins/lifecycle.ts";
@@ -1282,6 +1283,7 @@ const makeWsRpcLayer = (
             );
       const usage = yield* UsageService.UsageService;
       const usageLimitSources = yield* UsageLimitSources.UsageLimitSources;
+      const pistacheSource = yield* PistacheSource.PistacheSource;
       const projectSetupScriptRunner = yield* ProjectSetupScriptRunner.ProjectSetupScriptRunner;
       const worktreeSetupTracker = yield* WorktreeSetupTracker.WorktreeSetupTracker;
       const projectCloneTracker = yield* ProjectCloneTracker.ProjectCloneTracker;
@@ -2985,6 +2987,16 @@ const makeWsRpcLayer = (
           observeRpcEffect(WS_METHODS.serverRefreshUsageRates, usage.refreshRates, {
             "rpc.aggregate": "server",
           }),
+        [WS_METHODS.routingGetOverview]: (_input) =>
+          observeRpcEffect(WS_METHODS.routingGetOverview, pistacheSource.overview, {
+            "rpc.aggregate": "server",
+          }),
+        [WS_METHODS.routingGetThreadHistory]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.routingGetThreadHistory,
+            pistacheSource.threadHistory(input.threadId),
+            { "rpc.aggregate": "server" },
+          ),
         [WS_METHODS.serverRetryResourceTelemetry]: (_input) =>
           observeRpcEffect(WS_METHODS.serverRetryResourceTelemetry, resourceTelemetry.retry, {
             "rpc.aggregate": "server",
