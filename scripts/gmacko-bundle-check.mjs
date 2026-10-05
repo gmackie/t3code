@@ -5,9 +5,11 @@ import * as NodeChildProcess from "node:child_process";
 
 // Check emitted application assets: source transpilation does not catch missing
 // imports. Copy outside hidden worktrees, which oxlint otherwise skips.
+const desktop = process.argv.includes("--desktop");
+const source = desktop ? "apps/desktop/dist-electron" : "apps/web/dist/assets";
 const directory = await NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "gmacko-bundle-check-"));
 try {
-  await NodeFSP.cp("apps/web/dist/assets", NodePath.join(directory, "assets"), { recursive: true });
+  await NodeFSP.cp(source, NodePath.join(directory, "assets"), { recursive: true });
   const config = NodePath.join(directory, "oxlint.json");
   await NodeFSP.writeFile(
     config,
@@ -24,6 +26,9 @@ try {
           "os",
           // Safari's DOMMatrix fallback in d3-interpolate, behind a typeof guard.
           "WebKitCSSMatrix",
+          // xmlbuilder has a latent undefined `children` in insertBefore.
+          // Its vendored desktop code is unrelated to application imports.
+          ...(desktop ? ["children"] : []),
         ].map((name) => [name, "readonly"]),
       ),
       categories: { correctness: "off" },

@@ -322,6 +322,9 @@ jobs:
           src/serverSettings.test.ts
           src/persistence/Migrations.test.ts
 
+      - name: Desktop SSH startup regression tests
+        run: pnpm vp test run packages/ssh/src/tunnel.test.ts
+
       - name: Build and verify release bundles
         shell: bash
         run: |
@@ -334,6 +337,8 @@ jobs:
           fi
           node apps/server/dist/bin.mjs --help
           node scripts/gmacko-bundle-check.mjs
+          pnpm vp run --filter @t3tools/desktop build
+          node scripts/gmacko-bundle-check.mjs --desktop
 
   promote:
     name: Promote lane to GitHub

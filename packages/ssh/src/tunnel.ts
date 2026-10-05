@@ -8,6 +8,7 @@ import {
 } from "@t3tools/shared/httpReadiness";
 import { cliReleaseDefaultBaseUrl } from "@t3tools/shared/cliRelease";
 import * as NetService from "@t3tools/shared/Net";
+import * as KeyedLock from "@t3tools/shared/KeyedLock";
 import { extractJsonObject, fromLenientJson } from "@t3tools/shared/schemaJson";
 import { satisfiesSemverRange } from "@t3tools/shared/semver";
 import * as Context from "effect/Context";
