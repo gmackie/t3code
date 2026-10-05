@@ -55,6 +55,7 @@ import {
   type ProviderInstanceId,
   type RunId,
   type RuntimeRequestId,
+  type ThreadId,
 } from "@t3tools/contracts";
 import type * as Cause from "effect/Cause";
 import * as DateTime from "effect/DateTime";
@@ -664,6 +665,15 @@ const LOST_BACKGROUND =
 /** How long a turn waits on the directory's commands or skills before sending the text as is. */
 const INVENTORY_TIMEOUT = "5 seconds";
 const ACTIVE_CHECK_TIMEOUT = "5 seconds";
+/**
+ * Session metadata naming the T3 thread and its parent. Plugins can forward it,
+ * e.g. as request headers to a routing model endpoint; OpenCode's own child
+ * sessions inherit it.
+ */
+const t3Metadata = (threadId: ThreadId, parentThreadId: ThreadId | undefined) => ({
+  t3ThreadId: threadId,
+  ...(parentThreadId === undefined ? {} : { t3ParentThreadId: parentThreadId }),
+});
 /** Answers that mean the server refused a prompt; any other failure may have been accepted. */
 const CLEAR_PROMPT_REJECTIONS: ReadonlySet<string> = new Set([
   "InvalidRequestError",
@@ -3673,6 +3683,7 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
             location: Location.PublicRef.make({ directory: AbsolutePath.make(directory) }),
             model,
             permissions,
+            metadata: t3Metadata(threadInput.threadId, threadInput.parentThreadId),
           });
           const createdAt = yield* DateTime.now;
           const providerThread: OrchestrationV2ProviderThread = {

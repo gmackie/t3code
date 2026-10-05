@@ -1769,6 +1769,11 @@ export const layerWithOptions = (
                   dropMcpCredentialReservation(input.threadId, mcpCredentialId);
                 }
               });
+              // Lineage is advisory for adapters; a projection miss must not block opening.
+              const parentThreadId = yield* projectionStore.getThread(input.threadId).pipe(
+                Effect.map((thread) => thread.lineage.parentThreadId ?? undefined),
+                Effect.orElseSucceed(() => undefined),
+              );
               const sessionScope = yield* Scope.make();
               const runtime = yield* adapter
                 .openSession({
@@ -1776,6 +1781,7 @@ export const layerWithOptions = (
                   providerSessionId: input.providerSessionId,
                   modelSelection: input.modelSelection,
                   runtimePolicy: input.runtimePolicy,
+                  ...(parentThreadId === undefined ? {} : { parentThreadId }),
                   ...(input.resumeFromSession === undefined
                     ? {}
                     : { resumeFromSession: input.resumeFromSession }),

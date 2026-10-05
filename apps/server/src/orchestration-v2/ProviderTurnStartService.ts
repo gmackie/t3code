@@ -64,6 +64,14 @@ export class ProviderTurnStartError extends Schema.TaggedError<ProviderTurnStart
 
 const isProviderTurnStartError = Schema.is(ProviderTurnStartError);
 
+/** Lineage adapters may forward to their native session, such as OpenCode 2.x metadata. */
+const parentLineage = (thread: {
+  readonly lineage?: { readonly parentThreadId: ThreadId | null };
+}) => {
+  const parentThreadId = thread.lineage?.parentThreadId;
+  return parentThreadId == null ? {} : { parentThreadId };
+};
+
 export interface ProviderTurnStartServiceV2Shape {
   /**
    * Starts the run's provider turn. When `willRetry` is true, a session open
@@ -668,6 +676,7 @@ export const layer: Layer.Layer<
             session.ensureThread({
               threadId: projection.thread.id,
               modelSelection: run.modelSelection,
+              ...parentLineage(projection.thread),
               runtimePolicy: resolvedRuntimePolicy,
               providerSessionId,
               existingProviderThread: providerThread,
@@ -695,6 +704,7 @@ export const layer: Layer.Layer<
                 providerThread,
                 threadId: projection.thread.id,
                 modelSelection: run.modelSelection,
+                ...parentLineage(projection.thread),
                 runtimePolicy: resolvedRuntimePolicy,
               }),
         );
@@ -713,6 +723,7 @@ export const layer: Layer.Layer<
           session.ensureThread({
             threadId: projection.thread.id,
             modelSelection: run.modelSelection,
+            ...parentLineage(projection.thread),
             runtimePolicy: resolvedRuntimePolicy,
             providerSessionId,
             // The native ref is dropped so the adapter binds a fresh native

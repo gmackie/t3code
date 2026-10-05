@@ -965,7 +965,13 @@ export function makeOpenCodeAdapterV2(
           binaryPath: options.settings.binaryPath,
           directory: cwd,
           serverUrl: options.settings.serverUrl,
-          environment: options.environment,
+          // Each session spawns its own server, so config can forward lineage to
+          // the model endpoint, e.g. `"headers": {"x-thread": "{env:T3_THREAD_ID}"}`.
+          environment: {
+            ...options.environment,
+            T3_THREAD_ID: input.threadId,
+            T3_PARENT_THREAD_ID: input.parentThreadId ?? "",
+          },
         });
         const client = runtime.createOpenCodeSdkClient({
           baseUrl: connection.url,
