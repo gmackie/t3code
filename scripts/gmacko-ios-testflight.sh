@@ -111,7 +111,10 @@ GEM_HOME="$pod_gems" PROFILES="$profiles" TEAM="$APPLE_TEAM_ID" \
     project.save
   ' "$project"
 
+# Keep build intermediates local to this job instead of inheriting the host
+# Xcode preference, which may point at slow external storage.
 xcodebuild archive \
+  -derivedDataPath "$work_dir/DerivedData" \
   -workspace "$workspace" \
   -scheme "$scheme" \
   -configuration Release \
