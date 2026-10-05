@@ -884,6 +884,80 @@ describe("OpenCodeAdapterV2", () => {
     }).pipe(Effect.provide(IdAllocator.layer), Effect.scoped),
   );
 
+  it.effect("shows a request retry while OpenCode retries it, then marks it recovered", () =>
+    Effect.gen(function* () {
+      const nativeEvents = asyncEventStream();
+      const nativeSessionId = "native-opencode-retry";
+      const harness = yield* makeOpenCodeRuntimeHarness("retry-projection", nativeSessionId, {
+        event: {
+          subscribe: async (_input: unknown, options: { signal?: AbortSignal }) => {
+            options.signal?.addEventListener("abort", () => nativeEvents.close(), { once: true });
+            return { stream: nativeEvents.stream };
+          },
+        },
+        session: {
+          create: async () => ({
+            data: { id: nativeSessionId, time: { created: 1, updated: 1 } },
+          }),
+          promptAsync: async () => ({ data: true }),
+        },
+      });
+      yield* harness.startTurn();
+      const received = yield* harness.runtime.events.pipe(
+        Stream.takeUntil(
+          (event) =>
+            event.type === "turn_item.updated" &&
+            event.turnItem.type === "error" &&
+            event.turnItem.status === "completed",
+        ),
+        Stream.runCollect,
+        Effect.forkScoped,
+      );
+      yield* Effect.promise(() =>
+        nativeEvents.push({
+          type: "session.status",
+          properties: {
+            sessionID: nativeSessionId,
+            status: {
+              type: "retry",
+              attempt: 3,
+              message: "Provider request failed with HTTP 502",
+              next: 0,
+            },
+          },
+        }),
+      );
+      yield* Effect.promise(() =>
+        nativeEvents.push({
+          type: "message.part.updated",
+          properties: {
+            sessionID: nativeSessionId,
+            part: {
+              id: "part-retry-text",
+              sessionID: nativeSessionId,
+              messageID: "assistant-retry",
+              type: "text",
+              text: "Recovered.",
+            },
+          },
+        }),
+      );
+      const retries = (yield* Fiber.join(received)).flatMap((event) =>
+        event.type === "turn_item.updated" && event.turnItem.type === "error"
+          ? [event.turnItem]
+          : [],
+      );
+      assert.deepEqual(
+        retries.map((item) => [item.status, item.title, item.retry?.attempt]),
+        [
+          ["running", "Provider retry", 3],
+          ["completed", "Provider recovered", 3],
+        ],
+      );
+      assert.equal(retries[0]?.failure.message, "Provider request failed with HTTP 502");
+    }).pipe(Effect.provide(IdAllocator.layer), Effect.scoped),
+  );
+
   it.effect("admits a native command on its user receipt before generation completes", () =>
     Effect.gen(function* () {
       const nativeEvents = asyncEventStream();

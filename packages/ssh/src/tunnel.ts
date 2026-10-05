@@ -6,7 +6,7 @@ import {
   describeReadinessCause,
   waitForHttpReady as waitForHttpReadyShared,
 } from "@t3tools/shared/httpReadiness";
-import { cliReleaseDownloadBaseUrl } from "@t3tools/shared/cliRelease";
+import { cliReleaseDefaultBaseUrl } from "@t3tools/shared/cliRelease";
 import * as NetService from "@t3tools/shared/Net";
 import { extractJsonObject, fromLenientJson } from "@t3tools/shared/schemaJson";
 import { satisfiesSemverRange } from "@t3tools/shared/semver";
@@ -795,11 +795,10 @@ export function buildRemoteT3RunnerScript(input?: RemoteT3RunnerOptions): string
   if (archiveVersion !== "" && !EXACT_ARCHIVE_VERSION.test(archiveVersion)) {
     throw new SshInvalidArchiveVersionError({ archiveVersion });
   }
-  // Strip the `/v<version>` the helper appends: the script builds URLs itself.
-  const releaseBaseUrl = cliReleaseDownloadBaseUrl("", input?.releaseBaseUrl ?? undefined).replace(
-    /\/v$/u,
-    "",
-  );
+  // The script builds per-version URLs itself; only the base varies by version.
+  const releaseBaseUrl = (
+    input?.releaseBaseUrl?.trim() || cliReleaseDefaultBaseUrl(archiveVersion)
+  ).replace(/\/+$/u, "");
   return stripTrailingNewlines(
     applyScriptPlaceholders(REMOTE_RUNNER_SCRIPT, {
       T3_NODE_SCRIPT_PATH: shellSingleQuote(nodeScriptPath),

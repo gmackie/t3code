@@ -40,6 +40,12 @@ describe("cliRelease", () => {
     );
   });
 
+  it("downloads GMACKO fork versions from the fork's releases", () => {
+    expect(cliReleaseDownloadBaseUrl("0.0.45-gmacko.202610031642")).toBe(
+      "https://github.com/gmackie/t3code/releases/download/v0.0.45-gmacko.202610031642",
+    );
+  });
+
   it("parses sha256sum output including binary-mode markers", () => {
     const checksums = parseChecksums(
       [
