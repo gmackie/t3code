@@ -19,10 +19,12 @@ import * as Schema from "effect/Schema";
 import * as SchemaIssue from "effect/SchemaIssue";
 import * as SchemaTransformation from "effect/SchemaTransformation";
 import { Argument, Flag } from "effect/unstable/cli";
+import * as CliError from "effect/unstable/cli/CliError";
 
 import { readBootstrapEnvelope } from "../bootstrap.ts";
 import * as ServerConfig from "../config.ts";
 import { expandHomePath, resolveBaseDir } from "../os-jank.ts";
+import { isProcessAlive, readPersistedServerRuntimeState } from "../serverRuntimeState.ts";
 
 const modeFlag = Flag.Literals("mode", ServerConfig.RuntimeMode.literals).pipe(
   Flag.withDescription("Runtime mode. `desktop` keeps loopback defaults unless overridden."),
@@ -258,6 +260,7 @@ export const resolveServerConfig = (
   options?: {
     readonly startupPresentation?: ServerConfig.StartupPresentation;
     readonly forceAutoBootstrapProjectFromCwd?: boolean;
+    readonly rejectRunningServer?: boolean;
   },
 ) =>
   Effect.gen(function* () {
@@ -339,6 +342,17 @@ export const resolveServerConfig = (
       baseDirIsExplicit: Option.isSome(explicitBaseDir),
       ...(stateDirName !== undefined ? { stateDirName } : {}),
     });
+    // An interactive CLI must not start over a discovered server. Lifetime locking
+    // and supervisor handoff are separate; this preflight cannot arbitrate two starts.
+    if (options?.rejectRunningServer && mode === "web") {
+      const runtime = yield* readPersistedServerRuntimeState(derivedPaths.serverRuntimeStatePath);
+      if (Option.isSome(runtime) && runtime.value.pid > 0 && isProcessAlive(runtime.value.pid)) {
+        return yield* new CliError.UserError({
+          cause: `A T3 Code server is already running for ${baseDir} (pid ${runtime.value.pid}, ${runtime.value.origin}). Connect to that server, stop it before starting another, or use a different --base-dir.`,
+        });
+      }
+    }
+    yield* fs.makeDirectory(cwd, { recursive: true });
     yield* ServerConfig.ensureServerDirectories(derivedPaths);
     const persistedObservabilitySettings = yield* loadPersistedObservabilitySettings(
       derivedPaths.settingsPath,
