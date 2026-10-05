@@ -72,7 +72,7 @@ const writeOutput = Effect.fn("writeOutput")(function* (
   ] as const;
 
   if (writeGithubOutput) {
-    const githubOutputPath = yield* Config.nonEmptyString("GITHUB_OUTPUT");
+    const githubOutputPath = yield* Config.NonEmptyString("GITHUB_OUTPUT");
     const serialized = entries.map(([key, value]) => `${key}=${value}\n`).join("");
     yield* fs.writeFileString(githubOutputPath, serialized, { flag: "a" });
   } else {
@@ -86,15 +86,15 @@ const writeOutput = Effect.fn("writeOutput")(function* (
 const command = Command.make(
   "resolve-gmacko-release",
   {
-    stamp: Flag.string("stamp").pipe(
+    stamp: Flag.String("stamp").pipe(
       Flag.withSchema(StampSchema),
       Flag.withDescription("Gmacko release timestamp in YYYYMMDDHHMM UTC."),
     ),
-    githubOutput: Flag.boolean("github-output").pipe(
+    githubOutput: Flag.Boolean("github-output").pipe(
       Flag.withDescription("Write values to GITHUB_OUTPUT instead of stdout."),
       Flag.withDefault(false),
     ),
-    root: Flag.string("root").pipe(
+    root: Flag.String("root").pipe(
       Flag.withDescription("Workspace root used to resolve apps/desktop/package.json."),
       Flag.optional,
     ),

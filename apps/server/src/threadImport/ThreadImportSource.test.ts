@@ -9,11 +9,18 @@ import {
   MAX_NORMALIZED_TOOL_JSON_DEPTH,
   MAX_NORMALIZED_TOOL_JSON_NODES,
   NormalizedThreadImportHistory,
+  THREAD_IMPORT_PARSE_OPTIONS,
   ThreadImportProvenance,
 } from "./ThreadImportSource.ts";
 
-const decodeHistory = Schema.decodeUnknownExit(NormalizedThreadImportHistory);
-const decodeProvenance = Schema.decodeUnknownExit(ThreadImportProvenance);
+const decodeHistory = Schema.decodeUnknownExit(
+  NormalizedThreadImportHistory,
+  THREAD_IMPORT_PARSE_OPTIONS,
+);
+const decodeProvenance = Schema.decodeUnknownExit(
+  ThreadImportProvenance,
+  THREAD_IMPORT_PARSE_OPTIONS,
+);
 
 it("decodes representative normalized Codex history", () => {
   const exit = decodeHistory([

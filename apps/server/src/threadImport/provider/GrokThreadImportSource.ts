@@ -16,6 +16,7 @@ import {
   type ThreadImportCandidate,
   type ThreadImportCandidateMetadata,
   type ThreadImportSource,
+  THREAD_IMPORT_PARSE_OPTIONS,
 } from "../ThreadImportSource.ts";
 
 const SESSION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -30,7 +31,10 @@ const MAX_RETAINED_UPDATE_RECORDS = 20_000;
 const MAX_RETAINED_UPDATE_BYTES = 16 * 1_024 * 1_024;
 const SUMMARY_READ_CONCURRENCY = 8;
 const DECODER_VERSION = "grok-updates-jsonl-v1";
-const decodeHistory = Schema.decodeUnknownEffect(NormalizedThreadImportHistory);
+const decodeHistory = Schema.decodeUnknownEffect(
+  NormalizedThreadImportHistory,
+  THREAD_IMPORT_PARSE_OPTIONS,
+);
 
 type JsonObject = Record<string, unknown>;
 interface Location {
