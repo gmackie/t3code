@@ -110,7 +110,10 @@ describe("Pistache API", () => {
       expect(result._tag).toBe("Failure");
       if (result._tag === "Failure") {
         expect(result.failure.detail).toBe("The router request failed.");
-        expect(JSON.stringify(result.failure)).not.toContain("do-not-publish");
+        const leaked = Object.values(result.failure).some((value) =>
+          String(value).includes("do-not-publish"),
+        );
+        expect(leaked).toBe(false);
       }
     }),
   );
