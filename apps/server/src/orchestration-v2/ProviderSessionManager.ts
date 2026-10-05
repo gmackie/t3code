@@ -132,8 +132,28 @@ export class ProviderSessionActivityError extends Schema.TaggedError<ProviderSes
   }
 }
 
+/**
+ * The session is live for another app thread and its runtime serves one
+ * thread per session. Happens when a thread stored an instance's shared
+ * session id while the instance ran a multi-thread runtime (OpenCode 2.x)
+ * and the instance now runs a single-thread one (OpenCode 1.x).
+ */
+export class ProviderSessionHeldByOtherThreadError extends Schema.TaggedError<ProviderSessionHeldByOtherThreadError>()(
+  "ProviderSessionHeldByOtherThreadError",
+  {
+    instanceId: ProviderInstanceId,
+    providerSessionId: ProviderSessionId,
+    threadId: ThreadId,
+  },
+) {
+  override get message(): string {
+    return `Provider instance ${this.instanceId} session ${this.providerSessionId} serves another thread and cannot attach thread ${this.threadId}.`;
+  }
+}
+
 export const ProviderSessionManagerV2Error = Schema.Union([
   ProviderSessionOpenError,
+  ProviderSessionHeldByOtherThreadError,
   ProviderWorkspaceMissingError,
   ProviderSessionLookupError,
   ProviderSessionCloseError,
@@ -362,6 +382,25 @@ export const layerWithOptions = (
         },
       );
       const layerScope = yield* Effect.scope;
+      // Ctrl+C, or a stop that signals the whole process group, reaches the
+      // provider CLIs with the server. They report their own background work
+      // stopped before shutdown captures restart continuations, so provider
+      // events after the signal are dropped; restart recovery owns that state.
+      const shutdownSignal = { received: false };
+      const onShutdownSignal = () => {
+        shutdownSignal.received = true;
+      };
+      yield* Effect.acquireRelease(
+        Effect.sync(() => {
+          process.on("SIGINT", onShutdownSignal);
+          process.on("SIGTERM", onShutdownSignal);
+        }),
+        () =>
+          Effect.sync(() => {
+            process.off("SIGINT", onShutdownSignal);
+            process.off("SIGTERM", onShutdownSignal);
+          }),
+      );
       const sessions = yield* Ref.make(new Map<string, LiveSessionEntry>());
       // One retry per released entry, so a later release with the same id
       // cannot drop cleanup for threads only the earlier session served.
@@ -1542,6 +1581,7 @@ export const layerWithOptions = (
         let stoppedByProvider = false;
         return entry.runtime.events.pipe(
           Stream.runForEach((event) => {
+            if (shutdownSignal.received) return Effect.void;
             if (
               event.type === "provider_session.updated" &&
               event.providerSession.status === "stopped"
@@ -1600,6 +1640,8 @@ export const layerWithOptions = (
           Effect.exit,
           Effect.flatMap((exit) =>
             Effect.gen(function* () {
+              // A provider that exits on the shutdown signal is released by shutdown.
+              if (shutdownSignal.received) return;
               const current = (yield* Ref.get(sessions)).get(
                 sessionKey(entry.runtime.providerSessionId),
               );
@@ -1686,10 +1728,10 @@ export const layerWithOptions = (
                   !existing.attachedThreadIds.has(input.threadId) &&
                   !existing.supportsMultipleProviderThreads
                 ) {
-                  return yield* new ProviderSessionOpenError({
+                  return yield* new ProviderSessionHeldByOtherThreadError({
                     instanceId: input.modelSelection.instanceId,
                     providerSessionId: input.providerSessionId,
-                    cause: `Provider ${existing.runtime.driver} does not support attaching multiple app threads to one session.`,
+                    threadId: input.threadId,
                   });
                 }
                 yield* ensureThreadAttached({

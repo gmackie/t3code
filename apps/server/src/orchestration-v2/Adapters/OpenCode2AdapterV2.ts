@@ -43,6 +43,8 @@ import {
   type OrchestrationV2ProviderCapabilities,
   type OrchestrationV2ProviderSession,
   type OrchestrationV2ProviderThread,
+  type OrchestrationV2ProviderFailure,
+  type OrchestrationV2ProviderRetry,
   type OrchestrationV2ProviderTurn,
   type OrchestrationV2RuntimeRequest,
   type OrchestrationV2Subagent,
@@ -86,7 +88,7 @@ import { providerMessageTextWithAttachmentPaths } from "../AttachmentPrompt.ts";
 import * as IdAllocator from "../IdAllocator.ts";
 import { backgroundWorkNotification, type BackgroundWorkReport } from "../Notification.ts";
 import * as ProviderContinuationRequests from "../ProviderContinuationRequests.ts";
-import { makeProviderFailure } from "../ProviderFailure.ts";
+import { makeProviderFailure, makeProviderRetryTurnItem } from "../ProviderFailure.ts";
 import {
   makeSubagentChildThread,
   makeSubagentConversationArtifacts,
@@ -241,6 +243,14 @@ interface ActiveTurn {
   /** The compaction running in this turn, `/compact` or OpenCode's own when the context fills. */
   compaction: { readonly nativeId: string; readonly startedAt: DateTime.Utc } | undefined;
   compactions: number;
+  /** OpenCode is retrying a failed model request; cleared once the turn makes progress. */
+  retry:
+    | {
+        readonly startedAt: DateTime.Utc;
+        readonly failure: OrchestrationV2ProviderFailure;
+        readonly retry: OrchestrationV2ProviderRetry;
+      }
+    | undefined;
   interrupted: boolean;
   /**
    * Set until the turn's prompt, command or compaction is sent. A Stop before
@@ -1222,6 +1232,39 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
       if (status !== "running") turn.compaction = undefined;
     });
 
+    /**
+     * The turn's retry notice. It shares the terminal failure's item, so a
+     * turn that runs out of retries shows the failure in its place.
+     */
+    const emitRetry = Effect.fnUntraced(function* (
+      state: ThreadState,
+      turn: ActiveTurn,
+      status: "running" | "completed" | "interrupted",
+    ) {
+      const retry = turn.retry;
+      if (retry === undefined) return;
+      if (status !== "running") turn.retry = undefined;
+      yield* emit({
+        type: "turn_item.updated",
+        driver,
+        turnItem: makeProviderRetryTurnItem({
+          idAllocator,
+          driver,
+          threadId: turn.input.threadId,
+          runId: turn.input.runId,
+          nodeId: turn.input.rootNodeId,
+          providerThreadId: state.providerThread.id,
+          providerTurnId: turn.providerTurn.id,
+          itemOrdinal: ordinalOf(turn, `terminal-failure:${turn.providerTurn.id}`),
+          failure: retry.failure,
+          retry: retry.retry,
+          status,
+          startedAt: retry.startedAt,
+          updatedAt: yield* DateTime.now,
+        }),
+      });
+    });
+
     const emitProviderTurn = (
       state: ThreadState,
       turn: ActiveTurn,
@@ -1254,6 +1297,7 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
       before: undefined,
       compaction: undefined,
       compactions: 0,
+      retry: undefined,
       interrupted: false,
       unsent: false,
       steers: new Set(),
@@ -1736,6 +1780,14 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
         });
       }
       yield* emitCompaction(state, turn, terminal.status === "failed" ? "failed" : "interrupted");
+      // A failed turn's terminal failure takes over the retry notice's item.
+      if (terminal.status !== "failed") {
+        yield* emitRetry(
+          state,
+          turn,
+          terminal.status === "completed" ? "completed" : "interrupted",
+        );
+      }
       const window = windowOf(turn.input.runtimePolicy.cwd, turn.input.modelSelection.model);
       const lastStep = turn.lastStep;
       yield* emitProviderTurn(state, turn, {
@@ -2186,7 +2238,34 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
       turn: ActiveTurn,
       event: OpenCode2StreamEvent,
     ) {
+      // New output after a retry means the request went through.
+      if (
+        turn.retry !== undefined &&
+        (event.type === "session.text.started" ||
+          event.type === "session.reasoning.started" ||
+          event.type === "session.tool.input.started" ||
+          event.type === "session.step.ended")
+      ) {
+        yield* emitRetry(state, turn, "completed");
+      }
       switch (event.type) {
+        case "session.retry.scheduled": {
+          const now = yield* DateTime.now;
+          turn.retry = {
+            startedAt: turn.retry?.startedAt ?? now,
+            failure: makeProviderFailure({
+              message: event.data.error.message,
+              code: event.data.error.type,
+              class: "provider_error",
+            }),
+            retry: {
+              attempt: event.data.attempt,
+              maxAttempts: null,
+              retryDelayMs: Math.max(0, event.data.at - DateTime.toEpochMillis(now)),
+            },
+          };
+          return yield* emitRetry(state, turn, "running");
+        }
         case "session.text.started":
         case "session.reasoning.started":
         case "session.text.delta":

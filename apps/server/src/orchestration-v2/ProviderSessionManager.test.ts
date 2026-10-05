@@ -3347,7 +3347,7 @@ it.effect(
           })
           .pipe(Effect.flip);
 
-        assert.equal(error._tag, "ProviderSessionOpenError");
+        assert.equal(error._tag, "ProviderSessionHeldByOtherThreadError");
         assert.equal((yield* Ref.get(state)).openCount, 1);
       });
 

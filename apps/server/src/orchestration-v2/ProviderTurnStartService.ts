@@ -8,6 +8,7 @@ import {
   type OrchestrationV2Run,
   type OrchestrationV2RunAttempt,
   type OrchestrationV2TurnItem,
+  type ProviderSessionId,
   RunId,
   ThreadId,
 } from "@t3tools/contracts";
@@ -512,7 +513,6 @@ export const layer: Layer.Layer<
       const inheritedBackgroundTurnItems = yield* projectionStore
         .getRuntimeRecoveryProjection(projection.thread.id)
         .pipe(Effect.map(selectInheritedBackgroundItems));
-      const providerSessionId = providerThread.providerSessionId;
       const runControls = makeRunControls({
         threadId: projection.thread.id,
         runId: run.id,
@@ -527,29 +527,47 @@ export const layer: Layer.Layer<
         thread: projection.thread,
         modelSelection: run.modelSelection,
       });
-      const existingSessionProjection = projection.providerSessions.find(
-        (candidate) => candidate.id === providerSessionId,
-      );
-      const sessionResult = yield* Effect.result(
-        providerSessions.open({
+      const openSession = (providerSessionId: ProviderSessionId) => {
+        const existingSessionProjection = projection.providerSessions.find(
+          (candidate) => candidate.id === providerSessionId,
+        );
+        return Effect.result(
+          providerSessions.open({
+            threadId: projection.thread.id,
+            providerSessionId,
+            modelSelection: run.modelSelection,
+            runtimePolicy: resolvedRuntimePolicy,
+            ...(existingSessionProjection === undefined
+              ? {}
+              : { resumeFromSession: existingSessionProjection }),
+            ...(providerThread.nativeThreadRef?.nativeId == null
+              ? {}
+              : { initialNativeThreadId: providerThread.nativeThreadRef.nativeId }),
+            ...(providerThread.nativeMetadata?.itemIdentityVersion === undefined
+              ? {}
+              : {
+                  initialProviderItemIdentityVersion:
+                    providerThread.nativeMetadata.itemIdentityVersion,
+                }),
+          }),
+        );
+      };
+      let providerSessionId = providerThread.providerSessionId;
+      let sessionResult = yield* openSession(providerSessionId);
+      // The stored session id was shared while the instance ran a multi-thread
+      // runtime, and the runtime it runs now serves one thread per session.
+      // This thread moves to a session of its own; the provider thread update
+      // below records the new id.
+      if (
+        sessionResult._tag === "Failure" &&
+        sessionResult.failure._tag === "ProviderSessionHeldByOtherThreadError"
+      ) {
+        providerSessionId = yield* idAllocator.allocate.providerSession({
+          providerInstanceId: run.providerInstanceId,
           threadId: projection.thread.id,
-          providerSessionId,
-          modelSelection: run.modelSelection,
-          runtimePolicy: resolvedRuntimePolicy,
-          ...(existingSessionProjection === undefined
-            ? {}
-            : { resumeFromSession: existingSessionProjection }),
-          ...(providerThread.nativeThreadRef?.nativeId == null
-            ? {}
-            : { initialNativeThreadId: providerThread.nativeThreadRef.nativeId }),
-          ...(providerThread.nativeMetadata?.itemIdentityVersion === undefined
-            ? {}
-            : {
-                initialProviderItemIdentityVersion:
-                  providerThread.nativeMetadata.itemIdentityVersion,
-              }),
-        }),
-      );
+        });
+        sessionResult = yield* openSession(providerSessionId);
+      }
       // The last start attempt fails the run with the provider's own reason
       // instead of leaving it `starting` after the effect gives up. A run that
       // already left `starting` is not overwritten, and a failed write returns
@@ -964,6 +982,7 @@ export const layer: Layer.Layer<
         run,
         projection.runs,
         projection.providerTurns,
+        projection.attempts,
       );
       const restartCancelledWork = pendingRestartCancelledBackgroundWork({
         runs: projection.runs,
@@ -978,9 +997,7 @@ export const layer: Layer.Layer<
             .map((candidate) => candidate.id),
         ),
         run,
-        runAttemptIds: projection.attempts
-          .filter((candidate) => candidate.runId === run.id)
-          .map((candidate) => candidate.id),
+        attempts: projection.attempts,
       });
       const restartNote =
         restartCancelledWork.length === 0

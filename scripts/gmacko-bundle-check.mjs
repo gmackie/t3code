@@ -22,6 +22,8 @@ try {
           "__THREE_DEVTOOLS__",
           "define",
           "os",
+          // Safari's DOMMatrix fallback in d3-interpolate, behind a typeof guard.
+          "WebKitCSSMatrix",
         ].map((name) => [name, "readonly"]),
       ),
       categories: { correctness: "off" },
@@ -30,7 +32,21 @@ try {
   );
   const result = NodeChildProcess.spawnSync(
     "npx",
-    ["--yes", "oxlint@1.85.0", "--config", config, NodePath.join(directory, "assets")],
+    [
+      "--yes",
+      "oxlint@1.85.0",
+      "--config",
+      config,
+      // Mermaid's vendored diagram code (upstream #15067) ships latent bugs on
+      // rarely run paths: layout-base and cytoscape-cose-bilkent read
+      // undeclared names, and the C4 parser's generated lexer has a no-op `c;`.
+      // They are not missing imports, which is what this gate guards.
+      ...["cose-bilkent-*", "architectureDiagram-*", "c4Diagram-*"].flatMap((pattern) => [
+        "--ignore-pattern",
+        pattern,
+      ]),
+      NodePath.join(directory, "assets"),
+    ],
     {
       cwd: directory,
       stdio: "inherit",

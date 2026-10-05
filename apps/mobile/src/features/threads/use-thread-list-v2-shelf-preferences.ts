@@ -17,10 +17,16 @@ export function useThreadListV2ShelfPreferences() {
     loaded && preferencesResult.value.threadListSnoozedShelfExpanded === true;
   const settledShelfExpanded =
     loaded && preferencesResult.value.threadListSettledShelfExpanded === true;
+  // Default on after preferences load; preserve an explicit opt-out.
+  const workingShelfEnabled = loaded && preferencesResult.value.workingShelfEnabled !== false;
+  const workingShelfExpanded =
+    loaded && preferencesResult.value.threadListWorkingShelfExpanded === true;
   const snoozedShelfExpandedRef = useRef(snoozedShelfExpanded);
   const settledShelfExpandedRef = useRef(settledShelfExpanded);
+  const workingShelfExpandedRef = useRef(workingShelfExpanded);
   snoozedShelfExpandedRef.current = snoozedShelfExpanded;
   settledShelfExpandedRef.current = settledShelfExpanded;
+  workingShelfExpandedRef.current = workingShelfExpanded;
 
   const toggleSnoozedShelf = useCallback(() => {
     if (!loaded) return;
@@ -34,12 +40,21 @@ export function useThreadListV2ShelfPreferences() {
     settledShelfExpandedRef.current = expanded;
     savePreferences({ threadListSettledShelfExpanded: expanded });
   }, [loaded, savePreferences]);
+  const toggleWorkingShelf = useCallback(() => {
+    if (!loaded) return;
+    const expanded = !workingShelfExpandedRef.current;
+    workingShelfExpandedRef.current = expanded;
+    savePreferences({ threadListWorkingShelfExpanded: expanded });
+  }, [loaded, savePreferences]);
 
   return {
     loaded,
     settledShelfExpanded,
     snoozedShelfExpanded,
+    workingShelfEnabled,
+    workingShelfExpanded,
     toggleSettledShelf,
     toggleSnoozedShelf,
+    toggleWorkingShelf,
   } as const;
 }
