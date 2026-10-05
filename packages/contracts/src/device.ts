@@ -124,6 +124,13 @@ export const DeviceSession = Schema.Struct({
   deviceId: DeviceId,
   platform: DevicePlatform,
   openedAt: Schema.String,
+  preflight: Schema.optional(
+    Schema.Struct({
+      sessionId: Schema.String,
+      expiresAt: Schema.String,
+      artifactId: Schema.optional(Schema.String),
+    }),
+  ),
 });
 export type DeviceSession = typeof DeviceSession.Type;
 
@@ -171,6 +178,17 @@ export const DeviceConfigureInput = Schema.Struct({
 });
 export type DeviceConfigureInput = typeof DeviceConfigureInput.Type;
 
+export const DevicePreflightBinding = Schema.Struct({
+  workspaceId: Schema.String,
+  appId: Schema.String,
+  workflowId: Schema.String,
+  targetId: Schema.String,
+  sourceBindingId: Schema.String,
+  expectedHeadSha: Schema.String.check(Schema.isPattern(/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/)),
+  repositoryRemote: Schema.String,
+});
+export type DevicePreflightBinding = typeof DevicePreflightBinding.Type;
+
 export const DeviceOpenInput = Schema.Struct({
   threadId: ThreadId,
   hostId: Schema.optional(DeviceHostId),
@@ -178,6 +196,8 @@ export const DeviceOpenInput = Schema.Struct({
   platform: DevicePlatform,
   /** Boot the simulator or emulator when it is not running. Defaults to true. */
   boot: Schema.optional(Schema.Boolean),
+  /** Bind this device to an existing clean Preflight workflow source. */
+  preflight: Schema.optional(DevicePreflightBinding),
 });
 export type DeviceOpenInput = typeof DeviceOpenInput.Type;
 
@@ -480,6 +500,7 @@ export const DeviceToolListResult = Schema.Struct({
 export type DeviceToolListResult = typeof DeviceToolListResult.Type;
 
 export const DeviceToolOpenInput = Schema.Struct({
+  preflight: Schema.optional(DevicePreflightBinding),
   deviceId: Schema.optional(
     DeviceId.annotate({
       description:

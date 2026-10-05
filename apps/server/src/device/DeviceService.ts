@@ -67,6 +67,8 @@ import * as DeviceHost from "./DeviceHost.ts";
 import * as SshDeviceHost from "./SshDeviceHost.ts";
 import * as Exit from "effect/Exit";
 import * as LocalDeviceHost from "./LocalDeviceHost.ts";
+import * as PreflightDeviceSessions from "./PreflightDeviceSessions.ts";
+import * as PreflightDeviceLauncher from "./PreflightDeviceLauncher.ts";
 
 /** Origin-relative prefix the hub is proxied under. See DeviceHubProxy. */
 export const DEVICE_HUB_ROUTE_PREFIX = "/api/device-hub";
@@ -110,6 +112,15 @@ export interface DeviceAgentReadiness extends DeviceReadiness {
 export class DeviceService extends Context.Service<
   DeviceService,
   {
+    readonly preflightManagedHost?: (hostId: DeviceHostId) => boolean;
+    readonly agentLauncher?: (input: {
+      readonly session: DeviceSession;
+      readonly targetArgs: ReadonlyArray<string>;
+      readonly entryPath: string;
+    }) => Effect.Effect<
+      { readonly command: string; readonly targetArgs: ReadonlyArray<string> } | null,
+      DeviceError
+    >;
     readonly agentCli: Effect.Effect<string, DeviceError>;
     readonly testHost: (
       config: SshDeviceHostConfig,
@@ -137,6 +148,7 @@ export class DeviceService extends Context.Service<
     /** Runs one action, then returns the refreshed detail. */
     readonly action: (input: DeviceActionInput) => Effect.Effect<DeviceDetail, DeviceError>;
     readonly screenshot: (input: {
+      readonly threadId?: ThreadId | undefined;
       readonly hostId?: DeviceHostId | undefined;
       readonly deviceId: DeviceId;
     }) => Effect.Effect<DeviceScreenshot, DeviceError>;
@@ -1052,6 +1064,10 @@ export const make = Effect.gen(function* () {
         ),
       ),
   );
+  const preflight = yield* PreflightDeviceSessions.coordinate(service);
+  const prepareLauncher = preflight.enabled
+    ? yield* PreflightDeviceLauncher.make(config.stateDir, preflight.command)
+    : null;
   const hostContext =
     yield* Effect.context<Effect.Services<ReturnType<typeof SshDeviceHost.make>>>();
   const configured = new Map<string, { config: SshDeviceHostConfig; scope: Scope.Closeable }>();
@@ -1084,6 +1100,7 @@ export const make = Effect.gen(function* () {
         }),
       );
       // Stop old writers before deleting config files or publishing replacements, without blocking healthy hosts.
+      for (const removedHost of removed) yield* preflight.closeHost(removedHost.id);
       yield* Effect.forEach(
         removed,
         ({ id, scope }) =>
@@ -1140,6 +1157,14 @@ export const make = Effect.gen(function* () {
   );
   return {
     ...service,
+    ...preflight.service,
+    preflightManagedHost: preflight.hostManaged,
+    agentLauncher: (
+      input: Parameters<NonNullable<DeviceService["Service"]["agentLauncher"]>>[0],
+    ) =>
+      preflight.hostManaged(input.session.hostId) && prepareLauncher
+        ? prepareLauncher(input)
+        : Effect.succeed(null),
     agentCli: resolveNodeExecutable("Device automation").pipe(
       Effect.andThen(ensureAgentDevice(config.baseDir)),
       Effect.provideService(FileSystem.FileSystem, fs),

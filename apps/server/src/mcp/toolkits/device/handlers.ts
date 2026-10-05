@@ -60,8 +60,8 @@ export function agentDeviceQuickStart(
     `  ${executable} install <app> <path-to-.app-or-.apk> ${target}`,
     `Prefer snapshot refs over coordinates. Run ${executable} help for workflow guides and ${executable} <command> --help for flags.`,
     "Prefer agent-device for driving this device. simctl, adb, and xcrun remain available for anything it does not cover.",
-    "For remote hosts, arrange builds, app installation, and any Metro reverse forwarding yourself. T3 provides discovery, streaming, and control only.",
-    "Keep the returned --config and --session flags on every command. Other hosts can be used concurrently; opening one does not switch these commands.",
+    "For remote hosts, arrange builds, app installation, and any Metro reverse forwarding yourself. Preflight-bound sessions reserve the device and publish device_screenshot captures as pending evidence when closed.",
+    "Keep all returned target flags on every command. Preflight-bound launchers keep their daemon config private. Other hosts can be used concurrently; opening one does not switch these commands.",
     platformNotes,
   ].join("\n");
 }
@@ -168,6 +168,7 @@ const handlers = {
         hostId: target.hostId,
         deviceId: target.id,
         platform: target.platform,
+        preflight: input.preflight,
       });
       const after = yield* devices.state;
       const device =
@@ -175,32 +176,53 @@ const handlers = {
           (candidate) => candidate.hostId === session.hostId && candidate.id === session.deviceId,
         ) ?? target;
       const targetArgs = [...agentDeviceTargetArgs(device), ...agentArgs];
-      const config = yield* ServerConfig.ServerConfig;
-      const path = yield* Path.Path;
-      const platform = yield* HostProcessPlatform;
-      const shimDir = yield* ensureAgentDeviceShim({
-        entryPath: yield* devices.agentCli,
-        stateDir: config.stateDir,
-      }).pipe(
-        Effect.mapError(
-          (error) =>
-            new DeviceToolUnavailableError({
-              reason:
-                error._tag === "NodeRuntimeUnavailableError"
-                  ? nodeRuntimeUnavailableMessage("Device automation")
-                  : "Could not prepare the agent-device launcher.",
-              cause: error,
-            }),
+      const prepare = Effect.gen(function* () {
+        const scoped = devices.agentLauncher
+          ? yield* devices.agentLauncher({
+              session,
+              targetArgs,
+              entryPath: yield* devices.agentCli,
+            })
+          : null;
+        if (scoped) return scoped;
+        const config = yield* ServerConfig.ServerConfig;
+        const path = yield* Path.Path;
+        const platform = yield* HostProcessPlatform;
+        const shimDir = yield* ensureAgentDeviceShim({
+          entryPath: yield* devices.agentCli,
+          stateDir: config.stateDir,
+        }).pipe(
+          Effect.mapError(
+            (error) =>
+              new DeviceToolUnavailableError({
+                reason:
+                  error._tag === "NodeRuntimeUnavailableError"
+                    ? nodeRuntimeUnavailableMessage("Device automation")
+                    : "Could not prepare the agent-device launcher.",
+                cause: error,
+              }),
+          ),
+        );
+        return {
+          command: path.join(shimDir, platform === "win32" ? "agent-device.cmd" : "agent-device"),
+          targetArgs,
+        };
+      });
+      const agentDevice = yield* prepare.pipe(
+        Effect.onError(() =>
+          devices
+            .close({
+              threadId: session.threadId,
+              hostId: session.hostId,
+              deviceId: session.deviceId,
+            })
+            .pipe(Effect.ignore),
         ),
-      );
-      const command = path.join(
-        shimDir,
-        platform === "win32" ? "agent-device.cmd" : "agent-device",
       );
       return {
         device,
-        agentDevice: { command, targetArgs },
-        quickStart: agentDeviceQuickStart(device, targetArgs, command),
+        agentDevice,
+        quickStart: agentDeviceQuickStart(device, agentDevice.targetArgs, agentDevice.command),
       };
     }).pipe(Effect.mapError(toolError)),
   device_screenshot: (input) =>
@@ -219,7 +241,7 @@ const handlers = {
           reason: "No device is open in this thread. Call device_open first.",
         });
       }
-      const shot = yield* devices.screenshot(target);
+      const shot = yield* devices.screenshot({ ...target, threadId: scope.threadId });
       return {
         device: shot.device,
         screenshot: {

@@ -116,3 +116,16 @@ localhost without forwarding or another reachable address.
 The connected T3 server manages the device hub and agent tools on its own machine and configured SSH hosts. Required versions install automatically the next time those tools are used. Settings → Integrations → Check device tool versions reads installed versions without installing tools or starting devices.
 
 To receive newer tool versions on a remote environment, update that environment's T3 server. Updating only the browser or mobile app does not update the remote server. An offline host keeps its installed files, but an update needs network access before device support can start; T3 does not fall back to an older version. Reconnect the host and use Retry if installation fails. Existing device and agent-access settings are preserved.
+
+## Devices coordinated with Preflight
+
+An environment administrator can reserve selected device hosts through Preflight.
+On those hosts, an agent opens a device with an existing Preflight workflow and
+its clean, committed repository source. The device remains reserved while the
+session is open. Use the exact command returned by `device_open` for input;
+viewer input sockets are unavailable on these hosts.
+
+`device_screenshot` stores the capture with the session. Closing the session
+releases the device and records pending evidence. A capture alone does not
+validate a build or pass a release gate. If the connection or source binding
+changes, reopen the session before continuing.

@@ -84,3 +84,49 @@ Simulators encode H.264 High 5.1. Hardware decoders on some machines and all
 headless browsers reject that profile, and WebCodecs is secure-context only, so
 the viewer probes `isConfigSupported` and falls back to the MJPEG endpoint on
 iOS. Android has no MJPEG; there the panel reports that it cannot decode.
+
+## Preflight session coordination
+
+Set `T3_PREFLIGHT_URL`, a workspace-scoped `T3_PREFLIGHT_TOKEN`, and
+`T3_PREFLIGHT_HOST_IDENTITIES` (a JSON map from T3 host IDs to Preflight physical
+machine identities) on the environment server. No credential goes into a tool
+result or client state. Unmapped hosts retain ordinary T3 sessions; mapped hosts
+require an explicit `preflight` binding on `device.open` / `device_open` with
+workspace, app, workflow, target, source-binding, repository remote and exact full
+commit SHA. The caller cannot choose a provider machine identity.
+
+`PreflightDeviceSource` derives the repository path from persisted thread and
+project state and checks HEAD, tracked/untracked changes and origin before
+acquisition and each heartbeat/operation. `PreflightDeviceSessions` acquires the
+shared Preflight device fence before boot, refreshes it every 30 seconds, and
+releases it on close, host removal, disabled support/access and server shutdown.
+A failed heartbeat closes the local session and stops server-owned CLI commands
+before releasing the fence. The 120-second server lease provides crash expiry.
+
+Managed `device_open` returns a private launcher that invokes a loopback server
+transport. It exposes public device selectors and an opaque session selector;
+the daemon config and real daemon session stay inside the server. The server
+rejects routing/lease/provider overrides, argument terminators and management
+commands, then injects the private selectors. It strips ambient `AGENT_DEVICE_*`
+settings and the Preflight bearer token and replaces the subprocess environment.
+Each open issues a unique launcher path, so an old executable stays stale. The server checks the exact session and target flags, verifies the
+lease before and after each command, and serializes commands with close and
+shutdown. Commands have a 90-second limit; queued commands recheck their fence
+when they begin. A launcher for an older Preflight session cannot drive a
+replacement session. This coordinates the supported T3 paths, not arbitrary
+`simctl`, `adb`, direct daemon calls or another process running as the same OS
+user. A remote native operation already accepted by the hub may outlive a
+cancelled HTTP request; lease coordination cannot revoke that remote operation.
+
+All clients share the same service and wire contracts. Device RPC actions use
+the lease; direct hub control sockets and stream mutations are refused on
+mapped hosts because vendor messages cannot be fenced per command. Read streams
+remain available. Use the scoped launcher for input on these hosts.
+
+`device_screenshot` captures actual hub PNG bytes, verifies the source and lease
+again, and uploads those bytes with their SHA256 to Preflight artifact storage.
+Closing a captured session creates a source-bound **pending** agent-session
+attestation. A screenshot does not prove the installed binary or an assertion,
+and never satisfies the simulator proof gate. Capture receipts and session IDs
+are visible in device session state; capability and bearer tokens are private.
+The producer integration publishes completed Maestro proofs separately.

@@ -208,6 +208,15 @@ const handler = Effect.gen(function* () {
     (!readOnly && /\/api\/(stream-(mode|settings)|fold)$/.test(hubPath));
   yield* authenticate(controlsDevice ? AuthOrchestrationOperateScope : AuthOrchestrationReadScope);
   const devices = yield* DeviceService.DeviceService;
+  if (
+    controlsDevice &&
+    devices.preflightManagedHost?.(url.value.searchParams.get("hostId") ?? "local")
+  ) {
+    return HttpServerResponse.text(
+      "This device host is reserved through Preflight. Use the session controls.",
+      { status: 409 },
+    );
+  }
   const ready = yield* devices.currentReadiness(url.value.searchParams.get("hostId") ?? undefined);
   if (!ready) {
     return HttpServerResponse.text("Device hub is not running", { status: 503 });
