@@ -1,7 +1,8 @@
 import * as Schema from "effect/Schema";
 
 const Id = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(128));
-const Scalar = Schema.Union([
+export const UnityHookValue = Schema.Union([
+  Schema.Array(Schema.Finite).check(Schema.isMinLength(2), Schema.isMaxLength(4)),
   Schema.Boolean,
   Schema.Number.check(Schema.isFinite()),
   Schema.String.check(Schema.isMaxLength(1024)),
@@ -23,10 +24,15 @@ export const UnityHookRequest = Schema.Union([
     ...session,
     action: Schema.Literal("write"),
     handle: Id,
-    value: Scalar,
-    expected: Schema.optional(Scalar),
+    value: UnityHookValue,
+    expected: Schema.optional(UnityHookValue),
   }),
-  Schema.Struct({ ...session, action: Schema.Literal("assert"), handle: Id, expected: Scalar }),
+  Schema.Struct({
+    ...session,
+    action: Schema.Literal("assert"),
+    handle: Id,
+    expected: UnityHookValue,
+  }),
   Schema.Struct({
     ...session,
     action: Schema.Literal("watch"),
@@ -48,7 +54,7 @@ export const UnityHookSample = Schema.Struct({
   generation: Id,
   sequence: Bound,
   sampledAtMs: Schema.Number.check(Schema.isFinite()),
-  values: Schema.Record(Id, Scalar),
+  values: Schema.Record(Id, UnityHookValue),
 });
 export const UnityHookCatalog = Schema.Struct({
   schema: Schema.Literal("gmacko.agent-hooks/v1"),
@@ -58,7 +64,14 @@ export const UnityHookCatalog = Schema.Struct({
     Schema.Struct({
       key: Id,
       handle: Id,
-      type: Schema.Literals(["boolean", "integer", "number", "string"]),
+      type: Schema.Literals(["boolean", "integer", "number", "string", "enum", "vector"]),
+      choices: Schema.optional(
+        Schema.Array(Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(128))).check(
+          Schema.isMinLength(1),
+          Schema.isMaxLength(64),
+        ),
+      ),
+      components: Schema.optional(Schema.Int.check(Schema.isBetween({ minimum: 2, maximum: 4 }))),
       description: Schema.String,
       unit: Schema.NullOr(Schema.String),
       writable: Schema.Boolean,

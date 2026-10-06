@@ -1,5 +1,5 @@
 import * as Schema from "effect/Schema";
-import { UnityTarget, UnityHookCatalog, UnityHookWatch } from "./unityHooks.ts";
+import { UnityTarget, UnityHookCatalog, UnityHookWatch, UnityHookValue } from "./unityHooks.ts";
 import { ThreadId } from "./baseSchemas.ts";
 
 const Id = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(128));
@@ -35,16 +35,8 @@ export const GameRequest = Schema.Union([
     sessionId: Id,
     lease: Id,
     handle: Id,
-    value: Schema.Union([
-      Schema.Boolean,
-      Schema.Finite,
-      Schema.String.check(Schema.isMaxLength(1024)),
-    ]),
-    expected: Schema.Union([
-      Schema.Boolean,
-      Schema.Finite,
-      Schema.String.check(Schema.isMaxLength(1024)),
-    ]),
+    value: UnityHookValue,
+    expected: UnityHookValue,
   }),
   Schema.Struct({
     action: Schema.Literal("monitor"),

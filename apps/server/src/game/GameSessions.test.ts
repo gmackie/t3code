@@ -147,6 +147,50 @@ it("escapes report data and handles empty observations", () => {
   expect(html).not.toContain("Infinity");
 });
 
+it("reports vector histories per component and enum observations without executing labels", () => {
+  const descriptor = {
+    description: "Observed gameplay",
+    unit: null,
+    writable: true,
+    minimum: null,
+    maximum: null,
+  };
+  const html = gameReport(
+    {
+      ...catalog,
+      hooks: [
+        { ...descriptor, key: "position", handle: "p", type: "vector", components: 3 },
+        { ...descriptor, key: "mode", handle: "m", type: "enum", choices: ["Walk", "Run"] },
+      ],
+    },
+    {
+      ...state,
+      monitor: {
+        id: "watch",
+        generation: "g",
+        status: "stopped",
+        error: null,
+        dropped: 0,
+        samples: [
+          { generation: "g", sequence: 1, sampledAtMs: 0, values: { p: [0, 10, -2], m: "Walk" } },
+          {
+            generation: "g",
+            sequence: 2,
+            sampledAtMs: 100,
+            values: { p: [1, 5, -2], m: "<img src=x>" },
+          },
+        ],
+      },
+    },
+  );
+  expect(html).toContain("[1,5,-2]");
+  expect(html).toContain('points="0.00,55.00 300.00,5.00"');
+  expect(html).toContain('points="0.00,5.00 300.00,55.00"');
+  expect(html.match(/<polyline /g)).toHaveLength(3);
+  expect(html).toContain("&lt;img src=x&gt;");
+  expect(html).not.toContain("<img");
+});
+
 it.effect("returns an image for an agent's own session and rejects another thread", () =>
   Effect.gen(function* () {
     const service = yield* GameSessions.GameSessions;
