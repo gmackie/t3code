@@ -78,7 +78,10 @@ import { formatReadToolLabel, formatSearchToolLabel } from "@t3tools/shared/tool
 import { isWorkspaceImagePreviewPath } from "@t3tools/shared/mediaPreview";
 import * as ProviderHost from "@t3tools/provider-core/server/ProviderHost";
 import { makeAcpMcpOverAcpBridge, type AcpMcpOverAcpBridge } from "./mcpOverAcpBridge.ts";
-import { mcpToolPresentation } from "@t3tools/provider-core/server/mcpToolPresentation";
+import {
+  cuaCallContext,
+  mcpToolPresentation,
+} from "@t3tools/provider-core/server/mcpToolPresentation";
 import * as McpProviderSessions from "@t3tools/provider-core/server/McpProviderSessions";
 import * as McpProviderSession from "@t3tools/provider-core/server/mcpSession";
 import {
@@ -4902,6 +4905,14 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
                 source: unknownRecord(
                   (unknownRecord(rawOutputRecord?.result) ?? rawOutputRecord)?._meta,
                 )?.source,
+                ...cuaCallContext({
+                  serverName: mcpIdentity.server,
+                  toolName: mcpIdentity.tool,
+                  threadId: base.threadId,
+                  status: base.status,
+                  args: mcpIdentity.input ?? unknownRecord(rawInputRecord?.arguments),
+                  result: rawOutput,
+                }),
               }),
               type: "dynamic_tool",
               toolName,

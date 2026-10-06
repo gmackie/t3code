@@ -60,7 +60,10 @@ import * as Stream from "effect/Stream";
 
 import { brokenVersionDetail } from "@t3tools/provider-core/server/compatibility";
 import * as ProviderHost from "@t3tools/provider-core/server/ProviderHost";
-import { mcpToolPresentation } from "@t3tools/provider-core/server/mcpToolPresentation";
+import {
+  cuaCallContext,
+  mcpToolPresentation,
+} from "@t3tools/provider-core/server/mcpToolPresentation";
 import * as McpProviderSessions from "@t3tools/provider-core/server/McpProviderSessions";
 import * as McpProviderSession from "@t3tools/provider-core/server/mcpSession";
 import * as ProviderEventLoggers from "@t3tools/provider-core/server/ProviderEventLoggers";
@@ -1917,6 +1920,16 @@ export const makeOpenCodeAdapterV2 = Effect.fn("makeOpenCodeAdapterV2")(function
                   serverName,
                   toolName: part.tool.slice(serverName.replace(/[^a-zA-Z0-9_-]/g, "_").length + 1),
                   title: toolTitle(part) === part.tool ? undefined : toolTitle(part),
+                  ...cuaCallContext({
+                    serverName,
+                    toolName: part.tool.slice(
+                      serverName.replace(/[^a-zA-Z0-9_-]/g, "_").length + 1,
+                    ),
+                    threadId: base.threadId,
+                    status: base.status,
+                    args: input,
+                    result: output,
+                  }),
                 });
           const files =
             part.state.status === "completed"
