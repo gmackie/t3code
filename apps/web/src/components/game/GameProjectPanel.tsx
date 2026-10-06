@@ -19,12 +19,17 @@ export function GameProjectPanel({
   const frame = useRef<HTMLIFrameElement>(null);
   const palette = useHtmlRenderTheme();
   const fontSize = useClientSettings((settings) => settings.fontSizeInterface);
+  const fontSmoothing = useClientSettings((settings) => settings.fontSmoothing);
   const theme = useMemo(
     () => ({
       ...palette,
-      variables: { ...palette.variables, "--game-font-size": `${fontSize}px` },
+      variables: {
+        ...palette.variables,
+        "--game-font-size": `${fontSize}px`,
+        "--game-font-smoothing": fontSmoothing ? "antialiased" : "auto",
+      },
     }),
-    [palette, fontSize],
+    [palette, fontSize, fontSmoothing],
   );
   const [initialTheme] = useState(theme);
   const postTheme = useCallback(() => {
