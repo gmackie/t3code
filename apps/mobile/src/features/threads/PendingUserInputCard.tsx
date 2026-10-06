@@ -2,20 +2,28 @@ import { RequestActionButton } from "./RequestActionButton";
 import { QuestionAttachments } from "./QuestionAttachments";
 import type { RuntimeRequestId } from "@t3tools/contracts";
 import type { ThreadUserInputQuestion } from "@t3tools/client-runtime/state/thread-requests";
-import { useCallback, useRef } from "react";
-import { Platform, Pressable, ScrollView, View, type LayoutChangeEvent } from "react-native";
+import { useAtomValue } from "@effect/atom-react";
+import { AsyncResult } from "effect/unstable/reactivity";
+import { useState } from "react";
+import { Keyboard, Platform, Pressable, ScrollView, View } from "react-native";
+import { useReanimatedKeyboardAnimation } from "react-native-keyboard-controller";
 import Animated, {
   Easing,
   FadeInUp,
   FadeOutDown,
-  LinearTransition,
   useAnimatedStyle,
+  useAnimatedReaction,
+  useDerivedValue,
   useSharedValue,
-  withTiming,
   type SharedValue,
 } from "react-native-reanimated";
 
-import { USER_INPUT_TOGGLE_DURATION_MS } from "./pendingUserInputLayout";
+import {
+  derivePendingUserInputCompactHeight,
+  USER_INPUT_TOGGLE_DURATION_MS,
+} from "./pendingUserInputLayout";
+
+import { mobilePreferencesAtom } from "../../state/preferences";
 
 import { SymbolView } from "../../components/AppSymbol";
 import { AppText as Text } from "../../components/AppText";
@@ -29,11 +37,7 @@ import {
 
 export interface PendingUserInputCardProps {
   readonly pendingUserInput: PendingUserInput;
-  /**
-   * Constant while a request is pending (it reserves keyboard space), so the
-   * keyboard transition is pure translation; changes only on rare discrete
-   * corrections, which the layout transition smooths.
-   */
+  /** Available height above the bottom inset, before the keyboard opens. */
   readonly maxHeight: number;
   readonly collapsed: boolean;
   readonly onToggleCollapsed: () => void;
@@ -48,7 +52,7 @@ export interface PendingUserInputCardProps {
   readonly cardProgress?: SharedValue<number>;
   /**
    * Receives how far the expanded card extends above the bar footprint
-   * (written from onLayout with no re-render); the host adds it to the
+   * on the UI thread; the host adds it to the
    * thread feed's end inset so the end of the chat stays visible above the
    * card.
    */
@@ -76,7 +80,7 @@ export interface PendingUserInputCardProps {
 /**
  * On iOS the collapsed bar is the PERMANENT in-flow footprint — the expanded
  * card is an absolutely-positioned overlay rising above it. The overlay's
- * measured height (which drives the thread feed's bottom inset) therefore
+ * height (which drives the thread feed's bottom inset) therefore
  * never changes on collapse/expand, so the transcript stays perfectly still
  * while the card animates over it.
  *
@@ -88,58 +92,72 @@ export interface PendingUserInputCardProps {
  */
 const EXPANDED_CARD_IS_OVERLAY = Platform.OS === "ios";
 
-const CARD_LAYOUT_TRANSITION = LinearTransition.duration(200);
-
 export function PendingUserInputCard(props: PendingUserInputCardProps) {
   const questionCount = props.pendingUserInput.questions.length;
   // Message responses start a new run and remain available after the provider exits.
   const canRespond = props.pendingUserInput.responseCapability !== "not_resumable";
   const isResponding = props.respondingUserInputId === props.pendingUserInput.requestId;
   const responseDisabled = !canRespond || isResponding;
+  const [expanded, setExpanded] = useState(false);
+  const [questionIndex, setQuestionIndex] = useState(0);
+  const activeQuestionIndex = Math.min(questionIndex, Math.max(0, questionCount - 1));
+  const question = props.pendingUserInput.questions[activeQuestionIndex];
+  const isLastQuestion = activeQuestionIndex === questionCount - 1;
+  const preferences = useAtomValue(mobilePreferencesAtom);
+  const paginated =
+    !AsyncResult.isSuccess(preferences) ||
+    preferences.value.questionNavigationEnabled !== false;
+  const showSubmit = !paginated || isLastQuestion;
+  const visibleQuestions = paginated
+    ? question
+      ? [question]
+      : []
+    : props.pendingUserInput.questions;
+  const { height: keyboardHeight } = useReanimatedKeyboardAnimation();
+  // Resize on the UI thread alongside KeyboardStickyView's translation so
+  // opening the keyboard never pushes the top of the card over the header.
+  const maxHeight = props.maxHeight;
+  const measuredCardHeight = useSharedValue(0);
+  const lastKeyboardHeight = useSharedValue(0);
+  useAnimatedReaction(
+    () => Math.abs(keyboardHeight.value),
+    (height) => {
+      if (height > lastKeyboardHeight.value) lastKeyboardHeight.set(height);
+    },
+  );
+  const availableHeight = useDerivedValue(() =>
+    expanded
+      ? Math.max(160, maxHeight - Math.abs(keyboardHeight.value))
+      : derivePendingUserInputCompactHeight(maxHeight, lastKeyboardHeight.value),
+  );
+  const cardHeight = useDerivedValue(() =>
+    expanded ? availableHeight.value : measuredCardHeight.value,
+  );
+  const heightStyle = useAnimatedStyle(() => ({
+    height: expanded ? availableHeight.value : undefined,
+    maxHeight: availableHeight.value,
+  }));
+  const clippingStyle = useAnimatedStyle(() => ({ height: availableHeight.value }));
+  const toggleExpanded = () => {
+    Keyboard.dismiss();
+    props.onInputFocusChange?.(false);
+    setExpanded((value) => !value);
+  };
+  const navigateToQuestion = (index: number) => {
+    Keyboard.dismiss();
+    props.onInputFocusChange?.(false);
+    setQuestionIndex(index);
+  };
 
   const cardCoverage = props.cardCoverage;
-  const barHeightRef = useRef(0);
-  const cardHeightRef = useRef(0);
-  // Measured card height, written straight from onLayout: the collapse slide
-  // distance. Not animated — it only changes on discrete relayouts.
-  const cardHeight = useSharedValue(0);
-  const notifyCoverage = useCallback(() => {
-    if (!cardCoverage) {
-      return;
-    }
-    const coverage = Math.max(0, cardHeightRef.current - barHeightRef.current);
-    if (coverage === cardCoverage.value) {
-      return;
-    }
-    if (cardCoverage.value === 0) {
-      // First measurement lands while the list is doing its initial
-      // end-pin (thread opened onto a pending request); animating it from
-      // zero would move the end anchor out from under that scroll.
-      cardCoverage.value = coverage;
-      return;
-    }
-    // Animated so a coverage change at rest (discrete max-height
-    // corrections) glides the feed instead of stepping it; toggle timing is
-    // owned by the host's progress values.
-    cardCoverage.value = withTiming(coverage, {
-      duration: USER_INPUT_TOGGLE_DURATION_MS,
-      easing: Easing.out(Easing.cubic),
-    });
-  }, [cardCoverage]);
-  const handleBarLayout = useCallback(
-    (event: LayoutChangeEvent) => {
-      barHeightRef.current = event.nativeEvent.layout.height;
-      notifyCoverage();
+  const barHeight = useSharedValue(0);
+  useAnimatedReaction(
+    () => Math.max(0, cardHeight.value - barHeight.value),
+    (coverage) => {
+      if (cardCoverage) {
+        cardCoverage.set(coverage);
+      }
     },
-    [notifyCoverage],
-  );
-  const handleCardLayout = useCallback(
-    (event: LayoutChangeEvent) => {
-      cardHeightRef.current = event.nativeEvent.layout.height;
-      cardHeight.value = event.nativeEvent.layout.height;
-      notifyCoverage();
-    },
-    [cardHeight, notifyCoverage],
   );
   const cardProgress = props.cardProgress;
   // No opacity: fading an opaque card over the live transcript reads as a
@@ -166,7 +184,9 @@ export function PendingUserInputCard(props: PendingUserInputCardProps) {
   // crossfade frames.
   const bar = showBar ? (
     <View
-      onLayout={handleBarLayout}
+      onLayout={(event) => {
+        barHeight.set(event.nativeEvent.layout.height);
+      }}
       pointerEvents={props.collapsed ? "auto" : "none"}
       accessibilityElementsHidden={!props.collapsed}
       importantForAccessibility={props.collapsed ? "auto" : "no-hide-descendants"}
@@ -210,7 +230,7 @@ export function PendingUserInputCard(props: PendingUserInputCardProps) {
     // feed with no blur behind it, so a translucent background renders
     // the questions on top of whatever message happens to sit underneath.
     <Animated.View
-      onLayout={handleCardLayout}
+      onLayout={(event) => measuredCardHeight.set(event.nativeEvent.layout.height)}
       pointerEvents={props.collapsed ? "none" : "auto"}
       accessibilityElementsHidden={props.collapsed}
       importantForAccessibility={props.collapsed ? "no-hide-descendants" : "auto"}
@@ -224,38 +244,51 @@ export function PendingUserInputCard(props: PendingUserInputCardProps) {
           ? undefined
           : FadeOutDown.duration(USER_INPUT_TOGGLE_DURATION_MS).easing(Easing.out(Easing.cubic))
       }
-      layout={CARD_LAYOUT_TRANSITION}
       className="overflow-hidden gap-2.5 rounded-[20px] border border-border bg-card-alt p-4"
-      style={
-        EXPANDED_CARD_IS_OVERLAY
-          ? [{ maxHeight: props.maxHeight }, cardAnimatedStyle]
-          : { maxHeight: props.maxHeight }
-      }
+      style={[heightStyle, EXPANDED_CARD_IS_OVERLAY ? cardAnimatedStyle : undefined]}
     >
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Collapse user input"
-        onPress={props.onToggleCollapsed}
-        className="flex-row items-start gap-2"
-      >
-        <View className="flex-1 gap-2.5">
-          <Text className="font-t3-bold text-2xs uppercase tracking-[1.1px] text-foreground-secondary">
-            User input needed
-          </Text>
-          <Text className="font-t3-bold text-lg text-foreground">Fill in the pending answers</Text>
-        </View>
-        <View className="h-8 w-8 items-center justify-center rounded-full bg-subtle-strong">
-          <SymbolView
-            name="chevron.down"
-            size={13}
-            tintColorClassName={"accent-icon-subtle"}
-            type="monochrome"
+      <View className="flex-row items-start gap-2">
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={
+            expanded ? "Lower to compact questions" : "Expand questions to full screen"
+          }
+          accessibilityState={{ expanded }}
+          onPress={toggleExpanded}
+          className="min-h-11 flex-1 flex-row items-center gap-2"
+        >
+          <View className="flex-1 gap-2.5">
+            <Text className="font-t3-bold text-2xs uppercase tracking-[1.1px] text-foreground-secondary">
+              User input needed
+            </Text>
+            <Text className="font-t3-bold text-lg text-foreground">
+              {paginated
+                ? `Question ${activeQuestionIndex + 1} of ${questionCount}`
+                : "Fill in the pending answers"}
+            </Text>
+          </View>
+          <View className="h-11 w-11 items-center justify-center rounded-full bg-subtle-strong">
+            <SymbolView
+              name={expanded ? "chevron.down" : "chevron.up"}
+              size={13}
+              tintColorClassName="accent-icon-subtle"
+              type="monochrome"
+            />
+          </View>
+        </Pressable>
+        {!expanded ? (
+          <ControlPill
+            accessibilityLabel="Collapse user input"
+            icon="chevron.down"
+            className="h-11 w-11"
+            onPress={props.onToggleCollapsed}
           />
-        </View>
-      </Pressable>
+        ) : null}
+      </View>
       <ScrollView
+        key={paginated ? question?.id : "scroll"}
         bounces={false}
-        className="min-h-0"
+        className={cn("min-h-0", expanded && "flex-1")}
         contentContainerClassName="gap-2.5 pb-1"
         keyboardShouldPersistTaps="handled"
         nestedScrollEnabled
@@ -268,7 +301,7 @@ export function PendingUserInputCard(props: PendingUserInputCardProps) {
             run to continue.
           </Text>
         ) : null}
-        {props.pendingUserInput.questions.map((question) => {
+        {visibleQuestions.map((question) => {
           const draft = props.drafts[question.id];
           return (
             <View key={question.id} className="gap-2 pt-1">
@@ -337,14 +370,39 @@ export function PendingUserInputCard(props: PendingUserInputCardProps) {
             </View>
           );
         })}
+        {paginated && isLastQuestion && props.answers === null ? (
+          <Text className="font-sans text-xs text-foreground-muted">
+            {questionCount > 1
+              ? "Answer every question before submitting. Use Back to review earlier answers."
+              : "Choose an option or enter an answer before submitting."}
+          </Text>
+        ) : null}
       </ScrollView>
-      <RequestActionButton
-        label="Submit answers"
-        size="large"
-        tone={props.answers ? "primary" : "secondary"}
-        disabled={responseDisabled || props.answers === null}
-        onPress={() => void props.onSubmit()}
-      />
+      <View className="flex-row gap-3">
+        {paginated && questionCount > 1 ? (
+          <View className="flex-1">
+            <RequestActionButton
+              label="Back"
+              size="large"
+              tone="secondary"
+              disabled={activeQuestionIndex === 0 || isResponding}
+              onPress={() => navigateToQuestion(activeQuestionIndex - 1)}
+            />
+          </View>
+        ) : null}
+        <View className="flex-1">
+          <RequestActionButton
+            label={isResponding ? "Submitting…" : showSubmit ? "Submit answers" : "Next"}
+            size="large"
+            tone={showSubmit && props.answers === null ? "secondary" : "primary"}
+            disabled={isResponding || (showSubmit && (responseDisabled || props.answers === null))}
+            onPress={() => {
+              if (showSubmit) void props.onSubmit();
+              else navigateToQuestion(activeQuestionIndex + 1);
+            }}
+          />
+        </View>
+      </View>
       {props.pendingUserInput.dismissible ? (
         <Pressable
           accessibilityRole="button"
@@ -367,13 +425,13 @@ export function PendingUserInputCard(props: PendingUserInputCardProps) {
         // expanded card, bottom edge on the bar's bottom edge. The sliding
         // card exits through the bottom edge instead of drawing over the
         // composer area, wiping the bar (and the transcript) into view.
-        <View
+        <Animated.View
           pointerEvents={props.collapsed ? "none" : "box-none"}
           className="absolute inset-x-0 bottom-0 justify-end overflow-hidden"
-          style={{ height: props.maxHeight }}
+          style={clippingStyle}
         >
           {card}
-        </View>
+        </Animated.View>
       ) : (
         card
       )}

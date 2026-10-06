@@ -124,7 +124,6 @@ import {
 import { connectionFloatingStatus, type FloatingWorkingStatus } from "./floating-working-status";
 import {
   derivePendingUserInputMaxHeight,
-  ESTIMATED_KEYBOARD_HEIGHT,
   USER_INPUT_TOGGLE_DURATION_MS,
 } from "./pendingUserInputLayout";
 import {
@@ -611,25 +610,9 @@ export const ThreadDetailScreen = memo(function ThreadDetailScreen(props: Thread
   );
   const userInputCollapsed =
     activeUserInputRequestId !== null && collapsedUserInputRequestId === activeUserInputRequestId;
-  // The card's height RESERVES keyboard space at all times instead of
-  // tracking the keyboard: transforms (the sticky translation) apply
-  // same-frame on the UI thread while layout props lag a Yoga pass behind,
-  // so any height that follows the keyboard flashes the card over the nav
-  // header on the way up. With a constant height the keyboard transition is
-  // pure translation — frame-perfect by construction — and the resting card
-  // stays compact over the transcript. Before the first open the reserve is
-  // an estimate; once a real height is known the card corrects once,
-  // discretely.
-  const [lastKnownKeyboardHeight, setLastKnownKeyboardHeight] = useState(0);
-  useEffect(() => {
-    if (liveKeyboardHeight > 0 && liveKeyboardHeight !== lastKnownKeyboardHeight) {
-      setLastKnownKeyboardHeight(liveKeyboardHeight);
-    }
-  }, [lastKnownKeyboardHeight, liveKeyboardHeight]);
   const pendingUserInputMaxHeight = derivePendingUserInputMaxHeight({
     windowHeight,
-    keyboardHeight:
-      lastKnownKeyboardHeight > 0 ? lastKnownKeyboardHeight : ESTIMATED_KEYBOARD_HEIGHT,
+    keyboardHeight: 0,
     navigationHeaderHeight,
     // The questionnaire owns the composer slot, so only the composer's
     // bottom inset still overlaps.
@@ -659,8 +642,8 @@ export const ThreadDetailScreen = memo(function ThreadDetailScreen(props: Thread
   // card's rise/sink and the feed's end-inset glide animate in lockstep on
   // the UI thread, keyboard-style, instead of waiting on React mount +
   // onLayout + state round trips. Coverage (how far the card extends above
-  // the bar) is measured straight into a shared value by the card's
-  // onLayout, with no re-render.
+  // the bar) follows the card's keyboard-driven height on the UI thread,
+  // with no re-render.
   const userInputCardProgress = useSharedValue(1);
   const userInputInsetProgress = useSharedValue(1);
   const userInputCardCoverage = useSharedValue(0);
@@ -1293,6 +1276,7 @@ export const ThreadDetailScreen = memo(function ThreadDetailScreen(props: Thread
                     ) : null}
                     {props.activePendingUserInput ? (
                       <PendingUserInputCard
+                        key={props.activePendingUserInput.requestId}
                         pendingUserInput={props.activePendingUserInput}
                         maxHeight={pendingUserInputMaxHeight}
                         collapsed={userInputCollapsed}

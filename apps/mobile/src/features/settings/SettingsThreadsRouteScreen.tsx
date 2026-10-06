@@ -46,6 +46,7 @@ export function SettingsThreadsRouteScreen() {
         >
           <AutoSettleSettingsRows />
           <BetaSettingsSection />
+          <QuestionSettingsSection />
           <LegacySettingsSection />
         </ScrollView>
       </SettingsScreen>
@@ -295,5 +296,25 @@ function LegacySettingsSection() {
         control; otherwise every task runs in Build mode.
       </Text>
     </View>
+  );
+}
+
+function QuestionSettingsSection() {
+  const preferencesResult = useAtomValue(mobilePreferencesAtom);
+  const savePreferences = useAtomSet(updateMobilePreferencesAtom);
+
+  return (
+    <SettingsSection title="Questions">
+      <SettingsSwitchRow
+        icon="list.number"
+        label="One question at a time"
+        subtitle="Use Back and Next in compact and expanded views. Turn off to scroll through all questions."
+        value={
+          !AsyncResult.isSuccess(preferencesResult) ||
+          preferencesResult.value.questionNavigationEnabled !== false
+        }
+        onValueChange={(value) => savePreferences({ questionNavigationEnabled: value })}
+      />
+    </SettingsSection>
   );
 }

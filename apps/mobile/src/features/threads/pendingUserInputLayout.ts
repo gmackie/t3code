@@ -1,13 +1,5 @@
-const PENDING_USER_INPUT_MAX_HEIGHT = 560;
 const PENDING_USER_INPUT_MIN_HEIGHT = 160;
 const PENDING_USER_INPUT_VERTICAL_GAP = 12;
-
-/**
- * Reserve for a portrait iPhone keyboard with the QuickType bar until a real
- * height has been observed. Overestimating only costs card height; an
- * underestimate would let the card overshoot on the first keyboard open.
- */
-export const ESTIMATED_KEYBOARD_HEIGHT = 336;
 
 /**
  * One clock for the questionnaire expand/collapse choreography: the card's
@@ -30,8 +22,17 @@ export function derivePendingUserInputMaxHeight(input: {
     Math.max(0, input.composerOverlapHeight) -
     PENDING_USER_INPUT_VERTICAL_GAP;
 
+  return Math.max(PENDING_USER_INPUT_MIN_HEIGHT, availableHeight);
+}
+
+/** Keep the compact scroll card clear of the keyboard even before its first open. */
+export function derivePendingUserInputCompactHeight(
+  maxHeight: number,
+  keyboardHeight: number,
+): number {
+  "worklet";
   return Math.min(
-    PENDING_USER_INPUT_MAX_HEIGHT,
-    Math.max(PENDING_USER_INPUT_MIN_HEIGHT, availableHeight),
+    560,
+    Math.max(PENDING_USER_INPUT_MIN_HEIGHT, maxHeight - Math.max(336, keyboardHeight)),
   );
 }
