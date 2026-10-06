@@ -105,8 +105,7 @@ export function PendingUserInputCard(props: PendingUserInputCardProps) {
   const isLastQuestion = activeQuestionIndex === questionCount - 1;
   const preferences = useAtomValue(mobilePreferencesAtom);
   const paginated =
-    !AsyncResult.isSuccess(preferences) ||
-    preferences.value.questionNavigationEnabled !== false;
+    !AsyncResult.isSuccess(preferences) || preferences.value.questionNavigationEnabled !== false;
   const showSubmit = !paginated || isLastQuestion;
   const visibleQuestions = paginated
     ? question
