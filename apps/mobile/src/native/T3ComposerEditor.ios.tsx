@@ -68,6 +68,7 @@ type NativePasteTextEvent = NativeSyntheticEvent<{
 interface NativeComposerEditorRef {
   focus: () => Promise<void>;
   blur: () => Promise<void>;
+  prepareForSubmit: () => Promise<NativeEditorEvent["nativeEvent"]>;
   setSelection: (start: number, end: number) => Promise<void>;
 }
 
@@ -146,17 +147,6 @@ export function ComposerEditor({
   const bodyText = useScaledTextRole("body");
   const theme = useUniwindTheme();
   const fontFamily = useFontFamily("regular");
-
-  useImperativeHandle(
-    ref,
-    () => ({
-      focus: () => void nativeRef.current?.focus(),
-      blur: () => void nativeRef.current?.blur(),
-      setSelection: (nextSelection) =>
-        void nativeRef.current?.setSelection(nextSelection.start, nextSelection.end),
-    }),
-    [],
-  );
 
   const skillLabels = useMemo(
     () => new Map(skills.map((skill) => [skill.name, skill.displayName?.trim() || skill.name])),
@@ -261,6 +251,29 @@ export function ComposerEditor({
       return acknowledgedEventCount;
     },
     [],
+  );
+  useImperativeHandle(
+    ref,
+    () => ({
+      focus: () => void nativeRef.current?.focus(),
+      blur: () => void nativeRef.current?.blur(),
+      prepareForSubmit: async () => {
+        const snapshot = await nativeRef.current?.prepareForSubmit();
+        if (!snapshot) return;
+        const acknowledgedEventCount = acceptNativeEvent(
+          snapshot.eventCount,
+          snapshot.value,
+          snapshot.selection,
+        );
+        if (acknowledgedEventCount === false) return;
+        onChangeText(snapshot.value);
+        onSelectionChange?.(snapshot.selection);
+        setMostRecentEventCount(acknowledgedEventCount);
+      },
+      setSelection: (nextSelection) =>
+        void nativeRef.current?.setSelection(nextSelection.start, nextSelection.end),
+    }),
+    [acceptNativeEvent, onChangeText, onSelectionChange],
   );
   const themeJson = JSON.stringify(createNativeComposerTheme(theme));
   const resolvedTextStyle = StyleSheet.flatten(textStyle) ?? {};

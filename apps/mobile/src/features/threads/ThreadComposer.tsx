@@ -609,6 +609,9 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
       if (inFlightThreadIdsRef.current.has(threadKey)) return;
       inFlightThreadIdsRef.current.add(threadKey);
       try {
+        // UIKit commits its last-word correction when editing ends. Wait for
+        // the native snapshot to reach the draft before any send/save path reads it.
+        await inputRef.current?.prepareForSubmit?.();
         const messageId = await onSendMessage(followUp);
         if (messageId === null) {
           return;
@@ -627,6 +630,7 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
       }
     },
     [
+      inputRef,
       props.draftMessage,
       props.draftAttachments.length,
       onChangeDraftMessage,

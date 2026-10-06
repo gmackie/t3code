@@ -21,6 +21,8 @@ export type ComposerTextPaste = {
 export interface ComposerEditorHandle {
   focus: () => void;
   blur: () => void;
+  /** iOS: commit pending keyboard corrections and synchronize the draft before sending. */
+  prepareForSubmit?: () => Promise<void>;
   setSelection: (selection: ComposerEditorSelection) => void;
 }
 
