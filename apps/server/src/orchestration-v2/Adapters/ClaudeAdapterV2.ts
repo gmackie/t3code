@@ -2591,6 +2591,7 @@ export function makeClaudeQueryOptions(input: {
           harness: "Claude Code",
           agentFeedback,
           runtimePolicy: { cwd: input.cwd, workspace: input.workspace },
+          computerUse: input.mcpServers?.[McpProviderSession.CUA_MCP_SERVER_NAME] !== undefined,
         }) +
           (input.mcpServers?.["t3-code"] === undefined
             ? ""
@@ -2773,6 +2774,7 @@ export function claudeMcpQueryOverrides(input: {
         },
         timeout: CLAUDE_T3_MCP_TOOL_TIMEOUT_MS,
       },
+      ...McpProviderSession.cuaStdioMcpServers(session),
     },
     ...(tools.disabledSkills.length === 0
       ? {}

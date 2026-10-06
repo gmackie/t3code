@@ -246,6 +246,7 @@ export function cursorMcpServers(
         Authorization: session.authorizationHeader,
       },
     },
+    ...McpProviderSession.cuaStdioMcpServers(session),
   };
 }
 
@@ -2945,6 +2946,7 @@ export const makeCursorAdapterV2 = Effect.fn("makeCursorAdapterV2")(function* (
             harness: "Cursor",
             model: turnInput.modelSelection.model,
             runtimePolicy: turnInput.runtimePolicy,
+            computerUse: (yield* mcpSessions.read(turnInput.threadId))?.cuaDriver !== undefined,
           });
           // Resend only on a new/compacted/rewound conversation or when the instructions change.
           const sendRuntimeInstructions = delivered.runtime !== runtimeInstructions;
