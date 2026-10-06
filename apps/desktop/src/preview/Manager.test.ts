@@ -22,6 +22,7 @@ import { TestClock } from "effect/testing";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import * as DesktopEnvironment from "../app/DesktopEnvironment.ts";
+import * as DesktopRendererHistory from "../telemetry/DesktopRendererHistory.ts";
 import * as ElectronWindow from "../electron/ElectronWindow.ts";
 import * as BrowserSession from "./BrowserSession.ts";
 import * as DesktopBrowserHost from "./DesktopBrowserHost.ts";
@@ -234,7 +235,7 @@ vi.mock("electron", () => ({
   },
 }));
 
-const browserSessionLayer = Layer.succeed(
+const layerBrowserSession = Layer.succeed(
   BrowserSession.BrowserSession,
   BrowserSession.BrowserSession.of({
     getPartition: () => Effect.succeed("persist:t3code-preview-test"),
@@ -245,7 +246,7 @@ const browserSessionLayer = Layer.succeed(
   }),
 );
 
-const environmentLayer = Layer.succeed(
+const layerEnvironment = Layer.succeed(
   DesktopEnvironment.DesktopEnvironment,
   DesktopEnvironment.DesktopEnvironment.of({
     browserArtifactsDir: "/tmp/t3/dev/browser-artifacts",
@@ -256,7 +257,7 @@ const environmentLayer = Layer.succeed(
   } as DesktopEnvironment.DesktopEnvironment["Service"]),
 );
 
-const fileSystemLayer = FileSystem.layerNoop({
+const layerFileSystem = FileSystem.layerNoop({
   makeDirectory: (path) =>
     Effect.sync(() => {
       mkdir(path);
@@ -268,10 +269,17 @@ const fileSystemLayer = FileSystem.layerNoop({
 });
 
 const layer = PreviewManager.layer.pipe(
+  Layer.provideMerge(
+    Layer.succeed(DesktopRendererHistory.DesktopRendererHistory, {
+      register: () => Effect.void,
+      recordMetrics: () => Effect.void,
+      shutdown: Effect.void,
+    }),
+  ),
   Layer.provideMerge(DesktopBrowserHost.layer),
-  Layer.provideMerge(browserSessionLayer),
-  Layer.provideMerge(environmentLayer),
-  Layer.provideMerge(fileSystemLayer),
+  Layer.provideMerge(layerBrowserSession),
+  Layer.provideMerge(layerEnvironment),
+  Layer.provideMerge(layerFileSystem),
   Layer.provideMerge(Path.layer),
   Layer.provideMerge(ElectronWindow.layer),
   Layer.provideMerge(Layer.succeed(HostProcessPlatform, "darwin")),

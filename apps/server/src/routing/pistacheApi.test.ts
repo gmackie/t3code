@@ -1,6 +1,6 @@
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
-import { HttpClient, HttpClientResponse } from "effect/unstable/http";
+import { HttpClient, HttpClientResponse } from "effect/http";
 
 import { makePistacheApi } from "./pistacheApi.ts";
 import { metricsFixture, snapshotFixture } from "./pistacheApi.fixture.ts";

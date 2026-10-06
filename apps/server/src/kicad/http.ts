@@ -14,7 +14,7 @@ import {
   HttpServerRequest,
   HttpServerResponse,
   HttpServerRespondable,
-} from "effect/unstable/http";
+} from "effect/http";
 import { authenticateRawRouteWithScope } from "../http.ts";
 
 const KICAD_ROUTE_PREFIX = "/api/kicad";

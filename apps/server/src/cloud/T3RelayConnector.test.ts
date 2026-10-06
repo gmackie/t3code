@@ -643,4 +643,87 @@ describe("T3RelayConnectorSession", () => {
     });
     expect(controls.at(-1)).toEqual({ type: "http_response_end" });
   });
+  it.each(["command", "frame/game-session"])(
+    "preserves Unity %s traffic and viewer authentication",
+    async (path) => {
+      const socket = new TestSocket();
+      const input = JSON.stringify({
+        action: "input",
+        sessionId: "game-session",
+        lease: "lease",
+        sequence: 4,
+        keys: ["RightArrow"],
+        x: 0.5,
+        y: 0.5,
+        button: false,
+        durationMs: 500,
+      });
+      const jpeg = new Uint8Array([255, 216, 255, 224, 0, 255, 217]);
+      let received: Request | undefined;
+      const session = new T3RelayConnectorSession(
+        {
+          connectorUrl: "wss://edge.test/.well-known/t3-relay/connect",
+          connectorToken: "token",
+          originUrl: "http://127.0.0.1:7331/",
+        },
+        () => socket,
+        async (url, init) => {
+          const request = new Request(url, init);
+          if (new URL(request.url).pathname === "/.well-known/t3-relay/connect")
+            return connectorTicketResponse();
+          received = request;
+          return path === "command"
+            ? Response.json({ sequence: 4 })
+            : new Response(jpeg, {
+                headers: { "content-type": "image/jpeg", "cache-control": "no-store" },
+              });
+        },
+      );
+      try {
+        session.start();
+        await waitForConnector();
+        readyConnector(socket);
+        socket.message(
+          encodeRelayTransportControlFrame(12, {
+            type: "http_request_start",
+            method: path === "command" ? "POST" : "GET",
+            url: "https://edge.test/api/game/" + path,
+            headers: [
+              ["x-t3-game-ticket", "viewer-ticket"],
+              ["content-type", "application/json"],
+            ],
+          }),
+        );
+        if (path === "command")
+          socket.message(
+            encodeRelayTransportFrame({
+              kind: RelayTransportFrameKind.httpRequestBody,
+              streamId: 12,
+              endOfMessage: true,
+              payload: new TextEncoder().encode(input),
+            }),
+          );
+        socket.message(encodeRelayTransportControlFrame(12, { type: "http_request_end" }));
+        socket.message(
+          encodeRelayTransportControlFrame(12, { type: "window_update", creditBytes: 65536 }),
+        );
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        expect(received?.url).toBe("http://127.0.0.1:7331/api/game/" + path);
+        expect(received?.headers.get("x-t3-game-ticket")).toBe("viewer-ticket");
+        if (path === "command") expect(await received?.text()).toBe(input);
+        const bytes = socket.sent.flatMap((value) => {
+          const result = decodeRelayTransportFrame(value as Uint8Array);
+          return Result.isSuccess(result) &&
+            result.success.kind === RelayTransportFrameKind.httpResponseBody
+            ? [...result.success.payload]
+            : [];
+        });
+        expect(new Uint8Array(bytes)).toEqual(
+          path === "command" ? new TextEncoder().encode(JSON.stringify({ sequence: 4 })) : jpeg,
+        );
+      } finally {
+        session.close();
+      }
+    },
+  );
 });

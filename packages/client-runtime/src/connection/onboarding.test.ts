@@ -10,7 +10,7 @@ import * as Option from "effect/Option";
 import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
 
-import { remoteHttpClientLayer } from "../rpc/http.ts";
+import * as RpcHttp from "../rpc/http.ts";
 import * as ClientCapabilities from "../platform/capabilities.ts";
 import { SshEnvironmentGateway } from "../platform/capabilities.ts";
 import * as Persistence from "../platform/persistence.ts";
@@ -34,7 +34,7 @@ import * as EnvironmentRegistry from "./registry.ts";
 import * as ConnectionProfileStore from "./profileStore.ts";
 import * as ConnectionWakeups from "./wakeups.ts";
 
-const CLIENT_PRESENTATION_LAYER = Layer.succeed(
+const layerClientPresentation = Layer.succeed(
   ClientCapabilities.ClientPresentation,
   ClientCapabilities.ClientPresentation.of({
     metadata: {
@@ -46,12 +46,13 @@ const CLIENT_PRESENTATION_LAYER = Layer.succeed(
   }),
 );
 
-function pairingHttpLayer(
+function layerPairingHttp(
   calls: Array<{ readonly url: string; readonly init: RequestInit }>,
   options?: {
     readonly failDescriptor?: boolean;
     readonly failExchange?: boolean;
     readonly protocolVersion?: number;
+    readonly selfUpdate?: boolean;
   },
 ) {
   const fetchFn = ((input, init = {}) => {
@@ -110,13 +111,13 @@ function pairingHttpLayer(
     return Promise.reject(new Error(`Unexpected request: ${url}`));
   }) satisfies typeof fetch;
 
-  return remoteHttpClientLayer(fetchFn);
+  return RpcHttp.layerRemoteHttpClient(fetchFn);
 }
 
-function pairingOnboardingLayer(options?: Parameters<typeof pairingHttpLayer>[1]) {
+function layerPairingOnboarding(options?: Parameters<typeof layerPairingHttp>[1]) {
   const dependencies = Layer.mergeAll(
-    CLIENT_PRESENTATION_LAYER,
-    pairingHttpLayer([], options),
+    layerClientPresentation,
+    layerPairingHttp([], options),
     Layer.mock(Persistence.ConnectionTargetStore)({
       list: Effect.succeed([]),
       listDisabled: Effect.succeed([]),
@@ -147,7 +148,7 @@ function pairingOnboardingLayer(options?: Parameters<typeof pairingHttpLayer>[1]
 const PAIRED_ENVIRONMENT_ID = EnvironmentId.make("environment-paired");
 const PAIRING_INPUT = { host: "remote.example.test", pairingCode: "pairing-token" };
 const PAIRED_PROFILE = new BearerConnectionProfile({
-  connectionId: "bearer:environment-paired",
+  connectionId: "bearer:environment-paired:https://remote.example.test",
   environmentId: PAIRED_ENVIRONMENT_ID,
   label: "Paired environment",
   httpBaseUrl: "https://remote.example.test/",
@@ -190,7 +191,7 @@ describe("connection onboarding", () => {
       const registration = yield* preparePairingRegistration({
         host: "remote.example.test",
         pairingCode: "pairing-token",
-      }).pipe(Effect.provide(Layer.mergeAll(CLIENT_PRESENTATION_LAYER, pairingHttpLayer(calls))));
+      }).pipe(Effect.provide(Layer.mergeAll(layerClientPresentation, layerPairingHttp(calls))));
 
       expect(registration).toMatchObject({
         _tag: "BearerConnectionRegistration",
@@ -249,7 +250,7 @@ describe("connection onboarding", () => {
           label: PAIRED_PROFILE.label,
         }),
       );
-    }).pipe(Effect.provide(pairingOnboardingLayer())),
+    }).pipe(Effect.provide(layerPairingOnboarding())),
   );
 
   it.effect("registers an enabled environment on first-time pairing", () =>
@@ -267,7 +268,7 @@ describe("connection onboarding", () => {
       expect(entry?.enabled).toBe(true);
       expect(entry?.unsupportedReason).toBeUndefined();
       expect(entry?.profile).toEqual(Option.some(PAIRED_PROFILE));
-    }).pipe(Effect.provide(pairingOnboardingLayer())),
+    }).pipe(Effect.provide(layerPairingOnboarding())),
   );
 
   it.effect("leaves a switched-off environment unchanged when the pairing exchange fails", () =>
@@ -287,7 +288,7 @@ describe("connection onboarding", () => {
       expect(after).toEqual(before);
       expect(after.get(PAIRED_ENVIRONMENT_ID)?.enabled).toBe(false);
       expect(after.get(PAIRED_ENVIRONMENT_ID)?.unsupportedReason).toBe(UNSUPPORTED_ERROR.message);
-    }).pipe(Effect.provide(pairingOnboardingLayer({ failExchange: true }))),
+    }).pipe(Effect.provide(layerPairingOnboarding({ failExchange: true }))),
   );
 
   it.effect("rejects an incompatible server without consuming the pairing credential", () =>
@@ -299,8 +300,8 @@ describe("connection onboarding", () => {
       }).pipe(
         Effect.provide(
           Layer.mergeAll(
-            CLIENT_PRESENTATION_LAYER,
-            pairingHttpLayer(calls, { protocolVersion: ORCHESTRATION_PROTOCOL_VERSION + 1 }),
+            layerClientPresentation,
+            layerPairingHttp(calls, { protocolVersion: ORCHESTRATION_PROTOCOL_VERSION + 1 }),
           ),
         ),
         Effect.flip,
@@ -320,7 +321,7 @@ describe("connection onboarding", () => {
         pairingCode: "pairing-token",
         expectedEnvironmentId: EnvironmentId.make("some-other-machine"),
       }).pipe(
-        Effect.provide(Layer.mergeAll(CLIENT_PRESENTATION_LAYER, pairingHttpLayer(calls))),
+        Effect.provide(Layer.mergeAll(layerClientPresentation, layerPairingHttp(calls))),
         Effect.flip,
       );
       expect(error).toMatchObject({ reason: "configuration" });
@@ -340,8 +341,8 @@ describe("connection onboarding", () => {
       }).pipe(
         Effect.provide(
           Layer.mergeAll(
-            CLIENT_PRESENTATION_LAYER,
-            pairingHttpLayer(calls, {
+            layerClientPresentation,
+            layerPairingHttp(calls, {
               protocolVersion: ORCHESTRATION_PROTOCOL_VERSION - 1,
               selfUpdate: true,
             }),
@@ -362,8 +363,8 @@ describe("connection onboarding", () => {
       }).pipe(
         Effect.provide(
           Layer.mergeAll(
-            CLIENT_PRESENTATION_LAYER,
-            pairingHttpLayer(calls, { protocolVersion: ORCHESTRATION_PROTOCOL_VERSION - 1 }),
+            layerClientPresentation,
+            layerPairingHttp(calls, { protocolVersion: ORCHESTRATION_PROTOCOL_VERSION - 1 }),
           ),
         ),
         Effect.flip,
@@ -386,8 +387,8 @@ describe("connection onboarding", () => {
       }).pipe(
         Effect.provide(
           Layer.mergeAll(
-            CLIENT_PRESENTATION_LAYER,
-            pairingHttpLayer(calls, { failDescriptor: true }),
+            layerClientPresentation,
+            layerPairingHttp(calls, { failDescriptor: true }),
           ),
         ),
         Effect.flip,
@@ -406,7 +407,7 @@ describe("connection onboarding", () => {
         host: "",
         pairingCode: "",
       }).pipe(
-        Effect.provide(Layer.mergeAll(CLIENT_PRESENTATION_LAYER, pairingHttpLayer(calls))),
+        Effect.provide(Layer.mergeAll(layerClientPresentation, layerPairingHttp(calls))),
         Effect.flip,
       );
 
@@ -432,11 +433,11 @@ describe("connection onboarding", () => {
           target: new BearerConnectionTarget({
             environmentId,
             label: "Old label",
-            connectionId: "bearer:environment-paired",
+            connectionId: "bearer:environment-paired:https://remote.example.test",
           }),
           profile: Option.some(
             new BearerConnectionProfile({
-              connectionId: "bearer:environment-paired",
+              connectionId: "bearer:environment-paired:https://remote.example.test",
               environmentId,
               label: "Old label",
               httpBaseUrl: "http://old.example.test/",
@@ -452,7 +453,7 @@ describe("connection onboarding", () => {
         target: {
           environmentId,
           label: "Renamed environment",
-          connectionId: "bearer:environment-paired",
+          connectionId: "bearer:environment-paired:https://remote.example.test",
         },
         profile: {
           environmentId,

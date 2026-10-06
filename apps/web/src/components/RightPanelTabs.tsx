@@ -16,6 +16,7 @@ import { getTerminalLabel } from "@t3tools/shared/terminalLabels";
 import {
   Smartphone,
   CircuitBoard,
+  Gamepad2,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
@@ -125,6 +126,7 @@ interface RightPanelTabsProps {
   onAddPullRequests: () => void;
   onAddDevice: () => void;
   onAddKiCad?: () => void;
+  onAddGame?: () => void;
   browserAvailable: boolean;
   terminalAvailable: boolean;
   diffAvailable: boolean;
@@ -326,6 +328,7 @@ function RightPanelEmptyState(props: {
   onAddPullRequests: () => void;
   onAddDevice: () => void;
   onAddKiCad?: () => void;
+  onAddGame?: () => void;
   browserAvailable: boolean;
   terminalAvailable: boolean;
   diffAvailable: boolean;
@@ -395,6 +398,15 @@ function RightPanelEmptyState(props: {
       available: props.deviceAvailable,
       disabledReason: SURFACE_UNAVAILABLE_HINTS.device,
       onClick: props.onAddDevice,
+    },
+    {
+      label: "Unity game",
+      description: "View gameplay and monitor exposed variables.",
+      icon: Gamepad2,
+      shortcut: "G",
+      available: props.kicadAvailable ?? false,
+      disabledReason: "Open a project to view Unity gameplay.",
+      onClick: props.onAddGame ?? (() => undefined),
     },
     {
       label: "KiCad",
@@ -614,6 +626,8 @@ function surfaceTitle(
       return "Pull requests";
     case "device":
       return surface.title ?? surface.target?.name ?? "Device";
+    case "game":
+      return "Unity game";
     case "kicad":
       return "KiCad";
     case "preview": {
@@ -697,6 +711,8 @@ function SurfaceIcon({
       );
     case "pull-requests":
       return <PullRequestGlyph.link className="size-3 shrink-0" />;
+    case "game":
+      return <Gamepad2 className="size-3.5 shrink-0" />;
     case "kicad":
       return <CircuitBoard className="size-3.5 shrink-0" />;
     case "device":
@@ -908,6 +924,15 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
       available: props.deviceAvailable,
       disabledReason: SURFACE_DISABLED_REASONS.device,
       onClick: props.onAddDevice,
+    },
+    {
+      label: "Unity game",
+      description: "View gameplay and monitor exposed variables.",
+      icon: Gamepad2,
+      shortcut: "G",
+      available: props.kicadAvailable ?? false,
+      disabledReason: "Open a project to view Unity gameplay.",
+      onClick: props.onAddGame ?? (() => undefined),
     },
     {
       label: "KiCad",
@@ -1399,6 +1424,7 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
             onAddPullRequest={props.onAddPullRequest}
             onAddPullRequests={props.onAddPullRequests}
             onAddDevice={props.onAddDevice}
+            {...(props.onAddGame ? { onAddGame: props.onAddGame } : {})}
             {...(props.onAddKiCad ? { onAddKiCad: props.onAddKiCad } : {})}
             browserAvailable={props.browserAvailable}
             terminalAvailable={props.terminalAvailable}

@@ -3,7 +3,7 @@ import { QuestionAttachments } from "./QuestionAttachments";
 import type { RuntimeRequestId } from "@t3tools/contracts";
 import type { ThreadUserInputQuestion } from "@t3tools/client-runtime/state/thread-requests";
 import { useAtomValue } from "@effect/atom-react";
-import { AsyncResult } from "effect/unstable/reactivity";
+import { AsyncResult } from "effect/reactivity";
 import { useState } from "react";
 import { Keyboard, Platform, Pressable, ScrollView, View } from "react-native";
 import { useReanimatedKeyboardAnimation } from "react-native-keyboard-controller";

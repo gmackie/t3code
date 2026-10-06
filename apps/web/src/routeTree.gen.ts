@@ -11,8 +11,8 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as WelcomeRouteImport } from './routes/welcome'
 import { Route as UsageRouteImport } from './routes/usage'
-import { Route as RoutingRouteImport } from './routes/routing'
 import { Route as SettingsRouteImport } from './routes/settings'
+import { Route as RoutingRouteImport } from './routes/routing'
 import { Route as PairRouteImport } from './routes/pair'
 import { Route as ConnectRouteImport } from './routes/connect'
 import { Route as ChatRouteImport } from './routes/_chat'
@@ -49,14 +49,14 @@ const UsageRoute = UsageRouteImport.update({
   path: '/usage',
   getParentRoute: () => rootRouteImport,
 } as any)
-const RoutingRoute = RoutingRouteImport.update({
-  id: '/routing',
-  path: '/routing',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const SettingsRoute = SettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const RoutingRoute = RoutingRouteImport.update({
+  id: '/routing',
+  path: '/routing',
   getParentRoute: () => rootRouteImport,
 } as any)
 const PairRoute = PairRouteImport.update({
@@ -191,9 +191,9 @@ export interface FileRoutesByFullPath {
   '/': typeof ChatIndexRoute
   '/connect': typeof ConnectRoute
   '/pair': typeof PairRoute
+  '/routing': typeof RoutingRoute
   '/settings': typeof SettingsRouteWithChildren
   '/usage': typeof UsageRoute
-  '/routing': typeof RoutingRoute
   '/welcome': typeof WelcomeRoute
   '/pull-requests': typeof ChatPullRequestsRoute
   '/plugins/$pluginId': typeof PluginsPluginIdRoute
@@ -220,9 +220,9 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/connect': typeof ConnectRoute
   '/pair': typeof PairRoute
+  '/routing': typeof RoutingRoute
   '/settings': typeof SettingsRouteWithChildren
   '/usage': typeof UsageRoute
-  '/routing': typeof RoutingRoute
   '/welcome': typeof WelcomeRoute
   '/pull-requests': typeof ChatPullRequestsRoute
   '/plugins/$pluginId': typeof PluginsPluginIdRoute
@@ -252,9 +252,9 @@ export interface FileRoutesById {
   '/_chat': typeof ChatRouteWithChildren
   '/connect': typeof ConnectRoute
   '/pair': typeof PairRoute
+  '/routing': typeof RoutingRoute
   '/settings': typeof SettingsRouteWithChildren
   '/usage': typeof UsageRoute
-  '/routing': typeof RoutingRoute
   '/welcome': typeof WelcomeRoute
   '/_chat/pull-requests': typeof ChatPullRequestsRoute
   '/plugins/$pluginId': typeof PluginsPluginIdRoute
@@ -285,9 +285,9 @@ export interface FileRouteTypes {
     | '/'
     | '/connect'
     | '/pair'
+    | '/routing'
     | '/settings'
     | '/usage'
-    | '/routing'
     | '/welcome'
     | '/pull-requests'
     | '/plugins/$pluginId'
@@ -314,9 +314,9 @@ export interface FileRouteTypes {
   to:
     | '/connect'
     | '/pair'
+    | '/routing'
     | '/settings'
     | '/usage'
-    | '/routing'
     | '/welcome'
     | '/pull-requests'
     | '/plugins/$pluginId'
@@ -345,9 +345,9 @@ export interface FileRouteTypes {
     | '/_chat'
     | '/connect'
     | '/pair'
+    | '/routing'
     | '/settings'
     | '/usage'
-    | '/routing'
     | '/welcome'
     | '/_chat/pull-requests'
     | '/plugins/$pluginId'
@@ -377,9 +377,9 @@ export interface RootRouteChildren {
   ChatRoute: typeof ChatRouteWithChildren
   ConnectRoute: typeof ConnectRoute
   PairRoute: typeof PairRoute
+  RoutingRoute: typeof RoutingRoute
   SettingsRoute: typeof SettingsRouteWithChildren
   UsageRoute: typeof UsageRoute
-  RoutingRoute: typeof RoutingRoute
   WelcomeRoute: typeof WelcomeRoute
   PluginsPluginIdRoute: typeof PluginsPluginIdRoute
   ProjectsProjectKeyRoute: typeof ProjectsProjectKeyRoute
@@ -401,18 +401,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof UsageRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/routing': {
-      id: '/routing'
-      path: '/routing'
-      fullPath: '/routing'
-      preLoaderRoute: typeof RoutingRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/settings': {
       id: '/settings'
       path: '/settings'
       fullPath: '/settings'
       preLoaderRoute: typeof SettingsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/routing': {
+      id: '/routing'
+      path: '/routing'
+      fullPath: '/routing'
+      preLoaderRoute: typeof RoutingRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/pair': {
@@ -656,9 +656,9 @@ const rootRouteChildren: RootRouteChildren = {
   ChatRoute: ChatRouteWithChildren,
   ConnectRoute: ConnectRoute,
   PairRoute: PairRoute,
+  RoutingRoute: RoutingRoute,
   SettingsRoute: SettingsRouteWithChildren,
   UsageRoute: UsageRoute,
-  RoutingRoute: RoutingRoute,
   WelcomeRoute: WelcomeRoute,
   PluginsPluginIdRoute: PluginsPluginIdRoute,
   ProjectsProjectKeyRoute: ProjectsProjectKeyRoute,

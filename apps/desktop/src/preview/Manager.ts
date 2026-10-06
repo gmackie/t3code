@@ -46,6 +46,7 @@ import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
+import * as Queue from "effect/Queue";
 import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
 import * as Semaphore from "effect/Semaphore";
@@ -56,6 +57,7 @@ import * as SynchronizedRef from "effect/SynchronizedRef";
 
 import * as DesktopEnvironment from "../app/DesktopEnvironment.ts";
 import * as ElectronWindow from "../electron/ElectronWindow.ts";
+import * as DesktopRendererHistory from "../telemetry/DesktopRendererHistory.ts";
 import { PREVIEW_PICTURE_IN_PICTURE_FRAME_CHANNEL } from "../ipc/channels.ts";
 import * as DesktopBrowserHost from "./DesktopBrowserHost.ts";
 import * as BrowserSession from "./BrowserSession.ts";
@@ -544,6 +546,7 @@ const makeNativeOperations = Effect.fn("PreviewManager.makeOperations")(function
   electronWindow: ElectronWindow.ElectronWindow["Service"],
 ) {
   const fileSystem = yield* FileSystem.FileSystem;
+  const rendererHistory = yield* DesktopRendererHistory.DesktopRendererHistory;
   const hostPlatform = yield* HostProcessPlatform;
   const path = yield* Path.Path;
   const parentScope = yield* Scope.Scope;
@@ -1086,6 +1089,25 @@ const makeNativeOperations = Effect.fn("PreviewManager.makeOperations")(function
           const semaphore = yield* Semaphore.make(1);
           const scope = yield* Scope.fork(parentScope, "sequential");
           const wcDebugger = wc.debugger;
+          const consoleReleases = yield* Queue.sliding<void>(1);
+          // Console message eviction does not release the debugger's strong
+          // object handles. We keep text only, so release the whole group,
+          // including its object-id bookkeeping. Coalesce bursts behind one
+          // command rather than queueing a command for every logged object.
+          yield* Effect.forkIn(
+            Effect.forever(
+              Queue.take(consoleReleases).pipe(
+                Effect.andThen(
+                  attemptPromise({ operation: "releaseConsoleObjects", webContentsId: wc.id }, () =>
+                    wcDebugger.sendCommand("Runtime.releaseObjectGroup", {
+                      objectGroup: "console",
+                    }),
+                  ).pipe(Effect.ignore),
+                ),
+              ),
+            ),
+            scope,
+          );
           const handleDebuggerMessage = Effect.fnUntraced(function* (
             method: string,
             params: Record<string, unknown>,
@@ -1745,6 +1767,7 @@ const makeNativeOperations = Effect.fn("PreviewManager.makeOperations")(function
     ) {
       return yield* new PreviewWebContentsNotFoundError({ tabId, webContentsId });
     }
+    yield* rendererHistory.register(wc, { surface: "preview", tabId });
     const attached = yield* Ref.get(attachedRef);
     const annotationTheme = yield* Ref.get(annotationThemeRef);
     const currentAttachment = attached.get(webContentsId);
@@ -1899,6 +1922,7 @@ const makeNativeOperations = Effect.fn("PreviewManager.makeOperations")(function
   const prepareWebview = Effect.fn("PreviewManager.prepareWebview")(function* (
     wc: Electron.WebContents,
   ) {
+    yield* rendererHistory.register(wc, { surface: "preview" });
     const webContentsId = wc.id;
     // A guest destroyed before any tab claims it has no other cleanup path.
     wc.once("destroyed", () => {
@@ -2785,6 +2809,10 @@ const makeNativeOperations = Effect.fn("PreviewManager.makeOperations")(function
                 }),
             ),
           );
+        yield* rendererHistory.register(pictureInPictureWindow.webContents, {
+          surface: "picture-in-picture",
+          tabId,
+        });
         const initializationScope = yield* Scope.fork(parentScope, "sequential");
         const ready = yield* Deferred.make<void, PreviewManagerError>();
         const session: PictureInPictureSession = {

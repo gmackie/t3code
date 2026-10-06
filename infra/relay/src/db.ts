@@ -51,7 +51,7 @@ export const PlanetscaleDatabase = Effect.gen(function* () {
           Effect.succeed({
             name: "t3coderelay",
             region: { slug: "us-west" },
-            clusterSize: "PS_20",
+            clusterSize: "PS_80",
             migrations: { dir: schema.out, table: "relay_migrations" },
             replicas: 2,
           }),
@@ -86,6 +86,6 @@ export const RelayHyperdrive = Effect.gen(function* () {
     caching: {
       disabled: true,
     },
-    originConnectionLimit: 20,
+    originConnectionLimit: 40,
   });
 });

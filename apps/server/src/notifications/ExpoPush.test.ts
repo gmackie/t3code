@@ -23,7 +23,7 @@ import * as ServerEnvironment from "../environment/ServerEnvironment.ts";
 import { v2PullRequestThread } from "../orchestration-v2/testkit/pullRequestFixtures.ts";
 import * as AgentNotificationWorker from "./AgentNotificationWorker.ts";
 import * as TestClock from "effect/testing/TestClock";
-import * as FetchHttpClient from "effect/unstable/http/FetchHttpClient";
+import * as FetchHttpClient from "effect/http/FetchHttpClient";
 import * as ServerSecretStore from "../auth/ServerSecretStore.ts";
 import * as SessionStore from "../auth/SessionStore.ts";
 import * as ExpoPush from "./ExpoPush.ts";

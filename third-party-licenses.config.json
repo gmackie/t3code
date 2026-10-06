@@ -626,6 +626,22 @@
         "licenseId": "MIT",
         "copyrights": ["Copyright (c) 2019-present Fabio Spampinato, Andrew Maney"]
       }
+    },
+    {
+      "name": "@napi-rs/wasm-runtime",
+      "sourceUrl": "https://github.com/napi-rs/napi-rs",
+      "generatedNotice": {
+        "licenseId": "MIT",
+        "copyrights": ["Copyright (c) 2020-present LongYinan"]
+      }
+    },
+    {
+      "name": "@tybys/wasm-util",
+      "sourceUrl": "https://github.com/toyobayashi/wasm-util",
+      "generatedNotice": {
+        "licenseId": "MIT",
+        "copyrights": ["Copyright (c) 2022-present Toyobayashi"]
+      }
     }
   ]
 }

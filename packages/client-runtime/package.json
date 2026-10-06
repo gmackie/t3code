@@ -71,6 +71,14 @@
       "types": "./src/userMessage.ts",
       "default": "./src/userMessage.ts"
     },
+    "./secret-request": {
+      "types": "./src/secretRequest.ts",
+      "default": "./src/secretRequest.ts"
+    },
+    "./scheduled-task-webhook": {
+      "types": "./src/scheduledTaskWebhook.ts",
+      "default": "./src/scheduledTaskWebhook.ts"
+    },
     "./connection": {
       "types": "./src/connection/index.ts",
       "default": "./src/connection/index.ts"
@@ -174,6 +182,10 @@
     "./text-paste": {
       "types": "./src/textPaste.ts",
       "default": "./src/textPaste.ts"
+    },
+    "./webhook-address": {
+      "types": "./src/webhookAddress.ts",
+      "default": "./src/webhookAddress.ts"
     },
     "./delayed-status": {
       "types": "./src/delayedStatus.ts",
@@ -386,6 +398,10 @@
     "./state/plugins": {
       "types": "./src/state/plugins.ts",
       "default": "./src/state/plugins.ts"
+    },
+    "./state/game": {
+      "types": "./src/state/game.ts",
+      "default": "./src/state/game.ts"
     }
   },
   "scripts": {

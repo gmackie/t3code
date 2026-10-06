@@ -3,7 +3,7 @@ import Constants from "expo-constants";
 import * as SecureStore from "expo-secure-store";
 import * as Notifications from "expo-notifications";
 import * as Effect from "effect/Effect";
-import { AsyncResult } from "effect/unstable/reactivity";
+import { AsyncResult } from "effect/reactivity";
 import { useEffect, useLayoutEffect, useRef, useSyncExternalStore } from "react";
 import { AppState, Platform } from "react-native";
 import { makeEnvironmentHttpApiClient } from "@t3tools/client-runtime/rpc";

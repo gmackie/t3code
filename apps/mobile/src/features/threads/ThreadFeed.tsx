@@ -1,5 +1,6 @@
 import { ThreadContextDivider } from "./thread-context-divider";
 import { ThreadHandoffRow } from "./thread-handoff-row";
+import { SecretRequestCard } from "./SecretRequestCard";
 import {
   WorktreeWorkingHeader,
   WorktreeSetupCard,
@@ -162,6 +163,7 @@ import {
   threadFeedRunIsUnsettled,
   isContextCompactionActivityGroup,
   isContextHandoffActivityGroup,
+  isSecretRequestActivityGroup,
   type ThreadFeedEntry,
   type ThreadFeedLatestRun,
 } from "../../lib/threadActivity";
@@ -1621,6 +1623,16 @@ function renderFeedEntry(
     );
   }
 
+  if (entry.type === "activity-group" && isSecretRequestActivityGroup(entry)) {
+    return (
+      <SecretRequestCard
+        environmentId={props.environmentId}
+        projectedItem={entry.activities[0]!.projectedItem}
+        iconColor={iconSubtleColor}
+      />
+    );
+  }
+
   if (entry.type === "activity-group" && isContextCompactionActivityGroup(entry)) {
     const label = entry.activities[0]!.summary;
     const active =
@@ -1949,6 +1961,7 @@ function renderFeedEntry(
       onToggleRow={props.onToggleWorkRow}
       renderImage={props.renderViewedImage}
       renderReasoning={props.renderReasoning}
+      onPressPreview={props.onPressPreview}
     />
   );
 }

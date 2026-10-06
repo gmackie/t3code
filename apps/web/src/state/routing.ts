@@ -15,7 +15,7 @@ import type {
   ThreadId,
 } from "@t3tools/contracts";
 import * as Option from "effect/Option";
-import { AsyncResult, Atom } from "effect/unstable/reactivity";
+import { AsyncResult, Atom } from "effect/reactivity";
 
 import { environmentPresentations } from "./presentation";
 import { serverEnvironment } from "./server";

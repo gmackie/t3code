@@ -12,12 +12,12 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Stream from "effect/Stream";
 
+import * as PreviewAutomationBroker from "../../PreviewAutomationBroker.ts";
 import * as ServerConfig from "../../../config.ts";
 import * as Preview from "../../../preview/Manager.ts";
 import * as ServerSettings from "../../../serverSettings.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
-import * as PreviewAutomationBroker from "../../PreviewAutomationBroker.ts";
-import { PreviewControlsHandlersLive } from "./handlers.ts";
+import * as PreviewControlsHandlers from "./handlers.ts";
 import { PreviewControlsToolkit } from "./tools.ts";
 
 it.effect.each([
@@ -56,8 +56,7 @@ it.effect.each([
         ),
       );
       const tab = yield* manager.open({ threadId, url: "http://localhost:3000" });
-      const dependencies = Layer.mergeAll(
-        PreviewAutomationBroker.layer.pipe(Layer.provide(NodeServices.layer)),
+      const layerDependencies = Layer.mergeAll(
         Layer.succeed(Preview.PreviewManager, manager),
         Layer.succeed(McpInvocationContext.McpInvocationContext, scope),
         Layer.mock(ServerSettings.ServerSettingsService)({
@@ -65,14 +64,14 @@ it.effect.each([
         }),
       );
       const toolkit = yield* PreviewControlsToolkit.pipe(
-        Effect.provide(PreviewControlsHandlersLive.pipe(Layer.provide(dependencies))),
+        Effect.provide(PreviewControlsHandlers.layer.pipe(Layer.provide(layerDependencies))),
       );
       const listed = yield* toolkit
         .handle("t3_preview_list", {})
-        .pipe(Stream.unwrap, Stream.runCollect, Effect.provide(dependencies));
+        .pipe(Stream.unwrap, Stream.runCollect, Effect.provide(layerDependencies));
       const closed = yield* toolkit
         .handle("t3_preview_close", { tabId: tab.tabId })
-        .pipe(Stream.unwrap, Stream.runCollect, Effect.provide(dependencies));
+        .pipe(Stream.unwrap, Stream.runCollect, Effect.provide(layerDependencies));
       if (projectAccess) {
         expect(listed.at(-1)?.result).toMatchObject({ sessions: [tab], nextCursor: null });
         expect(closed.at(-1)?.result).toEqual({});
@@ -88,5 +87,5 @@ it.effect.each([
         expect((yield* manager.list({ threadId })).sessions).toEqual([tab]);
       }
     }),
-  ),
+  ).pipe(Effect.provide(PreviewAutomationBroker.layer), Effect.provide(NodeServices.layer)),
 );

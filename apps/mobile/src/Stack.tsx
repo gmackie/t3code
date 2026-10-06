@@ -1,3 +1,4 @@
+import { GameViewerRouteScreen } from "./features/game/GameViewerRouteScreen";
 import {
   createPathConfigForStaticNavigation,
   getPathFromState,
@@ -741,6 +742,15 @@ const RootStackConfig = createNativeStackNavigator({
       options: {
         ...GLASS_HEADER_OPTIONS,
         title: "Files",
+      },
+    }),
+    GameViewer: createNativeStackScreen({
+      screen: GameViewerRouteScreen,
+      linking: `${THREAD_LINKING_PREFIX}/game`,
+      options: {
+        ...SOLID_HEADER_OPTIONS,
+        gestureEnabled: false,
+        orientation: "all",
       },
     }),
     KiCadViewer: createNativeStackScreen({

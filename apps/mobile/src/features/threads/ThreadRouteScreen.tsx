@@ -117,6 +117,12 @@ function ThreadHeader(
         onPress: filesVisible ? toggleAuxiliaryPane : props.onOpenFilesInspector,
       });
     }
+    if (props.onOpenGame)
+      actions.push({
+        accessibilityLabel: "Open Unity game",
+        icon: "gamecontroller",
+        onPress: props.onOpenGame,
+      });
     if (props.onOpenCad) {
       actions.push({
         accessibilityLabel: "Switch to CAD mode",
@@ -149,6 +155,7 @@ function ThreadHeader(
     panes.auxiliaryPaneVisible,
     props.onOpenFilesInspector,
     props.onOpenCad,
+    props.onOpenGame,
     onOpenTerminal,
     onMergeBack,
     props.onOpenGitInspector,
@@ -552,6 +559,14 @@ function ThreadRouteContent(
     showAuxiliaryPane("inspector");
   }, [fileInspector.supported, navigation, routeThreadIdentity, selectedThread, showAuxiliaryPane]);
   // CAD mode: open the thread's checkout in the KiCad viewer.
+  const handleOpenGame = useCallback(() => {
+    if (selectedThread === null || selectedThreadCwd === null) return;
+    navigation.navigate("GameViewer", {
+      environmentId: String(selectedThread.environmentId),
+      threadId: String(selectedThread.id),
+      cwd: selectedThreadCwd,
+    });
+  }, [navigation, selectedThread, selectedThreadCwd]);
   const handleOpenCad = useCallback(() => {
     if (selectedThread === null || selectedThreadCwd === null) return;
     navigation.navigate("KiCadViewer", {
@@ -1115,7 +1130,9 @@ function ThreadRouteContent(
         onToggleInspector={handleToggleInspector}
         onOpenGitInspector={handleOpenGitInspector}
         onOpenFilesInspector={handleOpenFilesInspector}
-        {...(selectedThreadCwd !== null ? { onOpenCad: handleOpenCad } : {})}
+        {...(selectedThreadCwd !== null
+          ? { onOpenCad: handleOpenCad, onOpenGame: handleOpenGame }
+          : {})}
         onReturnToThread={props.onReturnToThread}
       />
 

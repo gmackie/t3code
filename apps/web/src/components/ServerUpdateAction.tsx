@@ -206,6 +206,7 @@ export function ServerUpdateAction({
   readonly environmentId: EnvironmentId;
   readonly serverLabel: string;
   readonly selfUpdate: ServerSelfUpdateCapability | null;
+  readonly installation?: ServerInstallation | undefined;
   /** The desktop app supervising this server accepts remote update
       requests (capabilities.desktopAppUpdate). */
   readonly desktopAppUpdate?: boolean;

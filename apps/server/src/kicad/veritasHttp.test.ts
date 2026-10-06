@@ -12,7 +12,7 @@ import {
 import * as ConfigProvider from "effect/ConfigProvider";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import { HttpRouter } from "effect/unstable/http";
+import { HttpRouter } from "effect/http";
 import { describe, expect, it } from "vite-plus/test";
 import { EnvironmentAuth } from "../auth/EnvironmentAuth.ts";
 import { ServerConfig } from "../config.ts";

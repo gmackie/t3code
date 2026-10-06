@@ -6,7 +6,9 @@ import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import { PrimaryConnectionTarget, type PreparedConnection } from "../connection/model.ts";
-import { remoteHttpClientLayer } from "../rpc/http.ts";
+import { FetchHttpClient } from "effect/http";
+const remoteHttpClientLayer = (fetch: typeof globalThis.fetch) =>
+  FetchHttpClient.layer.pipe(Layer.provide(Layer.succeed(FetchHttpClient.Fetch, fetch)));
 import { fetchKiCadJson } from "./kicad.ts";
 
 const target = new PrimaryConnectionTarget({
@@ -26,7 +28,7 @@ const prepared: PreparedConnection = {
 const schema = Schema.Struct({ token: Schema.String, expiresAt: Schema.Number });
 
 describe("CAD environment HTTP", () => {
-  it.effect.each([false, true])("mints a workspace viewer session (bearer=%s)", (bearer) =>
+  it.effect.each([false, true])("mints a workspace viewer session with bearer=%s", (bearer) =>
     Effect.gen(function* () {
       const calls: Array<readonly [RequestInfo | URL, RequestInit]> = [];
       const fetchFn = ((request, init) => {

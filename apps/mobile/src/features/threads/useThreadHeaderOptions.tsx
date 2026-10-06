@@ -19,6 +19,7 @@ export function useThreadHeaderOptions(props: {
   readonly gitControls: Parameters<typeof ThreadGitControls>[0];
   readonly onReturnToThread?: () => void;
   /** Opens the thread's checkout in the KiCad viewer; omitted without a checkout. */
+  readonly onOpenGame?: () => void;
   readonly onOpenCad?: () => void;
 }) {
   const navigation = useNavigation();
@@ -41,13 +42,29 @@ export function useThreadHeaderOptions(props: {
         : [],
     [onOpenCad],
   );
+  const onOpenGame = props.onOpenGame;
+  const gameHeaderItems = useMemo<NativeHeaderItems>(
+    () =>
+      onOpenGame
+        ? [
+            withNativeGlassHeaderItem({
+              accessibilityLabel: "Open Unity game",
+              icon: { name: "gamecontroller", type: "sfSymbol" as const },
+              identifier: "thread-right-game",
+              onPress: onOpenGame,
+              type: "button" as const,
+            }),
+          ]
+        : [],
+    [onOpenGame],
+  );
   const splitRightHeaderItems = useMemo(
-    () => [...threadCenterHeaderItems, ...cadHeaderItems],
-    [threadCenterHeaderItems, cadHeaderItems],
+    () => [...threadCenterHeaderItems, ...cadHeaderItems, ...gameHeaderItems],
+    [threadCenterHeaderItems, cadHeaderItems, gameHeaderItems],
   );
   const compactRightHeaderItems = useMemo(
-    () => [...gitRightHeaderItems, ...cadHeaderItems],
-    [gitRightHeaderItems, cadHeaderItems],
+    () => [...gitRightHeaderItems, ...cadHeaderItems, ...gameHeaderItems],
+    [gitRightHeaderItems, cadHeaderItems, gameHeaderItems],
   );
   const splitLeftHeaderItems = useMemo<NativeHeaderItems>(
     () => [
