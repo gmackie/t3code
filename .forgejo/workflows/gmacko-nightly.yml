@@ -592,6 +592,7 @@ jobs:
       - name: Build desktop artifact
         shell: bash
         env:
+          TMPDIR: ${{ matrix.platform == 'mac' && vars.MACOS_BUILD_TMPDIR || '/tmp' }}
           CSC_LINK: ${{ secrets.CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
           APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
@@ -825,6 +826,7 @@ jobs:
       - name: Build desktop artifact
         shell: bash
         env:
+          TMPDIR: ${{ vars.MACOS_BUILD_TMPDIR || '/tmp' }}
           CSC_LINK: ${{ secrets.CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
           APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}

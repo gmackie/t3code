@@ -27,6 +27,13 @@ script header). One-time setup: that keychain, the App IDs `com.gmacko.t3code`, 
 the App Store Connect app record, and an internal TestFlight group with automatic distribution. The
 GMACKO app uses Expo Push Service for ordinary alerts, independently of T3 Connect. Its Expo
 project is [@gmacko/t3-code-gmacko](https://expo.dev/accounts/gmacko/projects/t3-code-gmacko).
+
+Set the Forgejo variables `MACOS_BUILD_TMPDIR` and `IOS_BUILD_TMPDIR` to a directory on a
+mounted APFS volume with room for build intermediates. Do not use ExFAT directly: its AppleDouble
+files can make CocoaPods detect two Xcode projects. On `gmacko-mini`, mount the external build
+image after restarting with `hdiutil attach -nobrowse /Volumes/T9/t3code-build-temp.sparsebundle`;
+both variables point to `/Volumes/T3BuildTemp/tmp`.
+
 Configure the Apple push key for `com.gmacko.t3code` with
 `APP_VARIANT=gmacko eas credentials --platform ios` from `apps/mobile` (select the `gmacko`
 profile). Expo manages delivery credentials; the existing local TestFlight build remains unchanged.
