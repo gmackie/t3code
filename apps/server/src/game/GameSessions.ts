@@ -58,6 +58,11 @@ export class GameSessions extends Context.Service<
       threadId: ThreadId,
       request: GameRequest,
     ) => Effect.Effect<unknown, UnityHookError>;
+    readonly video: (
+      ticket: string,
+      sessionId: string,
+      after?: string,
+    ) => Effect.Effect<Uint8Array, UnityHookError>;
     readonly frame: (
       ticket: string,
       sessionId: string,
@@ -256,7 +261,21 @@ const make = Effect.gen(function* () {
       },
     };
   });
+  const video = Effect.fn("GameSessions.video")(function* (
+    token: string,
+    id: string,
+    after?: string,
+  ) {
+    const session = yield* getSession(token, id);
+    if (after !== undefined && !/^[0-9]{0,20}$/.test(after))
+      return yield* new UnityHookError({
+        code: "invalid_request",
+        reason: "Invalid frame sequence.",
+      });
+    return yield* transport.video(session.bridge, after);
+  });
   return GameSessions.of({
+    video,
     ticket,
     request,
     agentRequest,

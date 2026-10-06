@@ -124,6 +124,25 @@ export const layer = Layer.unwrap(
       ),
       HttpRouter.add(
         "GET",
+        "/api/game/video/:sessionId",
+        handled(
+          Effect.gen(function* () {
+            const request = yield* HttpServerRequest.HttpServerRequest;
+            const { sessionId } = yield* HttpRouter.params;
+            const service = yield* GameSessions.GameSessions;
+            return HttpServerResponse.uint8Array(
+              yield* service.video(
+                ticket(request),
+                sessionId ?? "",
+                new URL(request.url, "http://localhost").searchParams.get("after") ?? "",
+              ),
+              { contentType: "application/octet-stream", headers: { "Cache-Control": "no-store" } },
+            );
+          }),
+        ),
+      ),
+      HttpRouter.add(
+        "GET",
         "/api/game/frame/:sessionId",
         handled(
           Effect.gen(function* () {

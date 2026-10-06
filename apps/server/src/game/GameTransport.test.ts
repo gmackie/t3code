@@ -62,3 +62,25 @@ it.effect("returns JPEG bytes and rejects over-limit bodies while reading", () =
     expect((yield* transport.frame(bridge).pipe(Effect.flip)).code).toBe("output_limit");
   }).pipe(Effect.provide(GameTransport.layer), Effect.scoped),
 );
+
+it.effect("keeps encoded frame bytes intact and uses the authenticated video route", () =>
+  Effect.gen(function* () {
+    const bytes = new Uint8Array([0, 0, 0, 0, 0, 0, 0, 9, 0, 0, 0, 1, 103, 66, 0, 31]);
+    const instance = yield* server((request, response) => {
+      expect(request.url).toBe("/video?after=");
+      expect(request.headers.authorization).toBe("Bearer video-token");
+      response.end(bytes);
+    });
+    const address = instance.address();
+    if (!address || typeof address === "string") throw new Error("No port");
+    const transport = yield* GameTransport.GameTransport;
+    expect(
+      yield* transport.video({
+        generation: "g",
+        port: address.port,
+        token: "video-token",
+        protocol: 1,
+      }),
+    ).toEqual(bytes);
+  }).pipe(Effect.provide(GameTransport.layer), Effect.scoped),
+);

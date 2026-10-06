@@ -10,17 +10,21 @@ export class GameTransport extends Context.Service<
       bridge: UnityBridgeConnection,
       input: unknown,
     ) => Effect.Effect<unknown, UnityHookError>;
+    readonly video: (
+      bridge: UnityBridgeConnection,
+      after?: string,
+    ) => Effect.Effect<Uint8Array, UnityHookError>;
     readonly frame: (bridge: UnityBridgeConnection) => Effect.Effect<Uint8Array, UnityHookError>;
   }
 >()("t3/game/GameTransport") {}
 const object = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null;
 const make = Effect.sync(() => {
-  const request = (bridge: UnityBridgeConnection, input?: unknown) =>
+  const request = (bridge: UnityBridgeConnection, input?: unknown, media = "frame") =>
     Effect.tryPromise({
       try: async (signal) => {
         const response = await fetch(
-          `http://127.0.0.1:${bridge.port}/${input === undefined ? "frame" : "command"}`,
+          `http://127.0.0.1:${bridge.port}/${input === undefined ? media : "command"}`,
           {
             method: input === undefined ? "GET" : "POST",
             headers: {
@@ -114,6 +118,11 @@ const make = Effect.sync(() => {
             }),
     });
   });
-  return GameTransport.of({ command, frame: (bridge) => request(bridge) });
+  return GameTransport.of({
+    command,
+    frame: (bridge) => request(bridge),
+    video: (bridge, after) =>
+      request(bridge, undefined, "video?after=" + encodeURIComponent(after ?? "")),
+  });
 });
 export const layer = Layer.effect(GameTransport, make);

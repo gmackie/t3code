@@ -71,3 +71,15 @@ but can be lost when the target reloads or exits. Rediscover the target after a
 reload instead of silently resubmitting work.
 
 The same operations are available from `t3 unity-command '<request JSON>'`.
+
+## Video and controllers
+
+On macOS, build the game package’s optional VideoToolbox plugin with its
+`Native/build-macos.sh` script before importing or building the Unity project.
+The viewer uses H.264 when the target and browser support it, with JPEG fallback.
+Actual frame rate depends on the game’s rendering cadence and host load.
+
+Enable **Gamepad** to pass a connected standard controller to Unity. Use **Drag
+to look** for touch or mouse camera movement, or **Lock pointer** on desktop.
+Input requires control ownership; backgrounding or releasing the viewer clears
+held controls. The project must use Unity’s Input System or provide an adapter.

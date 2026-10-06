@@ -41,6 +41,7 @@ function fixture(calls: Record<string, unknown>[] = [], wrongTarget = false) {
           command: () => Effect.die("Not used"),
         }),
         Layer.succeed(GameTransport.GameTransport, {
+          video: () => Effect.succeed(new Uint8Array([0, 0, 1, 7])),
           frame: () => Effect.succeed(new Uint8Array([1, 2])),
           command: (_, input) => {
             const value = input as Record<string, unknown>;
@@ -75,6 +76,8 @@ it.effect("isolates viewer sessions and never exposes bridge credentials", () =>
     const error = yield* service.frame(b.token, id).pipe(Effect.flip);
     expect(error.code).toBe("session_missing");
     expect(yield* service.frame(a.token, id)).toEqual(new Uint8Array([1, 2]));
+    expect(yield* service.video(a.token, id)).toEqual(new Uint8Array([0, 0, 1, 7]));
+    expect((yield* service.video(b.token, id).pipe(Effect.flip)).code).toBe("session_missing");
     expect(
       JSON.stringify(
         yield* service.request(a.token, { action: "state", sessionId: id, afterSequence: 0 }),
