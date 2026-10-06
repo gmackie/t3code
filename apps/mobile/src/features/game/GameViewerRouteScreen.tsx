@@ -62,11 +62,30 @@ export function GameViewerRouteScreen({ route }: Props) {
   const { cwd } = route.params;
   const environmentId = EnvironmentId.make(route.params.environmentId);
   const connection = usePreparedConnection(environmentId);
+  const [lastEndpoint, setLastEndpoint] = useState<{
+    environmentId: EnvironmentId;
+    httpBaseUrl: string;
+  } | null>(null);
+  const viewerEndpoint =
+    lastEndpoint?.environmentId === environmentId ? lastEndpoint.httpBaseUrl : null;
+  // A WebSocket wakeup briefly clears the prepared connection. The viewer has
+  // its own HTTP ticket and must stay mounted to retain its target and history.
+  if (
+    Option.isSome(connection) &&
+    (lastEndpoint?.environmentId !== environmentId ||
+      lastEndpoint.httpBaseUrl !== connection.value.httpBaseUrl)
+  ) {
+    setLastEndpoint({ environmentId, httpBaseUrl: connection.value.httpBaseUrl });
+  }
   const mintSession = useAtomQueryRunner(gameState.session, {
     refresh: true,
     reportFailure: false,
   });
-  const [session, setSession] = useState<{ token: string; expiresAt: number } | null>(null);
+  const [session, setSession] = useState<{
+    token: string;
+    expiresAt: number;
+    httpBaseUrl: string;
+  } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
   const [progress, setProgress] = useState(0);
@@ -86,7 +105,7 @@ export function GameViewerRouteScreen({ route }: Props) {
     const controller = new AbortController();
     setSession(null);
     setError(null);
-    if (Option.isNone(connection)) {
+    if (!viewerEndpoint) {
       setError("Reconnect to this environment to open the Game viewer.");
       return () => controller.abort();
     }
@@ -94,14 +113,14 @@ export function GameViewerRouteScreen({ route }: Props) {
       .then((result) => {
         if (controller.signal.aborted) return;
         if (result._tag === "Failure") throw squashAtomCommandFailure(result);
-        setSession(result.value);
+        setSession({ ...result.value, httpBaseUrl: viewerEndpoint });
       })
       .catch((cause: unknown) => {
         if (!controller.signal.aborted)
           setError(cause instanceof Error ? cause.message : "Unable to open the Game viewer.");
       });
     return () => controller.abort();
-  }, [connection, cwd, environmentId, mintSession, refreshKey, route.params.threadId]);
+  }, [viewerEndpoint, cwd, environmentId, mintSession, refreshKey, route.params.threadId]);
 
   useEffect(() => {
     if (!session) return;
@@ -111,11 +130,11 @@ export function GameViewerRouteScreen({ route }: Props) {
   }, [retry, session]);
 
   const viewerUrl = useMemo(() => {
-    if (!session || Option.isNone(connection)) return null;
-    const url = new URL(`${connection.value.httpBaseUrl.replace(/\/$/, "")}/api/game/viewer`);
+    if (!session || !viewerEndpoint) return null;
+    const url = new URL(`${session.httpBaseUrl.replace(/\/$/, "")}/api/game/viewer`);
     url.hash = new URLSearchParams({ ticket: session.token }).toString();
     return url.toString();
-  }, [connection, session]);
+  }, [viewerEndpoint, session]);
   const viewerOrigin = useMemo(() => (viewerUrl ? new URL(viewerUrl).origin : null), [viewerUrl]);
   return (
     <View className="flex-1 bg-sheet">
