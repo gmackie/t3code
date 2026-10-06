@@ -5,9 +5,12 @@ import { build } from "vite-plus";
 
 const mobileRoot = NodePath.resolve(NodePath.dirname(NodeURL.fileURLToPath(import.meta.url)), "..");
 
-/** Metro embeds each shared browser transport as a small script in a native WebView. */
-async function generateWebViewScript(feature: string, name: string) {
-  const stem = `${name.toLowerCase()}-stream`;
+/** Metro embeds browser-only code as a self-contained script in a native WebView. */
+async function generateWebViewScript(
+  feature: string,
+  name: string,
+  stem = `${name.toLowerCase()}-stream`,
+) {
   const result = await build({
     configFile: false,
     logLevel: "silent",
@@ -41,3 +44,5 @@ async function generateWebViewScript(feature: string, name: string) {
 
 export const generateDeviceStreamScript = () => generateWebViewScript("devices", "Device");
 export const generatePreviewStreamScript = () => generateWebViewScript("browser", "Preview");
+
+export const generateMermaidScript = () => generateWebViewScript("threads", "Mermaid", "mermaid");

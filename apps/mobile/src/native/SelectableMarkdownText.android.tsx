@@ -5,6 +5,7 @@ import {
 import { useMemo } from "react";
 
 import { highlightCodeSnippet } from "../features/review/shikiReviewHighlighter";
+import { renderMermaidCodeBlock } from "../features/threads/MermaidCodeBlock";
 import { themeColorWithAlpha } from "../lib/mobileTheme";
 import { useUniwindTheme } from "../lib/useUniwindTheme";
 
@@ -35,6 +36,7 @@ export function SelectableMarkdownText(props: MobileSelectableMarkdownTextProps)
       {...props}
       textStyle={textStyle}
       highlightCode={highlightCodeSnippet}
+      renderCodeBlock={renderMermaidCodeBlock}
     />
   );
 }

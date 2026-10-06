@@ -74,6 +74,8 @@
     "@tabler/icons-react-native": "^3.44.0",
     "clsx": "^2.1.1",
     "diff": "8.0.3",
+    "dompurify": "^3.4.16",
+    "mermaid": "^11.17.2",
     "effect": "catalog:",
     "expo": "58.0.2",
     "expo-asset": "~58.0.10",
