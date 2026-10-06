@@ -54,7 +54,7 @@ type GameWebViewProps = {
 };
 
 // react-native-webview's props collapse to `never` against this React Native
-// types combo after the upstream rebase. The CAD viewer still needs them.
+// types combo after the upstream rebase. The Game viewer still needs them.
 const GameWebView = WebView as unknown as ComponentType<GameWebViewProps>;
 
 export function GameViewerRouteScreen({ route }: Props) {
@@ -74,8 +74,9 @@ export function GameViewerRouteScreen({ route }: Props) {
 
   useEffect(() => {
     const subscription = AppState.addEventListener("change", (state) => {
-      if (state !== "active")
-        webViewRef.current?.injectJavaScript("window.dispatchEvent(new Event('blur')); true;");
+      webViewRef.current?.injectJavaScript(
+        `window.dispatchEvent(new CustomEvent('t3-game-visibility', { detail: ${state === "active"} })); true;`,
+      );
     });
     return () => subscription.remove();
   }, []);
@@ -160,6 +161,9 @@ export function GameViewerRouteScreen({ route }: Props) {
           onLoadStart={() => setProgress(0.05)}
           onLoadEnd={() => {
             setProgress(0);
+            webViewRef.current?.injectJavaScript(
+              `window.dispatchEvent(new CustomEvent('t3-game-visibility', { detail: ${AppState.currentState === "active"} })); true;`,
+            );
           }}
           onHttpError={(event) => {
             if (event.nativeEvent.url.split("#")[0] !== viewerUrl.split("#")[0]) return;
