@@ -52,7 +52,8 @@ export function GameProjectPanel({
     <iframe
       title="Unity game viewer"
       src={url.toString()}
-      sandbox="allow-scripts allow-same-origin"
+      sandbox="allow-scripts allow-same-origin allow-pointer-lock"
+      allow="gamepad"
       referrerPolicy="no-referrer"
       className="h-full w-full border-0"
     />

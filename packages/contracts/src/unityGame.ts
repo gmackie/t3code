@@ -30,6 +30,40 @@ export const GameRequest = Schema.Union([
     x: Schema.Number.check(Schema.isBetween({ minimum: 0, maximum: 1 })),
     y: Schema.Number.check(Schema.isBetween({ minimum: 0, maximum: 1 })),
     button: Schema.Boolean,
+    look: Schema.optional(
+      Schema.Struct({
+        x: Schema.Finite.check(Schema.isBetween({ minimum: -1000, maximum: 1000 })),
+        y: Schema.Finite.check(Schema.isBetween({ minimum: -1000, maximum: 1000 })),
+      }),
+    ),
+    gamepad: Schema.optional(
+      Schema.Struct({
+        leftX: Schema.Finite.check(Schema.isBetween({ minimum: -1, maximum: 1 })),
+        leftY: Schema.Finite.check(Schema.isBetween({ minimum: -1, maximum: 1 })),
+        rightX: Schema.Finite.check(Schema.isBetween({ minimum: -1, maximum: 1 })),
+        rightY: Schema.Finite.check(Schema.isBetween({ minimum: -1, maximum: 1 })),
+        leftTrigger: Schema.Finite.check(Schema.isBetween({ minimum: 0, maximum: 1 })),
+        rightTrigger: Schema.Finite.check(Schema.isBetween({ minimum: 0, maximum: 1 })),
+        buttons: Schema.Array(
+          Schema.Literals([
+            "South",
+            "East",
+            "West",
+            "North",
+            "LeftShoulder",
+            "RightShoulder",
+            "LeftStick",
+            "RightStick",
+            "Start",
+            "Select",
+            "DpadUp",
+            "DpadDown",
+            "DpadLeft",
+            "DpadRight",
+          ]),
+        ).check(Schema.isMaxLength(14)),
+      }),
+    ),
     durationMs: Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 1000 })),
   }),
   Schema.Struct({

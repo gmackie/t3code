@@ -6,6 +6,15 @@ it("pauses frames and releases input on native background, resuming without reac
   const listeners = new Map<string, (event?: { detail: boolean }) => void>();
   const elements = new Map<string, Record<string, unknown>>();
   const requests: string[] = [];
+  const packets: Record<string, unknown>[] = [];
+  let heartbeat: () => Promise<void> = async () => {};
+  const pad = {
+    connected: true,
+    mapping: "standard",
+    axes: [0.5, -0.25, 0.03, -0.75],
+    buttons: Array.from({ length: 16 }, (_, i) => ({ pressed: i === 0, value: i === 6 ? 0.4 : 0 })),
+  };
+  let connected = true;
   const timers: Array<() => Promise<void>> = [];
   const element = (id: string) => {
     if (!elements.has(id))
@@ -19,6 +28,7 @@ it("pauses frames and releases input on native background, resuming without reac
     return elements.get(id)!;
   };
   const context = {
+    navigator: { getGamepads: () => (connected ? [pad] : []) },
     document: {
       hidden: false,
       getElementById: element,
@@ -42,7 +52,10 @@ it("pauses frames and releases input on native background, resuming without reac
     },
     URLSearchParams,
     AbortSignal,
-    setInterval: () => 1,
+    setInterval: (callback: () => Promise<void>) => {
+      heartbeat = callback;
+      return 1;
+    },
     clearInterval() {},
     setTimeout: (callback: () => Promise<void>) => {
       timers.push(callback);
@@ -54,6 +67,7 @@ it("pauses frames and releases input on native background, resuming without reac
         ? JSON.parse(options.body).action
         : url.pathname.split("/").at(-1);
       requests.push(action);
+      if (options.body) packets.push(JSON.parse(options.body));
       const data =
         action === "config"
           ? { canOperate: true, cwd: "/fixture" }
@@ -77,6 +91,20 @@ it("pauses frames and releases input on native background, resuming without reac
   await drain();
   await (element("take").onclick as () => Promise<void>)();
   expect(element("owner").textContent).toBe("You control input");
+  element("useGamepad").checked = true;
+  await heartbeat();
+  expect(packets.at(-1)?.gamepad).toEqual({
+    leftX: 0.5,
+    leftY: 0.25,
+    rightX: 0,
+    rightY: 0.75,
+    leftTrigger: 0.4,
+    rightTrigger: 0,
+    buttons: ["South"],
+  });
+  connected = false;
+  await heartbeat();
+  expect(packets.at(-1)).not.toHaveProperty("gamepad");
   listeners.get("t3-game-visibility")!({ detail: false });
   await drain();
   expect(requests).toContain("release");
