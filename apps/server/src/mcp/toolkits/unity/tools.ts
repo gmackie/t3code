@@ -1,6 +1,8 @@
 import * as GameSessions from "../../../game/GameSessions.ts";
 import {
   GameRequest,
+  UnityCommandRequest,
+  UnityCommandResult,
   OrchestratorMcpFailure,
   UnityHookRequest,
   UnityHookResult,
@@ -12,6 +14,21 @@ import * as ThreadManagement from "../../../orchestration-v2/ThreadManagementSer
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
 
 export const UnityToolkit = Toolkit.make(
+  Tool.make("unity_command", {
+    description:
+      "Discover Unity commands and named gameplay actions, submit detached command jobs, inspect status, or request cancellation. Always specify an Editor project or development Player port file. Start with catalog; command parameters follow the returned schema (JSON parameters are strings). Submit returns acceptance, not completion; use status and inspect the engine result before reporting success. Cancellation is a request and may not stop engine work. Jobs are owned by Unity and survive T3 reconnects; retain the job ID and target. Requires full access.",
+    parameters: Schema.Struct({ request: UnityCommandRequest }),
+    success: UnityCommandResult,
+    failure: OrchestratorMcpFailure,
+    dependencies: [
+      UnityHooks.UnityHooks,
+      McpInvocationContext.McpInvocationContext,
+      ThreadManagement.ThreadManagementService,
+    ],
+  })
+    .annotate(Tool.Readonly, false)
+    .annotate(Tool.Destructive, true)
+    .annotate(Tool.Idempotent, false),
   Tool.make("unity_game", {
     description:
       "Open an Editor or development Player game session, acquire expiring agent input control, send normalized pointer and held keys, monitor/write exposed hooks, release/close, or publish an inline HTML observation report. Requires the Pipeline game package. Start with open and target. Session IDs and leases belong to this thread. Input expires after durationMs (at most 1000); control expires after 1500ms without input. Humans can take over; never retry after control_lost without asking the user. For report, render the returned htmlRender reference using the inline HTML reply convention.",

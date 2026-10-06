@@ -38,6 +38,7 @@ function fixture(calls: Record<string, unknown>[] = [], wrongTarget = false) {
               protocol: 1,
             }),
           execute: () => Effect.die("Not used"),
+          command: () => Effect.die("Not used"),
         }),
         Layer.succeed(GameTransport.GameTransport, {
           frame: () => Effect.succeed(new Uint8Array([1, 2])),

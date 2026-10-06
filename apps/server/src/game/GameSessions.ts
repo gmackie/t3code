@@ -133,6 +133,7 @@ const make = Effect.gen(function* () {
         code: "read_only",
         reason: "This environment connection cannot control gameplay.",
       });
+    if (input.action === "cli") return yield* hooks.command(input.request);
     if (input.action === "open") {
       if ([...sessions.values()].filter((s) => s.viewer === token).length >= 4)
         return yield* new UnityHookError({

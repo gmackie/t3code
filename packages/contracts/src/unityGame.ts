@@ -1,5 +1,6 @@
 import * as Schema from "effect/Schema";
 import { UnityTarget, UnityHookCatalog, UnityHookWatch, UnityHookValue } from "./unityHooks.ts";
+import { UnityCommandRequest } from "./unityCommand.ts";
 import { ThreadId } from "./baseSchemas.ts";
 
 const Id = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(128));
@@ -10,6 +11,7 @@ export const GameViewerTicket = Schema.Struct({
   canOperate: Schema.Boolean,
 });
 export const GameRequest = Schema.Union([
+  Schema.Struct({ action: Schema.Literal("cli"), request: UnityCommandRequest }),
   Schema.Struct({ action: Schema.Literal("open"), target: UnityTarget }),
   Schema.Struct({
     action: Schema.Literal("state"),

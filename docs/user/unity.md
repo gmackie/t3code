@@ -55,3 +55,19 @@ shared viewer monitor. **Save report** stores an HTML snapshot and displays it
 beneath the live view. Agents use `unity_game` for the same sessions, expiring
 controls and reports, use `unity_game_snapshot` to see the latest frame, and can include the report in [visual replies](html-renders.md).
 Disconnect before changing to a different target or after a Play Mode reload.
+
+## Commands and jobs
+
+Ask the agent to discover commands with `unity_command` and `action: "catalog"`.
+The catalog includes project-defined actions registered with `GmackoCommand` and
+Editor operations supported by the installed Pipeline package. Vector hooks use
+numeric arrays of two to four components; enum hooks use a discovered choice name.
+
+Submit a command with `action: "submit"`, its name, parameters and an explicit
+target. Retain the returned job ID and use `status` to inspect completion and the
+engine result. `cancel` requests cancellation; a completed or non-cancellable
+engine operation may still take effect. Jobs remain in Unity across T3 reconnects
+but can be lost when the target reloads or exits. Rediscover the target after a
+reload instead of silently resubmitting work.
+
+The same operations are available from `t3 unity-command '<request JSON>'`.

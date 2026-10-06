@@ -128,6 +128,7 @@ it.effect("production mcp layer lists worktree tools over http", () =>
       expect(toolNames).toContain("preview_status");
       expect(toolNames).toContain("delegate_task");
       expect(toolNames).toContain("unity_game");
+      expect(toolNames).toContain("unity_command");
       expect(toolNames).toContain("unity_game_snapshot");
 
       // The handoff tool mutates thread state, reaches the network (origin

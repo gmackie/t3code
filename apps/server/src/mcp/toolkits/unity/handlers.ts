@@ -7,6 +7,25 @@ import { readFullAccessCaller } from "../../threadAccess.ts";
 import { UnityToolkit, UnitySnapshotToolkit } from "./tools.ts";
 
 export const layer = UnityToolkit.toLayer({
+  unity_command: ({ request }) =>
+    Effect.gen(function* () {
+      const { scope } = yield* readFullAccessCaller(
+        "Unity commands require a full-access agent in default mode.",
+      );
+      yield* McpInvocationContext.requireThreadScope(scope, "unity_command");
+      const unity = yield* UnityHooks.UnityHooks;
+      return yield* unity
+        .command(request)
+        .pipe(
+          Effect.mapError(
+            (error) =>
+              new OrchestratorMcpFailure({
+                code: "orchestration_error",
+                message: `${error.code}: ${error.message}`,
+              }),
+          ),
+        );
+    }),
   unity_game: ({ request }) =>
     Effect.gen(function* () {
       const { scope } = yield* readFullAccessCaller(

@@ -1,8 +1,9 @@
 import { expect, it } from "vite-plus/test";
 import * as Schema from "effect/Schema";
 import { UnityHookRequest, UnityHookCatalog } from "./unityHooks";
+const decode = Schema.decodeUnknownSync(UnityHookRequest);
+const decodeCatalog = Schema.decodeUnknownSync(UnityHookCatalog);
 it("accepts bounded vector writes and rejects malformed vector values", () => {
-  const decode = Schema.decodeUnknownSync(UnityHookRequest);
   const request = {
     action: "write",
     target: { kind: "editor", projectPath: "/fixture" },
@@ -25,7 +26,7 @@ it("retains enum choices and vector dimensions in discovery", () => {
     minimum: null,
     maximum: null,
   };
-  const result = Schema.decodeUnknownSync(UnityHookCatalog)({
+  const result = decodeCatalog({
     schema: "gmacko.agent-hooks/v1",
     generation: "g",
     target: "player",

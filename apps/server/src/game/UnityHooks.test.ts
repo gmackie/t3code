@@ -19,6 +19,85 @@ const request = {
 } as const;
 const envelope = (data: unknown) =>
   JSON.stringify({ success: true, data: { result: { ok: true, data } } });
+
+it.effect("submits detached jobs with command parameters isolated from target flags", () =>
+  Effect.gen(function* () {
+    const calls: ProcessRunner.ProcessRunInput[] = [];
+    const service = yield* UnityHooks.UnityHooks.pipe(
+      Effect.provide(
+        layer(
+          JSON.stringify({
+            success: true,
+            data: { jobId: "job1", state: "queued", detached: true },
+          }),
+          calls,
+        ),
+      ),
+    );
+    const result = yield* service.command({
+      action: "submit",
+      target,
+      command: "respawn",
+      parameters: { "project-path": "/other", message: "$(touch /tmp/nope)" },
+    });
+    expect(result).toMatchObject({ action: "job", state: "queued" });
+    expect(calls[0]?.args).toEqual([
+      "command",
+      "respawn",
+      "--detach",
+      "--project-path",
+      target.projectPath,
+      "--json",
+      "--no-banner",
+      "--non-interactive",
+      "--",
+      "--project-path",
+      "/other",
+      "--message",
+      "$(touch /tmp/nope)",
+    ]);
+  }),
+);
+
+it.effect("retains completion and engine failure when cancellation was only requested", () =>
+  Effect.gen(function* () {
+    const calls: ProcessRunner.ProcessRunInput[] = [];
+    const data = {
+      jobId: "job1",
+      state: "completed",
+      cancellationRequested: true,
+      result: { success: false, error: "Compile failed" },
+    };
+    const service = yield* UnityHooks.UnityHooks.pipe(
+      Effect.provide(layer(JSON.stringify({ success: true, data }), calls)),
+    );
+    expect(yield* service.command({ action: "cancel", target, jobId: "job1" })).toEqual({
+      action: "job",
+      ...data,
+    });
+    expect(calls[0]?.args?.slice(0, 3)).toEqual(["job", "cancel", "job1"]);
+  }),
+);
+
+it.effect("rejects missing targets and malformed job responses", () =>
+  Effect.gen(function* () {
+    const calls: ProcessRunner.ProcessRunInput[] = [];
+    const service = yield* UnityHooks.UnityHooks.pipe(Effect.provide(layer("{}", calls)));
+    expect(
+      (yield* service
+        .command({
+          action: "status",
+          target: { kind: "editor", projectPath: "relative" },
+          jobId: "job1",
+        })
+        .pipe(Effect.flip)).code,
+    ).toBe("invalid_target");
+    expect(calls).toHaveLength(0);
+    expect(
+      (yield* service.command({ action: "status", target, jobId: "job1" }).pipe(Effect.flip)).code,
+    ).toBe("command_failed");
+  }),
+);
 function layer(stdout: string, calls: ProcessRunner.ProcessRunInput[], code = 0) {
   return UnityHooks.layer.pipe(
     Layer.provide(
@@ -136,5 +215,27 @@ it.effect("rejects invalid watch bounds and relative target paths before spawnin
         .pipe(Effect.flip)).code,
     ).toBe("invalid_target");
     expect(calls).toHaveLength(0);
+  }),
+);
+
+it.effect("bounds catalog output and keeps pagination pinned to the chosen target", () =>
+  Effect.gen(function* () {
+    const calls: ProcessRunner.ProcessRunInput[] = [];
+    const service = yield* UnityHooks.UnityHooks.pipe(
+      Effect.provide(
+        layer(
+          JSON.stringify({
+            success: true,
+            data: { commands: [{ name: "damage" }, { name: "respawn" }] },
+          }),
+          calls,
+        ),
+      ),
+    );
+    expect(
+      yield* service.command({ action: "catalog", target, query: "game", offset: 5, limit: 1 }),
+    ).toEqual({ action: "catalog", offset: 5, commands: [{ name: "damage" }] });
+    expect(calls[0]?.args).toContain("--offset");
+    expect(calls[0]?.args).toContain("5");
   }),
 );

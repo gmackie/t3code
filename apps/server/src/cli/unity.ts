@@ -1,4 +1,4 @@
-import { UnityHookRequest } from "@t3tools/contracts";
+import { UnityCommandRequest, UnityHookRequest } from "@t3tools/contracts";
 import * as Console from "effect/Console";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -20,6 +20,21 @@ export const unityCommand = Command.make("unity-hooks", {
       const hooks = yield* UnityHooks.UnityHooks;
       const result = yield* hooks.execute(yield* decodeRequest(request));
       yield* Console.log(JSON.stringify(result));
+    }).pipe(Effect.provide(UnityHooks.layer.pipe(Layer.provide(ProcessRunner.layer)))),
+  ),
+);
+
+const decodeCommand = Schema.decodeUnknownEffect(Schema.fromJsonString(UnityCommandRequest));
+export const unityJobsCommand = Command.make("unity-command", {
+  request: Argument.String("request-json"),
+}).pipe(
+  Command.withDescription(
+    "Discover Unity commands, submit detached jobs, inspect status and request cancellation through the unity_command service.",
+  ),
+  Command.withHandler(({ request }) =>
+    Effect.gen(function* () {
+      const unity = yield* UnityHooks.UnityHooks;
+      yield* Console.log(JSON.stringify(yield* unity.command(yield* decodeCommand(request))));
     }).pipe(Effect.provide(UnityHooks.layer.pipe(Layer.provide(ProcessRunner.layer)))),
   ),
 );

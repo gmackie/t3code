@@ -1,5 +1,7 @@
 import {
   UnityBridgeConnection,
+  UnityCommandRequest,
+  UnityCommandResult,
   type UnityTarget,
   UnityHookAssertion,
   UnityHookCatalog,
@@ -21,6 +23,9 @@ import * as ProcessRunner from "../processRunner.ts";
 export class UnityHooks extends Context.Service<
   UnityHooks,
   {
+    readonly command: (
+      request: UnityCommandRequest,
+    ) => Effect.Effect<UnityCommandResult, UnityHookError>;
     readonly connect: (target: UnityTarget) => Effect.Effect<UnityBridgeConnection, UnityHookError>;
     readonly execute: (request: UnityHookRequest) => Effect.Effect<UnityHookResult, UnityHookError>;
   }
@@ -56,21 +61,16 @@ function payload(output: string): unknown {
 
 const decodeBridge = Schema.decodeUnknownEffect(UnityBridgeConnection);
 const decodeRequest = Schema.decodeUnknownEffect(UnityHookRequest);
+const decodeCommandRequest = Schema.decodeUnknownEffect(UnityCommandRequest);
+const decodeCommandResult = Schema.decodeUnknownEffect(UnityCommandResult);
 
 const make = Effect.gen(function* () {
   const runner = yield* ProcessRunner.ProcessRunner;
   const executable = yield* Config.String("T3CODE_UNITY_CLI").pipe(Config.withDefault("unity"));
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
-  const invoke = Effect.fn("UnityHooks.invoke")(function* (raw: UnityHookRequest, connect = false) {
-    const request = yield* decodeRequest(raw).pipe(
-      Effect.mapError(
-        () =>
-          new UnityHookError({ code: "invalid_request", reason: "Invalid Unity hook request." }),
-      ),
-    );
-    const targetPath =
-      request.target.kind === "editor" ? request.target.projectPath : request.target.portFile;
+  const resolveTarget = Effect.fn("UnityHooks.resolveTarget")(function* (target: UnityTarget) {
+    const targetPath = target.kind === "editor" ? target.projectPath : target.portFile;
     if (!path.isAbsolute(targetPath))
       return yield* new UnityHookError({
         code: "invalid_target",
@@ -86,7 +86,7 @@ const make = Effect.gen(function* () {
       ),
     );
     if (
-      request.target.kind === "editor" &&
+      target.kind === "editor" &&
       !(yield* fs.exists(path.join(canonical, "ProjectSettings", "ProjectVersion.txt")).pipe(
         Effect.mapError(
           () =>
@@ -101,14 +101,21 @@ const make = Effect.gen(function* () {
         code: "invalid_target",
         reason: "Select the Unity project root containing ProjectSettings/ProjectVersion.txt.",
       });
-    if (
-      request.target.kind === "player" &&
-      path.basename(canonical) !== ".unity-pipeline-runtime-port"
-    )
+    if (target.kind === "player" && path.basename(canonical) !== ".unity-pipeline-runtime-port")
       return yield* new UnityHookError({
         code: "invalid_target",
         reason: "Select the Player's .unity-pipeline-runtime-port file.",
       });
+    return canonical;
+  });
+  const invoke = Effect.fn("UnityHooks.invoke")(function* (raw: UnityHookRequest, connect = false) {
+    const request = yield* decodeRequest(raw).pipe(
+      Effect.mapError(
+        () =>
+          new UnityHookError({ code: "invalid_request", reason: "Invalid Unity hook request." }),
+      ),
+    );
+    const canonical = yield* resolveTarget(request.target);
     const args = ["command", connect ? "agent_game_connect" : `agent_vars_${request.action}`];
     if ("generation" in request) args.push("--generation", request.generation);
     if ("handles" in request) args.push("--handles", JSON.stringify(request.handles));
@@ -215,6 +222,113 @@ const make = Effect.gen(function* () {
       });
     return result;
   });
-  return UnityHooks.of({ execute, connect });
+  const command = Effect.fn("UnityHooks.command")(function* (raw: UnityCommandRequest) {
+    const request = yield* decodeCommandRequest(raw).pipe(
+      Effect.mapError(
+        () =>
+          new UnityHookError({ code: "invalid_request", reason: "Invalid Unity command request." }),
+      ),
+    );
+    if (
+      request.action === "submit" &&
+      (Object.keys(request.parameters).length > 64 ||
+        JSON.stringify(request.parameters).length > 131072)
+    )
+      return yield* new UnityHookError({
+        code: "invalid_request",
+        reason: "Unity commands accept at most 64 parameters and 128 KiB of parameter text.",
+      });
+    const canonical = yield* resolveTarget(request.target);
+    const args =
+      request.action === "catalog"
+        ? [
+            "command",
+            "--detail",
+            "full",
+            "--offset",
+            String(request.offset),
+            "--limit",
+            String(request.limit),
+          ]
+        : request.action === "submit"
+          ? ["command", request.command, "--detach"]
+          : ["job", request.action, request.jobId];
+    if (request.action === "catalog" && request.query) args.push("--query", request.query);
+    args.push(
+      request.target.kind === "editor" ? "--project-path" : "--runtime-path",
+      request.target.kind === "player" ? path.dirname(canonical) : canonical,
+      "--json",
+      "--no-banner",
+      "--non-interactive",
+    );
+    if (request.action === "submit") {
+      // Commander stops parsing global target/transport flags at this boundary.
+      // Game command parameters cannot redirect an invocation to another target.
+      args.push("--");
+      for (const [key, value] of Object.entries(request.parameters))
+        args.push(`--${key}`, String(value));
+    }
+    const output = yield* runner
+      .run({
+        command: executable,
+        args,
+        timeout: "20 seconds",
+        maxOutputBytes: 2 * 1024 * 1024,
+        outputMode: "error",
+      })
+      .pipe(
+        Effect.mapError(
+          () =>
+            new UnityHookError({
+              code: "cli_failed",
+              reason:
+                "Unity CLI failed. A submitted job may still be running; inspect Unity before resubmitting.",
+            }),
+        ),
+      );
+    if (output.code !== 0 || output.timedOut || output.stdoutTruncated || output.stdoutInvalidUtf8)
+      return yield* new UnityHookError({
+        code: "cli_failed",
+        reason: "Unity CLI did not return a complete response. Engine work may still be running.",
+      });
+    const envelope = yield* Effect.try({
+      try: () => JSON.parse(output.stdout) as unknown,
+      catch: () =>
+        new UnityHookError({
+          code: "invalid_response",
+          reason: "Unity CLI returned invalid JSON.",
+        }),
+    });
+    if (!record(envelope) || envelope.success !== true || !record(envelope.data))
+      return yield* new UnityHookError({
+        code: "command_failed",
+        reason: "Unity rejected the command. Inspect the target before retrying.",
+      });
+    const data = envelope.data;
+    if (request.action === "catalog") {
+      if (!Array.isArray(data.commands))
+        return yield* new UnityHookError({
+          code: "invalid_response",
+          reason: "Unity returned no command catalog.",
+        });
+      // Enforce our response bound even with older CLIs that ignore listing options.
+      const commands = data.commands;
+      return {
+        action: "catalog" as const,
+        commands: commands.slice(0, request.limit),
+        offset: request.offset,
+      };
+    }
+    return yield* decodeCommandResult({ action: "job", ...data }).pipe(
+      Effect.mapError(
+        () =>
+          new UnityHookError({
+            code: "invalid_response",
+            reason: "Unity returned an incompatible job result.",
+          }),
+      ),
+    );
+  });
+  return UnityHooks.of({ execute, connect, command });
 });
 export const layer = Layer.effect(UnityHooks, make);
