@@ -218,6 +218,7 @@ import { terminalOutputStream, withOutputWindow } from "./terminal/OutputProtoco
 import { withSocketHeartbeat } from "./socketHeartbeat.ts";
 import * as ServerBrowser from "./preview/ServerBrowser.ts";
 import * as DeviceService from "./device/DeviceService.ts";
+import * as CuaDriver from "./cua/CuaDriver.ts";
 import { remoteSshDeviceHosts } from "./device/localSshDeviceHost.ts";
 import * as PreviewManager from "./preview/Manager.ts";
 import { issueAssetUrl } from "./assets/AssetAccess.ts";
@@ -2526,6 +2527,14 @@ export const layerWsRpc = (
           ),
         [WS_METHODS.serverProbe]: (_input) =>
           Effect.map(DateTime.now, (now) => ({ serverTime: DateTime.formatIso(now) })),
+        [WS_METHODS.serverCheckComputerUse]: (_input) =>
+          Effect.serviceOption(CuaDriver.CuaDriver).pipe(
+            Effect.flatMap((driver) =>
+              Option.isSome(driver)
+                ? driver.value.status
+                : Effect.succeed({ platform: "other", running: false } as const),
+            ),
+          ),
         [WS_METHODS.serverGetConfig]: (_input) =>
           loadServerConfig({
             usageLimitsCommand: true,

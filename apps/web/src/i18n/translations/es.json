@@ -8240,6 +8240,32 @@
   "2a0148ea9068a814": "Puerto HTTPS",
   "7f4f2ba57d3d1c76": "Introduce un puerto del 1 al 65535.",
   "82af9c66caf2f40c": "Endpoint HTTPS",
+  "707f67fce618fc5e": "Could not save the setting. Try again.",
+  "82a12d86994dfd17": "Click, type, and read controls in other apps.",
+  "c07fc2cd79fb94c4": "Grabación de pantalla",
+  "4bbac051622766c1": "See the screen to decide what to do next.",
+  "bf201127ac07ee94": "{hostLabel} needs Accessibility and Screen Recording. Finish setup at that Mac: in System Settings → Privacy & Security, grant access to the app or process running this environment. You can turn the setting on from here.",
+  "a5fc55717145cfdf": "{hostLabel} needs a signed-in graphical session. On Wayland, someone at {hostLabel} may need to approve a screen capture prompt.",
+  "01355442802eb75a": "{hostLabel} needs a signed-in desktop session. If Windows shows a security prompt for Cua Driver, someone at that computer must respond.",
+  "7179e91fbd52c0c6": "Computer use needs a desktop on {hostLabel}.",
+  "a9b9096280be6466": [
+    "Let agents use ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    }
+  ],
+  "2134eedfc10881bf": [
+    "Cua Driver lets agents see and use apps on ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    " in the background, without moving your cursor. Agent sessions started afterwards get the computer use tools."
+  ],
+  "91db0a2b0ad84a78": "If a permission stays off after you allow it, quit and reopen T3 Code.",
   "0e0007dd7a694472": "valor",
   "c9bacc3dea4ba2ba": "Valor de la opción",
   "9f054868dad69700": "Etiqueta de la opción",
@@ -8678,6 +8704,18 @@
   "a6a6dc235b108747": "Permite que los agentes usen el navegador compartido. Los proyectos pueden anularlo.",
   "ea5fed973bfc1aca": "Restablecer el acceso predeterminado al navegador al valor predeterminado",
   "19e1f74805f4a1fb": "Acceso de agentes al navegador",
+  "5511e975ba69f726": "Computer",
+  "72cb818f86f74f1d": "Connect the selected environment to configure computer use.",
+  "3a989eeb48af4c84": "Choose one environment to configure computer use on its host.",
+  "c97c0f969ce80c8c": "Could not check computer use: {error}",
+  "801552a09d64a639": "Checking host…",
+  "e1b60530b496ca5c": "Computer use is not supported on this host.",
+  "639ff10e3ee18700": "Running",
+  "141b50a063b68ed7": "Starts with the next agent session",
+  "b6e0d15e5bd6c729": "Let agents see and use apps on {hostLabel} through Cua Driver, in the background without moving your cursor. New agent sessions get the tools; turning this off stops the driver.",
+  "d18307275ee97e9a": "Reset computer use to default",
+  "1419352c258bc7de": "This connection cannot change settings on this host.",
+  "b26ad48726dd8132": "Computer use is on, but Cua Driver could not restart. Try Setup again.",
   "b395b88284e3bca2": "Muestra la vista previa flotante cuando un agente abre un navegador o dispositivo, salvo que el agente indique lo contrario.",
   "6aadfd59cf60b4b5": "Restablecer mostrar automáticamente la vista previa flotante al valor predeterminado",
   "e4a7ec61190bc1f9": "Mostrar automáticamente la vista previa flotante",
@@ -8716,6 +8754,7 @@
       "i": 1
     }
   ],
+  "143cde2e0b8d2e7c": "Setup",
   "093c68324c1b1280": "Añadir perfil",
   "1f404c456e5b2a0b": "Perfil en blanco",
   "d7671e975097e9e4": "Has alcanzado el límite de perfiles",
@@ -10627,7 +10666,6 @@
   "f0d425b07fcbc3ea": "Usa ambas teclas Shift o graba otro atajo.",
   "d540b70f53f1d607": "Configurar capturas para {desktop}",
   "64581b55ed1d7bd0": "Configurar capturas",
-  "c07fc2cd79fb94c4": "Grabación de pantalla",
   "f9ea8807dc374cd8": "Captura la ventana que estás usando.",
   "48a77acf7f6d02ce": "Incluye texto y controles de la app capturada.",
   "0be1d4792a45fe09": "Opcional. Incluye texto y controles de la app capturada.",
@@ -11936,6 +11974,7 @@
   "345075be6cacc171": "hosts de dispositivos ssh remoto mac mini identidad clave conexión eas expo nube simlock grupo gateway simuladores locales",
   "a6b742430b05d6cc": "Los agentes pueden usar dispositivos",
   "1d5d7418a83575c2": "permitir simulador emulador ios android controlar herramientas sesiones",
+  "04050ac46c68cdaa": "cua driver apps desktop screen click type agents control mac linux windows",
   "60f0825756e404dc": "Usar dispositivos",
   "907782e153a139a3": "hub de dispositivos simulador emulador ios android instalar iniciar versión",
   "ad89031709b521b8": "simulador compatibilidad xcode android studio sdk avd runtime",
@@ -12012,6 +12051,7 @@
   "b18a6e1b9875df35": "Este modelo no está disponible en un entorno seleccionado. Selecciona ese entorno para elegir su modelo por separado.",
   "3d7abd288b8d6d37": "Esta conexión no tiene permiso para cambiar estos ajustes.",
   "7260a6658b09efee": "No se pudo guardar en {label}: {message}",
+  "2485877057d662f6": "The save failed. Try again.",
   "c280dbfac3f28888": "No se pudo iniciar la grabación del atajo.",
   "3783f7d9877c9cba": "Añade una letra, un número o una tecla de función a tu atajo.",
   "008e305ea6638832": "Grabar atajo de captura; actual: {shortcut}",

@@ -9,11 +9,10 @@ import { describe, expect, it, vi } from "vite-plus/test";
 import { page, userEvent } from "vite-plus/test/browser";
 
 import "../../index.css";
-import type { ScopedSettingsPatch } from "./scopedSettings";
 
 const state = vi.hoisted(() => ({
   presets: [] as ReadonlyArray<SnoozePresetSetting>,
-  updateSettings: vi.fn<(patch: ScopedSettingsPatch) => void>(),
+  updateSettings: vi.fn<ReturnType<typeof import("./useScopedSettings").useUpdateScopedSettings>>(),
 }));
 
 vi.mock(import("./useScopedSettings"), async (original) => ({
@@ -46,6 +45,7 @@ describe("SnoozePresetsRow", () => {
     state.updateSettings.mockReset().mockImplementation((patch) => {
       state.presets = patch.snoozePresets ?? state.presets;
       void screen.rerender(<SnoozePresetsRow />);
+      return Promise.resolve({ saved: true, message: null });
     });
 
     const add = page.getByRole("button", { name: "Add option" });

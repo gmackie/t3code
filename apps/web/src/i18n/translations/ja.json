@@ -8201,6 +8201,32 @@
   "2a0148ea9068a814": "HTTPS ポート",
   "7f4f2ba57d3d1c76": "1〜65535 のポートを入力してください。",
   "82af9c66caf2f40c": "HTTPS エンドポイント",
+  "707f67fce618fc5e": "Could not save the setting. Try again.",
+  "82a12d86994dfd17": "Click, type, and read controls in other apps.",
+  "c07fc2cd79fb94c4": "画面収録",
+  "4bbac051622766c1": "See the screen to decide what to do next.",
+  "bf201127ac07ee94": "{hostLabel} needs Accessibility and Screen Recording. Finish setup at that Mac: in System Settings → Privacy & Security, grant access to the app or process running this environment. You can turn the setting on from here.",
+  "a5fc55717145cfdf": "{hostLabel} needs a signed-in graphical session. On Wayland, someone at {hostLabel} may need to approve a screen capture prompt.",
+  "01355442802eb75a": "{hostLabel} needs a signed-in desktop session. If Windows shows a security prompt for Cua Driver, someone at that computer must respond.",
+  "7179e91fbd52c0c6": "Computer use needs a desktop on {hostLabel}.",
+  "a9b9096280be6466": [
+    "Let agents use ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    }
+  ],
+  "2134eedfc10881bf": [
+    "Cua Driver lets agents see and use apps on ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    " in the background, without moving your cursor. Agent sessions started afterwards get the computer use tools."
+  ],
+  "91db0a2b0ad84a78": "If a permission stays off after you allow it, quit and reopen T3 Code.",
   "0e0007dd7a694472": "値",
   "c9bacc3dea4ba2ba": "選択肢の値",
   "9f054868dad69700": "選択肢のラベル",
@@ -8636,6 +8662,18 @@
   "a6a6dc235b108747": "エージェントに共有ブラウザーの使用を許可します。プロジェクトごとに上書きできます。",
   "ea5fed973bfc1aca": "デフォルトのブラウザーアクセスをデフォルトにリセット",
   "19e1f74805f4a1fb": "エージェントのブラウザーアクセス",
+  "5511e975ba69f726": "Computer",
+  "72cb818f86f74f1d": "Connect the selected environment to configure computer use.",
+  "3a989eeb48af4c84": "Choose one environment to configure computer use on its host.",
+  "c97c0f969ce80c8c": "Could not check computer use: {error}",
+  "801552a09d64a639": "Checking host…",
+  "e1b60530b496ca5c": "Computer use is not supported on this host.",
+  "639ff10e3ee18700": "Running",
+  "141b50a063b68ed7": "Starts with the next agent session",
+  "b6e0d15e5bd6c729": "Let agents see and use apps on {hostLabel} through Cua Driver, in the background without moving your cursor. New agent sessions get the tools; turning this off stops the driver.",
+  "d18307275ee97e9a": "Reset computer use to default",
+  "1419352c258bc7de": "This connection cannot change settings on this host.",
+  "b26ad48726dd8132": "Computer use is on, but Cua Driver could not restart. Try Setup again.",
   "b395b88284e3bca2": "エージェントがブラウザーやデバイスを開いたときに、エージェントが別途指定しない限りフローティングプレビューを表示します。",
   "6aadfd59cf60b4b5": "「フローティングプレビューを自動表示」をデフォルトにリセット",
   "e4a7ec61190bc1f9": "フローティングプレビューを自動表示",
@@ -8674,6 +8712,7 @@
       "i": 1
     }
   ],
+  "143cde2e0b8d2e7c": "Setup",
   "093c68324c1b1280": "プロファイルを追加",
   "1f404c456e5b2a0b": "空のプロファイル",
   "d7671e975097e9e4": "プロファイルの上限に達しました",
@@ -10582,7 +10621,6 @@
   "f0d425b07fcbc3ea": "両方の Shift キーを使うか、別のショートカットを記録してください。",
   "d540b70f53f1d607": "{desktop} のスナップショットをセットアップ",
   "64581b55ed1d7bd0": "スナップショットをセットアップ",
-  "c07fc2cd79fb94c4": "画面収録",
   "f9ea8807dc374cd8": "使用中のウィンドウをキャプチャします。",
   "48a77acf7f6d02ce": "キャプチャしたアプリのテキストとコントロールを含めます。",
   "0be1d4792a45fe09": "省略可能。キャプチャしたアプリのテキストとコントロールを含めます。",
@@ -11892,6 +11930,7 @@
   "345075be6cacc171": "デバイス ホスト SSH リモート Mac mini ID キー 接続 EAS Expo クラウド simlock プール ゲートウェイ ローカル シミュレーター device hosts",
   "a6b742430b05d6cc": "エージェントによるデバイスの使用",
   "1d5d7418a83575c2": "許可 シミュレーター エミュレーター iOS Android 操作 ツール セッション simulator",
+  "04050ac46c68cdaa": "cua driver apps desktop screen click type agents control mac linux windows",
   "60f0825756e404dc": "デバイスを使用",
   "907782e153a139a3": "デバイスハブ シミュレーター エミュレーター iOS Android インストール 起動 バージョン device hub",
   "ad89031709b521b8": "シミュレーター サポート Xcode Android Studio SDK AVD ランタイム simulator",
@@ -11968,6 +12007,7 @@
   "b18a6e1b9875df35": "このモデルは選択した環境の 1 つでは利用できません。その環境を選択して、モデルを個別に選んでください。",
   "3d7abd288b8d6d37": "この接続にはこれらの設定を変更する権限がありません。",
   "7260a6658b09efee": "{label} に保存できませんでした: {message}",
+  "2485877057d662f6": "The save failed. Try again.",
   "c280dbfac3f28888": "ショートカットの記録を開始できませんでした。",
   "3783f7d9877c9cba": "ショートカットに英字、数字、またはファンクションキーを追加してください。",
   "008e305ea6638832": "スナップショットのショートカットを記録、現在は {shortcut}",
