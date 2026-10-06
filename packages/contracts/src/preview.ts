@@ -162,6 +162,29 @@ export const PreviewNavStatus = Schema.Union([
 ]);
 export type PreviewNavStatus = typeof PreviewNavStatus.Type;
 
+/**
+ * Where a tab's page runs. `desktop` is an Electron <webview> owned by one
+ * desktop client; `server` is headless Chromium owned by the environment
+ * server, viewed by any client through `/api/preview-stream` and driven by
+ * agents with no client attached. Absent means `desktop`.
+ */
+export const PreviewRuntime = Schema.Literals(["desktop", "server"]);
+export type PreviewRuntime = typeof PreviewRuntime.Type;
+
+/**
+ * Host setup the server's browser is missing, sent as JSON in the reason when
+ * the preview stream closes with code 4503. Fixing it needs the host's
+ * operator, so viewers stop retrying and show `command`, the one line that
+ * fixes it. Close reasons are capped at 123 bytes, which this fits.
+ */
+export const PreviewStreamHostSetup = Schema.Struct({
+  need: Schema.Literals(["sandbox", "libraries"]),
+  /** For example `sudo npx t3 browser setup`, matching how the server was launched. */
+  command: Schema.String,
+});
+export type PreviewStreamHostSetup = typeof PreviewStreamHostSetup.Type;
+export const PREVIEW_STREAM_HOST_SETUP_CLOSE_CODE = 4503;
+
 export const PreviewSessionSnapshot = Schema.Struct({
   threadId: TrimmedNonEmptyString,
   tabId: PreviewTabId,
@@ -176,6 +199,13 @@ export const PreviewSessionSnapshot = Schema.Struct({
    * switching would require tearing the guest down and losing page state.
    */
   profileId: Schema.optional(BrowserProfileId),
+  runtime: Schema.optional(PreviewRuntime),
+  /** Authenticated provider session owning an isolated server tab. */
+  automationOwner: Schema.optional(Schema.String),
+  /** An agent opened this tab and asked to show it, so viewers float it. */
+  reveal: Schema.optional(Schema.Boolean),
+  /** A fresh presentation request, including whether it overrides automatic-floating settings. */
+  revealRequest: Schema.optional(Schema.Struct({ id: Schema.String, force: Schema.Boolean })),
   updatedAt: Schema.String,
 });
 export type PreviewSessionSnapshot = typeof PreviewSessionSnapshot.Type;
@@ -193,6 +223,10 @@ export const PreviewOpenInput = Schema.Struct({
   viewport: Schema.optional(PreviewViewportSetting),
   /** Omit to open under the client's configured default profile. */
   profileId: Schema.optional(BrowserProfileId),
+  /** Omit for a desktop tab. `server` requires the `serverBrowser` capability. */
+  runtime: Schema.optional(PreviewRuntime),
+  /** Set by agent opens that should float for viewers; see the snapshot field. */
+  reveal: Schema.optional(Schema.Boolean),
 });
 export type PreviewOpenInput = typeof PreviewOpenInput.Type;
 
@@ -231,6 +265,11 @@ export const PreviewCloseInput = Schema.Struct({
   tabId: Schema.optional(PreviewTabId),
 });
 export type PreviewCloseInput = typeof PreviewCloseInput.Type;
+
+export const PreviewClearProfileInput = Schema.Struct({
+  profileId: BrowserProfileId,
+});
+export type PreviewClearProfileInput = typeof PreviewClearProfileInput.Type;
 
 export const PreviewListInput = Schema.Struct({
   threadId: ThreadId,
@@ -350,5 +389,27 @@ export class PreviewInvalidUrlError extends Schema.TaggedError<PreviewInvalidUrl
   }
 }
 
-export const PreviewError = Schema.Union([PreviewSessionLookupError, PreviewInvalidUrlError]);
+export class PreviewControlRequiredError extends Schema.TaggedError<PreviewControlRequiredError>()(
+  "PreviewControlRequiredError",
+  { tabId: Schema.String },
+) {
+  override get message() {
+    return "Take control of the server browser and use its viewer controls.";
+  }
+}
+
+export class PreviewClearProfileError extends Schema.TaggedError<PreviewClearProfileError>()(
+  "PreviewClearProfileError",
+  { profileId: Schema.String, cause: Schema.Defect() },
+) {
+  override get message() {
+    return "The environment could not delete this browser profile's data.";
+  }
+}
+
+export const PreviewError = Schema.Union([
+  PreviewSessionLookupError,
+  PreviewInvalidUrlError,
+  PreviewControlRequiredError,
+]);
 export type PreviewError = typeof PreviewError.Type;

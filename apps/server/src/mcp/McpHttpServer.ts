@@ -11,13 +11,14 @@ import * as Schema from "effect/Schema";
 import * as Sink from "effect/Sink";
 import * as Stream from "effect/Stream";
 import type * as Types from "effect/Types";
-import { McpProtocol, McpSchema, McpServer, Tool } from "effect/unstable/ai";
+import { AiError, McpProtocol, McpSchema, McpServer, Tool } from "effect/unstable/ai";
 import { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/unstable/http";
-import { PreviewAutomationError } from "@t3tools/contracts";
+import { OrchestratorMcpFailure, PreviewAutomationError } from "@t3tools/contracts";
 
 import packageJson from "../../package.json" with { type: "json" };
 import * as ServerConfig from "../config.ts";
 import * as DeviceService from "../device/DeviceService.ts";
+import * as HtmlRender from "../htmlRender/HtmlRender.ts";
 import * as McpInvocationContext from "./McpInvocationContext.ts";
 import * as OrchestratorMcpService from "./OrchestratorMcpService.ts";
 import { PreviewControlsToolkit } from "./toolkits/previewControls/tools.ts";
@@ -58,6 +59,11 @@ import {
   DeviceScreenshotToolkit,
   DeviceStandardToolkit,
 } from "./toolkits/device/tools.ts";
+import {
+  HtmlPreviewToolkitHandlersLive,
+  HtmlRenderToolkitHandlersLive,
+} from "./toolkits/html/handlers.ts";
+import { HtmlPreviewTool, HtmlPreviewToolkit, HtmlRenderToolkit } from "./toolkits/html/tools.ts";
 
 const unauthorized = HttpServerResponse.jsonUnsafe(
   {
@@ -183,7 +189,7 @@ type SnapshotMetadata = {
 };
 
 /**
- * Drops the accessibility tree, shortens page text, element names, identifiers,
+ * Keeps server ARIA refs, drops legacy object trees, shortens page text, names, identifiers,
  * and log strings, keeps only the newest log entries, and finally sheds
  * interactive elements until the JSON fits. Returns the bounded value, its
  * text, and notes on what is missing so the agent can reach for
@@ -192,7 +198,8 @@ type SnapshotMetadata = {
 const boundSnapshotMetadata = (metadata: SnapshotMetadata) => {
   const omitted: Array<string> = [];
   const { accessibilityTree, ...withoutTree } = metadata;
-  if (accessibilityTree !== undefined) {
+  const ariaTree = typeof accessibilityTree === "string" ? accessibilityTree : undefined;
+  if (accessibilityTree !== undefined && ariaTree === undefined) {
     omitted.push("accessibilityTree (use interactiveElements locators or preview_evaluate)");
   }
   const tail = <A>(entries: ReadonlyArray<A>, label: string) => {
@@ -255,8 +262,10 @@ const boundSnapshotMetadata = (metadata: SnapshotMetadata) => {
     actionTimeline: 0,
   };
   let visibleTextChars = Math.min(metadata.visibleText.length, MAX_SNAPSHOT_VISIBLE_TEXT_CHARS);
+  let ariaTreeChars = Math.min(ariaTree?.length ?? 0, 20_000);
   const value = () => ({
     ...bounded,
+    ...(ariaTree === undefined ? {} : { accessibilityTree: cutText(ariaTree, ariaTreeChars) }),
     visibleText: cutText(metadata.visibleText, visibleTextChars),
     ...lists,
   });
@@ -271,10 +280,14 @@ const boundSnapshotMetadata = (metadata: SnapshotMetadata) => {
         ? "visibleText"
         : lists.interactiveElements.length > 0
           ? "interactiveElements"
-          : undefined);
+          : ariaTreeChars > 0
+            ? "accessibilityTree"
+            : undefined);
     if (key === undefined) break;
     if (key === "visibleText") {
       visibleTextChars = Math.floor(visibleTextChars / 2);
+    } else if (key === "accessibilityTree") {
+      ariaTreeChars = Math.floor(ariaTreeChars / 2);
     } else {
       const keep = Math.floor(lists[key].length / 2);
       dropped[key] += lists[key].length - keep;
@@ -292,6 +305,9 @@ const boundSnapshotMetadata = (metadata: SnapshotMetadata) => {
     omitted.push(
       `visibleText after ${visibleTextChars} characters (use preview_evaluate for more)`,
     );
+  }
+  if (ariaTree !== undefined && ariaTreeChars < ariaTree.length) {
+    omitted.push(`accessibilityTree after ${ariaTreeChars} characters`);
   }
   for (const key of shedOrder) {
     if (dropped[key] > 0) {
@@ -510,12 +526,13 @@ interface ImageToolResult {
 }
 
 /**
- * Failures surface only their tag: the remote message may carry renderer or
- * device output the agent should not see, and the tag is what it can act on.
+ * Failures surface only their tag unless the tool describes them: the remote
+ * message may carry renderer or device output the agent should not see, and
+ * the tag is what it can act on. A describer returns a server-built message.
  */
 const imageToolFailure =
-  (toolName: string, operation: string, failureText: string) =>
-  <E>(cause: Cause.Cause<E>) => {
+  <E>(toolName: string, operation: string, failureText: string | ((error: E) => string)) =>
+  (cause: Cause.Cause<E>) => {
     if (Cause.hasInterrupts(cause) || cause.reasons.some(Cause.isDieReason)) {
       return Effect.failCause(cause).pipe(Effect.orDie);
     }
@@ -528,6 +545,10 @@ const imageToolFailure =
       typeof firstFailure._tag === "string"
         ? firstFailure._tag
         : `${toolName}Error`;
+    const message =
+      typeof failureText === "string" || failures[0] === undefined
+        ? undefined
+        : failureText(failures[0].error);
     const result = new McpSchema.CallToolResult({
       isError: true,
       structuredContent: {
@@ -535,9 +556,16 @@ const imageToolFailure =
           _tag: errorTag,
           operation,
           failureCount: failures.length,
+          ...(message === undefined ? {} : { message }),
         },
       },
-      content: [{ type: "text", text: failureText }],
+      // Some clients show only the text content and others only structuredContent, so both carry it.
+      content: [
+        {
+          type: "text",
+          text: typeof failureText === "string" ? failureText : (message ?? `${toolName} failed.`),
+        },
+      ],
     });
     return Effect.logWarning(`${toolName} failed`, {
       operation,
@@ -563,7 +591,7 @@ const registerImageTool = <T extends Tool.Any, E, R>(
     McpInvocationContext.McpInvocationContext
   >,
   operation: string,
-  failureText: string,
+  failureText: string | ((error: E) => string),
 ) =>
   Effect.gen(function* () {
     const server = yield* McpServer.McpServer;
@@ -647,6 +675,32 @@ const registerDeviceScreenshot = Effect.fn("McpHttpServer.registerDeviceScreensh
   );
 });
 
+const isOrchestratorMcpFailure = Schema.is(OrchestratorMcpFailure);
+
+const registerHtmlPreview = Effect.fn("McpHttpServer.registerHtmlPreview")(function* () {
+  const htmlRender = yield* HtmlRender.HtmlRender;
+  const built = yield* HtmlPreviewToolkit;
+  yield* registerImageTool(
+    HtmlPreviewTool,
+    (payload) =>
+      built
+        .handle("html_preview", payload)
+        .pipe(Stream.unwrap, Stream.run(Sink.last()), Effect.flatMap(Effect.fromOption)),
+    (effect) => effect.pipe(Effect.provideService(HtmlRender.HtmlRender, htmlRender)),
+    "preview",
+    // Parameter errors and HTML render errors are both written by the server for the agent.
+    (error) =>
+      isOrchestratorMcpFailure(error) || AiError.isAiError(error)
+        ? error.message
+        : "HTML preview failed.",
+  );
+});
+
+export const HtmlToolkitRegistrationLive = Layer.mergeAll(
+  McpServer.toolkit(HtmlRenderToolkit).pipe(Layer.provide(HtmlRenderToolkitHandlersLive)),
+  Layer.effectDiscard(registerHtmlPreview()).pipe(Layer.provide(HtmlPreviewToolkitHandlersLive)),
+).pipe(Layer.provide(HtmlRender.layer));
+
 const PreviewStandardToolkitRegistrationLive = McpServer.toolkit(PreviewStandardToolkit).pipe(
   Layer.provide(PreviewStandardToolkitHandlersLive),
 );
@@ -726,4 +780,5 @@ export const layer = Layer.mergeAll(
   WorktreeToolkitRegistrationLive,
   PullRequestsToolkitRegistrationLive,
   DeviceToolkitRegistrationLive,
+  HtmlToolkitRegistrationLive,
 ).pipe(Layer.provideMerge(McpTransportLive));

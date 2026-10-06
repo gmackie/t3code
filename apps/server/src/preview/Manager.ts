@@ -24,7 +24,6 @@ import {
   FILL_PREVIEW_VIEWPORT,
   PreviewSessionLookupError,
   type PreviewSessionSnapshot,
-  type PreviewViewportSetting,
 } from "@t3tools/contracts";
 import {
   isPreviewUrlNormalizationError,
@@ -40,17 +39,29 @@ import * as PubSub from "effect/PubSub";
 import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 import * as SynchronizedRef from "effect/SynchronizedRef";
+import { PreviewControlRequiredError } from "@t3tools/contracts";
 
 export class PreviewManager extends Context.Service<
   PreviewManager,
   {
-    readonly open: (input: PreviewOpenInput) => Effect.Effect<PreviewSessionSnapshot, PreviewError>;
+    readonly open: (
+      input: PreviewOpenInput & {
+        readonly automationOwner?: string;
+        /** Runs before the `opened` event publishes, so subscribers find state keyed by the tab. */
+        readonly beforePublish?: (snapshot: PreviewSessionSnapshot) => void;
+      },
+    ) => Effect.Effect<PreviewSessionSnapshot, PreviewError>;
     readonly navigate: (
       input: PreviewNavigateInput,
     ) => Effect.Effect<PreviewSessionSnapshot, PreviewError>;
-    readonly reportStatus: (input: PreviewReportStatusInput) => Effect.Effect<void, PreviewError>;
+    readonly reportStatus: (
+      input: PreviewReportStatusInput & { readonly serverControlled?: boolean },
+    ) => Effect.Effect<void, PreviewError>;
+    readonly requestReveal: (
+      input: PreviewCloseInput & { readonly tabId: string; readonly force: boolean },
+    ) => Effect.Effect<void, PreviewError>;
     readonly resize: (
-      input: PreviewResizeInput,
+      input: PreviewResizeInput & { readonly serverControlled?: boolean },
     ) => Effect.Effect<PreviewSessionSnapshot, PreviewError>;
     readonly refresh: (input: PreviewRefreshInput) => Effect.Effect<void, PreviewError>;
     readonly close: (input: PreviewCloseInput) => Effect.Effect<void, PreviewError>;
@@ -116,42 +127,6 @@ const normalizeUrl = (rawUrl: string): Effect.Effect<string, PreviewInvalidUrlEr
   });
 
 const currentIsoTimestamp = DateTime.now.pipe(Effect.map(DateTime.formatIso));
-
-const buildLoadingSnapshot = (input: {
-  readonly threadId: string;
-  readonly tabId: string;
-  readonly url: string;
-  readonly title: string;
-  readonly viewport: PreviewViewportSetting;
-  readonly profileId?: string | undefined;
-  readonly updatedAt: string;
-}): PreviewSessionSnapshot => ({
-  threadId: input.threadId,
-  tabId: input.tabId,
-  navStatus: { _tag: "Loading", url: input.url, title: input.title },
-  canGoBack: false,
-  canGoForward: false,
-  viewport: input.viewport,
-  ...(input.profileId === undefined ? {} : { profileId: input.profileId }),
-  updatedAt: input.updatedAt,
-});
-
-const buildIdleSnapshot = (input: {
-  readonly threadId: string;
-  readonly tabId: string;
-  readonly viewport: PreviewViewportSetting;
-  readonly profileId?: string | undefined;
-  readonly updatedAt: string;
-}): PreviewSessionSnapshot => ({
-  threadId: input.threadId,
-  tabId: input.tabId,
-  navStatus: { _tag: "Idle" },
-  canGoBack: false,
-  canGoForward: false,
-  viewport: input.viewport,
-  ...(input.profileId === undefined ? {} : { profileId: input.profileId }),
-  updatedAt: input.updatedAt,
-});
 
 /** @public Service construction is part of the canonical Effect module API. */
 export const make = Effect.gen(function* PreviewManagerMake() {
@@ -221,29 +196,27 @@ export const make = Effect.gen(function* PreviewManagerMake() {
 
   const open: PreviewManager["Service"]["open"] = Effect.fn("PreviewManager.open")(
     function* (input) {
-      const tabId = newPreviewTabId();
+      const runtime = input.runtime;
+      // Persisted client surfaces must not bind to a different tab after a server restart.
+      const tabId = `${newPreviewTabId()}${runtime === "server" ? `_${serverEpoch}` : ""}`;
       const updatedAt = yield* currentIsoTimestamp;
-      // Clients with a configured default send the viewport up front so the
-      // session is born at the right size; older clients omit it and keep the
-      // historical fill-panel behaviour.
-      const viewport = input.viewport ?? FILL_PREVIEW_VIEWPORT;
-      const snapshot = input.url
-        ? buildLoadingSnapshot({
-            threadId: input.threadId,
-            tabId,
-            url: yield* normalizeUrl(input.url),
-            title: "",
-            viewport,
-            profileId: input.profileId,
-            updatedAt,
-          })
-        : buildIdleSnapshot({
-            threadId: input.threadId,
-            tabId,
-            viewport,
-            profileId: input.profileId,
-            updatedAt,
-          });
+      const snapshot: PreviewSessionSnapshot = {
+        threadId: input.threadId,
+        tabId,
+        navStatus: input.url
+          ? { _tag: "Loading", url: yield* normalizeUrl(input.url), title: "" }
+          : { _tag: "Idle" },
+        canGoBack: false,
+        canGoForward: false,
+        viewport: input.viewport ?? FILL_PREVIEW_VIEWPORT,
+        ...(input.profileId === undefined ? {} : { profileId: input.profileId }),
+        ...(runtime === undefined ? {} : { runtime }),
+        ...(runtime === "server" && input.automationOwner !== undefined
+          ? { automationOwner: input.automationOwner }
+          : {}),
+        ...(input.reveal === undefined ? {} : { reveal: input.reveal }),
+        updatedAt,
+      };
       yield* SynchronizedRef.modifyEffect(stateRef, (state) =>
         Effect.gen(function* () {
           const revision = state.revision + 1;
@@ -253,6 +226,7 @@ export const make = Effect.gen(function* PreviewManagerMake() {
             tabId,
             snapshot,
           });
+          input.beforePublish?.(snapshot);
           yield* PubSub.publish(eventsPubSub, {
             type: "opened",
             threadId: input.threadId,
@@ -276,20 +250,16 @@ export const make = Effect.gen(function* PreviewManagerMake() {
         input.threadId,
         input.tabId,
         Effect.fn("PreviewManager.navigateSession")(function* (session) {
+          if (session.snapshot.runtime === "server")
+            return yield* new PreviewControlRequiredError({ tabId: input.tabId });
           const updatedAt = yield* currentIsoTimestamp;
           const previousTitle =
             session.snapshot.navStatus._tag === "Idle" ? "" : session.snapshot.navStatus.title;
           const resolvedTitle = input.resolvedTitle ?? previousTitle;
           const snapshot: PreviewSessionSnapshot = {
-            threadId: session.threadId,
-            tabId: session.tabId,
+            ...session.snapshot,
             navStatus: { _tag: "Success", url, title: resolvedTitle },
-            canGoBack: session.snapshot.canGoBack,
-            canGoForward: session.snapshot.canGoForward,
             viewport: session.snapshot.viewport ?? FILL_PREVIEW_VIEWPORT,
-            ...(session.snapshot.profileId === undefined
-              ? {}
-              : { profileId: session.snapshot.profileId }),
             updatedAt,
           };
           return {
@@ -315,17 +285,15 @@ export const make = Effect.gen(function* PreviewManagerMake() {
       input.threadId,
       input.tabId,
       Effect.fn("PreviewManager.reportSessionStatus")(function* (session) {
+        if (session.snapshot.runtime === "server" && !input.serverControlled)
+          return yield* new PreviewControlRequiredError({ tabId: input.tabId });
         const updatedAt = yield* currentIsoTimestamp;
         const snapshot: PreviewSessionSnapshot = {
-          threadId: session.threadId,
-          tabId: session.tabId,
+          ...session.snapshot,
           navStatus: input.navStatus,
           canGoBack: input.canGoBack,
           canGoForward: input.canGoForward,
           viewport: session.snapshot.viewport ?? FILL_PREVIEW_VIEWPORT,
-          ...(session.snapshot.profileId === undefined
-            ? {}
-            : { profileId: session.snapshot.profileId }),
           updatedAt,
         };
         const emit: PreviewEventDraft =
@@ -362,6 +330,8 @@ export const make = Effect.gen(function* PreviewManagerMake() {
         input.threadId,
         input.tabId,
         Effect.fn("PreviewManager.resizeSession")(function* (session) {
+          if (session.snapshot.runtime === "server" && !input.serverControlled)
+            return yield* new PreviewControlRequiredError({ tabId: input.tabId });
           const updatedAt = yield* currentIsoTimestamp;
           const snapshot: PreviewSessionSnapshot = {
             ...session.snapshot,
@@ -445,8 +415,37 @@ export const make = Effect.gen(function* PreviewManagerMake() {
     },
   );
 
+  const requestReveal: PreviewManager["Service"]["requestReveal"] = Effect.fn(
+    "PreviewManager.requestReveal",
+  )(function* (input) {
+    yield* mutateExistingSession(
+      input.threadId,
+      input.tabId,
+      Effect.fn("PreviewManager.revealSession")(function* (session) {
+        const snapshot = {
+          ...session.snapshot,
+          reveal: true,
+          revealRequest: { id: NodeCrypto.randomUUID(), force: input.force },
+          updatedAt: yield* currentIsoTimestamp,
+        };
+        return {
+          next: { ...session, snapshot },
+          emit: {
+            type: "navigated" as const,
+            threadId: session.threadId,
+            tabId: session.tabId,
+            createdAt: snapshot.updatedAt,
+            snapshot,
+          },
+          result: undefined,
+        };
+      }),
+    );
+  });
+
   return PreviewManager.of({
     open,
+    requestReveal,
     navigate,
     reportStatus,
     resize,

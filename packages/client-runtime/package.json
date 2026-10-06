@@ -51,6 +51,10 @@
       "types": "./src/device/shapeProfile.ts",
       "default": "./src/device/shapeProfile.ts"
     },
+    "./preview/server-browser-stream": {
+      "types": "./src/preview/serverBrowserStream.ts",
+      "default": "./src/preview/serverBrowserStream.ts"
+    },
     "./worktree-setup": {
       "types": "./src/worktreeSetup.ts",
       "default": "./src/worktreeSetup.ts"
