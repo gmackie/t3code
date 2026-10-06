@@ -168,14 +168,14 @@ function BrowserPreviewScreen({
       {tab ? (
         <>
           <BrowserAddressBar
-            key={tab.tabId}
+            key={`address-${tab.tabId}`}
             tab={tab}
             ready={streaming && canControl}
             onCommand={(input) => streamRef.current?.command(input)}
           />
           {live ? (
             <PreviewStreamWebView
-              key={tab.tabId}
+              key={`stream-${tab.tabId}`}
               environmentId={environmentId}
               threadId={threadId}
               tabId={tab.tabId}
