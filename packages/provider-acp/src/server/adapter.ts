@@ -1134,8 +1134,9 @@ async function acpMcpContext(
   // user's servers.
   const userServers = await acpUserMcpServers(session.tools?.servers ?? [], resolveCommand);
   // codex-acp 1.2.0 and pi-acp drop injected HTTP servers, so HTTP is opt-in per flavor.
-  // The managed Cua Driver is already stdio, so every list carries it like the user's servers.
-  const cua = McpProviderSession.cuaAcpMcpServers(session);
+  // Cua Driver and browser tabs are already stdio servers, so every list carries them like the
+  // user's servers.
+  const local = McpProviderSession.localAcpMcpServers(session);
   return {
     servers: [
       {
@@ -1149,9 +1150,9 @@ async function acpMcpContext(
         ],
       },
       ...userServers,
-      ...cua,
+      ...local,
     ],
-    acpServers: [{ type: "acp", name: "t3-code", serverId: "t3-code" }, ...userServers, ...cua],
+    acpServers: [{ type: "acp", name: "t3-code", serverId: "t3-code" }, ...userServers, ...local],
     httpServers:
       mcpOverHttp === true
         ? [
@@ -1167,7 +1168,7 @@ async function acpMcpContext(
               ],
             },
             ...userServers,
-            ...cua,
+            ...local,
           ]
         : [],
     endpoint: session.endpoint,
@@ -9234,6 +9235,7 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
             model: turnInput.modelSelection.model,
             runtimePolicy: turnInput.runtimePolicy,
             computerUse: mcpSession?.cuaDriver !== undefined,
+            browserTabs: mcpSession?.browserTabs?.browserName,
             pullRequestLinking:
               sessionSetup === null ||
               flavor.sessionCarriesPullRequestLinking?.(sessionSetup.initializeResult) !== true,

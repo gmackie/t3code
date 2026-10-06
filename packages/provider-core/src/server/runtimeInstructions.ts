@@ -1,6 +1,7 @@
 import type { AgentFeedbackMode } from "@t3tools/contracts";
 
 import type { ProviderAdapterV2RuntimePolicy } from "./ProviderAdapter.ts";
+import { browserTabsInstructions } from "./mcpSession.ts";
 
 /** None while agent feedback is off, so users who never opt in pay no context for it. */
 export const AGENT_FEEDBACK_INSTRUCTIONS = {
@@ -37,6 +38,8 @@ export function buildRuntimeInstructions(runtime: {
   readonly runtimePolicy?: Pick<ProviderAdapterV2RuntimePolicy, "cwd" | "workspace"> | undefined;
   /** True when this session's tool list includes the managed `cua-driver` MCP server. */
   readonly computerUse?: boolean | undefined;
+  /** The browser `chrome-devtools` is attached to, when this session has browser tabs. */
+  readonly browserTabs?: string | undefined;
 }): string {
   const harness = toSingleLine(runtime.harness);
   const model = toSingleLine(runtime.model ?? "");
@@ -59,6 +62,7 @@ export function buildRuntimeInstructions(runtime: {
     linked + feedback,
     ...(workspace === "" ? [] : [workspace]),
     ...(runtime.computerUse ? [COMPUTER_USE_INSTRUCTIONS] : []),
+    ...(runtime.browserTabs ? [browserTabsInstructions(toSingleLine(runtime.browserTabs))] : []),
   ].join("\n\n");
 }
 

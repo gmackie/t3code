@@ -8228,6 +8228,32 @@
       "v": "v"
     }
   ],
+  "c5cf4921e9b53824": "Chrome DevTools MCP did not install. Try again.",
+  "290cac9bd85be15a": "Use your browser tabs",
+  "2709455317e2d538": [
+    "Agents connect to the browser on ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    " that has remote debugging on. On ",
+    {
+      "i": 2,
+      "k": "_gt_value_2",
+      "v": "v"
+    },
+    ", open the browser's page below and turn on remote debugging. The browser asks to allow each connection, so someone at ",
+    {
+      "i": 3,
+      "k": "_gt_value_3",
+      "v": "v"
+    },
+    " has to approve it."
+  ],
+  "2e844dc004983ebb": "No Chromium browser found. Install Chrome, Edge, Brave, Helium, or Chromium.",
+  "fdb809c1c0099db5": "On",
+  "6ab05d286639293e": "Installing…",
   "a2fc467e1a6e2e29": "Não foi possível preparar as alterações. Veja Avançado para obter ajuda.",
   "9c09c0fc3f65c734": "Atalho salvo",
   "b1d65f0c09819ac5": "Use {shortcut} a partir de outro app.",
@@ -9151,6 +9177,12 @@
   "d18307275ee97e9a": "Reset computer use to default",
   "1419352c258bc7de": "This connection cannot change settings on this host.",
   "b26ad48726dd8132": "Computer use is on, but Cua Driver could not restart. Try Setup again.",
+  "d785b552d0934d6f": "Browser tab access",
+  "024b1791e74e4875": "Needs setup",
+  "565cc034918e3732": "Using {browser}",
+  "ce62c408d095401d": "Turn on remote debugging in your browser",
+  "7871bc8ed15f9e87": "Let agents use the open tabs and sign-ins in your browser on {hostLabel} through Chrome DevTools MCP.",
+  "b714ba7431dc4989": "Agent browser tabs",
   "b395b88284e3bca2": "Mostra a pré-visualização flutuante quando um agente abre um navegador ou dispositivo, a menos que o agente diga o contrário.",
   "6aadfd59cf60b4b5": "Redefinir \"Mostrar pré-visualização flutuante automaticamente\" para o padrão",
   "e4a7ec61190bc1f9": "Mostrar pré-visualização flutuante automaticamente",
@@ -12508,6 +12540,7 @@
   "345075be6cacc171": "dispositivo hosts ssh remoto mac mini identidade chave conexão eas expo nuvem simlock pool gateway simuladores locais",
   "a6b742430b05d6cc": "Agentes podem usar dispositivos",
   "1d5d7418a83575c2": "permitir simulador emulador ios android controlar ferramentas sessões",
+  "9a44b2704adff236": "chrome devtools tabs sign-ins signed in browser remote debugging edge brave",
   "04050ac46c68cdaa": "cua driver apps desktop screen click type agents control mac linux windows",
   "60f0825756e404dc": "Usar dispositivos",
   "907782e153a139a3": "dispositivo hub simulador emulador ios android instalar iniciar versão",

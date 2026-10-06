@@ -400,8 +400,12 @@ interface ThreadState {
     | undefined;
   /** The user's servers from Settings → Tools as registered for this thread. */
   userMcp: UserMcpRegistration | undefined;
-  /** The managed Cua Driver as registered for this thread; `socket` names its daemon. */
+  /** The managed Cua Driver as registered for this thread; `socket` names its command. */
   cua: { readonly name: string; readonly directory: string; readonly socket: string } | undefined;
+  /** Browser tabs as registered for this thread. */
+  browserTabs:
+    | { readonly name: string; readonly directory: string; readonly socket: string }
+    | undefined;
   instructions: string | undefined;
 }
 
@@ -459,6 +463,10 @@ export const t3McpServerName = Effect.fn("t3McpServerName")(function* (threadId:
 const cuaMcpServerName = (t3ServerName: string) =>
   t3ServerName.replace(/^t3-code-/u, "cua-driver-");
 
+/** The thread's browser tabs server, registered the same way. */
+const browserTabsMcpServerName = (t3ServerName: string) =>
+  t3ServerName.replace(/^t3-code-/u, "chrome-devtools-");
+
 /**
  * The user's servers are registered per directory like T3's own, so each
  * thread registers its own copies under `t3u-<thread digest>-<name>` (at most
@@ -478,6 +486,7 @@ const mcpRules = (
   userMcpPrefix: string | null = null,
   userEffect: Rule["effect"] = "ask",
   computerUse = false,
+  browserTabs = false,
 ): ReadonlyArray<Rule> => [
   ...(mcpServerName === null
     ? []
@@ -488,6 +497,8 @@ const mcpRules = (
         // allowed only while attached.
         rule("cua-driver-*", "deny"),
         ...(computerUse ? [rule(`${cuaMcpServerName(mcpServerName)}_*`, "allow")] : []),
+        rule("chrome-devtools-*", "deny"),
+        ...(browserTabs ? [rule(`${browserTabsMcpServerName(mcpServerName)}_*`, "allow")] : []),
       ]),
   // Registrations are shared per directory, so another thread's user servers
   // are denied even when this thread has none of its own.
@@ -506,6 +517,7 @@ const sessionRules = (
   mcpServerName: string | null,
   userMcpPrefix: string | null = null,
   computerUse = false,
+  browserTabs = false,
 ): ReadonlyArray<Rule> => [
   ...(policy.runtimeMode === "full-access"
     ? [rule("*", "allow")]
@@ -532,6 +544,7 @@ const sessionRules = (
     userMcpPrefix,
     policy.runtimeMode === "full-access" ? "allow" : "ask",
     computerUse,
+    browserTabs,
   ),
   ...grants.filter(
     (entry) => userMcpPrefix !== null && entry.action.startsWith(`${userMcpPrefix}-`),
@@ -1029,6 +1042,7 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
       mcp: undefined,
       userMcp: undefined,
       cua: undefined,
+      browserTabs: undefined,
       instructions: undefined,
     });
 
@@ -3994,6 +4008,7 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
       for (const state of threads.values()) {
         state.mcp = undefined;
         state.cua = undefined;
+        state.browserTabs = undefined;
         state.goalFresh = false;
         state.goalRefreshing = false;
         state.goalRevision += 1;
@@ -4223,6 +4238,8 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
         hasUserMcp ? yield* userMcpPrefixFor(appThreadId) : null,
         appThreadId !== null &&
           (yield* mcpSessions.read(ThreadId.make(appThreadId)))?.cuaDriver !== undefined,
+        appThreadId !== null &&
+          (yield* mcpSessions.read(ThreadId.make(appThreadId)))?.browserTabs !== undefined,
       );
     });
 
@@ -4556,6 +4573,8 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
               yield* removeMcp(state.mcp).pipe(Effect.ignore({ log: true }));
             if (state.cua !== undefined)
               yield* removeMcp(state.cua).pipe(Effect.ignore({ log: true }));
+            if (state.browserTabs !== undefined)
+              yield* removeMcp(state.browserTabs).pipe(Effect.ignore({ log: true }));
             yield* removeUserMcp(state).pipe(
               Effect.catchCause((cause) =>
                 Effect.logWarning("Could not clean up OpenCode MCP registrations.", {
@@ -4707,54 +4726,76 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
         directory,
         mcpSession,
       );
-      // The managed Cua Driver follows the same per-directory registration; a
-      // new daemon generation (another socket) replaces the old entry.
-      const cuaDriver = state.mcp === undefined ? undefined : mcpSession?.cuaDriver;
-      const wantedCua =
-        cuaDriver === undefined
-          ? undefined
-          : {
-              name: cuaMcpServerName(name),
-              directory,
-              socket: cuaDriver.socketPath ?? cuaDriver.args.join(" "),
-            };
-      let cuaAdded = false;
-      if (
-        state.cua !== undefined &&
-        (wantedCua === undefined ||
-          state.cua.directory !== wantedCua.directory ||
-          state.cua.socket !== wantedCua.socket)
-      ) {
-        yield* removeMcp(state.cua);
-        state.cua = undefined;
-      }
-      if (cuaDriver !== undefined && wantedCua !== undefined && state.cua === undefined) {
-        const config = McpProviderSession.cuaOpenCodeMcpConfig(cuaDriver);
+      // Cua Driver and browser tabs follow the same per-directory, per-thread
+      // registration; a changed command (a new Cua daemon socket, another
+      // browser profile) replaces the old entry.
+      const localServers = [
+        {
+          slot: "cua" as const,
+          name: cuaMcpServerName(name),
+          spec:
+            mcpSession?.cuaDriver === undefined
+              ? undefined
+              : McpProviderSession.cuaOpenCodeMcpConfig(mcpSession.cuaDriver),
+          label: "Cua Driver",
+        },
+        {
+          slot: "browserTabs" as const,
+          name: browserTabsMcpServerName(name),
+          spec:
+            mcpSession?.browserTabs === undefined
+              ? undefined
+              : {
+                  command: [mcpSession.browserTabs.command, ...mcpSession.browserTabs.args],
+                  environment: { ...mcpSession.browserTabs.env },
+                },
+          label: "Chrome DevTools MCP",
+        },
+      ];
+      let localAdded = false;
+      for (const server of localServers) {
+        const spec = state.mcp === undefined ? undefined : server.spec;
+        const wanted =
+          spec === undefined
+            ? undefined
+            : { name: server.name, directory, socket: spec.command.join(" ") };
+        const current = state[server.slot];
+        if (
+          current !== undefined &&
+          (wanted === undefined ||
+            current.directory !== wanted.directory ||
+            current.socket !== wanted.socket)
+        ) {
+          yield* removeMcp(current);
+          state[server.slot] = undefined;
+        }
+        if (spec === undefined || wanted === undefined || state[server.slot] !== undefined)
+          continue;
         const added = yield* client.mcp
           .add({
-            server: wantedCua.name,
+            server: wanted.name,
             location: { directory },
             config: new Mcp.LocalConfig({
               type: "local",
-              command: config.command,
-              environment: config.environment,
+              command: spec.command,
+              environment: spec.environment,
             }),
           })
           .pipe(
             Effect.timeout(INVENTORY_TIMEOUT),
             Effect.as(true),
             Effect.catchCause((cause) =>
-              Effect.logWarning("Could not add Cua Driver to OpenCode.", cause).pipe(
+              Effect.logWarning(`Could not add ${server.label} to OpenCode.`, cause).pipe(
                 Effect.as(false),
               ),
             ),
           );
-        if (added) state.cua = wantedCua;
-        cuaAdded = added;
+        if (added) state[server.slot] = wanted;
+        localAdded ||= added;
       }
       // Before 2.2.6, newly connected servers load tools after a debounce.
       if (
-        (t3McpAdded || userMcpAttempted || cuaAdded) &&
+        (t3McpAdded || userMcpAttempted || localAdded) &&
         compareSemverVersions(connection.version, "2.2.6") < 0
       ) {
         yield* Effect.sleep(MCP_TOOL_RELOAD_SETTLE);
@@ -4767,6 +4808,8 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
           model: turnInput.modelSelection.model,
           runtimePolicy: turnInput.runtimePolicy,
           computerUse: state.cua !== undefined,
+          browserTabs:
+            state.browserTabs === undefined ? undefined : mcpSession?.browserTabs?.browserName,
         }),
         t3OrchestrationSystemPrompt(mcpAvailable, mcpSession?.capabilities?.has("device") === true),
         mcpAvailable
@@ -5678,6 +5721,8 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
         }
         if (state.mcp !== undefined) yield* removeMcp(state.mcp).pipe(Effect.ignore({ log: true }));
         if (state.cua !== undefined) yield* removeMcp(state.cua).pipe(Effect.ignore({ log: true }));
+        if (state.browserTabs !== undefined)
+          yield* removeMcp(state.browserTabs).pipe(Effect.ignore({ log: true }));
       }),
       respondToRuntimeRequest: Effect.fn("OpenCode2Adapter.respondToRuntimeRequest")(
         function* (requestInput) {

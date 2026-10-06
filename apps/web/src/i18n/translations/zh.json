@@ -8246,6 +8246,32 @@
     },
     " 导入"
   ],
+  "c5cf4921e9b53824": "Chrome DevTools MCP did not install. Try again.",
+  "290cac9bd85be15a": "Use your browser tabs",
+  "2709455317e2d538": [
+    "Agents connect to the browser on ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    " that has remote debugging on. On ",
+    {
+      "i": 2,
+      "k": "_gt_value_2",
+      "v": "v"
+    },
+    ", open the browser's page below and turn on remote debugging. The browser asks to allow each connection, so someone at ",
+    {
+      "i": 3,
+      "k": "_gt_value_3",
+      "v": "v"
+    },
+    " has to approve it."
+  ],
+  "2e844dc004983ebb": "No Chromium browser found. Install Chrome, Edge, Brave, Helium, or Chromium.",
+  "fdb809c1c0099db5": "On",
+  "6ab05d286639293e": "Installing…",
   "a2fc467e1a6e2e29": "无法准备更改，请展开“高级”查看帮助。",
   "9c09c0fc3f65c734": "快捷键已保存",
   "b1d65f0c09819ac5": "在其他应用中使用 {shortcut}。",
@@ -9169,6 +9195,12 @@
   "d18307275ee97e9a": "Reset computer use to default",
   "1419352c258bc7de": "This connection cannot change settings on this host.",
   "b26ad48726dd8132": "Computer use is on, but Cua Driver could not restart. Try Setup again.",
+  "d785b552d0934d6f": "Browser tab access",
+  "024b1791e74e4875": "Needs setup",
+  "565cc034918e3732": "Using {browser}",
+  "ce62c408d095401d": "Turn on remote debugging in your browser",
+  "7871bc8ed15f9e87": "Let agents use the open tabs and sign-ins in your browser on {hostLabel} through Chrome DevTools MCP.",
+  "b714ba7431dc4989": "Agent browser tabs",
   "b395b88284e3bca2": "智能体打开浏览器或设备时显示浮动预览，除非智能体另有要求。",
   "6aadfd59cf60b4b5": "重置自动显示浮动预览为默认值",
   "e4a7ec61190bc1f9": "自动显示浮动预览",
@@ -12533,6 +12565,7 @@
   "345075be6cacc171": "设备 主机 ssh 远程 mac mini 身份 密钥 连接 eas expo 云 simlock 池 网关 本地 模拟器",
   "a6b742430b05d6cc": "允许智能体使用设备",
   "1d5d7418a83575c2": "允许 模拟器 ios android 操控 工具 智能体会话",
+  "9a44b2704adff236": "chrome devtools tabs sign-ins signed in browser remote debugging edge brave",
   "04050ac46c68cdaa": "cua driver apps desktop screen click type agents control mac linux windows",
   "60f0825756e404dc": "使用设备",
   "907782e153a139a3": "设备 hub 模拟器 ios android 安装 启动 版本",

@@ -219,6 +219,7 @@ import { withSocketHeartbeat } from "./socketHeartbeat.ts";
 import * as ServerBrowser from "./preview/ServerBrowser.ts";
 import * as DeviceService from "./device/DeviceService.ts";
 import * as CuaDriver from "./cua/CuaDriver.ts";
+import * as BrowserTabs from "./mcp/BrowserTabs.ts";
 import * as CuaWindowPreview from "./cua/CuaWindowPreview.ts";
 import { remoteSshDeviceHosts } from "./device/localSshDeviceHost.ts";
 import * as PreviewManager from "./preview/Manager.ts";
@@ -2534,6 +2535,22 @@ export const layerWsRpc = (
               Option.isSome(driver)
                 ? driver.value.status
                 : Effect.succeed({ platform: "other", running: false } as const),
+            ),
+          ),
+        [WS_METHODS.serverCheckBrowserTabs]: (_input) =>
+          Effect.serviceOption(BrowserTabs.BrowserTabs).pipe(
+            Effect.flatMap((tabs) =>
+              Option.isSome(tabs)
+                ? tabs.value.status
+                : Effect.succeed({ browsers: [], toolInstalled: false }),
+            ),
+          ),
+        [WS_METHODS.serverRunBrowserTabsAction]: (input) =>
+          Effect.serviceOption(BrowserTabs.BrowserTabs).pipe(
+            Effect.flatMap((tabs) =>
+              Option.isSome(tabs)
+                ? tabs.value.runAction(input.action)
+                : Effect.succeed({ browsers: [], toolInstalled: false }),
             ),
           ),
         [WS_METHODS.serverGetConfig]: (_input) =>

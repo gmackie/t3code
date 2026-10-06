@@ -8194,6 +8194,32 @@
     },
     "에서 가져올 수 없습니다"
   ],
+  "c5cf4921e9b53824": "Chrome DevTools MCP did not install. Try again.",
+  "290cac9bd85be15a": "Use your browser tabs",
+  "2709455317e2d538": [
+    "Agents connect to the browser on ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    " that has remote debugging on. On ",
+    {
+      "i": 2,
+      "k": "_gt_value_2",
+      "v": "v"
+    },
+    ", open the browser's page below and turn on remote debugging. The browser asks to allow each connection, so someone at ",
+    {
+      "i": 3,
+      "k": "_gt_value_3",
+      "v": "v"
+    },
+    " has to approve it."
+  ],
+  "2e844dc004983ebb": "No Chromium browser found. Install Chrome, Edge, Brave, Helium, or Chromium.",
+  "fdb809c1c0099db5": "On",
+  "6ab05d286639293e": "Installing…",
   "a2fc467e1a6e2e29": "변경 사항을 준비할 수 없습니다. 도움말은 고급을 확인하세요.",
   "9c09c0fc3f65c734": "단축키 저장됨",
   "b1d65f0c09819ac5": "다른 앱에서 {shortcut}을(를) 사용하세요.",
@@ -9112,6 +9138,12 @@
   "d18307275ee97e9a": "Reset computer use to default",
   "1419352c258bc7de": "This connection cannot change settings on this host.",
   "b26ad48726dd8132": "Computer use is on, but Cua Driver could not restart. Try Setup again.",
+  "d785b552d0934d6f": "Browser tab access",
+  "024b1791e74e4875": "Needs setup",
+  "565cc034918e3732": "Using {browser}",
+  "ce62c408d095401d": "Turn on remote debugging in your browser",
+  "7871bc8ed15f9e87": "Let agents use the open tabs and sign-ins in your browser on {hostLabel} through Chrome DevTools MCP.",
+  "b714ba7431dc4989": "Agent browser tabs",
   "b395b88284e3bca2": "에이전트가 별도로 지정하지 않으면, 에이전트가 브라우저나 기기를 열 때 플로팅 미리 보기를 표시합니다.",
   "6aadfd59cf60b4b5": "플로팅 미리 보기 자동 표시 기본값으로 재설정",
   "e4a7ec61190bc1f9": "플로팅 미리 보기 자동 표시",
@@ -12455,6 +12487,7 @@
   "345075be6cacc171": "기기 호스트 ssh 원격 mac mini ID 키 연결 eas expo 클라우드 simlock 풀 게이트웨이 로컬 시뮬레이터",
   "a6b742430b05d6cc": "에이전트가 기기를 사용할 수 있음",
   "1d5d7418a83575c2": "허용 시뮬레이터 에뮬레이터 iOS Android 조작 도구 세션",
+  "9a44b2704adff236": "chrome devtools tabs sign-ins signed in browser remote debugging edge brave",
   "04050ac46c68cdaa": "cua driver apps desktop screen click type agents control mac linux windows",
   "60f0825756e404dc": "기기 사용",
   "907782e153a139a3": "기기 허브 시뮬레이터 에뮬레이터 iOS Android 설치 시작 버전",

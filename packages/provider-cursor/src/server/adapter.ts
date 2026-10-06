@@ -249,7 +249,7 @@ export function cursorMcpServers(
         Authorization: session.authorizationHeader,
       },
     },
-    ...McpProviderSession.cuaStdioMcpServers(session),
+    ...McpProviderSession.localStdioMcpServers(session),
   };
 }
 
@@ -2952,12 +2952,14 @@ export const makeCursorAdapterV2 = Effect.fn("makeCursorAdapterV2")(function* (
               detail: "Cursor turn requires non-empty text or attachments.",
             });
           }
+          const mcpSession = yield* mcpSessions.read(turnInput.threadId);
           const runtimeInstructions = buildRuntimeInstructions({
             agentFeedback: mcpServers === undefined ? "off" : (turnInput.agentFeedback ?? "off"),
             harness: "Cursor",
             model: turnInput.modelSelection.model,
             runtimePolicy: turnInput.runtimePolicy,
-            computerUse: (yield* mcpSessions.read(turnInput.threadId))?.cuaDriver !== undefined,
+            computerUse: mcpSession?.cuaDriver !== undefined,
+            browserTabs: mcpSession?.browserTabs?.browserName,
           });
           // Resend only on a new/compacted/rewound conversation or when the instructions change.
           const sendRuntimeInstructions = delivered.runtime !== runtimeInstructions;
