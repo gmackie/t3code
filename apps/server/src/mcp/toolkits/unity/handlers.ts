@@ -14,17 +14,15 @@ export const layer = UnityToolkit.toLayer({
       );
       yield* McpInvocationContext.requireThreadScope(scope, "unity_command");
       const unity = yield* UnityHooks.UnityHooks;
-      return yield* unity
-        .command(request)
-        .pipe(
-          Effect.mapError(
-            (error) =>
-              new OrchestratorMcpFailure({
-                code: "orchestration_error",
-                message: `${error.code}: ${error.message}`,
-              }),
-          ),
-        );
+      return yield* unity.command(request).pipe(
+        Effect.mapError(
+          (error) =>
+            new OrchestratorMcpFailure({
+              code: "orchestration_error",
+              message: `${error.code}: ${error.message}`,
+            }),
+        ),
+      );
     }),
   unity_game: ({ request }) =>
     Effect.gen(function* () {
