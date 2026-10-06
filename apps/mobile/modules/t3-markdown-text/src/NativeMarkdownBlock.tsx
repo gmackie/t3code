@@ -16,11 +16,16 @@ import type {
   MarkdownImageRenderer,
   NativeMarkdownTextStyle,
   SelectableMarkdownSkill,
+  SelectableMarkdownTextProps,
 } from "./SelectableMarkdownText.types";
 import { useHighlightedCode, type HighlightedCode } from "./useHighlightedCode";
 
 /** Set by SelectableMarkdownText so images anywhere in the block tree can use it. */
 export const MarkdownImageRendererContext = createContext<MarkdownImageRenderer | null>(null);
+
+export const MarkdownCodeBlockRendererContext = createContext<
+  SelectableMarkdownTextProps["renderCodeBlock"] | null
+>(null);
 
 const MONO_FONT_FAMILY = Platform.select({
   ios: "ui-monospace",
@@ -145,7 +150,13 @@ function HighlightedCodeText(props: {
   );
 }
 
-function NativeCodeBlock(props: {
+function NativeCodeBlock(props: React.ComponentProps<typeof NativeCodeSource>) {
+  const render = useContext(MarkdownCodeBlockRendererContext);
+  const fallback = <NativeCodeSource {...props} />;
+  return render?.(nodeText(props.node), props.node.language, fallback) ?? fallback;
+}
+
+function NativeCodeSource(props: {
   readonly node: MarkdownNode;
   readonly textStyle: NativeMarkdownTextStyle;
   readonly highlightCode: MarkdownCodeHighlighter;
