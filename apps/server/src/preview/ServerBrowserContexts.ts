@@ -6,6 +6,7 @@ import * as NodePath from "node:path";
 import type { Browser, BrowserContext } from "playwright-core";
 
 import { sandboxDisabled } from "./PreviewBrowserHost.ts";
+import { loadChromium } from "./playwright.ts";
 
 interface Options {
   readonly profilesDir: string;
@@ -52,7 +53,7 @@ export class ServerBrowserContexts {
   private sharedBrowser() {
     if (!this.browser) {
       const launched = this.launchOptions().then(async (options) => {
-        const { chromium } = await import("playwright-core");
+        const chromium = loadChromium();
         const browser = await this.launch(options, () => chromium.launch(options));
         browser.on("disconnected", () => {
           if (this.browser === launched) this.browser = undefined;
@@ -99,7 +100,7 @@ export class ServerBrowserContexts {
     }
     const directory = this.profileDirectory(profileId);
     const options = await this.launchOptions();
-    const { chromium } = await import("playwright-core");
+    const chromium = loadChromium();
     await NodeFSP.mkdir(directory, { recursive: true });
     return this.launch(options, () =>
       chromium.launchPersistentContext(directory, { ...options, ...contextOptions }),
@@ -128,7 +129,7 @@ export class ServerBrowserContexts {
    * serves. The page keeps the desktop's storage, size, and window.
    */
   async connectDesktopPage(endpoint: string) {
-    const { chromium } = await import("playwright-core");
+    const chromium = loadChromium();
     const browser = await chromium.connectOverCDP(endpoint, { timeout: 15_000 });
     const page = browser.contexts().flatMap((context) => context.pages())[0];
     if (!page) {

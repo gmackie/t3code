@@ -12,8 +12,8 @@ const launches = vi.hoisted(() => ({
   mkdir: vi.fn().mockResolvedValue(undefined),
   rm: vi.fn().mockResolvedValue(undefined),
 }));
-vi.mock("playwright-core", () => ({
-  chromium: { launch: launches.launch, launchPersistentContext: launches.persistent },
+vi.mock("./playwright.ts", () => ({
+  loadChromium: () => ({ launch: launches.launch, launchPersistentContext: launches.persistent }),
 }));
 vi.mock("node:fs/promises", () => ({ mkdir: launches.mkdir, rm: launches.rm }));
 

@@ -964,6 +964,7 @@ jobs:
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
           APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
           RELEASE_VERSION: ${{ needs.sync.outputs.version }}
+          TMPDIR: ${{ vars.IOS_BUILD_TMPDIR || '/tmp' }}
         run: |
           set -euo pipefail
           key_path="$RUNNER_TEMP/AuthKey_${APPLE_API_KEY_ID}.p8"
