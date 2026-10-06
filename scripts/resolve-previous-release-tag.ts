@@ -160,7 +160,7 @@ const parseStableTag = (tag: string): StableVersion | undefined => {
   const prereleaseIdentifiers = prerelease ? prerelease.split(".") : [];
   // Channel-specific prerelease tags also start with `v`, but must not be
   // considered stable candidates when resolving the previous stable tag.
-  if (prereleaseIdentifiers[0] === "nightly" || prereleaseIdentifiers[0] === "gmacko") {
+  if (["nightly", "preview", "gmacko"].includes(prereleaseIdentifiers[0] ?? "")) {
     return undefined;
   }
 
