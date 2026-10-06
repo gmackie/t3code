@@ -107,6 +107,17 @@ export const GameState = Schema.Struct({
 });
 export type GameState = typeof GameState.Type;
 export const GameCatalog = Schema.Struct({
+  evidence: Schema.optional(
+    Schema.Struct({
+      host: Schema.String,
+      unityVersion: Schema.String,
+      buildGuid: Schema.String,
+      product: Schema.String,
+      version: Schema.String,
+      scene: Schema.String,
+      platform: Schema.String,
+    }),
+  ),
   generation: Id,
   target: Schema.Literals(["editor", "player"]),
   hooks: UnityHookCatalog.fields.hooks,
