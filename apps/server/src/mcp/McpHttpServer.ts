@@ -1,3 +1,5 @@
+import { UnityToolkit } from "./toolkits/unity/tools.ts";
+import * as UnityHandlers from "./toolkits/unity/handlers.ts";
 import * as NodeCrypto from "node:crypto";
 import * as Cause from "effect/Cause";
 import * as Clock from "effect/Clock";
@@ -763,4 +765,5 @@ export const layer = Layer.mergeAll(
   layerPullRequestsToolkit,
   layerDeviceToolkit,
   layerHtmlToolkit,
+  McpServer.toolkit(UnityToolkit).pipe(Layer.provide(UnityHandlers.layer)),
 ).pipe(Layer.provideMerge(layerMcpTransport));
