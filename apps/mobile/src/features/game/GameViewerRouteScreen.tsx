@@ -13,7 +13,7 @@ import {
   type ReactNode,
   type Ref,
 } from "react";
-import { ActivityIndicator, AppState, Pressable, View } from "react-native";
+import { ActivityIndicator, AppState, PixelRatio, Platform, Pressable, View } from "react-native";
 import { WebView } from "react-native-webview";
 import { useNavigation, type StaticScreenProps } from "@react-navigation/native";
 
@@ -21,6 +21,9 @@ import { AppText as Text } from "../../components/AppText";
 import { LoadingStrip } from "../../components/LoadingStrip";
 import { NativeStackScreenOptions } from "../../native/StackHeader";
 import { usePreparedConnection } from "../../state/session";
+
+import { mobileHtmlRenderTheme } from "../../lib/htmlRenderTheme";
+import { useAppearancePreferences } from "../settings/appearance/AppearancePreferencesProvider";
 
 type Props = StaticScreenProps<{
   readonly environmentId: string;
@@ -59,6 +62,25 @@ const GameWebView = WebView as unknown as ComponentType<GameWebViewProps>;
 
 export function GameViewerRouteScreen({ route }: Props) {
   const navigation = useNavigation();
+  const { themeId, themeAppearance, themeVariables, systemColorsActive } =
+    useAppearancePreferences();
+  const theme = useMemo(() => {
+    const palette = mobileHtmlRenderTheme({
+      themeId,
+      appearance: themeAppearance,
+      variables: themeVariables,
+      systemColors: systemColorsActive,
+      platform: Platform.OS,
+    });
+    return {
+      ...palette,
+      variables: {
+        ...palette.variables,
+        "--game-font-size": `${16 * PixelRatio.getFontScale()}px`,
+      },
+    };
+  }, [themeId, themeAppearance, themeVariables, systemColorsActive]);
+  const [initialTheme] = useState(theme);
   const { cwd } = route.params;
   const environmentId = EnvironmentId.make(route.params.environmentId);
   const connection = usePreparedConnection(environmentId);
@@ -90,6 +112,13 @@ export function GameViewerRouteScreen({ route }: Props) {
   const [refreshKey, setRefreshKey] = useState(0);
   const [progress, setProgress] = useState(0);
   const webViewRef = useRef<WebView>(null);
+
+  const postTheme = useCallback(() => {
+    webViewRef.current?.injectJavaScript(
+      `window.dispatchEvent(new CustomEvent('t3-game-theme', { detail: ${JSON.stringify(theme)} })); true;`,
+    );
+  }, [theme]);
+  useEffect(postTheme, [postTheme]);
 
   useEffect(() => {
     const subscription = AppState.addEventListener("change", (state) => {
@@ -132,9 +161,12 @@ export function GameViewerRouteScreen({ route }: Props) {
   const viewerUrl = useMemo(() => {
     if (!session || !viewerEndpoint) return null;
     const url = new URL(`${session.httpBaseUrl.replace(/\/$/, "")}/api/game/viewer`);
-    url.hash = new URLSearchParams({ ticket: session.token }).toString();
+    url.hash = new URLSearchParams({
+      ticket: session.token,
+      gameTheme: JSON.stringify(initialTheme),
+    }).toString();
     return url.toString();
-  }, [viewerEndpoint, session]);
+  }, [viewerEndpoint, session, initialTheme]);
   const viewerOrigin = useMemo(() => (viewerUrl ? new URL(viewerUrl).origin : null), [viewerUrl]);
   return (
     <View className="flex-1 bg-sheet">
@@ -180,6 +212,7 @@ export function GameViewerRouteScreen({ route }: Props) {
           onLoadStart={() => setProgress(0.05)}
           onLoadEnd={() => {
             setProgress(0);
+            postTheme();
             webViewRef.current?.injectJavaScript(
               `window.dispatchEvent(new CustomEvent('t3-game-visibility', { detail: ${AppState.currentState === "active"} })); true;`,
             );

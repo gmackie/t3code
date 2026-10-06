@@ -9,10 +9,23 @@ const fixture = vi.hoisted(() => ({
   mounts: 0,
   unmounts: 0,
 }));
+vi.mock("../settings/appearance/AppearancePreferencesProvider", () => ({
+  useAppearancePreferences: () => ({
+    themeId: "default",
+    themeAppearance: "dark",
+    themeVariables: {},
+    systemColorsActive: false,
+  }),
+}));
+vi.mock("../../lib/htmlRenderTheme", () => ({
+  mobileHtmlRenderTheme: () => ({ appearance: "dark", variables: {} }),
+}));
 vi.mock("../../state/session", () => ({ usePreparedConnection: () => fixture.connection }));
 vi.mock("../../state/game", () => ({ gameState: { session: {} } }));
 vi.mock("../../state/use-atom-query-runner", () => ({ useAtomQueryRunner: () => fixture.mint }));
 vi.mock("react-native", () => ({
+  Platform: { OS: "android" },
+  PixelRatio: { getFontScale: () => 1 },
   View: ({ children }: { children: unknown }) => children,
   Pressable: () => null,
   ActivityIndicator: () => null,
