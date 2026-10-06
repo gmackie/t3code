@@ -31,7 +31,7 @@ export const UnityToolkit = Toolkit.make(
     .annotate(Tool.Idempotent, false),
   Tool.make("unity_game", {
     description:
-      "Open an Editor or development Player game session, acquire expiring agent input control, send normalized pointer and held keys, monitor/write exposed hooks, release/close, or publish an inline HTML observation report. Requires the Pipeline game package. Start with open and target. Session IDs and leases belong to this thread. Input expires after durationMs (at most 1000); control expires after 1500ms without input. Humans can take over; never retry after control_lost without asking the user. For report, render the returned htmlRender reference using the inline HTML reply convention.",
+      "Open an Editor or development Player game session, acquire expiring agent input control, send normalized pointer and held keys, monitor/write exposed hooks (optional predicate and notifyAgent for one notification per explicit rearm_monitor), release/close, or publish an inline HTML observation report. Requires the Pipeline game package. Start with open and target. Session IDs and leases belong to this thread. Input expires after durationMs (at most 1000); control expires after 1500ms without input. Humans can take over; never retry after control_lost without asking the user. For report, render the returned htmlRender reference using the inline HTML reply convention.",
     parameters: Schema.Struct({ request: GameRequest }),
     success: Schema.Unknown,
     failure: OrchestratorMcpFailure,

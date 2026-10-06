@@ -25,7 +25,11 @@ A watch may include a `predicate` with a discovered `handle`, an `operator`
 comparisons require a numeric scalar. A matching condition records one receipt
 with the observed sample; repeated reads return the same receipt ID. Use
 `watch_rearm` explicitly to allow another match, up to 32 receipts per watch.
-The viewer offers the same condition and rearm controls. Receipts remain available
+The viewer offers the same condition and rearm controls. Enable **Notify agent
+when matched** (or `notifyAgent: true` on a game monitor request) to queue a
+notification in the requesting thread. The bounded monitor continues after the
+viewer closes. Notification delivery ends when T3 restarts; inspect the retained
+Unity receipts after reconnecting. Receipts remain available
 until the watch is forgotten, even when their samples leave the rolling history.
 
 Successful writes include the previous, requested and observed values. An

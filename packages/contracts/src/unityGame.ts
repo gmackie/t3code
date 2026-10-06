@@ -83,6 +83,7 @@ export const GameRequest = Schema.Union([
   Schema.Struct({
     action: Schema.Literal("monitor"),
     predicate: Schema.optional(UnityHookPredicate),
+    notifyAgent: Schema.optional(Schema.Boolean),
     sessionId: Id,
     lease: Id,
     handles: Schema.Array(Id).check(Schema.isMinLength(1), Schema.isMaxLength(32)),

@@ -1,5 +1,8 @@
 import * as NodeCrypto from "node:crypto";
 import {
+  CommandId,
+  MessageId,
+  UnityHookWatch,
   GameCatalog,
   GameRequest,
   GameState,
@@ -12,6 +15,7 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
+import * as ThreadManagement from "../orchestration-v2/ThreadManagementService.ts";
 import * as Schedule from "effect/Schedule";
 import * as UnityHooks from "./UnityHooks.ts";
 import * as GameTransport from "./GameTransport.ts";
@@ -71,6 +75,7 @@ export class GameSessions extends Context.Service<
 >()("t3/game/GameSessions") {}
 const decodeRequest = Schema.decodeUnknownEffect(GameRequest);
 const decodeCatalog = Schema.decodeUnknownEffect(GameCatalog);
+const decodeWatch = Schema.decodeUnknownEffect(UnityHookWatch);
 const decodeState = Schema.decodeUnknownEffect(GameState);
 const decodeLease = Schema.decodeUnknownEffect(
   Schema.Struct({ lease: Schema.String, expiresInMs: Schema.Number }),
@@ -81,12 +86,76 @@ const invalid = () =>
     reason: "Unity returned incompatible game data.",
   });
 const make = Effect.gen(function* () {
+  const scope = yield* Effect.scope;
+  const threads = yield* ThreadManagement.ThreadManagementService;
   const hooks = yield* UnityHooks.UnityHooks;
   const transport = yield* GameTransport.GameTransport;
   const html = yield* HtmlRender.HtmlRender;
   const viewers = new Map<string, Viewer>();
   const sessions = new Map<string, Session>();
   const agents = new Map<ThreadId, string>();
+  const notifications = new Set<string>();
+  const notifyWatch = Effect.fn("GameSessions.notifyWatch")(function* (
+    threadId: ThreadId,
+    session: Session,
+    watch: typeof UnityHookWatch.Type,
+    durationMs: number,
+  ) {
+    const identity = `${session.bridge.generation}:${watch.id}`;
+    notifications.add(identity);
+    const deadline = (yield* Clock.currentTimeMillis) + durationMs;
+    const seen = new Set<string>();
+    const run = Effect.gen(function* () {
+      let current = watch;
+      let cursor = 0;
+      while (true) {
+        for (const receipt of current.receipts ?? []) {
+          if (seen.has(receipt.id)) continue;
+          const id = `unity-watch:${identity}:${receipt.id}`;
+          yield* threads
+            .dispatch({
+              type: "message.dispatch",
+              commandId: CommandId.make(id),
+              messageId: MessageId.make(id),
+              threadId,
+              text: `Unity watch condition matched. ${JSON.stringify({ watchId: watch.id, target: session.catalog.target, generation: session.catalog.generation, predicate: current.predicate, receipt })}`,
+              notification: {
+                source: { kind: "monitor" },
+                outcome: "updated",
+                summary: `Unity watch condition matched (arm ${receipt.arm})`,
+              },
+              attachments: [],
+              dispatchMode: { type: "queue_after_active" },
+              createdBy: "agent",
+              creationSource: "server",
+            })
+            .pipe(Effect.retry({ times: 2, schedule: Schedule.spaced("100 millis") }));
+          seen.add(receipt.id);
+        }
+        if (current.status !== "active" || (yield* Clock.currentTimeMillis) >= deadline) return;
+        cursor = Math.max(cursor, ...current.samples.map((sample) => sample.sequence));
+        yield* Effect.sleep("250 millis");
+        const state = yield* transport
+          .command(session.bridge, {
+            action: "state",
+            generation: session.bridge.generation,
+            afterSequence: cursor,
+          })
+          .pipe(Effect.flatMap(decodeState));
+        if (state.generation !== watch.generation || state.monitor?.id !== watch.id) return;
+        current = state.monitor;
+      }
+    }).pipe(
+      Effect.catchCause((cause) =>
+        Effect.logWarning("Unity watch notification delivery stopped", {
+          watchId: watch.id,
+          cause,
+        }),
+      ),
+      Effect.ensuring(Effect.sync(() => notifications.delete(identity))),
+    );
+    yield* Effect.forkIn(run, scope);
+  });
   const viewer = Effect.fn("GameSessions.viewer")(function* (token: string) {
     const now = yield* Clock.currentTimeMillis;
     for (const [key, value] of viewers)
@@ -216,7 +285,20 @@ const make = Effect.gen(function* () {
         code: "control_lost",
         reason: "Acquire control before changing gameplay.",
       });
+    if (
+      input.action === "monitor" &&
+      input.notifyAgent &&
+      (!input.predicate || notifications.size >= 16)
+    )
+      return yield* new UnityHookError({
+        code: "invalid_monitor",
+        reason: "Agent notifications require a predicate; at most 16 notification watches can run.",
+      });
     const result = yield* command(input);
+    if (input.action === "monitor" && input.notifyAgent) {
+      const watch = yield* decodeWatch(result).pipe(Effect.mapError(invalid));
+      yield* notifyWatch(caller.threadId, session, watch, input.durationMs);
+    }
     if (input.action === "release") delete session.lease;
     return result;
   });
