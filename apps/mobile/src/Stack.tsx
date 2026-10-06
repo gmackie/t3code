@@ -739,6 +739,7 @@ const RootStackConfig = createNativeStackNavigator({
       options: {
         ...SOLID_HEADER_OPTIONS,
         gestureEnabled: false,
+        orientation: "all",
       },
     }),
     KiCadViewer: createNativeStackScreen({
