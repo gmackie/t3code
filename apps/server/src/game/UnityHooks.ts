@@ -129,6 +129,8 @@ const make = Effect.gen(function* () {
         "--interval_ms",
         String(request.intervalMs),
       );
+    if (request.action === "watch" && request.predicate)
+      args.push("--predicate", JSON.stringify(request.predicate));
     if ("id" in request) args.push("--id", request.id);
     if (request.action === "watch_read")
       args.push("--after_sequence", String(request.afterSequence));

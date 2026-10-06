@@ -20,6 +20,19 @@ t3 unity-hooks '{"action":"list","target":{"kind":"editor","projectPath":"/absol
 
 Watches run in Unity for a bounded duration and retain their latest samples.
 Use `watch_read` to retrieve them, and `watch_stop` with `forget: true` when done.
+A watch may include a `predicate` with a discovered `handle`, an `operator`
+(`eq`, `ne`, `lt`, `lte`, `gt`, or `gte`), and an `expected` value. Ordering
+comparisons require a numeric scalar. A matching condition records one receipt
+with the observed sample; repeated reads return the same receipt ID. Use
+`watch_rearm` explicitly to allow another match, up to 32 receipts per watch.
+The viewer offers the same condition and rearm controls. Receipts remain available
+until the watch is forgotten, even when their samples leave the rolling history.
+
+Successful writes include the previous, requested and observed values. An
+`adjusted` outcome means the game's setter applied a different value. Active
+watches retain these mutations, and saved reports include the underlying JSON
+observations and receipts.
+
 A watch reports dropped samples; it does not imply that a disconnected or paused
 game has kept advancing. Writes are transient gameplay changes. If a write times
 out, read its value before retrying because the game may already have applied it.
@@ -37,7 +50,7 @@ Select Editor and enter its project path, or select Player and enter its port
 file. Paths refer to the machine hosting that T3 environment.
 
 The viewer works through your existing environment connection. It displays
-package-captured JPEG frames at up to 10 frames per second and provides keyboard,
+package-captured H.264 video with a JPEG fallback and provides keyboard,
 pointer and touch controls. Keep the Editor Game view visible and large enough
 to render. On Macs where a player stalls in Metal presentation, disable vsync
 and set an explicit frame rate in the test project.

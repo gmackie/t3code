@@ -1,5 +1,11 @@
 import * as Schema from "effect/Schema";
-import { UnityTarget, UnityHookCatalog, UnityHookWatch, UnityHookValue } from "./unityHooks.ts";
+import {
+  UnityTarget,
+  UnityHookCatalog,
+  UnityHookWatch,
+  UnityHookValue,
+  UnityHookPredicate,
+} from "./unityHooks.ts";
 import { UnityCommandRequest } from "./unityCommand.ts";
 import { ThreadId } from "./baseSchemas.ts";
 
@@ -76,11 +82,13 @@ export const GameRequest = Schema.Union([
   }),
   Schema.Struct({
     action: Schema.Literal("monitor"),
+    predicate: Schema.optional(UnityHookPredicate),
     sessionId: Id,
     lease: Id,
     handles: Schema.Array(Id).check(Schema.isMinLength(1), Schema.isMaxLength(32)),
     durationMs: Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 60000 })),
   }),
+  Schema.Struct({ action: Schema.Literal("rearm_monitor"), sessionId: Id, lease: Id }),
   Schema.Struct({ action: Schema.Literal("stop_monitor"), sessionId: Id, lease: Id }),
   Schema.Struct({ action: Schema.Literal("report"), sessionId: Id }),
 ]);

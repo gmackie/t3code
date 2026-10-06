@@ -23,6 +23,7 @@ it("pauses frames and releases input on native background, resuming without reac
         textContent: "",
         style: {},
         replaceChildren() {},
+        append() {},
         removeAttribute() {},
         focus() {},
       });
@@ -33,6 +34,7 @@ it("pauses frames and releases input on native background, resuming without reac
     document: {
       hidden: false,
       getElementById: element,
+      createElement: (tag: string) => ({ tag, value: "", textContent: "" }),
       querySelectorAll: () => [],
       addEventListener: (name: string, callback: () => void) => listeners.set(name, callback),
     },
@@ -136,6 +138,7 @@ it("decodes VideoToolbox SPS headers and closes frames on background", async () 
         style: {},
         textContent: "",
         replaceChildren() {},
+        append() {},
         removeAttribute() {},
         getContext: () => ({ drawImage() {} }),
       });
@@ -176,6 +179,7 @@ it("decodes VideoToolbox SPS headers and closes frames on background", async () 
     document: {
       hidden: false,
       getElementById: element,
+      createElement: (tag: string) => ({ tag, value: "", textContent: "" }),
       querySelectorAll: () => [],
       addEventListener: (name: string, callback: (event: { detail: boolean }) => void) =>
         listeners.set(name, callback),

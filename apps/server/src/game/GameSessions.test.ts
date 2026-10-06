@@ -212,3 +212,44 @@ it.effect("returns an image for an agent's own session and rejects another threa
     ).toBe("viewer_expired");
   }).pipe(Effect.provide(fixture())),
 );
+
+it("reports mutation outcomes, deduplicated receipt identities and recoverable raw evidence", () => {
+  const sample = {
+    generation: "g",
+    sequence: 2,
+    sampledAtMs: 10,
+    values: { speed: 8 },
+    mutation: {
+      id: "mutation",
+      handle: "speed",
+      before: 3,
+      requested: 9,
+      outcome: "adjusted" as const,
+    },
+  };
+  const observed = {
+    ...state,
+    monitor: {
+      id: "watch",
+      generation: "g",
+      status: "active" as const,
+      error: null,
+      dropped: 1,
+      samples: [sample],
+      predicate: { handle: "speed", operator: "gt" as const, expected: 7 },
+      armed: false,
+      receipts: [{ id: "receipt", arm: 1, sample }],
+    },
+  };
+  const html = gameReport(catalog, observed);
+  expect(html).toContain("adjusted");
+  expect(html).toContain("not armed");
+  const raw = html.match(/<pre>([\s\S]*?)<\/pre>/)?.[1];
+  expect(raw).toBeDefined();
+  const decoded = raw!
+    .replaceAll("&quot;", '"')
+    .replaceAll("&lt;", "<")
+    .replaceAll("&gt;", ">")
+    .replaceAll("&amp;", "&");
+  expect(JSON.parse(decoded)).toEqual({ schema: "t3.unity-evidence/v1", catalog, state: observed });
+});

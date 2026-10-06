@@ -7,6 +7,11 @@ export const UnityHookValue = Schema.Union([
   Schema.Number.check(Schema.isFinite()),
   Schema.String.check(Schema.isMaxLength(1024)),
 ]);
+export const UnityHookPredicate = Schema.Struct({
+  handle: Id,
+  operator: Schema.Literals(["eq", "ne", "lt", "lte", "gt", "gte"]),
+  expected: UnityHookValue,
+});
 const Handles = Schema.Array(Id).check(Schema.isMinLength(1), Schema.isMaxLength(32));
 export const UnityTarget = Schema.Union([
   Schema.Struct({ kind: Schema.Literal("editor"), projectPath: Schema.String }),
@@ -36,10 +41,12 @@ export const UnityHookRequest = Schema.Union([
   Schema.Struct({
     ...session,
     action: Schema.Literal("watch"),
+    predicate: Schema.optional(UnityHookPredicate),
     handles: Handles,
     durationMs: Bound.check(Schema.isBetween({ minimum: 1, maximum: 60000 })),
     intervalMs: Bound.check(Schema.isBetween({ minimum: 50, maximum: 10000 })),
   }),
+  Schema.Struct({ ...session, action: Schema.Literal("watch_rearm"), id: Id }),
   Schema.Struct({ ...session, action: Schema.Literal("watch_read"), id: Id, afterSequence: Bound }),
   Schema.Struct({
     ...session,
@@ -55,6 +62,15 @@ export const UnityHookSample = Schema.Struct({
   sequence: Bound,
   sampledAtMs: Schema.Number.check(Schema.isFinite()),
   values: Schema.Record(Id, UnityHookValue),
+  mutation: Schema.optional(
+    Schema.Struct({
+      id: Id,
+      handle: Id,
+      before: UnityHookValue,
+      requested: UnityHookValue,
+      outcome: Schema.Literals(["applied", "adjusted"]),
+    }),
+  ),
 });
 export const UnityHookCatalog = Schema.Struct({
   schema: Schema.Literal("gmacko.agent-hooks/v1"),
@@ -87,6 +103,17 @@ export const UnityHookWatch = Schema.Struct({
   error: Schema.NullOr(Schema.String),
   dropped: Bound,
   samples: Schema.Array(UnityHookSample).check(Schema.isMaxLength(256)),
+  predicate: Schema.optional(UnityHookPredicate),
+  armed: Schema.optional(Schema.Boolean),
+  receipts: Schema.optional(
+    Schema.Array(
+      Schema.Struct({
+        id: Id,
+        arm: Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 32 })),
+        sample: UnityHookSample,
+      }),
+    ).check(Schema.isMaxLength(32)),
+  ),
 });
 export const UnityHookAssertion = Schema.Struct({
   passed: Schema.Boolean,

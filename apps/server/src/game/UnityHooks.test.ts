@@ -239,3 +239,45 @@ it.effect("bounds catalog output and keeps pagination pinned to the chosen targe
     expect(calls[0]?.args).toContain("5");
   }),
 );
+
+it.effect("passes typed watch predicates and explicit rearm to the selected Unity target", () =>
+  Effect.gen(function* () {
+    const calls: ProcessRunner.ProcessRunInput[] = [];
+    const predicate = { handle: "handle", operator: "lt", expected: 5 } as const;
+    const watch = {
+      id: "watch",
+      generation: "generation-1",
+      status: "active",
+      error: null,
+      dropped: 0,
+      samples: [sample],
+      predicate,
+      armed: false,
+      receipts: [{ id: "receipt", arm: 1, sample }],
+    };
+    const service = yield* UnityHooks.UnityHooks.pipe(
+      Effect.provide(layer(envelope(watch), calls)),
+    );
+    expect(
+      yield* service.execute({
+        action: "watch",
+        target,
+        generation: "generation-1",
+        handles: ["handle"],
+        durationMs: 1000,
+        intervalMs: 100,
+        predicate,
+      }),
+    ).toEqual(watch);
+    expect(calls[0]?.args).toContain(JSON.stringify(predicate));
+    expect(
+      yield* service.execute({
+        action: "watch_rearm",
+        target,
+        generation: "generation-1",
+        id: "watch",
+      }),
+    ).toEqual(watch);
+    expect(calls[1]?.args?.slice(0, 2)).toEqual(["command", "agent_vars_watch_rearm"]);
+  }),
+);
