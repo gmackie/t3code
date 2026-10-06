@@ -76,3 +76,4 @@ export * from "./kicad.ts";
 export * from "./veritasCad.ts";
 export * from "./secretRequest.ts";
 export * from "./unityHooks.ts";
+export * from "./unityGame.ts";

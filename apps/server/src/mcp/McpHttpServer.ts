@@ -1,4 +1,6 @@
-import { UnityToolkit } from "./toolkits/unity/tools.ts";
+import * as ThreadManagement from "../orchestration-v2/ThreadManagementService.ts";
+import * as GameSessions from "../game/GameSessions.ts";
+import { UnityToolkit, UnitySnapshotTool, UnitySnapshotToolkit } from "./toolkits/unity/tools.ts";
 import * as UnityHandlers from "./toolkits/unity/handlers.ts";
 import * as NodeCrypto from "node:crypto";
 import * as Cause from "effect/Cause";
@@ -680,6 +682,26 @@ const registerHtmlPreview = Effect.fn("McpHttpServer.registerHtmlPreview")(funct
   );
 });
 
+const registerUnitySnapshot = Effect.fn("McpHttpServer.registerUnitySnapshot")(function* () {
+  const games = yield* GameSessions.GameSessions;
+  const threads = yield* ThreadManagement.ThreadManagementService;
+  const built = yield* UnitySnapshotToolkit;
+  yield* registerImageTool(
+    UnitySnapshotTool,
+    (payload) =>
+      built
+        .handle("unity_game_snapshot", payload)
+        .pipe(Stream.unwrap, Stream.run(Sink.last()), Effect.flatMap(Effect.fromOption)),
+    (effect) =>
+      effect.pipe(
+        Effect.provideService(GameSessions.GameSessions, games),
+        Effect.provideService(ThreadManagement.ThreadManagementService, threads),
+      ),
+    "snapshot",
+    (error) => (isOrchestratorMcpFailure(error) ? error.message : "Unity snapshot failed."),
+  );
+});
+
 export const layerHtmlToolkit = Layer.mergeAll(
   McpServer.toolkit(HtmlRenderToolkit).pipe(Layer.provide(HtmlHandlers.layerRender)),
   Layer.effectDiscard(registerHtmlPreview()).pipe(Layer.provide(HtmlHandlers.layerPreview)),
@@ -765,5 +787,6 @@ export const layer = Layer.mergeAll(
   layerPullRequestsToolkit,
   layerDeviceToolkit,
   layerHtmlToolkit,
+  Layer.effectDiscard(registerUnitySnapshot()).pipe(Layer.provide(UnityHandlers.layerSnapshot)),
   McpServer.toolkit(UnityToolkit).pipe(Layer.provide(UnityHandlers.layer)),
 ).pipe(Layer.provideMerge(layerMcpTransport));

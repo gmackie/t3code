@@ -28,6 +28,30 @@ For a pinned CLI installation, set `T3CODE_UNITY_CLI` to its executable path bef
 starting T3. CLI and Pipeline versions must be compatible; the initial tested
 pair is Unity CLI `1.0.0-beta.6` with Pipeline `0.5.0-exp.1`.
 
-This first hook integration does not yet provide a live game viewer, continuous
-T3 monitor, or input ownership controls. Watch snapshots can supply data for
-[visual replies](html-renders.md).
+## View and control a game
+
+Add `com.gmacko.pipeline.game` alongside Pipeline in your Unity project, then
+enter Play Mode or launch a development player. In T3, choose **Game** in the
+workspace switcher; on mobile, use **Open Unity game** in the thread header.
+Select Editor and enter its project path, or select Player and enter its port
+file. Paths refer to the machine hosting that T3 environment.
+
+The viewer works through your existing environment connection. It displays
+package-captured JPEG frames at up to 10 frames per second and provides keyboard,
+pointer and touch controls. Keep the Editor Game view visible and large enough
+to render. On Macs where a player stalls in Metal presentation, disable vsync
+and set an explicit frame rate in the test project.
+
+Choose **Take control** to play or edit variables. A person can take control
+from an agent or another viewer; the previous controller loses access. **Release**,
+leaving the viewer, or a disconnected heartbeat releases held inputs. Individual
+input packets expire within one second; control expires after 1.5 seconds.
+
+Select variables and start a monitor to collect up to 60 seconds of observations,
+retaining at most 256 samples. Writable variables use their game-owned setters;
+a stale value is rejected rather than overwriting a concurrent change. Stop a
+monitor to preserve its final history. Starting another replaces the target's
+shared viewer monitor. **Save report** stores an HTML snapshot and displays it
+beneath the live view. Agents use `unity_game` for the same sessions, expiring
+controls and reports, use `unity_game_snapshot` to see the latest frame, and can include the report in [visual replies](html-renders.md).
+Disconnect before changing to a different target or after a Play Mode reload.

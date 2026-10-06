@@ -394,6 +394,10 @@
     "./state/plugins": {
       "types": "./src/state/plugins.ts",
       "default": "./src/state/plugins.ts"
+    },
+    "./state/game": {
+      "types": "./src/state/game.ts",
+      "default": "./src/state/game.ts"
     }
   },
   "scripts": {

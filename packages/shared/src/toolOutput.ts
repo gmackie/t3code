@@ -169,7 +169,8 @@ export function htmlRenderFromToolItem(item: {
   readonly toolName: string | null | undefined;
   readonly output?: unknown;
 }): HtmlRenderReference | undefined {
-  if (resolveT3McpToolId(item.toolName) !== HTML_RENDER_TOOL_NAME) return undefined;
+  const toolId = resolveT3McpToolId(item.toolName);
+  if (toolId !== HTML_RENDER_TOOL_NAME && toolId !== "unity_game") return undefined;
   const output = compactDynamicToolOutput(item.output);
   return output?.isError ? undefined : output?.htmlRender;
 }

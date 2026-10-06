@@ -42,6 +42,7 @@ import IconTicket from "@tabler/icons-react-native/IconTicket";
 import IconClock from "@tabler/icons-react-native/IconClock";
 import IconCode from "@tabler/icons-react-native/IconCode";
 import IconCopy from "@tabler/icons-react-native/IconCopy";
+import IconDeviceGamepad2 from "@tabler/icons-react-native/IconDeviceGamepad2";
 import IconCpu from "@tabler/icons-react-native/IconCpu";
 import IconDatabase from "@tabler/icons-react-native/IconDatabase";
 import IconDeviceDesktop from "@tabler/icons-react-native/IconDeviceDesktop";
@@ -162,6 +163,7 @@ const ANDROID_ICON_BY_SF_SYMBOL = {
   desktopcomputer: IconDeviceDesktop,
   doc: IconFileText,
   cpu: IconCpu,
+  gamecontroller: IconDeviceGamepad2,
   "doc.on.doc": IconCopy,
   "doc.text": IconFileText,
   ellipsis: IconDots,

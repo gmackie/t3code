@@ -1,3 +1,8 @@
+import * as GameHttp from "./game/http.ts";
+import * as GameSessions from "./game/GameSessions.ts";
+import * as GameTransport from "./game/GameTransport.ts";
+import * as GameHtmlRender from "./htmlRender/HtmlRender.ts";
+import * as GamePreviewBrowser from "./htmlRender/PreviewBrowser.ts";
 import * as UnityHooks from "./game/UnityHooks.ts";
 import type { RelayManagedEndpointRuntimeConfig } from "@t3tools/contracts/relay";
 import * as Clock from "effect/Clock";
@@ -670,6 +675,7 @@ const layerMakeRoutes = Layer.mergeAll(
     ServerHttp.layerAssetRoute,
     ServerHttp.layerAttachmentUploadRoute,
     DeviceHubProxy.layer,
+    GameHttp.layer,
     ServerHttp.layerStaticAndDevRoute,
     Ws.layer,
     kicadProjectRouteLayer,
@@ -690,6 +696,13 @@ const layerMakeRoutes = Layer.mergeAll(
 ).pipe(
   // Both transports consume the same service instance, so caches single-flight across clients
   // and mutations observed on WebSocket invalidate patches subsequently read over HTTP.
+  Layer.provide(
+    GameSessions.layer.pipe(
+      Layer.provide(GameTransport.layer),
+      Layer.provide(UnityHooks.layer.pipe(Layer.provide(ProcessRunner.layer))),
+      Layer.provide(GameHtmlRender.layer.pipe(Layer.provide(GamePreviewBrowser.layer))),
+    ),
+  ),
   Layer.provide(layerPullRequestService),
   Layer.provide(PreviewAutomationBroker.layer),
   Layer.provide(ServerSelfUpdate.layer.pipe(Layer.provide(layerDesktopAppUpdate))),

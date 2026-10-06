@@ -4,8 +4,8 @@ import { cn } from "~/lib/utils";
 
 /** Changes the workspace tools without navigating or interrupting the active agent. */
 export function WorkspaceModeSwitcher({ threadRef }: { threadRef: ScopedThreadRef }) {
-  const cad = useRightPanelStore(
-    (state) => selectSelectedRightPanelSurface(state.byThreadKey, threadRef)?.kind === "kicad",
+  const kind = useRightPanelStore(
+    (state) => selectSelectedRightPanelSurface(state.byThreadKey, threadRef)?.kind,
   );
   return (
     <div
@@ -13,8 +13,13 @@ export function WorkspaceModeSwitcher({ threadRef }: { threadRef: ScopedThreadRe
       aria-label="Workspace mode"
       className="electron-no-drag flex shrink-0 rounded-md border border-border p-0.5"
     >
-      {(["Code", "CAD"] as const).map((label) => {
-        const selected = (label === "CAD") === cad;
+      {(["Code", "CAD", "Game"] as const).map((label) => {
+        const selected =
+          label === "CAD"
+            ? kind === "kicad"
+            : label === "Game"
+              ? kind === "game"
+              : kind !== "kicad" && kind !== "game";
         return (
           <button
             key={label}
@@ -30,6 +35,8 @@ export function WorkspaceModeSwitcher({ threadRef }: { threadRef: ScopedThreadRe
             onClick={() => {
               const store = useRightPanelStore.getState();
               if (label === "CAD") store.open(threadRef, "kicad");
+              else if (label === "Game") store.open(threadRef, "game");
+              else if (kind === "game") store.closeSurface(threadRef, "game");
               else store.returnToCode(threadRef);
             }}
           >

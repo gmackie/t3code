@@ -23,6 +23,7 @@ const RIGHT_PANEL_KINDS = [
   "preview",
   "device",
   "kicad",
+  "game",
   "terminal",
   "pull-request",
   "pull-requests",
@@ -40,6 +41,7 @@ export type RightPanelSurface =
   | { id: `browser:${string}`; kind: "preview"; resourceId: string }
   | { id: "browser:new"; kind: "preview"; resourceId: null }
   | { id: "device" | `device:${string}`; kind: "device"; target?: DeviceTabTarget; title?: string }
+  | { id: "game"; kind: "game" }
   | { id: "kicad"; kind: "kicad"; codePanel?: { isOpen: boolean; activeSurfaceId: string | null } }
   | {
       id: `terminal:${string}`;
@@ -206,6 +208,8 @@ const singletonSurface = (
       return { id: "files", kind };
     case "pull-requests":
       return { id: "pull-requests", kind };
+    case "game":
+      return { id: "game", kind };
     case "kicad":
       return { id: "kicad", kind };
     case "device":

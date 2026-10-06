@@ -688,6 +688,9 @@ const selectAutoShowFloatingPreview = (settings: { browserAutoShowFloatingPrevie
 const DevicePanel = lazy(() =>
   import("./device/DevicePanel").then((module) => ({ default: module.DevicePanel })),
 );
+const GameProjectPanel = lazy(() =>
+  import("./game/GameProjectPanel").then((module) => ({ default: module.GameProjectPanel })),
+);
 const KiCadProjectPanel = lazy(() =>
   import("./kicad/KiCadProjectPanel").then((module) => ({ default: module.KiCadProjectPanel })),
 );
@@ -10703,6 +10706,10 @@ export default function ChatView(props: ChatViewProps) {
           }}
         />
       </Suspense>
+    ) : renderedRightPanelSurface?.kind === "game" ? (
+      <Suspense fallback={null}>
+        <GameProjectPanel threadRef={activeThreadRef} projectPath={activeWorkspaceRoot ?? null} />
+      </Suspense>
     ) : renderedRightPanelSurface?.kind === "kicad" ? (
       <Suspense fallback={null}>
         <KiCadProjectPanel
@@ -11579,6 +11586,7 @@ export default function ChatView(props: ChatViewProps) {
           onAddPullRequests={addPullRequestsSurface}
           onAddDevice={addDeviceSurface}
           onAddKiCad={addKiCadSurface}
+          onAddGame={() => useRightPanelStore.getState().open(activeThreadRef, "game")}
           kicadAvailable={activeProject !== null}
           browserAvailable={isPreviewSupportedInRuntime()}
           terminalAvailable={activeProject !== null}
@@ -11636,6 +11644,7 @@ export default function ChatView(props: ChatViewProps) {
             onAddPullRequests={addPullRequestsSurface}
             onAddDevice={addDeviceSurface}
             onAddKiCad={addKiCadSurface}
+            onAddGame={() => useRightPanelStore.getState().open(activeThreadRef, "game")}
             kicadAvailable={activeProject !== null}
             browserAvailable={isPreviewSupportedInRuntime()}
             terminalAvailable={activeProject !== null}

@@ -161,6 +161,7 @@ describe("htmlRenderFromToolItem", () => {
       ["t3-code.html_render", { structuredContent: result, content: [] }],
       ["t3-code-thread_1_html_render", JSON.stringify(result)],
       ["html_render", result],
+      ["mcp__t3-code__unity_game", { structuredContent: result, content: [] }],
     ] as const) {
       expect(htmlRenderFromToolItem({ toolName, output })).toEqual(reference);
     }

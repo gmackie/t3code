@@ -7,12 +7,13 @@ const Scalar = Schema.Union([
   Schema.String.check(Schema.isMaxLength(1024)),
 ]);
 const Handles = Schema.Array(Id).check(Schema.isMinLength(1), Schema.isMaxLength(32));
-const Target = Schema.Union([
+export const UnityTarget = Schema.Union([
   Schema.Struct({ kind: Schema.Literal("editor"), projectPath: Schema.String }),
   Schema.Struct({ kind: Schema.Literal("player"), portFile: Schema.String }),
 ]);
 const Bound = Schema.Number.check(Schema.isInt(), Schema.isGreaterThanOrEqualTo(0));
-const base = { target: Target };
+export type UnityTarget = typeof UnityTarget.Type;
+const base = { target: UnityTarget };
 const session = { ...base, generation: Id };
 
 export const UnityHookRequest = Schema.Union([
@@ -94,3 +95,11 @@ export class UnityHookError extends Schema.TaggedError<UnityHookError>()("UnityH
     return this.reason;
   }
 }
+
+export const UnityBridgeConnection = Schema.Struct({
+  generation: Id,
+  port: Schema.Int.check(Schema.isBetween({ minimum: 1024, maximum: 65535 })),
+  token: Schema.String.check(Schema.isMinLength(32), Schema.isMaxLength(128)),
+  protocol: Schema.Literal(1),
+});
+export type UnityBridgeConnection = typeof UnityBridgeConnection.Type;

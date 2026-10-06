@@ -1,4 +1,6 @@
 import {
+  UnityBridgeConnection,
+  type UnityTarget,
   UnityHookAssertion,
   UnityHookCatalog,
   UnityHookError,
@@ -19,6 +21,7 @@ import * as ProcessRunner from "../processRunner.ts";
 export class UnityHooks extends Context.Service<
   UnityHooks,
   {
+    readonly connect: (target: UnityTarget) => Effect.Effect<UnityBridgeConnection, UnityHookError>;
     readonly execute: (request: UnityHookRequest) => Effect.Effect<UnityHookResult, UnityHookError>;
   }
 >()("t3/game/UnityHooks") {}
@@ -51,6 +54,7 @@ function payload(output: string): unknown {
   });
 }
 
+const decodeBridge = Schema.decodeUnknownEffect(UnityBridgeConnection);
 const decodeRequest = Schema.decodeUnknownEffect(UnityHookRequest);
 
 const make = Effect.gen(function* () {
@@ -58,7 +62,7 @@ const make = Effect.gen(function* () {
   const executable = yield* Config.String("T3CODE_UNITY_CLI").pipe(Config.withDefault("unity"));
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
-  const execute = Effect.fn("UnityHooks.execute")(function* (raw: UnityHookRequest) {
+  const invoke = Effect.fn("UnityHooks.invoke")(function* (raw: UnityHookRequest, connect = false) {
     const request = yield* decodeRequest(raw).pipe(
       Effect.mapError(
         () =>
@@ -105,7 +109,7 @@ const make = Effect.gen(function* () {
         code: "invalid_target",
         reason: "Select the Player's .unity-pipeline-runtime-port file.",
       });
-    const args = ["command", `agent_vars_${request.action}`];
+    const args = ["command", connect ? "agent_game_connect" : `agent_vars_${request.action}`];
     if ("generation" in request) args.push("--generation", request.generation);
     if ("handles" in request) args.push("--handles", JSON.stringify(request.handles));
     if ("handle" in request) args.push("--handle", request.handle);
@@ -165,6 +169,22 @@ const make = Effect.gen(function* () {
         code: "command_failed",
         reason: "Unity CLI did not finish successfully; read state before retrying a write.",
       });
+    return { request, data };
+  });
+  const connect = Effect.fn("UnityHooks.connect")(function* (target: UnityTarget) {
+    const { data } = yield* invoke({ action: "list", target }, true);
+    return yield* decodeBridge(data).pipe(
+      Effect.mapError(
+        () =>
+          new UnityHookError({
+            code: "invalid_bridge",
+            reason: "Install GMacko Game Bridge in the Unity project and enter Play Mode.",
+          }),
+      ),
+    );
+  });
+  const execute = Effect.fn("UnityHooks.execute")(function* (raw: UnityHookRequest) {
+    const { request, data } = yield* invoke(raw);
     const schema =
       request.action === "list"
         ? UnityHookCatalog
@@ -195,6 +215,6 @@ const make = Effect.gen(function* () {
       });
     return result;
   });
-  return UnityHooks.of({ execute });
+  return UnityHooks.of({ execute, connect });
 });
 export const layer = Layer.effect(UnityHooks, make);

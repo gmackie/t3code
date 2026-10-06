@@ -289,6 +289,9 @@ const T3_MCP_TOOLS: Readonly<Record<string, T3McpToolDefinition>> = {
   ),
   t3_thread_send_attachments: tool(["Send", "Sending", "Sent", "attachments"], "attachment-send"),
   html_preview: tool(["Preview", "Previewing", "Previewed", "an HTML page"], "html-preview"),
+  unity_game: tool(["Observe", "Observing", "Observed", "Unity gameplay"], "html-render"),
+  unity_game_snapshot: tool(["Capture", "Capturing", "Captured", "a Unity frame"], "html-render"),
+  unity_hooks: tool(["Inspect", "Inspecting", "Inspected", "Unity variables"], "html-render"),
   html_render: tool(["Render", "Rendering", "Rendered", "an HTML page"], "html-render"),
 };
 
