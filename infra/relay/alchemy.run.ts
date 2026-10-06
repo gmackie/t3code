@@ -12,7 +12,7 @@ import { PublishClientConfig, tokenDigest } from "./src/clientConfig.ts";
 import * as RelayDb from "./src/db.ts";
 import { RelayObservability } from "./src/observability.ts";
 import { ManagedEndpointZone, RelayApiZone } from "./src/zone.ts";
-import ApiLive, { Api } from "./src/worker.ts";
+import * as RelayWorker from "./src/worker.ts";
 import EdgeLive, { Edge } from "./src/transport/EdgeWorker.ts";
 
 export default Alchemy.Stack(
@@ -32,7 +32,20 @@ export default Alchemy.Stack(
     const managedEndpointZone = yield* ManagedEndpointZone.pipe(Effect.orDie);
     const relayApiZone = yield* RelayApiZone.pipe(Effect.orDie);
     const observability = yield* RelayObservability;
-    const api = yield* Api;
+    const api = yield* RelayWorker.Api;
+    yield* PublishClientConfig({
+      url: api.url,
+      mobileTracingUrl: observability.traces.otelTracesEndpoint,
+      mobileTracingDataset: observability.traces.name,
+      mobileTracingToken: observability.mobileIngestToken.token,
+      clientTracingUrl: observability.traces.otelTracesEndpoint,
+      clientTracingDataset: observability.traces.name,
+      clientTracingToken: observability.clientIngestToken.token,
+      tokenDigest: Output.map(
+        Output.all(observability.mobileIngestToken.token, observability.clientIngestToken.token),
+        tokenDigest,
+      ),
+    });
     const edge = yield* Edge;
 
     return {
@@ -52,5 +65,5 @@ export default Alchemy.Stack(
       clientTracingDataset: observability.traces.name,
       clientTracingToken: observability.clientIngestToken.token,
     };
-  }).pipe(Effect.provide(ApiLive.pipe(Layer.provideMerge(EdgeLive)))),
+  }).pipe(Effect.provide(RelayWorker.layer.pipe(Layer.provideMerge(EdgeLive)))),
 );

@@ -13,7 +13,7 @@ import { PluginManifest } from "@t3tools/plugin-runtime/manifest";
 
 import * as ServerSecretStore from "../auth/ServerSecretStore.ts";
 import * as ServerConfig from "../config.ts";
-import { SqlitePersistenceMemory } from "../persistence/Layers/Sqlite.ts";
+import * as Sqlite from "../persistence/Layers/Sqlite.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import * as PluginCommandCatalog from "./PluginCommandCatalog.ts";
 import * as PluginPackageManager from "./PluginPackageManager.ts";
@@ -111,7 +111,7 @@ interface EnvironmentLayerOptions {
 const makeEnvironmentLayer = (baseDir: string, options?: EnvironmentLayerOptions) => {
   const configLayer = Layer.fresh(ServerConfig.layerTest(process.cwd(), baseDir));
   const liveSettingsLayer = ServerSettings.layer.pipe(
-    Layer.provide(SqlitePersistenceMemory),
+    Layer.provide(Sqlite.layerMemory),
     Layer.provide(ServerSecretStore.layer),
     Layer.provideMerge(configLayer),
   );

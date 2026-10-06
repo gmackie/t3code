@@ -106,7 +106,7 @@ const makeRequest = Effect.gen(function* () {
   };
 });
 
-function testLayer(input?: {
+function layerTest(input?: {
   readonly upsert?: EnvironmentLinks.EnvironmentLinks["Service"]["upsert"];
   readonly getForUser?: EnvironmentLinks.EnvironmentLinks["Service"]["getForUser"];
   readonly consume?: DpopProofs.DpopProofReplay["Service"]["consume"];
@@ -129,6 +129,8 @@ function testLayer(input?: {
           listDeliveryUsersForEnvironment: () => Effect.succeed([]),
           listForUser: () => Effect.succeed([]),
           getForUser: input?.getForUser ?? (() => Effect.succeed(null)),
+          findActiveManagedForEnvironment: () => Effect.succeed([]),
+          setHoldWebhooksWhileOffline: () => Effect.void,
           revokeForUser: () => Effect.succeed(false),
         }),
         Layer.succeed(EnvironmentCredentials.EnvironmentCredentials, {
@@ -139,7 +141,7 @@ function testLayer(input?: {
         Layer.succeed(ManagedEndpointProvider.ManagedEndpointProvider, {
           reconcileOrigin: () => Effect.succeed("ready"),
           prepareDeprovision: () => Effect.succeed(null),
-          deprovision: input?.deprovision ?? (() => Effect.void),
+          deprovision: input?.deprovision ?? (() => Effect.succeed(true)),
           release: input?.release ?? (() => Effect.succeed(true)),
           provision:
             input?.provision ??
@@ -180,7 +182,7 @@ describe("EnvironmentLinker", () => {
       expect(calls).toEqual([]);
     }).pipe(
       Effect.provide(
-        testLayer({
+        layerTest({
           getForUser: () => Effect.fail(failure),
           provision: () =>
             Effect.sync(() => {
@@ -205,7 +207,7 @@ describe("EnvironmentLinker", () => {
       expect(connectorLeaseId).toBe("challenge-jti");
     }).pipe(
       Effect.provide(
-        testLayer({
+        layerTest({
           provision: (input) => {
             connectorLeaseId = input.connectorLeaseId;
             return Effect.succeed({
@@ -235,7 +237,7 @@ describe("EnvironmentLinker", () => {
       expect(lifecycle).toEqual(["provision", "upsert", "release:old-relay-lease"]);
     }).pipe(
       Effect.provide(
-        testLayer({
+        layerTest({
           getForUser: (input) =>
             Effect.sync(() => {
               lookupInputs.push(
@@ -294,7 +296,7 @@ describe("EnvironmentLinker", () => {
       expect(persistedEnvironmentId).toBe(payload.environmentId);
     }).pipe(
       Effect.provide(
-        testLayer({
+        layerTest({
           upsert: (input) =>
             Effect.sync(() => {
               persistedEnvironmentId = input.proof.environmentId;
@@ -363,7 +365,7 @@ describe("EnvironmentLinker", () => {
       expect(deprovisionedEnvironmentId).toBe("env-link-test");
     }).pipe(
       Effect.provide(
-        testLayer({
+        layerTest({
           upsert: (input) =>
             Effect.sync(() => {
               persistedEndpoint = input.endpoint.httpBaseUrl;
@@ -404,7 +406,7 @@ describe("EnvironmentLinker", () => {
       expect(persisted).toBe(false);
     }).pipe(
       Effect.provide(
-        testLayer({
+        layerTest({
           upsert: () =>
             Effect.sync(() => {
               persisted = true;
@@ -431,6 +433,6 @@ describe("EnvironmentLinker", () => {
           });
         }
       }
-    }).pipe(Effect.provide(testLayer({ consume: () => Effect.succeed(false) }))),
+    }).pipe(Effect.provide(layerTest({ consume: () => Effect.succeed(false) }))),
   );
 });

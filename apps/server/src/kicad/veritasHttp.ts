@@ -15,7 +15,7 @@ import {
   HttpServerRequest,
   HttpServerResponse,
   HttpServerRespondable,
-} from "effect/unstable/http";
+} from "effect/http";
 import { ServerConfig } from "../config.ts";
 import { authenticateRawRouteWithScope } from "../http.ts";
 import { kicadViewerSession } from "./http.ts";

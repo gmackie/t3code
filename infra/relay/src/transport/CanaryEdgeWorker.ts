@@ -2,8 +2,8 @@ import * as Cloudflare from "alchemy/Cloudflare";
 import * as Config from "effect/Config";
 import * as Effect from "effect/Effect";
 import * as Redacted from "effect/Redacted";
-import * as HttpServerRequest from "effect/unstable/http/HttpServerRequest";
-import * as HttpServerResponse from "effect/unstable/http/HttpServerResponse";
+import * as HttpServerRequest from "effect/http/HttpServerRequest";
+import * as HttpServerResponse from "effect/http/HttpServerResponse";
 
 import RelayEnvironment from "./RelayEnvironment.ts";
 import { constantTimeStringEqual } from "./connectorTicket.ts";
@@ -24,10 +24,10 @@ export const CanaryEdgeLive = CanaryEdge.make(
   },
   Effect.gen(function* () {
     const environments = yield* RelayEnvironment;
-    const endpointKey = yield* Config.string("T3_RELAY_CANARY_ENDPOINT_KEY");
-    const connectorToken = yield* Config.redacted("T3_RELAY_CANARY_CONNECTOR_TOKEN");
-    const connectorLeaseId = yield* Config.string("T3_RELAY_CANARY_CONNECTOR_LEASE_ID");
-    const controlToken = yield* Config.redacted("T3_RELAY_CANARY_CONTROL_TOKEN");
+    const endpointKey = yield* Config.String("T3_RELAY_CANARY_ENDPOINT_KEY");
+    const connectorToken = yield* Config.Redacted("T3_RELAY_CANARY_CONNECTOR_TOKEN");
+    const connectorLeaseId = yield* Config.String("T3_RELAY_CANARY_CONNECTOR_LEASE_ID");
+    const controlToken = yield* Config.Redacted("T3_RELAY_CANARY_CONTROL_TOKEN");
     const relay = yield* makeRelayEdgeRuntime((url) => ({
       kind: url.pathname === relayConnectorPath ? "connector" : "public",
       endpointKey,

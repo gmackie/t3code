@@ -1,7 +1,7 @@
 import { CheckIcon, CircleAlertIcon, PowerIcon, ShieldCheckIcon } from "lucide-react";
 import { useMemo } from "react";
 import { useAtomRefresh } from "@effect/atom-react";
-import { Atom } from "effect/unstable/reactivity";
+import { Atom } from "effect/reactivity";
 import { Link } from "@tanstack/react-router";
 
 import type { PluginCapabilityRequest, PluginSettingValueMap } from "@t3tools/contracts";

@@ -11,7 +11,7 @@ import * as Queue from "effect/Queue";
 import * as Sink from "effect/Sink";
 import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
-import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
+import { ChildProcess, ChildProcessSpawner } from "effect/process";
 import type { RelayManagedEndpointRuntimeConfig } from "@t3tools/contracts/relay";
 import * as RelayClient from "@t3tools/shared/relayClient";
 
@@ -19,7 +19,7 @@ import * as ServerSecretStore from "../auth/ServerSecretStore.ts";
 import * as ManagedEndpointRuntime from "./ManagedEndpointRuntime.ts";
 import * as T3RelayConnector from "./T3RelayConnector.ts";
 
-const relayClientAvailableLayer = Layer.succeed(
+const layerRelayClientAvailable = Layer.succeed(
   RelayClient.RelayClient,
   RelayClient.RelayClient.of({
     resolve: Effect.succeed({
@@ -35,7 +35,7 @@ const relayClientAvailableLayer = Layer.succeed(
 
 const runtimeDependencies = (
   spawner: ReturnType<typeof ChildProcessSpawner.make>,
-  relayClientLayer = relayClientAvailableLayer,
+  relayClientLayer = layerRelayClientAvailable,
 ) =>
   Layer.mergeAll(
     Layer.succeed(ChildProcessSpawner.ChildProcessSpawner, spawner),
@@ -47,7 +47,7 @@ const runtimeDependencies = (
 
 const buildCloudManagedEndpointRuntime = (
   spawner: ReturnType<typeof ChildProcessSpawner.make>,
-  relayClientLayer = relayClientAvailableLayer,
+  relayClientLayer = layerRelayClientAvailable,
   t3RelayConnectorLayer = T3RelayConnector.layer,
 ) =>
   Effect.gen(function* () {
@@ -208,6 +208,36 @@ describe("CloudManagedEndpointRuntime", () => {
       yield* runtime.requestRecovery(config);
 
       expect(Option.getOrNull(yield* Stream.runHead(runtime.recoveryRequests))).toEqual(config);
+    }),
+  );
+
+  it.effect("signals each registered tunnel connection", () =>
+    Effect.gen(function* () {
+      const output = yield* Queue.unbounded<Uint8Array>();
+      const spawner = ChildProcessSpawner.make(() =>
+        Effect.gen(function* () {
+          const handle = makeHandle({
+            pid: 700,
+            onKill: () => {},
+            output: Stream.fromQueue(output),
+          });
+          yield* Effect.addFinalizer(() => handle.kill().pipe(Effect.ignore));
+          return handle;
+        }),
+      );
+      const runtime = yield* buildCloudManagedEndpointRuntime(spawner);
+      yield* runtime.applyConfig({
+        providerKind: "cloudflare_tunnel",
+        connectorToken: "token",
+        tunnelId: "tunnel-1",
+      });
+      yield* Queue.offer(
+        output,
+        new TextEncoder().encode(
+          "2026-10-04T06:30:43Z INF Registered tunnel connection connIndex=0 event=0\n",
+        ),
+      );
+      expect(Option.isSome(yield* Stream.runHead(runtime.tunnelConnected))).toBe(true);
     }),
   );
 
@@ -418,7 +448,7 @@ describe("CloudManagedEndpointRuntime", () => {
     return Effect.gen(function* () {
       const runtime = yield* buildCloudManagedEndpointRuntime(
         ChildProcessSpawner.make(() => Effect.die("unused")),
-        relayClientAvailableLayer,
+        layerRelayClientAvailable,
         factoryLayer,
       );
       const first = {

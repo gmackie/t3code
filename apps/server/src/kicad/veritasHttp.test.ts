@@ -12,7 +12,7 @@ import {
 import * as ConfigProvider from "effect/ConfigProvider";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import { HttpRouter } from "effect/unstable/http";
+import { HttpRouter } from "effect/http";
 import { describe, expect, it } from "vite-plus/test";
 import { EnvironmentAuth } from "../auth/EnvironmentAuth.ts";
 import { ServerConfig } from "../config.ts";
@@ -20,8 +20,9 @@ import { kicadViewerSessionRouteLayer } from "./http.ts";
 import { kicadVeritasRouteLayer } from "./veritasHttp.ts";
 
 describe("Veritas CAD HTTP authorization", () => {
-  for (const canOperate of [false, true]) {
-    it(`keeps the viewer's ${canOperate ? "operate" : "read-only"} access on Veritas actions`, async () => {
+  it.each([false, true])(
+    "preserves viewer access on Veritas actions (canOperate=%s)",
+    async (canOperate) => {
       const root = await NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "t3-veritas-http-"));
       const routes = Layer.mergeAll(kicadViewerSessionRouteLayer, kicadVeritasRouteLayer).pipe(
         Layer.provideMerge(
@@ -71,6 +72,6 @@ describe("Veritas CAD HTTP authorization", () => {
         await dispose();
         await NodeFSP.rm(root, { recursive: true, force: true });
       }
-    });
-  }
+    },
+  );
 });
