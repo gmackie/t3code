@@ -232,6 +232,7 @@ interface OpenCodeTurnTokenUsageAccumulator {
   readonly assistantOwnershipByMessageId: Map<string, "owned" | "other" | "unknown">;
   // Native removal does not undo usage. Keep unresolved counts until this turn settles.
   readonly unresolvedStepsByMessageId: Map<string, Map<string, OpenCodeStepUsage>>;
+  lastStep?: OpenCodeStepUsage["tokens"];
   inputTokens: number;
   cachedInputTokens: number;
   cacheCreationTokens: number;
@@ -263,6 +264,7 @@ function accumulateOpenCodeStepUsage(
 ): void {
   if (accumulator.partIds.has(part.id)) return;
   accumulator.partIds.add(part.id);
+  accumulator.lastStep = part.tokens;
   accumulator.inputTokens += part.tokens.input + part.tokens.cache.read + part.tokens.cache.write;
   accumulator.cachedInputTokens += part.tokens.cache.read;
   accumulator.cacheCreationTokens += part.tokens.cache.write;
@@ -1175,6 +1177,27 @@ export function makeOpenCodeAdapterV2(
             ...(completedAt === null
               ? {}
               : {
+                  ...(turn.usage.lastStep === undefined
+                    ? {}
+                    : {
+                        tokenUsage: {
+                          usedTokens:
+                            turn.usage.lastStep.input +
+                            turn.usage.lastStep.cache.read +
+                            turn.usage.lastStep.cache.write +
+                            turn.usage.lastStep.output +
+                            turn.usage.lastStep.reasoning,
+                          maxTokens: null,
+                          inputTokens:
+                            turn.usage.lastStep.input +
+                            turn.usage.lastStep.cache.read +
+                            turn.usage.lastStep.cache.write,
+                          cachedInputTokens: turn.usage.lastStep.cache.read,
+                          outputTokens: turn.usage.lastStep.output,
+                          reasoningOutputTokens: turn.usage.lastStep.reasoning,
+                          updatedAt: DateTime.formatIso(completedAt),
+                        },
+                      }),
                   turnTokenUsage:
                     turn.usage.partIds.size === 0
                       ? {

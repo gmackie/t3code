@@ -34,6 +34,7 @@ import {
   attachmentTokenAllowance,
   contextUsageForHandoff,
   historicalMessage,
+  historyAfterNativeCompaction,
   latestNativeContextUsage,
 } from "./ContextHandoffBudget.ts";
 import { deliverContextHandoffs } from "./ContextHandoffDelivery.ts";
@@ -1061,7 +1062,12 @@ export const layer: Layer.Layer<
       // history, whose attachments were not replayed into the replacement thread.
       const nativeContextEstimate = Effect.gen(function* () {
         return sameNativeThread
-          ? (yield* projectionStore.getTurnStartHistory(input.threadId)).reduce((sum, item) => {
+          ? historyAfterNativeCompaction(
+              yield* projectionStore.getTurnStartHistory(input.threadId),
+              providerThread.id,
+              nativeInputRunIds,
+              deliveredItemIds,
+            ).reduce((sum, item) => {
               if (
                 item.runId === run.id ||
                 (item.runId !== null &&

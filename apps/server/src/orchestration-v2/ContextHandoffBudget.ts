@@ -91,6 +91,41 @@ export function contextUsageForHandoff(input: {
   };
 }
 
+// A compaction replaces native history, but the app deliberately retains its
+// transcript. Keep the whole compaction run: OpenCode emits its summary before
+// the completion marker. Only a confirmed run in this native session may reset it.
+export function historyAfterNativeCompaction<
+  T extends Pick<
+    OrchestrationV2TurnItem,
+    "id" | "type" | "status" | "providerThreadId" | "runId" | "ordinal"
+  >,
+>(
+  items: ReadonlyArray<T>,
+  providerThreadId: OrchestrationV2ProviderThread["id"],
+  nativeRunIds: ReadonlySet<OrchestrationV2TurnItem["runId"]>,
+  importedItemIds: ReadonlySet<OrchestrationV2TurnItem["id"]> = new Set(),
+): ReadonlyArray<T> {
+  const completed = items.filter(
+    (item) =>
+      item.type === "compaction" &&
+      item.status === "completed" &&
+      item.providerThreadId === providerThreadId &&
+      item.runId !== null &&
+      nativeRunIds.has(item.runId),
+  );
+  const latest = completed.reduce<T | undefined>(
+    (last, item) => (last === undefined || item.ordinal > last.ordinal ? item : last),
+    undefined,
+  );
+  if (latest === undefined) return items;
+  const boundary = Math.min(
+    ...items.filter((item) => item.runId === latest.runId).map((item) => item.ordinal),
+  );
+  // Imported items have source ordinals, not delivery order. Keep them
+  // conservatively: they may have been injected after this compaction.
+  return items.filter((item) => item.ordinal >= boundary || importedItemIds.has(item.id));
+}
+
 export function attachmentTokenAllowance(attachments: ReadonlyArray<ChatAttachment>): number {
   // Encoded image bytes are not model tokens. Without dimensions/detail metadata,
   // reserve 8k tokens per image, above typical resized Codex/Claude image costs.

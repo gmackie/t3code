@@ -360,6 +360,10 @@ describe("OpenCodeAdapterV2", () => {
         }
         const events = yield* Fiber.join(received);
         const completed = events.findLast((event) => event.type === "provider_turn.updated");
+        assert.equal(
+          completed?.providerTurn.tokenUsage?.usedTokens,
+          ending === "unavailable" ? undefined : 24,
+        );
         assert.deepEqual(
           completed?.providerTurn.turnTokenUsage,
           ending === "unavailable"

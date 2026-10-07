@@ -23,6 +23,7 @@ import {
   historyResponseItems,
   selectHistory,
   historicalMessage,
+  historyAfterNativeCompaction,
 } from "./ContextHandoffBudget.ts";
 import { projectContextHandoffForWire } from "./WireProjection.ts";
 import { deliverContextHandoffs } from "./ContextHandoffDelivery.ts";
@@ -688,4 +689,73 @@ describe("handoff delivery", () => {
       assert.equal(calls, 0);
     }),
   );
+});
+
+describe("native compaction history", () => {
+  it("retains the summary before the completion marker, excluding old transcript", () => {
+    const oldRun = RunId.make("old");
+    const compactRun = RunId.make("compact");
+    const items = [
+      {
+        id: TurnItemId.make("message"),
+        type: "assistant_message" as const,
+        status: "completed" as const,
+        providerThreadId: providerThread.id,
+        runId: oldRun,
+        ordinal: 1,
+      },
+      {
+        id: TurnItemId.make("message"),
+        type: "assistant_message" as const,
+        status: "completed" as const,
+        providerThreadId: providerThread.id,
+        runId: compactRun,
+        ordinal: 2,
+      },
+      {
+        id: TurnItemId.make("compaction"),
+        type: "compaction" as const,
+        status: "completed" as const,
+        providerThreadId: providerThread.id,
+        runId: compactRun,
+        ordinal: 3,
+      },
+      {
+        id: TurnItemId.make("message"),
+        type: "assistant_message" as const,
+        status: "completed" as const,
+        providerThreadId: providerThread.id,
+        runId: RunId.make("next"),
+        ordinal: 4,
+      },
+    ];
+    assert.deepEqual(
+      historyAfterNativeCompaction(items, providerThread.id, new Set([compactRun])),
+      items.slice(1),
+    );
+    assert.deepEqual(
+      historyAfterNativeCompaction(items, providerThread.id, new Set([oldRun])),
+      items,
+    );
+    assert.deepEqual(
+      historyAfterNativeCompaction(items, ProviderThreadId.make("other"), new Set([compactRun])),
+      items,
+    );
+    assert.deepEqual(
+      historyAfterNativeCompaction(
+        items,
+        providerThread.id,
+        new Set([compactRun]),
+        new Set([items[0]!.id]),
+      ),
+      items,
+    );
+    const failed = items.map((item) =>
+      item.type === "compaction" ? { ...item, status: "failed" as const } : item,
+    );
+    assert.deepEqual(
+      historyAfterNativeCompaction(failed, providerThread.id, new Set([compactRun])),
+      failed,
+    );
+  });
 });
