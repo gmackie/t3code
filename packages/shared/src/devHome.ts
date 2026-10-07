@@ -2,7 +2,7 @@
  * Where development state lives, and how to keep it away from the shared
  * `~/.t3` that a user's installed T3 Code runs against.
  *
- * A linked git worktree gets its own (gitignored) `.t3`: feature work in a
+ * A linked Git worktree or JJ workspace gets its own (gitignored) `.t3`: feature work in a
  * throwaway branch must not share a database with the real app, and an ambient
  * `T3CODE_HOME` counts as an explicit base dir — flipping the state directory
  * from `<base>/dev` to `<base>/userdata`, the live production database.
@@ -46,7 +46,7 @@ const pointsAtLinkedWorktree = (gitFileContents: string, path: Path.Path): boole
 };
 
 /**
- * The path of the linked git worktree containing `cwd`, or undefined when
+ * The path of the linked Git worktree or JJ workspace containing `cwd`, or undefined when
  * `cwd` is not inside one. Git marks a linked worktree by making `.git` a file
  * whose `gitdir:` points into the repository's `.git/worktrees`.
  *
@@ -62,6 +62,14 @@ export const resolveGitWorktreePath = (
 
     let directory = path.resolve(cwd);
     for (;;) {
+      // JJ linked workspaces have no .git marker: .jj/repo is a pointer file.
+      // A main JJ checkout owns a directory there and forms a repository boundary.
+      const jjRepo = yield* fileSystem
+        .stat(path.join(directory, ".jj", "repo"))
+        .pipe(Effect.option);
+      if (Option.isSome(jjRepo)) {
+        return jjRepo.value.type === "File" ? directory : undefined;
+      }
       const gitPath = path.join(directory, ".git");
       const info = yield* fileSystem.stat(gitPath).pipe(Effect.option);
       if (Option.isSome(info)) {
@@ -87,7 +95,7 @@ export const resolveGitWorktreePath = (
 
 /**
  * The worktree-local data directory for `cwd`, or undefined outside a linked
- * worktree. Deliberately does not require the directory to exist yet: falling
+ * worktree or workspace. Deliberately does not require the directory to exist yet: falling
  * back because it is missing would send callers at the shared home.
  */
 export const resolveWorktreeT3Home = (

@@ -10,6 +10,8 @@ import { resolveGitWorktreePath, resolveWorktreeT3Home } from "./devHome.ts";
 
 const makeRepo = (
   kind:
+    | "jj-workspace"
+    | "jj-checkout"
     | "worktree"
     | "checkout"
     | "bare"
@@ -21,7 +23,12 @@ const makeRepo = (
   Effect.acquireRelease(
     Effect.sync(() => {
       const root = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "t3-devhome-"));
-      if (kind === "worktree") {
+      if (kind === "jj-workspace" || kind === "jj-checkout") {
+        NodeFS.mkdirSync(NodePath.join(root, ".jj"));
+        if (kind === "jj-workspace")
+          NodeFS.writeFileSync(NodePath.join(root, ".jj", "repo"), "/elsewhere/.jj/repo");
+        else NodeFS.mkdirSync(NodePath.join(root, ".jj", "repo"));
+      } else if (kind === "worktree") {
         NodeFS.writeFileSync(NodePath.join(root, ".git"), "gitdir: /elsewhere/.git/worktrees/x\n");
       } else if (kind === "bare-repo-worktree") {
         // `git worktree add` from a bare repo: the common dir is `<name>.git`.
@@ -44,6 +51,20 @@ const makeRepo = (
   );
 
 describe("resolveGitWorktreePath", () => {
+  it.effect("isolates a linked JJ workspace even without a .git marker", () =>
+    Effect.gen(function* () {
+      const { root, nested } = yield* makeRepo("jj-workspace");
+      assert.equal(yield* resolveWorktreeT3Home(nested), NodePath.join(root, ".t3"));
+    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+  );
+
+  it.effect("stops at a main JJ repository", () =>
+    Effect.gen(function* () {
+      const { nested } = yield* makeRepo("jj-checkout");
+      assert.equal(yield* resolveWorktreeT3Home(nested), undefined);
+    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+  );
+
   it.effect("finds a worktree root from a nested directory", () =>
     Effect.gen(function* () {
       const { root, nested } = yield* makeRepo("worktree");
