@@ -93,7 +93,7 @@ profiles="$(node "$repo_root/scripts/gmacko-ios-profiles.ts" "$identity" $bundle
 echo "$profiles"
 # The xcodeproj gem ships with Homebrew's CocoaPods; use its gems and Ruby.
 pod_gems="$(brew --prefix cocoapods)/libexec"
-GEM_HOME="$pod_gems" PROFILES="$profiles" TEAM="$APPLE_TEAM_ID" \
+GEM_HOME="$pod_gems" PROFILES="$profiles" TEAM="$APPLE_TEAM_ID" SIGNING_IDENTITY="$identity" \
   "$(head -1 "$pod_gems/bin/pod" | sed 's/^#!//')" -e '
     require "xcodeproj"
     profiles = ENV.fetch("PROFILES").lines.to_h { |line| line.split }
@@ -104,7 +104,7 @@ GEM_HOME="$pod_gems" PROFILES="$profiles" TEAM="$APPLE_TEAM_ID" \
         next unless uuid
         config.build_settings["CODE_SIGN_STYLE"] = "Manual"
         config.build_settings["DEVELOPMENT_TEAM"] = ENV.fetch("TEAM")
-        config.build_settings["CODE_SIGN_IDENTITY"] = "Apple Distribution"
+        config.build_settings["CODE_SIGN_IDENTITY"] = ENV.fetch("SIGNING_IDENTITY")
         config.build_settings["PROVISIONING_PROFILE_SPECIFIER"] = uuid
       end
     end
@@ -137,7 +137,7 @@ cat >"$work_dir/ExportOptions.plist" <<PLIST
   <key>signingStyle</key>
   <string>manual</string>
   <key>signingCertificate</key>
-  <string>Apple Distribution</string>
+  <string>${identity}</string>
   <key>teamID</key>
   <string>${APPLE_TEAM_ID}</string>
   <key>provisioningProfiles</key>
