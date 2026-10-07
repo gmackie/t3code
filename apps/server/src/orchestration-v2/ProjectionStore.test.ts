@@ -376,7 +376,36 @@ it.layer(layerTest)("ProjectionStoreV2", (it) => {
       const store = yield* ProjectionStore.ProjectionStoreV2;
       const threadId = yield* addRolledBackRecoveryCandidate("selected-turn-start-history");
       const runId = (yield* store.getThreadProjection(threadId)).runs[0]!.id;
+      const seed = (yield* store.getTurnStartHistory(threadId))[0]!;
+      const now = yield* DateTime.now;
+      yield* store.apply({
+        id: EventId.make("event:selected-history:compact"),
+        type: "turn-item.updated",
+        threadId,
+        runId,
+        providerInstanceId,
+        occurredAt: now,
+        payload: {
+          threadId,
+          runId,
+          nodeId: seed.nodeId,
+          providerThreadId: seed.providerThreadId ?? null,
+          providerTurnId: seed.providerTurnId ?? null,
+          nativeItemRef: null,
+          parentItemId: null,
+          startedAt: now,
+          completedAt: now,
+          updatedAt: now,
+          id: TurnItemId.make("item:selected-history:compact"),
+          type: "compaction",
+          driver,
+          status: "completed",
+          ordinal: seed.ordinal + 1,
+          title: "Context compacted",
+        },
+      });
       const history = yield* store.getTurnStartHistory(threadId);
+      assert.isTrue(history.some((item) => item.type === "compaction"));
       assert.isNotEmpty(history);
       assert.deepEqual(yield* store.getTurnStartHistory(threadId, [runId]), history);
       assert.deepEqual(yield* store.getTurnStartHistory(threadId, []), []);
