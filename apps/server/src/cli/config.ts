@@ -331,7 +331,6 @@ export const resolveServerConfig = (
     );
     const rawCwd = Option.getOrElse(normalizedFlags.cwd, () => process.cwd());
     const cwd = path.resolve(yield* expandHomePath(rawCwd.trim()));
-    yield* fs.makeDirectory(cwd, { recursive: true });
     const stateDirName = Option.getOrUndefined(
       resolveOptionPrecedence(
         Option.fromUndefinedOr(env.stateDirName),

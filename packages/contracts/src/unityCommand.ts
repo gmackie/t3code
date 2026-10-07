@@ -44,6 +44,7 @@ export const UnityCommandResult = Schema.Union([
     error: Schema.optional(Schema.Unknown),
     errorDetails: Schema.optional(Schema.Unknown),
     progress: Schema.optional(Schema.Unknown),
+    recovered: Schema.optional(Schema.Boolean),
   }),
 ]);
 export type UnityCommandResult = typeof UnityCommandResult.Type;

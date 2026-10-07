@@ -6,6 +6,7 @@ import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
 import { ExitCode } from "effect/process/ChildProcessSpawner";
 import type { UnityHookRequest } from "@t3tools/contracts";
+import * as ServerConfig from "../config.ts";
 import * as ProcessRunner from "../processRunner.ts";
 import * as UnityHooks from "./UnityHooks.ts";
 
@@ -98,7 +99,13 @@ it.effect("rejects missing targets and malformed job responses", () =>
     ).toBe("command_failed");
   }),
 );
-function layer(stdout: string, calls: ProcessRunner.ProcessRunInput[], code = 0) {
+function layer(
+  stdout: string | ((input: ProcessRunner.ProcessRunInput) => string),
+  calls: ProcessRunner.ProcessRunInput[],
+  code = 0,
+  files = new Map<string, string>(),
+  overrides: Partial<ProcessRunner.ProcessRunOutput> = {},
+) {
   return UnityHooks.layer.pipe(
     Layer.provide(
       Layer.mergeAll(
@@ -106,7 +113,7 @@ function layer(stdout: string, calls: ProcessRunner.ProcessRunInput[], code = 0)
           run: (input) => {
             calls.push(input);
             return Effect.succeed({
-              stdout,
+              stdout: typeof stdout === "function" ? stdout(input) : stdout,
               stderr: "",
               code: ExitCode(code),
               timedOut: false,
@@ -114,14 +121,37 @@ function layer(stdout: string, calls: ProcessRunner.ProcessRunInput[], code = 0)
               stderrTruncated: false,
               stdoutInvalidUtf8: false,
               stderrInvalidUtf8: false,
+              ...overrides,
             });
           },
         }),
         FileSystem.layerNoop({
           realPath: (path) => Effect.succeed(path),
           exists: () => Effect.succeed(true),
+          makeDirectory: () => Effect.void,
+          rename: (from, to) =>
+            Effect.sync(() => {
+              const value = files.get(from);
+              if (value !== undefined) {
+                files.set(to, value);
+                files.delete(from);
+              }
+            }),
+          readDirectory: () => Effect.succeed([]),
+          remove: (path) =>
+            Effect.sync(() => {
+              files.delete(path);
+            }),
+          readFileString: (path) => Effect.succeed(files.get(path) ?? ""),
+          writeFileString: (path, text) =>
+            Effect.sync(() => {
+              files.set(path, text);
+            }),
         }),
         Path.layer,
+        Layer.succeed(ServerConfig.ServerConfig, {
+          stateDir: "/tmp/t3-unity-test-state",
+        } as ServerConfig.ServerConfig["Service"]),
       ),
     ),
   );
@@ -279,5 +309,257 @@ it.effect("passes typed watch predicates and explicit rearm to the selected Unit
       }),
     ).toEqual(watch);
     expect(calls[1]?.args?.slice(0, 2)).toEqual(["command", "agent_vars_watch_rearm"]);
+  }),
+);
+
+it.effect("preserves a nonzero CLI rejection and its transport diagnostics", () =>
+  Effect.gen(function* () {
+    const calls: ProcessRunner.ProcessRunInput[] = [];
+    const service = yield* UnityHooks.UnityHooks.pipe(
+      Effect.provide(
+        layer(
+          JSON.stringify({
+            success: false,
+            errors: [
+              { code: "COMMAND_FAILED", message: "Bad Request: invalid command parameters" },
+            ],
+          }),
+          calls,
+          6,
+          undefined,
+          { stderr: "engine stderr" },
+        ),
+      ),
+    );
+    const error = yield* service
+      .command({ action: "status", target, jobId: "known-job" })
+      .pipe(Effect.flip);
+    expect(error.code).toBe("COMMAND_FAILED");
+    expect(error.reason).toBe("Bad Request: invalid command parameters");
+    expect(error.diagnostics).toMatchObject({
+      phase: "status",
+      exitCode: 6,
+      stderr: "engine stderr",
+      jobId: "known-job",
+      outcome: "rejected",
+    });
+    expect(calls).toHaveLength(1);
+  }),
+);
+
+it.effect("lost engine jobs remain unknown without resubmitting mutations", () =>
+  Effect.gen(function* () {
+    const calls: ProcessRunner.ProcessRunInput[] = [];
+    const service = yield* UnityHooks.UnityHooks.pipe(
+      Effect.provide(
+        layer(
+          JSON.stringify({
+            success: false,
+            errors: [
+              {
+                code: "COMMAND_FAILED",
+                message: "Job Not Found. Jobs do not survive domain reloads",
+              },
+            ],
+          }),
+          calls,
+          6,
+        ),
+      ),
+    );
+    const error = yield* service
+      .command({ action: "status", target, jobId: "lost-job" })
+      .pipe(Effect.flip);
+    expect(error.code).toBe("job_unavailable");
+    expect(error.diagnostics).toMatchObject({ jobId: "lost-job", outcome: "unknown" });
+    expect(calls.map((c) => c.args.slice(0, 3))).toEqual([["job", "status", "lost-job"]]);
+  }),
+);
+
+it.effect.each([
+  { name: "timeout", timedOut: true, stdoutTruncated: false },
+  { name: "truncation", timedOut: false, stdoutTruncated: true },
+])("keeps incomplete $name results ambiguous and bounded", ({ timedOut, stdoutTruncated }) =>
+  Effect.gen(function* () {
+    const calls: ProcessRunner.ProcessRunInput[] = [];
+    const service = yield* UnityHooks.UnityHooks.pipe(
+      Effect.provide(
+        layer('{"success":', calls, 0, undefined, {
+          timedOut,
+          stdoutTruncated,
+          stderr: "x".repeat(5000),
+        }),
+      ),
+    );
+    const error = yield* service
+      .command({ action: "submit", target, command: "respawn", parameters: {} })
+      .pipe(Effect.flip);
+    expect(error.code).toBe("cli_incomplete");
+    expect(error.diagnostics).toMatchObject({
+      timedOut,
+      truncated: stdoutTruncated,
+      outcome: "unknown",
+    });
+    expect(error.diagnostics?.stderr).toHaveLength(2048);
+    expect(calls).toHaveLength(1);
+  }),
+);
+
+it.effect("recovers observed terminal receipts across service restart, scoped by target", () =>
+  Effect.gen(function* () {
+    const files = new Map<string, string>();
+    const calls: ProcessRunner.ProcessRunInput[] = [];
+    const data = {
+      jobId: "job1",
+      state: "completed",
+      command: "respawn",
+      result: { success: false, reason: "Not playing" },
+    };
+    const first = yield* UnityHooks.UnityHooks.pipe(
+      Effect.provide(layer(JSON.stringify({ success: true, data }), calls, 0, files)),
+    );
+    yield* first.command({ action: "status", target, jobId: "job1" });
+    const restarted = yield* UnityHooks.UnityHooks.pipe(
+      Effect.provide(layer("not json", calls, 6, files)),
+    );
+    expect(yield* restarted.command({ action: "status", target, jobId: "job1" })).toEqual({
+      action: "job",
+      ...data,
+      recovered: true,
+    });
+    expect(calls).toHaveLength(1);
+    expect(
+      (yield* restarted
+        .command({
+          action: "status",
+          target: { kind: "editor", projectPath: "/other-project" },
+          jobId: "job1",
+        })
+        .pipe(Effect.flip)).code,
+    ).toBe("cli_incomplete");
+    expect(calls).toHaveLength(2);
+  }),
+);
+
+it.effect("does not promote an accepted job into a completed receipt after reload", () =>
+  Effect.gen(function* () {
+    const files = new Map<string, string>();
+    const calls: ProcessRunner.ProcessRunInput[] = [];
+    const first = yield* UnityHooks.UnityHooks.pipe(
+      Effect.provide(
+        layer(
+          JSON.stringify({ success: true, data: { jobId: "job1", state: "queued" } }),
+          calls,
+          0,
+          files,
+        ),
+      ),
+    );
+    yield* first.command({ action: "submit", target, command: "respawn", parameters: {} });
+    const restarted = yield* UnityHooks.UnityHooks.pipe(
+      Effect.provide(layer("incomplete", calls, 6, files)),
+    );
+    expect(
+      (yield* restarted.command({ action: "status", target, jobId: "job1" }).pipe(Effect.flip))
+        .diagnostics?.outcome,
+    ).toBe("unknown");
+    expect(calls.map((c) => c.args[0])).toEqual(["command", "job"]);
+  }),
+);
+
+it.effect("reports stopped Editors separately from legacy packages without opening a bridge", () =>
+  Effect.gen(function* () {
+    const calls: ProcessRunner.ProcessRunInput[] = [];
+    const legacy = yield* UnityHooks.UnityHooks.pipe(
+      Effect.provide(
+        layer(
+          JSON.stringify({ success: true, data: { commands: [{ name: "editor_status" }] } }),
+          calls,
+        ),
+      ),
+    );
+    expect((yield* legacy.connect(target).pipe(Effect.flip)).code).toBe("integration_unavailable");
+    const stopped = yield* UnityHooks.UnityHooks.pipe(
+      Effect.provide(
+        layer(
+          JSON.stringify({
+            success: false,
+            errors: [{ code: "COMMAND_FAILED", message: "No Pipeline instance found for project" }],
+          }),
+          calls,
+          6,
+        ),
+      ),
+    );
+    expect((yield* stopped.connect(target).pipe(Effect.flip)).code).toBe("target_unavailable");
+    expect(calls.every((c) => c.args.includes("--query"))).toBe(true);
+  }),
+);
+
+it.effect.each(["editor", "player"] as const)(
+  "negotiates %s before opening a compatible bridge",
+  (kind) =>
+    Effect.gen(function* () {
+      const calls: ProcessRunner.ProcessRunInput[] = [];
+      const bridge = { protocol: 1, generation: "gen", port: 8080, token: "a".repeat(32) };
+      const service = yield* UnityHooks.UnityHooks.pipe(
+        Effect.provide(
+          layer(
+            (input) =>
+              input.args.includes("--query")
+                ? JSON.stringify({
+                    success: true,
+                    data: { commands: [{ name: "agent_game_capabilities" }] },
+                  })
+                : input.args[1] === "agent_game_capabilities"
+                  ? envelope({ protocol: 1, target: kind, features: ["frames", "input", "hooks"] })
+                  : envelope(bridge),
+            calls,
+          ),
+        ),
+      );
+      const selected =
+        kind === "editor"
+          ? target
+          : { kind: "player" as const, portFile: "/tmp/player/.unity-pipeline-runtime-port" };
+      expect(yield* service.connect(selected)).toEqual(bridge);
+      expect(calls.map((c) => c.args[1])).toEqual([
+        "--detail",
+        "agent_game_capabilities",
+        "agent_game_connect",
+      ]);
+      expect(
+        calls.every((c) =>
+          c.args.includes(kind === "editor" ? "--project-path" : "--runtime-path"),
+        ),
+      ).toBe(true);
+    }),
+);
+
+it.effect("rejects a wrong protocol before credentials or input are requested", () =>
+  Effect.gen(function* () {
+    const calls: ProcessRunner.ProcessRunInput[] = [];
+    const service = yield* UnityHooks.UnityHooks.pipe(
+      Effect.provide(
+        layer(
+          (input) =>
+            input.args.includes("--query")
+              ? JSON.stringify({
+                  success: true,
+                  data: { commands: [{ name: "agent_game_capabilities" }] },
+                })
+              : envelope({
+                  protocol: 99,
+                  target: "editor",
+                  features: ["frames", "input", "hooks"],
+                }),
+          calls,
+        ),
+      ),
+    );
+    expect((yield* service.connect(target).pipe(Effect.flip)).code).toBe(
+      "incompatible_integration",
+    );
+    expect(calls).toHaveLength(2);
   }),
 );

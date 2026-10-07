@@ -47,11 +47,14 @@ pair is Unity CLI `1.0.0-beta.6` with Pipeline `0.5.0-exp.1`.
 
 ## View and control a game
 
-Add `com.gmacko.pipeline.game` alongside Pipeline in your Unity project, then
+Add `com.gmacko.pipeline.game` version 0.2.0 or newer alongside Pipeline in your Unity project, then
 enter Play Mode or launch a development player. In T3, choose **Game** in the
 workspace switcher; on mobile, use **Open Unity game** in the thread header.
 Select Editor and enter its project path, or select Player and enter its port
-file. Paths refer to the machine hosting that T3 environment.
+file. Paths refer to the machine hosting that T3 environment. T3 checks the target's
+bridge protocol before opening a session. A running Editor with only the base
+Pipeline package supports commands but cannot provide a live game session.
+After installing or updating the bridge, let Unity compile and rebuild development players.
 
 The viewer works through your existing environment connection. It displays
 package-captured H.264 video with a JPEG fallback and provides keyboard,
@@ -85,7 +88,12 @@ target. Retain the returned job ID and use `status` to inspect completion and th
 engine result. `cancel` requests cancellation; a completed or non-cancellable
 engine operation may still take effect. Jobs remain in Unity across T3 reconnects
 but can be lost when the target reloads or exits. Rediscover the target after a
-reload instead of silently resubmitting work.
+reload instead of silently resubmitting work. T3 retains the latest 100 observed
+terminal job receipts per target in its environment state; recovered receipts
+are marked `recovered`. This cannot recover a result Unity discarded before T3
+observed it. A missing engine job is reported as an unknown outcome, not success
+or permission to repeat a mutation. CLI errors include bounded transport diagnostics
+and the original job ID when known.
 
 The same operations are available from `t3 unity-command '<request JSON>'`.
 

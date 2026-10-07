@@ -19,7 +19,7 @@ export const layer = UnityToolkit.toLayer({
           (error) =>
             new OrchestratorMcpFailure({
               code: "orchestration_error",
-              message: `${error.code}: ${error.message}`,
+              message: `${error.code}: ${error.message}${"diagnostics" in error && error.diagnostics ? `\n${JSON.stringify(error.diagnostics)}` : ""}`,
             }),
         ),
       );
@@ -46,7 +46,7 @@ export const layer = UnityToolkit.toLayer({
           (error) =>
             new OrchestratorMcpFailure({
               code: "orchestration_error",
-              message: `${error.code}: ${error.message}`,
+              message: `${error.code}: ${error.message}${"diagnostics" in error && error.diagnostics ? `\n${JSON.stringify(error.diagnostics)}` : ""}`,
             }),
         ),
       );
@@ -63,7 +63,7 @@ export const layer = UnityToolkit.toLayer({
           (error) =>
             new OrchestratorMcpFailure({
               code: "orchestration_error",
-              message: `${error.code}: ${error.message}`,
+              message: `${error.code}: ${error.message}${"diagnostics" in error && error.diagnostics ? `\n${JSON.stringify(error.diagnostics)}` : ""}`,
             }),
         ),
       );
@@ -83,7 +83,7 @@ export const layerSnapshot = UnitySnapshotToolkit.toLayer({
           (error) =>
             new OrchestratorMcpFailure({
               code: "orchestration_error",
-              message: `${error.code}: ${error.message}`,
+              message: `${error.code}: ${error.message}${"diagnostics" in error && error.diagnostics ? `\n${JSON.stringify(error.diagnostics)}` : ""}`,
             }),
         ),
       );

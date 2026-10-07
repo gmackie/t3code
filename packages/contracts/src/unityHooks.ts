@@ -130,6 +130,17 @@ export type UnityHookResult = typeof UnityHookResult.Type;
 export class UnityHookError extends Schema.TaggedError<UnityHookError>()("UnityHookError", {
   code: Schema.String,
   reason: Schema.String,
+  diagnostics: Schema.optional(
+    Schema.Struct({
+      phase: Schema.String,
+      exitCode: Schema.NullOr(Schema.Int),
+      timedOut: Schema.Boolean,
+      truncated: Schema.Boolean,
+      stderr: Schema.String.check(Schema.isMaxLength(2048)),
+      jobId: Schema.optional(Schema.String),
+      outcome: Schema.Literals(["rejected", "unknown"]),
+    }),
+  ),
 }) {
   override get message() {
     return this.reason;
