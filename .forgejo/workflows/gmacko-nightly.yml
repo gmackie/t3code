@@ -576,6 +576,15 @@ jobs:
           echo "APPIMAGE_EXTRACT_AND_RUN=1" >> "$GITHUB_ENV"
 
       - name: Download relay client tracing config
+        id: relay_config_download
+        continue-on-error: true
+        uses: https://code.forgejo.org/forgejo/download-artifact@v4
+        with:
+          name: relay-client-tracing-config
+          path: relay-config
+
+      - name: Retry relay client tracing config download
+        if: steps.relay_config_download.outcome == 'failure'
         uses: https://code.forgejo.org/forgejo/download-artifact@v4
         with:
           name: relay-client-tracing-config
@@ -810,6 +819,15 @@ jobs:
           "$HOME/.cargo/bin/rustc" --version
 
       - name: Download relay client tracing config
+        id: relay_config_download
+        continue-on-error: true
+        uses: https://code.forgejo.org/forgejo/download-artifact@v4
+        with:
+          name: relay-client-tracing-config
+          path: relay-config
+
+      - name: Retry relay client tracing config download
+        if: steps.relay_config_download.outcome == 'failure'
         uses: https://code.forgejo.org/forgejo/download-artifact@v4
         with:
           name: relay-client-tracing-config
