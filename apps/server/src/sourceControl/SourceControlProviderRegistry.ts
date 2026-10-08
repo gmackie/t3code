@@ -27,7 +27,11 @@ import * as VcsDriverRegistry from "../vcs/VcsDriverRegistry.ts";
 import * as VcsProcess from "../vcs/VcsProcess.ts";
 
 const PROVIDER_DETECTION_CACHE_CAPACITY = 2_048;
-const PROVIDER_DETECTION_CACHE_TTL = Duration.seconds(5);
+// Detection runs for every project on a shell snapshot, and a missing host CLI
+// still resolves as success ("unknown"). A few-second TTL re-spawns those
+// probes continuously and stalls the websocket loop.
+const PROVIDER_DETECTION_CACHE_TTL = Duration.minutes(15);
+const PROVIDER_DETECTION_FAILURE_TTL = Duration.minutes(1);
 
 export interface SourceControlProviderRegistration {
   readonly kind: SourceControlProviderKind;
@@ -255,7 +259,8 @@ export const makeWithProviders = Effect.fn("makeSourceControlProviderRegistryWit
       SourceControlProviderError
     >(detectProviderContext, {
       capacity: PROVIDER_DETECTION_CACHE_CAPACITY,
-      timeToLive: (exit) => (Exit.isSuccess(exit) ? PROVIDER_DETECTION_CACHE_TTL : Duration.zero),
+      timeToLive: (exit) =>
+        Exit.isSuccess(exit) ? PROVIDER_DETECTION_CACHE_TTL : PROVIDER_DETECTION_FAILURE_TTL,
     });
 
     const resolveHandle: SourceControlProviderRegistry["Service"]["resolveHandle"] = (input) =>

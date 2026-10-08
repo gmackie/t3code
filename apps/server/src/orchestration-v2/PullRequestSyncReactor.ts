@@ -164,19 +164,27 @@ export const make = Effect.gen(function* () {
   // linking dozens of pull requests) is read together and shares the summary batches.
   let requestedSweepQueued = false;
   const retryStacks = new Set<string>();
+  // Non-rate-limit host failures. Rate limits stay due and are gated by `pausedUntil`.
+  const hostFailed = new Set<string>();
   // Rate limit pauses by project and host, since each project reads with its own credential.
   // A paused host refuses every read without asking it, so the sweep leaves its pull requests
   // due until the pause ends rather than failing each of them every minute.
   const pausedUntil = new Map<string, number>();
 
   const isDue = (key: string, entries: ReadonlyArray<LinkEntry>, nowMs: number): boolean => {
-    if (requested.has(key) || retryStacks.has(key)) return true;
+    if (requested.has(key)) return true;
+    const last = lastSyncedAt.get(key);
+    // A down CLI used to stay due on every sweep, because a failed read never stamped
+    // the clock. Rate limits are not in this set: `pausedUntil` already holds them.
+    if (hostFailed.has(key) && last !== undefined && nowMs - last < SLOW_SYNC_INTERVAL_MS) {
+      return false;
+    }
+    if (retryStacks.has(key)) return true;
     if (entries.some((entry) => entry.link.snapshot === null)) return true;
     if (entries.every((entry) => entry.link.snapshot?.state === "merged")) return false;
     if (entries.some((entry) => entry.link.snapshot?.state === "open" && isUnsettled(entry.thread)))
       return true;
     // Closed requests can reopen on the host, including after the thread settles.
-    const last = lastSyncedAt.get(key);
     return last === undefined || nowMs - last >= SLOW_SYNC_INTERVAL_MS;
   };
 
@@ -204,6 +212,7 @@ export const make = Effect.gen(function* () {
 
     for (const key of lastSyncedAt.keys()) if (!groups.has(key)) lastSyncedAt.delete(key);
     for (const key of retryStacks) if (!groups.has(key)) retryStacks.delete(key);
+    for (const key of hostFailed) if (!groups.has(key)) hostFailed.delete(key);
     for (const key of requested.keys()) if (!groups.has(key)) requested.delete(key);
 
     // Layers auto-linked this sweep, so two links of one thread that share a
@@ -320,11 +329,14 @@ export const make = Effect.gen(function* () {
       if (needsStack) {
         if (fetchedStack === null) {
           retryStacks.add(key);
+          hostFailed.add(key);
+          lastSyncedAt.set(key, nowMs);
           return;
         }
         retryStacks.delete(key);
       }
       // The host answered, so the cadence clock ticks even if a dispatch below is rejected.
+      hostFailed.delete(key);
       lastSyncedAt.set(key, nowMs);
       // A refresh requested while the host read was in flight belongs to the next sweep.
       if (requested.get(key) === generation) requested.delete(key);
@@ -353,6 +365,9 @@ export const make = Effect.gen(function* () {
           const retryAt = rateLimitRetryAt(cause);
           if (retryAt !== undefined) {
             pausedUntil.set(pauseKey, Math.max(retryAt, pausedUntil.get(pauseKey) ?? 0));
+          } else {
+            hostFailed.add(key);
+            lastSyncedAt.set(key, nowMs);
           }
           const reason = skipReason(cause);
           const skip = skips.get(reason);

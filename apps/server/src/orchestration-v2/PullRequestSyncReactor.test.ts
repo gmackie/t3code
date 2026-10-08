@@ -378,7 +378,7 @@ function applySync(
 }
 
 describe("PullRequestSyncReactor", () => {
-  it.effect("retries a failed stack read after the summary becomes terminal", () =>
+  it.effect("retries a failed stack read on the slow interval", () =>
     Effect.scoped(
       Effect.gen(function* () {
         yield* TestClock.setTime(Date.parse(NOW));
@@ -408,6 +408,11 @@ describe("PullRequestSyncReactor", () => {
           const reactor = yield* startAndSweep(fixture);
           const commands = yield* Ref.get(fixture.syncCommands);
           yield* Ref.update(fixture.snapshots, (snapshot) => applySync(snapshot, commands));
+          assert.strictEqual(attempts, 1);
+          for (let index = 0; index < 14; index += 1) {
+            yield* sweepAgain(fixture, reactor);
+            assert.strictEqual(attempts, 1);
+          }
           yield* sweepAgain(fixture, reactor);
           assert.strictEqual(attempts, 2);
           assert.deepStrictEqual((yield* Ref.get(fixture.syncCommands)).at(-1)?.stack, {
@@ -905,12 +910,24 @@ describe("PullRequestSyncReactor", () => {
         });
 
         yield* Effect.gen(function* () {
-          yield* startAndSweep(fixture);
+          const reactor = yield* startAndSweep(fixture);
 
+          const commands = yield* Ref.get(fixture.syncCommands);
           assert.deepStrictEqual(
-            (yield* Ref.get(fixture.syncCommands)).map((command) => command.number),
+            commands.map((command) => command.number),
             [8],
           );
+          yield* Ref.update(fixture.snapshots, (snapshot) => applySync(snapshot, commands));
+          const failingReads = Ref.get(fixture.summaryCalls).pipe(
+            Effect.map((calls) => calls.filter((call) => call.number === 7).length),
+          );
+          assert.strictEqual(yield* failingReads, 1);
+          for (let index = 0; index < 14; index += 1) {
+            yield* sweepAgain(fixture, reactor);
+            assert.strictEqual(yield* failingReads, 1);
+          }
+          yield* sweepAgain(fixture, reactor);
+          assert.strictEqual(yield* failingReads, 2);
         }).pipe(Effect.provide(fixture.layer));
       }),
     ),

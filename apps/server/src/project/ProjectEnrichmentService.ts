@@ -18,8 +18,10 @@ import * as RepositoryIdentityResolver from "./RepositoryIdentityResolver.ts";
 const DEFAULT_CACHE_CAPACITY = 512;
 const DEFAULT_MAX_PENDING = 512;
 const DEFAULT_CONCURRENCY = 4;
-const DEFAULT_SUCCESS_TTL = Duration.minutes(1);
-const DEFAULT_FAILURE_TTL = Duration.seconds(5);
+// getAvailable runs for every project on each shell snapshot. Short TTLs requeue
+// identity and favicon work before the previous pass finishes.
+const DEFAULT_SUCCESS_TTL = Duration.minutes(15);
+const DEFAULT_FAILURE_TTL = Duration.minutes(5);
 
 export interface ProjectEnrichment {
   readonly repositoryIdentity: RepositoryIdentity | null;
