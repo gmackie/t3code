@@ -267,22 +267,26 @@ export const makeWithProviders = Effect.fn("makeSourceControlProviderRegistryWit
     // request listing passes an explicit context, which used to skip the cache
     // and spawn one probe per project on every shell snapshot.
     const remoteProbeCache = yield* Cache.makeWith(
-      (key) => {
+      (key: string) => {
         const parsed = JSON.parse(key) as {
           readonly command: string;
           readonly args: ReadonlyArray<string>;
-          readonly allowNonZeroExit?: boolean;
-          readonly timeoutMs?: number;
-          readonly maxOutputBytes?: number;
+          readonly allowNonZeroExit?: boolean | null;
+          readonly timeoutMs?: number | null;
+          readonly maxOutputBytes?: number | null;
         };
         return process.run({
           operation: "source-control.discovery.refine-unknown-remote",
           command: parsed.command,
           args: parsed.args,
           cwd: config.cwd,
-          allowNonZeroExit: parsed.allowNonZeroExit ?? undefined,
-          timeoutMs: parsed.timeoutMs ?? undefined,
-          maxOutputBytes: parsed.maxOutputBytes ?? undefined,
+          ...(typeof parsed.allowNonZeroExit === "boolean"
+            ? { allowNonZeroExit: parsed.allowNonZeroExit }
+            : {}),
+          ...(typeof parsed.timeoutMs === "number" ? { timeoutMs: parsed.timeoutMs } : {}),
+          ...(typeof parsed.maxOutputBytes === "number"
+            ? { maxOutputBytes: parsed.maxOutputBytes }
+            : {}),
           appendTruncationMarker: true,
         });
       },

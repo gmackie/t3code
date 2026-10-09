@@ -295,10 +295,8 @@ const pluginManifest = (
   return plugin.manifest;
 };
 
-const resolveDiscoveryForConfig = <A, E, R>(
-  discovery: Effect.Effect<A, E, R>,
-  fallback: () => A,
-) => discovery.pipe(Effect.timeoutOption("5 seconds"), Effect.map(Option.getOrElse(fallback)));
+const resolveDiscoveryForConfig = <A, E, R>(discovery: Effect.Effect<A, E, R>, fallback: () => A) =>
+  discovery.pipe(Effect.timeoutOption("5 seconds"), Effect.map(Option.getOrElse(fallback)));
 
 export const resolveAvailableEditorsForConfig = <A, E, R>(
   discovery: Effect.Effect<ReadonlyArray<A>, E, R>,
@@ -1709,8 +1707,12 @@ const layerWsRpc = (
           const environment = yield* serverEnvironment.getDescriptor;
           const auth = yield* serverAuth.getDescriptor();
           const scratchWorkspaceRoot = yield* managedFolders.scratchRoot;
-          const { availableEditors, fileManagerRevealKind, remoteOpenTargets } = yield* configDiscovery.get;
-          const editorConfig = yield* resolveEditorConfig(availableEditors, Effect.succeed(fileManagerRevealKind));
+          const { availableEditors, fileManagerRevealKind, remoteOpenTargets } =
+            yield* configDiscovery.get;
+          const editorConfig = yield* resolveEditorConfig(
+            availableEditors,
+            Effect.succeed(fileManagerRevealKind),
+          );
 
           return {
             environment,

@@ -326,12 +326,11 @@ export const make = Effect.gen(function* () {
   const rememberLoginCwd = (cwd: string) =>
     Ref.update(loginCwd, (current) => current ?? cwd).pipe(Effect.asVoid);
   const cachedLoginCwd = Effect.gen(function* () {
-    return (yield* Ref.get(loginCwd)) ?? process.cwd();
+    return (yield* Ref.get(loginCwd)) ?? globalThis.process.cwd();
   });
   const fjKeysCache = yield* Cache.makeWith((cwd: string) => readKeys(cwd), {
     capacity: 1,
-    timeToLive: (exit) =>
-      Exit.isSuccess(exit) ? LOGIN_CACHE_TTL : Duration.minutes(1),
+    timeToLive: (exit) => (Exit.isSuccess(exit) ? LOGIN_CACHE_TTL : Duration.minutes(1)),
   });
   const teaLoginCache = yield* Cache.makeWith(
     (cwd: string) =>
