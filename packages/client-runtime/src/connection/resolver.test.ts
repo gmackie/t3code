@@ -81,6 +81,7 @@ const makeDependencies = Effect.fn("TestConnectionResolver.makeDependencies")((o
   readonly primaryBearerToken?: string;
   readonly prepareSsh?: ClientCapabilities.SshEnvironmentGateway["Service"]["prepare"];
   readonly descriptorProtocolVersion?: number | null | undefined;
+  readonly fetch?: typeof fetch;
 }) => {
   const profiles = new Map(
     (options?.profiles ?? []).map((profile) => [profile.connectionId, profile]),
@@ -146,21 +147,24 @@ const makeDependencies = Effect.fn("TestConnectionResolver.makeDependencies")((o
   });
 
   const layerDependencies = Layer.mergeAll(
-    RpcHttp.layerRemoteHttpClient((() =>
-      Promise.resolve(
-        Response.json({
-          environmentId: ENVIRONMENT_ID,
-          label: "Compatible environment",
-          platform: { os: "linux", arch: "x64" },
-          serverVersion: "0.0.0-test",
-          ...(options?.descriptorProtocolVersion === undefined
-            ? { orchestrationProtocolVersion: ORCHESTRATION_PROTOCOL_VERSION }
-            : options.descriptorProtocolVersion === null
-              ? {}
-              : { orchestrationProtocolVersion: options.descriptorProtocolVersion }),
-          capabilities: { repositoryIdentity: true },
-        }),
-      )) satisfies typeof fetch),
+    RpcHttp.layerRemoteHttpClient(
+      options?.fetch ??
+        ((() =>
+          Promise.resolve(
+            Response.json({
+              environmentId: ENVIRONMENT_ID,
+              label: "Compatible environment",
+              platform: { os: "linux", arch: "x64" },
+              serverVersion: "0.0.0-test",
+              ...(options?.descriptorProtocolVersion === undefined
+                ? { orchestrationProtocolVersion: ORCHESTRATION_PROTOCOL_VERSION }
+                : options.descriptorProtocolVersion === null
+                  ? {}
+                  : { orchestrationProtocolVersion: options.descriptorProtocolVersion }),
+              capabilities: { repositoryIdentity: true },
+            }),
+          )) satisfies typeof fetch),
+    ),
     Layer.succeed(
       ConnectionProfileStore.ConnectionProfileStore,
       options?.profileStore ?? profileStore,
@@ -187,6 +191,136 @@ const makeDependencies = Effect.fn("TestConnectionResolver.makeDependencies")((o
 });
 
 describe("ConnectionResolver", () => {
+  it.effect.each(["primary", "bearer", "ssh"])(
+    "uses the fresh authorization descriptor without another HTTP round trip for %s",
+    (mode) =>
+      Effect.gen(function* () {
+        const brokerLayer = yield* makeDependencies({
+          primaryBearerToken: "bearer",
+          credentials: [["saved", new BearerConnectionCredential({ token: "bearer" })]],
+          authorizeBearer: (input) =>
+            Effect.succeed({
+              environmentId: input.expectedEnvironmentId,
+              label: "Fresh host",
+              httpBaseUrl: input.httpBaseUrl,
+              socketUrl: "wss://environment.example.test/ws?wsTicket=fresh",
+              httpAuthorization: { _tag: "Bearer", token: input.bearerToken },
+              descriptor: {
+                environmentId: input.expectedEnvironmentId,
+                label: "Fresh host",
+                platform: { os: "linux", arch: "x64" },
+                serverVersion: "test",
+                orchestrationProtocolVersion: ORCHESTRATION_PROTOCOL_VERSION,
+                capabilities: { repositoryIdentity: true },
+              },
+            }),
+          fetch: (() =>
+            Promise.reject(new Error("Redundant descriptor request"))) satisfies typeof fetch,
+        });
+        const entry =
+          mode === "primary"
+            ? catalogEntry(
+                new PrimaryConnectionTarget({
+                  environmentId: ENVIRONMENT_ID,
+                  label: "Host",
+                  ...ENDPOINT,
+                }),
+              )
+            : mode === "bearer"
+              ? catalogEntry(
+                  new BearerConnectionTarget({
+                    environmentId: ENVIRONMENT_ID,
+                    label: "Host",
+                    connectionId: "saved",
+                  }),
+                  Option.some(
+                    new BearerConnectionProfile({
+                      environmentId: ENVIRONMENT_ID,
+                      label: "Host",
+                      connectionId: "saved",
+                      ...ENDPOINT,
+                    }),
+                  ),
+                )
+              : catalogEntry(
+                  new SshConnectionTarget({
+                    environmentId: ENVIRONMENT_ID,
+                    label: "Host",
+                    connectionId: "ssh",
+                  }),
+                  Option.some(
+                    new SshConnectionProfile({
+                      environmentId: ENVIRONMENT_ID,
+                      label: "Host",
+                      connectionId: "ssh",
+                      target: SSH_TARGET,
+                    }),
+                  ),
+                );
+        const prepared = yield* Effect.gen(function* () {
+          const broker = yield* ConnectionResolver.ConnectionResolver;
+          return yield* broker.prepare(entry);
+        }).pipe(Effect.provide(brokerLayer));
+        expect(prepared.socketUrl).toContain("wsTicket=fresh");
+        expect(prepared).not.toHaveProperty("descriptor");
+      }),
+  );
+
+  it.effect.each([
+    { name: "older protocol", environmentId: ENVIRONMENT_ID, version: 1, reason: "unsupported" },
+    {
+      name: "newer protocol",
+      environmentId: ENVIRONMENT_ID,
+      version: ORCHESTRATION_PROTOCOL_VERSION + 1,
+      reason: "unsupported",
+    },
+    {
+      name: "different environment",
+      environmentId: EnvironmentId.make("wrong-host"),
+      version: ORCHESTRATION_PROTOCOL_VERSION,
+      reason: "configuration",
+    },
+  ])("rejects a fresh authorization descriptor with $name", (scenario) =>
+    Effect.gen(function* () {
+      const brokerLayer = yield* makeDependencies({
+        primaryBearerToken: "bearer",
+        authorizeBearer: (input) =>
+          Effect.succeed({
+            environmentId: input.expectedEnvironmentId,
+            label: "Fresh host",
+            httpBaseUrl: input.httpBaseUrl,
+            socketUrl: "wss://environment.example.test/ws?wsTicket=fresh",
+            httpAuthorization: { _tag: "Bearer", token: input.bearerToken },
+            descriptor: {
+              environmentId: scenario.environmentId,
+              label: "Fresh host",
+              platform: { os: "linux", arch: "x64" },
+              serverVersion: "test",
+              orchestrationProtocolVersion: scenario.version,
+              capabilities: { repositoryIdentity: true },
+            },
+          }),
+        fetch: (() =>
+          Promise.reject(new Error("Redundant descriptor request"))) satisfies typeof fetch,
+      });
+      const error = yield* Effect.gen(function* () {
+        const broker = yield* ConnectionResolver.ConnectionResolver;
+        return yield* Effect.flip(
+          broker.prepare(
+            catalogEntry(
+              new PrimaryConnectionTarget({
+                environmentId: ENVIRONMENT_ID,
+                label: "Host",
+                ...ENDPOINT,
+              }),
+            ),
+          ),
+        );
+      }).pipe(Effect.provide(brokerLayer));
+      expect(error).toMatchObject({ reason: scenario.reason });
+    }),
+  );
+
   it.effect("blocks an old host during discovery before opening orchestration RPC", () =>
     Effect.gen(function* () {
       const layerBroker = yield* makeDependencies({ descriptorProtocolVersion: null });

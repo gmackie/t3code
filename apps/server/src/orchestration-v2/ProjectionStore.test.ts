@@ -27,6 +27,7 @@ import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
+import * as Tracer from "effect/Tracer";
 import * as SqlClient from "effect/sql/SqlClient";
 import { projectThreadAwarenessV2 } from "@t3tools/shared/agentAwareness";
 
@@ -2972,7 +2973,27 @@ it.layer(layerTest)("ProjectionStoreV2", (it) => {
         )
       `;
 
-      const shell = yield* projectionStore.getShellSnapshot();
+      const statements: Array<string> = [];
+      const tracer = Tracer.make({
+        span(options) {
+          const span = new Tracer.NativeSpan(options);
+          const end = span.end.bind(span);
+          span.end = (endTime, exit) => {
+            end(endTime, exit);
+            const query = span.attributes.get("db.query.text");
+            if (typeof query === "string") statements.push(query);
+          };
+          return span;
+        },
+      });
+      const shell = yield* projectionStore.getShellSnapshot().pipe(Effect.withTracer(tracer));
+      const singleShell = yield* projectionStore
+        .getThreadShell(threadId)
+        .pipe(Effect.withTracer(tracer));
+      assert.isAbove(statements.length, 0);
+      assert.isFalse(statements.some((query) => /SELECT\s+thread_id, run_id, ordinal/.test(query)));
+      assert.isFalse(statements.some((query) => /GROUP BY thread_id, run_id/.test(query)));
+      assert.equal(singleShell?.visibleItemCount, 1);
       const fullProjectionExit = yield* Effect.exit(projectionStore.getThreadProjection(threadId));
 
       assert.deepEqual(
@@ -2994,7 +3015,7 @@ it.layer(layerTest)("ProjectionStoreV2", (it) => {
         ],
       );
       assert.equal(fullProjectionExit._tag, "Failure");
-    }),
+    }).pipe(Effect.provide(layerTest)),
   );
 
   it.effect("counts imported runless history inherited by fork shells", () =>
@@ -3145,6 +3166,7 @@ it.layer(layerTest)("ProjectionStoreV2", (it) => {
       assert.isDefined(targetShell);
       assert.equal(targetShell.itemCount, 0);
       assert.equal(targetShell.visibleItemCount, 4);
+      assert.equal((yield* projectionStore.getThreadShell(targetThreadId))?.visibleItemCount, 4);
       assert.equal(targetProjection.visibleTurnItems.length, 4);
     }),
   );

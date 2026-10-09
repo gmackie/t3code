@@ -14,6 +14,7 @@ import {
 } from "@t3tools/contracts";
 import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
+import type { ApplicationEventReference } from "../persistence/Services/OrchestrationEventStore.ts";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 
@@ -43,7 +44,12 @@ export type ShellApplicationEvent =
     };
 
 /** Shell updates refetch an aggregate; drop transcript bodies before retaining an event. */
-export function toShellApplicationEvent(stored: ApplicationStoredEvent): ShellApplicationEvent {
+export function toShellApplicationEvent(
+  stored: ApplicationStoredEvent | ApplicationEventReference,
+): ShellApplicationEvent {
+  if ("aggregateKind" in stored && stored.aggregateKind === "thread") {
+    return { sequence: stored.sequence, event: { threadId: stored.aggregateId } };
+  }
   return "aggregateKind" in stored
     ? {
         aggregateKind: stored.aggregateKind,
@@ -68,6 +74,23 @@ export function coalesceShellApplicationEvents<A extends ShellApplicationEvent>(
   }
   return Array.from(latestByAggregate.values()).sort(
     (left, right) => left.sequence - right.sequence,
+  );
+}
+
+/** Project finite, caller-bounded catch-up separately from the timed live windows. */
+export function projectShellReplay<A extends ShellApplicationEvent, E, R, B, E2, R2>(
+  replay: Stream.Stream<A, E, R>,
+  project: (events: ReadonlyArray<A>) => Effect.Effect<ReadonlyArray<B>, E2, R2>,
+): Stream.Stream<B, E | E2, R | R2> {
+  return Stream.unwrap(
+    Stream.runCollect(replay).pipe(
+      Effect.flatMap((events) =>
+        events.length === 0
+          ? Effect.succeed([] as ReadonlyArray<B>)
+          : project(coalesceShellApplicationEvents(Array.from(events))),
+      ),
+      Effect.map(Stream.fromIterable),
+    ),
   );
 }
 

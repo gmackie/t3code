@@ -253,6 +253,8 @@ describe("RemoteEnvironmentAuthorization", () => {
         return [yield* authorize(), yield* authorize()] as const;
       }).pipe(Effect.provide(harness.layer));
 
+      expect(first.descriptor).toMatchObject(DESCRIPTOR);
+      expect(second.descriptor).toBeUndefined();
       expect(first.socketUrl).toContain("wsTicket=first-ticket");
       expect(second.socketUrl).toContain("wsTicket=second-ticket");
       expect(

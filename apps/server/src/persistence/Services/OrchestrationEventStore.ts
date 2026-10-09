@@ -31,6 +31,16 @@ export type UnsequencedProjectEvent = ApplicationProjectEvent extends infer Even
     : never
   : never;
 
+/** Event identity for consumers that refetch a projection instead of replaying its body. */
+export type ApplicationEventReference =
+  | Pick<ApplicationProjectEvent, "sequence" | "aggregateKind" | "aggregateId" | "type">
+  | {
+      readonly sequence: number;
+      readonly aggregateKind: "thread";
+      readonly aggregateId: ThreadId;
+      readonly type: OrchestrationV2DomainEvent["type"];
+    };
+
 /**
  * OrchestrationEventStoreShape - Service API for orchestration event persistence.
  */
@@ -104,6 +114,17 @@ export interface OrchestrationEventStoreShape {
     readonly afterSequence: number;
     readonly throughSequence: number;
   }) => Stream.Stream<ApplicationStoredEvent, OrchestrationEventStoreError>;
+
+  /** Read navigation catch-up without selecting conversation JSON from SQLite. */
+  readonly readApplicationEventReferences: (input: {
+    readonly afterSequence: number;
+    readonly throughSequence: number;
+  }) => Stream.Stream<ApplicationEventReference, OrchestrationEventStoreError>;
+
+  /** Race-free metadata-only catch-up followed by bounded live references. */
+  readonly streamApplicationEventReferences: (input: {
+    readonly afterSequence: number;
+  }) => Stream.Stream<ApplicationEventReference, OrchestrationEventStoreError>;
 
   /** Publish only after the surrounding event/projection transaction commits. */
   readonly publishCommitted: (events: ReadonlyArray<ApplicationStoredEvent>) => Effect.Effect<void>;

@@ -33,8 +33,9 @@ The v2 checks pin these invariants:
   remain complete; the existing diff endpoints still provide file content when requested.
 - The initial shell contains active navigation rows only. Archived rows use the dedicated archive
   query, and transcript message bodies stay in thread detail regardless of message size.
-- Shell resume sends deltas plus compact repository-enrichment metadata, not another full project
-  and thread snapshot.
+- Shell resume sends deltas plus compact repository-enrichment metadata. Navigation catch-up
+  reads only event identity columns from SQLite, without loading conversation payloads. Its
+  replay limit bounds metadata rows; transcript size must not force a full thread-list refresh.
 - Auto, steer, and restart sends resolve delivery from authoritative state inside the
   server's per-thread dispatch lock. Model selection and identified-checkpoint rollback also
   dispatch without first fetching a full thread projection when the server advertises support.

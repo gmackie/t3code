@@ -23,7 +23,6 @@ import { safeErrorLogAttributes } from "../errors/safeLog.ts";
 import * as Persistence from "../platform/persistence.ts";
 import { runCachePersistence } from "./cachePersistence.ts";
 import { subscribeDynamic } from "../rpc/client.ts";
-import type { RpcSession } from "../rpc/session.ts";
 import * as ShellSnapshotLoader from "./shellSnapshotHttp.ts";
 import { applyShellStreamEvent, mergeShellSnapshotProjects } from "./shellReducer.ts";
 import { type EnvironmentCatalogState, enabledEnvironmentIds } from "./connections.ts";
@@ -74,8 +73,7 @@ export const makeEnvironmentShellState = Effect.fn("EnvironmentShellState.make")
     error: Option.none(),
   });
   const awaitingCompletion = yield* Ref.make(false);
-  const lastAuthoritativeSession = yield* Ref.make<RpcSession | null>(null);
-  const activeSubscriptionSession = yield* Ref.make<RpcSession | null>(null);
+  const hasAuthoritativeSnapshot = yield* Ref.make(false);
   const latestLiveSnapshot = yield* Ref.make<Option.Option<OrchestrationV2ShellSnapshot>>(
     Option.none(),
   );
@@ -164,7 +162,7 @@ export const makeEnvironmentShellState = Effect.fn("EnvironmentShellState.make")
     const initial = yield* SubscriptionRef.get(state);
     let waiting = yield* Ref.get(awaitingCompletion);
     let next = initial;
-    let receivedSnapshot = false;
+    let receivedAuthoritativeSnapshot = false;
     for (const item of items) {
       if (item.kind === "synchronized") {
         waiting = false;
@@ -192,7 +190,8 @@ export const makeEnvironmentShellState = Effect.fn("EnvironmentShellState.make")
                   : snapshot,
             });
       if (nextSnapshot === null) continue;
-      receivedSnapshot ||= item.kind === "snapshot";
+      receivedAuthoritativeSnapshot ||=
+        item.kind === "snapshot" && item.resolvedRepositoryIdentityRoots === undefined;
       next = {
         snapshot: Option.some(nextSnapshot),
         status: waiting ? "synchronizing" : "live",
@@ -205,11 +204,8 @@ export const makeEnvironmentShellState = Effect.fn("EnvironmentShellState.make")
       yield* Ref.set(latestLiveSnapshot, next.snapshot);
     }
     yield* SubscriptionRef.set(state, next);
-    if (receivedSnapshot) {
-      const session = yield* Ref.get(activeSubscriptionSession);
-      if (session !== null) {
-        yield* Ref.set(lastAuthoritativeSession, session);
-      }
+    if (receivedAuthoritativeSnapshot) {
+      yield* Ref.set(hasAuthoritativeSnapshot, true);
     }
     if (next.snapshot !== initial.snapshot && Option.isSome(next.snapshot)) {
       yield* Queue.offer(persistence, next.snapshot.value);
@@ -227,7 +223,6 @@ export const makeEnvironmentShellState = Effect.fn("EnvironmentShellState.make")
     subscribeDynamic(
       ORCHESTRATION_V2_WS_METHODS.subscribeShell,
       Effect.fn("EnvironmentShellState.makeSubscribeInput")(function* (session) {
-        yield* Ref.set(activeSubscriptionSession, session);
         const supportsCompletionMarker = yield* session.initialConfig.pipe(
           Effect.map((config) => config.shellResumeCompletionMarker === true),
           Effect.orElseSucceed(() => false),
@@ -235,13 +230,13 @@ export const makeEnvironmentShellState = Effect.fn("EnvironmentShellState.make")
         yield* Ref.set(awaitingCompletion, supportsCompletionMarker);
         yield* setSynchronizing;
 
-        // Foreground resubscriptions on the same live session can resume from
-        // the in-memory cursor. A new session reloads the authoritative HTTP
-        // snapshot so a valid cursor cannot preserve incomplete cached data.
-        const hasAuthoritativeSnapshot = (yield* Ref.get(lastAuthoritativeSession)) === session;
-        let canResume = hasAuthoritativeSnapshot;
+        // Applied in-memory state and its cursor remain valid when the transport
+        // changes. Only disk caches need an authoritative refresh: a valid cursor
+        // alone cannot prove they contain the complete thread list. The server
+        // sends a full socket snapshot when it can no longer replay the cursor.
+        let canResume = yield* Ref.get(hasAuthoritativeSnapshot);
         let current = yield* SubscriptionRef.get(state);
-        if (!hasAuthoritativeSnapshot || Option.isNone(current.snapshot)) {
+        if (!canResume || Option.isNone(current.snapshot)) {
           const prepared = yield* SubscriptionRef.get(supervisor.prepared).pipe(
             Effect.flatMap(
               Option.match({
@@ -264,8 +259,8 @@ export const makeEnvironmentShellState = Effect.fn("EnvironmentShellState.make")
           }
         }
 
-        // If the authoritative refresh failed, omit the cached cursor so the
-        // socket fallback sends a complete snapshot for this new session.
+        // If the initial authoritative refresh failed, omit the disk-cache
+        // cursor so the socket fallback sends a complete snapshot.
         if (!canResume || Option.isNone(current.snapshot)) {
           return supportsCompletionMarker ? { requestCompletionMarker: true as const } : {};
         }

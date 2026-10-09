@@ -568,6 +568,70 @@ const makeEventStore = Effect.gen(function* () {
     );
   };
 
+  const readApplicationEventReferences: OrchestrationEventStore.OrchestrationEventStoreShape["readApplicationEventReferences"] =
+    (input) =>
+      Stream.paginate(input.afterSequence, (afterSequence) =>
+        sql<OrchestrationEventStore.ApplicationEventReference>`
+        SELECT sequence, aggregate_kind AS "aggregateKind", stream_id AS "aggregateId", event_type AS "type"
+        FROM orchestration_events INDEXED BY idx_orchestration_events_application_high_water
+        WHERE sequence > ${afterSequence}
+          AND sequence <= ${input.throughSequence}
+          AND (aggregate_kind = 'project' OR (application_event_version = 2 AND aggregate_kind = 'thread'))
+        ORDER BY sequence ASC
+        LIMIT ${READ_PAGE_SIZE}
+      `.pipe(
+          Effect.mapError(
+            toPersistenceSqlError("OrchestrationEventStore.readApplicationEventReferences:query"),
+          ),
+          Effect.map((events) => {
+            const last = events.at(-1);
+            return [
+              events,
+              last === undefined ||
+              events.length < READ_PAGE_SIZE ||
+              last.sequence >= input.throughSequence
+                ? Option.none()
+                : Option.some(last.sequence),
+            ] as const;
+          }),
+        ),
+      );
+
+  const toReference = (
+    event: ApplicationStoredEvent,
+  ): OrchestrationEventStore.ApplicationEventReference =>
+    "aggregateKind" in event
+      ? {
+          sequence: event.sequence,
+          aggregateKind: "project",
+          aggregateId: event.aggregateId,
+          type: event.type,
+        }
+      : {
+          sequence: event.sequence,
+          aggregateKind: "thread",
+          aggregateId: event.event.threadId,
+          type: event.event.type,
+        };
+
+  const streamApplicationEventReferences: OrchestrationEventStore.OrchestrationEventStoreShape["streamApplicationEventReferences"] =
+    (input) =>
+      replayAndBufferProjectedLiveEvents({
+        subscribe: PubSub.subscribe(committedEvents),
+        latestSequence: latestApplicationSequence,
+        afterSequence: input.afterSequence,
+        project: toReference,
+        replay: (throughSequence) => readApplicationEventReferences({ ...input, throughSequence }),
+      }).pipe(
+        Stream.catchTag("LiveStreamBufferError", (cause) =>
+          Stream.fail(
+            toPersistenceSqlError(
+              "OrchestrationEventStore.streamApplicationEventReferences:buffer",
+            )(cause),
+          ),
+        ),
+      );
+
   const streamProjectedApplicationEvents: OrchestrationEventStore.OrchestrationEventStoreShape["streamProjectedApplicationEvents"] =
     (input) =>
       replayAndBufferProjectedLiveEvents({
@@ -579,7 +643,7 @@ const makeEventStore = Effect.gen(function* () {
           catchUpApplicationEvents({
             afterSequence: input?.afterSequence ?? 0,
             throughSequence,
-          }),
+          }).pipe(Stream.map(input.project)),
       }).pipe(
         Stream.catchTag("LiveStreamBufferError", (cause) =>
           Stream.fail(
@@ -600,6 +664,8 @@ const makeEventStore = Effect.gen(function* () {
     latestAgentSequence,
     latestApplicationSequence,
     readApplicationEvents: catchUpApplicationEvents,
+    readApplicationEventReferences,
+    streamApplicationEventReferences,
     publishCommitted: (events) => PubSub.publishAll(committedEvents, events).pipe(Effect.asVoid),
     streamApplicationEvents,
     streamProjectedApplicationEvents,

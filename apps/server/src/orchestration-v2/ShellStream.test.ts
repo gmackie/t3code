@@ -20,6 +20,8 @@ import {
   coalesceStoredThreadEvents,
   composeShellStreamWithEnrichment,
   dedupeShellEnrichment,
+  projectShellReplay,
+  toShellApplicationEvent,
   shellStreamItemFromEnrichmentRefresh,
   shellStreamItemFromThreadShell,
   shellStreamItemsFromInitialSnapshot,
@@ -91,6 +93,91 @@ describe("coalesceShellApplicationEvents", () => {
       ]).map((event) => event.sequence),
     ).toEqual([4, 5, 6]);
   });
+});
+
+describe("projectShellReplay", () => {
+  it.effect(
+    "reads each affected shell once across database pages and preserves the latest sequence",
+    () =>
+      Effect.gen(function* () {
+        const reads: Array<string> = [];
+        const events = Array.from({ length: 1000 }, (_, index) =>
+          toShellApplicationEvent(thread(index + 1, "busy-thread")),
+        );
+        events[10] = toShellApplicationEvent(thread(11, "other-thread"));
+        events[20] = toShellApplicationEvent({
+          sequence: 21,
+          aggregateKind: "project",
+          aggregateId: ProjectId.make("deleted-project"),
+          type: "project.deleted",
+        });
+        const result = yield* Stream.runCollect(
+          projectShellReplay(
+            Stream.concat(
+              Stream.fromIterable(events.slice(0, 500)),
+              Stream.fromIterable(events.slice(500)),
+            ),
+            (batch) =>
+              Effect.sync(() =>
+                batch.map((event) => {
+                  reads.push("aggregateKind" in event ? event.aggregateId : event.event.threadId);
+                  return event.sequence;
+                }),
+              ),
+          ),
+        );
+        expect(reads).toEqual(["other-thread", "deleted-project", "busy-thread"]);
+        expect(Array.from(result)).toEqual([11, 21, 1000]);
+      }),
+  );
+
+  it.effect("finishes replay before completion and live updates, including deletion", () =>
+    Effect.gen(function* () {
+      const replay = projectShellReplay(
+        Stream.fromIterable([
+          toShellApplicationEvent(thread(1, "thread-a")),
+          toShellApplicationEvent(thread(2, "thread-a")),
+        ]),
+        (batch) =>
+          Effect.succeed(
+            batch.map((stored) => {
+              if ("aggregateKind" in stored) throw new Error("Expected thread");
+              return shellStreamItemFromThreadShell({ stored, shell: null });
+            }),
+          ),
+      );
+      const result = yield* Stream.runCollect(
+        Stream.concat(
+          replay,
+          Stream.make(
+            { kind: "synchronized" as const },
+            { kind: "thread.updated" as const, sequence: 3 },
+          ),
+        ),
+      );
+      expect(Array.from(result)).toEqual([
+        { kind: "thread.removed", sequence: 2, location: "active", threadId: "thread-a" },
+        { kind: "synchronized" },
+        { kind: "thread.updated", sequence: 3 },
+      ]);
+    }),
+  );
+
+  it.effect("does not project an empty replay", () =>
+    Effect.gen(function* () {
+      let reads = 0;
+      const result = yield* Stream.runCollect(
+        projectShellReplay(Stream.empty, () =>
+          Effect.sync(() => {
+            reads++;
+            return [];
+          }),
+        ),
+      );
+      expect(Array.from(result)).toEqual([]);
+      expect(reads).toBe(0);
+    }),
+  );
 });
 
 function storedThreadEvent(

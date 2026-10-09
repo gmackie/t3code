@@ -735,7 +735,13 @@ const layerBase: Layer.Layer<
               latestSequence: eventStore.latestSequence(),
               afterSequence,
               filter: matches,
-              replay,
+              replay: (throughSequence) =>
+                replay(throughSequence).pipe(
+                  Stream.map((stored) => ({
+                    ...stored,
+                    event: projectDomainEventForWire(stored.event),
+                  })),
+                ),
               project: (stored) => ({ ...stored, event: projectDomainEventForWire(stored.event) }),
             });
           }

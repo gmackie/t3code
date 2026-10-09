@@ -50,14 +50,21 @@ require valid credentials.
 A socket opening is insufficient evidence that the environment is usable. The
 [RPC session](../../packages/client-runtime/src/rpc/session.ts) waits for the
 initial server configuration before becoming ready. Shell and thread data then
-have their own synchronization state. A failed shell subscription can coexist
+have their own synchronization state. Optional editor and SSH-target discovery
+shares a bounded server-owned worker across clients; the handshake waits at most
+one second for it, and reconnects reuse its result for a minute. A client timeout
+must not cancel that worker or cache a caller's interruption. A failed shell subscription can coexist
 with a healthy connection; labeling that state "reconnecting" promises a
 transport retry that will never happen.
 
 Cached projections remain readable offline. They must neither imply a live
 connection nor overwrite newer live data during a reconnect. Loading and
 resuming snapshots belongs to the shared state services, so every view agrees
-on which data is current.
+on which data is current. Shell state that received an authoritative snapshot
+resumes its applied cursor across transport replacement; only a disk cache needs
+an authoritative refresh. A valid cursor alone cannot establish that persisted
+cache data is complete. The server replaces a resume with a full snapshot when
+its retained history cannot cover the cursor.
 
 [Thread detail](../../packages/client-runtime/src/state/threads.ts) separates
 subscription lifetime from cache lifetime. Mounted consumers share one live

@@ -50,6 +50,8 @@ export interface AuthorizedRemoteEnvironment {
   readonly httpBaseUrl: string;
   readonly socketUrl: string;
   readonly httpAuthorization: PreparedHttpAuthorization;
+  /** Freshly fetched in this attempt; cached descriptors still require resolver validation. */
+  readonly descriptor?: ExecutionEnvironmentDescriptor | undefined;
 }
 
 export interface AuthorizedRemoteHttpEnvironment {
@@ -177,7 +179,7 @@ export const make = Effect.gen(function* () {
           return next;
         });
       }
-      return descriptor;
+      return { descriptor, freshDescriptor: canReuseDescriptor ? undefined : descriptor };
     },
   );
 
@@ -191,7 +193,7 @@ export const make = Effect.gen(function* () {
       readonly bearerToken: string;
       readonly connectionMethod: ClientConnectionMethod;
     }) {
-      const descriptor = yield* verifyDirectEndpoint(input);
+      const { descriptor, freshDescriptor } = yield* verifyDirectEndpoint(input);
       const socketUrl = yield* resolveRemoteWebSocketConnectionUrl({
         wsBaseUrl: input.wsBaseUrl,
         httpBaseUrl: input.httpBaseUrl,
@@ -205,6 +207,7 @@ export const make = Effect.gen(function* () {
       return {
         environmentId: descriptor.environmentId,
         label: descriptor.label,
+        descriptor: freshDescriptor,
         httpBaseUrl: input.httpBaseUrl,
         socketUrl,
         httpAuthorization: {

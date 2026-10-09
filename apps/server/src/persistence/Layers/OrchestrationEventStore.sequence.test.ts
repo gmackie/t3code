@@ -273,3 +273,123 @@ it.effect("uses indexed high-water lookups for populated history without OR scan
     ),
   ),
 );
+
+it.effect("replays shell references without reading or decoding transcript payloads", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const store = yield* OrchestrationEventStore.OrchestrationEventStore;
+      const sql = yield* SqlClient.SqlClient;
+      const rows = yield* seedEvents([
+        eventRow(1, "thread", 1, "legacy"),
+        eventRow(2, "project", 1, "project:removed"),
+        eventRow(3, "thread", 2, "thread:changed"),
+      ]);
+      // Navigation needs aggregate identity, not valid conversation bodies.
+      // Broken JSON must remain an error for full replay, but cannot delay a list.
+      yield* sql`UPDATE orchestration_events SET payload_json = 'invalid JSON', metadata_json = 'invalid JSON'`;
+      yield* sql`UPDATE orchestration_events SET event_type = 'project.deleted' WHERE stream_id = 'project:removed'`;
+      const highWater = yield* store.latestApplicationSequence;
+      const statements: Array<string> = [];
+      const tracer = Tracer.make({
+        span(options) {
+          const span = new Tracer.NativeSpan(options);
+          const end = span.end.bind(span);
+          span.end = (endTime, exit) => {
+            end(endTime, exit);
+            const query = span.attributes.get("db.query.text");
+            if (typeof query === "string") statements.push(query);
+          };
+          return span;
+        },
+      });
+      const expected = [
+        {
+          sequence: rows[1]!.sequence,
+          aggregateKind: "project",
+          aggregateId: "project:removed",
+          type: "project.deleted",
+        },
+        {
+          sequence: rows[2]!.sequence,
+          aggregateKind: "thread",
+          aggregateId: "thread:changed",
+          type: "provider-session.detached",
+        },
+      ];
+      assert.deepEqual(
+        yield* store
+          .readApplicationEventReferences({ afterSequence: 0, throughSequence: highWater })
+          .pipe(
+            Stream.runCollect,
+            Effect.withTracer(tracer),
+            Effect.withSpan("test.shell-references"),
+          ),
+        expected,
+      );
+      assert.isAbove(statements.length, 0);
+      assert.isTrue(
+        statements.every(
+          (query) => !query.includes("payload_json") && !query.includes("metadata_json"),
+        ),
+      );
+      const fullReplay = yield* store
+        .readApplicationEvents({ afterSequence: 0, throughSequence: highWater })
+        .pipe(Stream.runCollect, Effect.result);
+      assert.equal(fullReplay._tag, "Failure");
+
+      const pull = yield* Stream.toPull(
+        store.streamApplicationEventReferences({ afterSequence: 0 }),
+      );
+      const replayed = [];
+      while (replayed.length < expected.length) replayed.push(...(yield* pull));
+      assert.deepEqual(replayed, expected);
+      const [live] = yield* store.appendAgentEvents({
+        events: [
+          {
+            id: EventId.make("shell-reference-live"),
+            type: "provider-session.detached",
+            threadId: ThreadId.make("thread:live"),
+            occurredAt: DateTime.makeUnsafe(occurredAt),
+            payload: {
+              providerSessionId: ProviderSessionId.make("session:live"),
+              detachedAt: DateTime.makeUnsafe(occurredAt),
+            },
+          },
+        ],
+      });
+      yield* store.publishCommitted([live!]);
+      assert.deepEqual(yield* pull, [
+        {
+          sequence: live!.sequence,
+          aggregateKind: "thread",
+          aggregateId: ThreadId.make("thread:live"),
+          type: "provider-session.detached",
+        },
+      ]);
+    }).pipe(Effect.provide(Layer.fresh(layerEventStore))),
+  ),
+);
+
+it.effect("pages shell catch-up within its sequence range without legacy events", () =>
+  Effect.gen(function* () {
+    const store = yield* OrchestrationEventStore.OrchestrationEventStore;
+    const rows = yield* seedEvents(
+      Array.from({ length: 650 }, (_, i) => eventRow(i + 1, "thread", i % 5 === 0 ? 1 : 2)),
+    );
+    const afterSequence = rows[4]!.sequence;
+    const throughSequence = rows[645]!.sequence;
+    const expected = rows.filter(
+      (row) =>
+        row.application_event_version === 2 &&
+        row.sequence > afterSequence &&
+        row.sequence <= throughSequence,
+    );
+    const references = yield* store
+      .readApplicationEventReferences({ afterSequence, throughSequence })
+      .pipe(Stream.runCollect);
+    assert.deepEqual(
+      references.map((reference) => reference.sequence),
+      expected.map((row) => row.sequence),
+    );
+  }).pipe(Effect.provide(Layer.fresh(layerEventStore))),
+);

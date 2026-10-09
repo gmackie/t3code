@@ -289,7 +289,11 @@ export const replayAndBufferProjectedLiveEvents = <
   E,
   R,
 >(
-  input: ReplayLiveInput<A, E, R> & { readonly project: (event: A) => B },
+  input: Omit<ReplayLiveInput<A, E, R>, "replay"> & {
+    readonly project: (event: A) => B;
+    /** Database replay already projected so it need not load full event bodies. */
+    readonly replay: (throughSequence: number) => Stream.Stream<B, E, R>;
+  },
   limits?: LiveStreamLimits,
 ) =>
   Stream.unwrap(
@@ -319,7 +323,7 @@ export const replayAndBufferProjectedLiveEvents = <
               // Charge only the item being delivered so a fast reader can
               // consume a page larger than the budget without overflowing.
               Stream.rechunk(1),
-              Stream.mapEffect((event) => budget.retain(input.project(event))),
+              Stream.mapEffect((event) => budget.retain(event)),
             );
           }),
         ),

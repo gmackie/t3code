@@ -31,6 +31,8 @@ import {
   AuthOrchestrationOperateScope,
   AuthOrchestrationReadScope,
   type AuthAccessStreamEvent,
+  type EditorId,
+  type FileManagerRevealKind,
   type AuthEnvironmentScope,
   type ScheduledTaskListResult,
   AuthSessionId,
@@ -40,8 +42,6 @@ import {
   ClientSurface,
   ClientWebDeployment,
   type DiscoveredLocalServerList,
-  type EditorId,
-  type FileManagerRevealKind,
   type OrchestrationClientOrigin,
   type OrchestrationV2Command,
   type GitActionProgressEvent,
@@ -131,6 +131,7 @@ import {
   archivedShellStreamItemFromThreadShell,
   buildActiveShellSnapshot,
   coalesceShellApplicationEvents,
+  projectShellReplay,
   coalesceStoredThreadEvents,
   composeShellStreamWithEnrichment,
   dedupeShellEnrichment,
@@ -216,7 +217,7 @@ import * as RepositoryIdentityResolver from "./project/RepositoryIdentityResolve
 import * as WorktreeSetupTracker from "./project/WorktreeSetupTracker.ts";
 import * as ServerEnvironment from "./environment/ServerEnvironment.ts";
 import * as DirectEndpoints from "./environment/DirectEndpoints.ts";
-import * as RemoteOpenTargets from "./environment/RemoteOpenTargets.ts";
+import * as ServerConfigDiscovery from "./environment/ServerConfigDiscovery.ts";
 import * as BackgroundPolicy from "./background/BackgroundPolicy.ts";
 import * as EnvironmentAuth from "./auth/EnvironmentAuth.ts";
 import { requiredScopeForDeviceList, rpcAuthorizationError } from "./auth/RpcAuthorization.ts";
@@ -267,17 +268,7 @@ import {
   PluginRuntimeSupervisor,
 } from "./plugins/runtimeSupervisor.ts";
 
-const CONFIG_DISCOVERY_TIMEOUT = Duration.seconds(5);
 const isProviderUploadFeedbackError = Schema.is(ProviderUploadFeedbackError);
-
-const resolveDiscoveryForConfig = <A, E, R>(
-  discovery: Effect.Effect<A, E, R>,
-  onTimeout: () => A,
-) =>
-  discovery.pipe(
-    Effect.timeoutOption(CONFIG_DISCOVERY_TIMEOUT),
-    Effect.map(Option.getOrElse(onTimeout)),
-  );
 
 const pluginRegistryEntry = (plugin: ReturnType<PluginLifecycle["snapshot"]>[number]) => ({
   pluginId: plugin.manifest.id,
@@ -304,13 +295,14 @@ const pluginManifest = (
   return plugin.manifest;
 };
 
+const resolveDiscoveryForConfig = <A, E, R>(
+  discovery: Effect.Effect<A, E, R>,
+  fallback: () => A,
+) => discovery.pipe(Effect.timeoutOption("5 seconds"), Effect.map(Option.getOrElse(fallback)));
+
 export const resolveAvailableEditorsForConfig = <A, E, R>(
   discovery: Effect.Effect<ReadonlyArray<A>, E, R>,
 ) => resolveDiscoveryForConfig(discovery, () => []);
-
-const resolveFileManagerRevealKindForConfig = <E, R>(
-  discovery: Effect.Effect<FileManagerRevealKind | undefined, E, R>,
-) => resolveDiscoveryForConfig(discovery, () => undefined);
 
 type EditorDiscovery = Pick<
   ExternalLauncher.ExternalLauncher["Service"],
@@ -586,14 +578,9 @@ const PROVIDER_STATUS_DEBOUNCE_MS = 200;
 const ServerWsRpcGroup = WsRpcGroup;
 // When a resuming client's cursor is more than this many events behind the
 // current head, skip the per-event catch-up replay and send a fresh shell
-// snapshot instead. Replaying each intervening event costs a shell refetch;
-// past this gap a single O(active-threads) snapshot is cheaper and bounded.
-// Matches the event store's default page size (DEFAULT_READ_FROM_SEQUENCE_LIMIT).
+// snapshot instead. Metadata rows are coalesced before shell refetches;
+// this cap bounds catch-up even when many different threads changed.
 const SHELL_RESUME_MAX_GAP = 1_000;
-// Row count alone does not bound replay memory: a few events with large tool
-// payloads can decode to gigabytes. Before replaying, sum the serialized
-// payload bytes of the range in SQL and reset with a snapshot past this budget.
-const ORCHESTRATION_REPLAY_PAYLOAD_BUDGET_BYTES = 8 * 1024 * 1024;
 
 function toAuthAccessStreamEvent(
   change: PairingGrantStore.BootstrapCredentialChange | SessionStore.SessionCredentialChange,
@@ -722,35 +709,6 @@ function readClientAnalyticsProps(request: HttpServerRequest.HttpServerRequest) 
     ...(isClientConnectionMethod(connectionMethod) ? { connectionMethod } : {}),
   };
 }
-
-const canReplayPersistedRange = Effect.fnUntraced(function* (
-  afterSequence: number,
-  headSequence: number,
-  maxGap: number,
-) {
-  const applicationEvents = yield* OrchestrationEventStore.OrchestrationEventStore;
-
-  const replayGap = headSequence - afterSequence;
-  if (replayGap < 0 || replayGap > maxGap) {
-    return false;
-  }
-  const stats = yield* applicationEvents.getReplayStats({
-    afterSequence,
-    throughSequence: headSequence,
-  });
-  if (stats.rawPayloadBytes > ORCHESTRATION_REPLAY_PAYLOAD_BUDGET_BYTES) {
-    yield* Effect.logDebug("orchestration replay replaced by snapshot", {
-      afterSequence,
-      headSequence,
-      replayGap,
-      eventCount: stats.eventCount,
-      payloadBytes: stats.rawPayloadBytes,
-      payloadBudgetBytes: ORCHESTRATION_REPLAY_PAYLOAD_BUDGET_BYTES,
-    });
-    return false;
-  }
-  return true;
-});
 
 const enrichProjectShells = Effect.fn("ws.orchestrationV2.enrichProjectShells")(
   (projects: ReadonlyArray<OrchestrationProjectShell>) =>
@@ -1078,10 +1036,9 @@ export const subscribeOrchestrationV2Shell = Effect.fn("ws.orchestrationV2.subsc
     const liveFrom = (afterSequence: number) =>
       bufferLiveStream(
         toShellStream(
-          applicationEvents.streamProjectedApplicationEvents({
-            afterSequence,
-            project: toShellApplicationEvent,
-          }),
+          applicationEvents
+            .streamApplicationEventReferences({ afterSequence })
+            .pipe(Stream.map(toShellApplicationEvent)),
         ),
       );
 
@@ -1177,7 +1134,10 @@ export const subscribeOrchestrationV2Shell = Effect.fn("ws.orchestrationV2.subsc
       }
 
       const highWater = yield* applicationEvents.latestApplicationSequence;
-      if (!(yield* canReplayPersistedRange(input.afterSequence, highWater, SHELL_RESUME_MAX_GAP))) {
+      // Shell replay reads identity columns only; transcript byte size must not
+      // force a full list refresh. Bound the number of metadata rows instead.
+      const replayGap = highWater - input.afterSequence;
+      if (replayGap < 0 || replayGap > SHELL_RESUME_MAX_GAP) {
         const loaded = yield* loadSnapshot();
         return composeShellStreamWithEnrichment({
           initial: initialSnapshotItems(loaded),
@@ -1187,11 +1147,14 @@ export const subscribeOrchestrationV2Shell = Effect.fn("ws.orchestrationV2.subsc
       }
 
       const loaded = yield* loadProjectMetadataSnapshot(highWater);
-      const replay = toShellStream(
-        applicationEvents.readApplicationEvents({
-          afterSequence: input.afterSequence,
-          throughSequence: highWater,
-        }),
+      const replay = projectShellReplay(
+        applicationEvents
+          .readApplicationEventReferences({
+            afterSequence: input.afterSequence,
+            throughSequence: highWater,
+          })
+          .pipe(Stream.map(toShellApplicationEvent)),
+        projectShellItems,
       );
       return composeShellStreamWithEnrichment({
         initial: initialEnrichmentItems(loaded),
@@ -1300,8 +1263,8 @@ const layerWsRpc = (
       const keybindings = yield* Keybindings.Keybindings;
       const environmentTheme = yield* EnvironmentTheme.EnvironmentThemeService;
       const externalLauncher = yield* ExternalLauncher.ExternalLauncher;
-      const remoteOpenTargets = yield* RemoteOpenTargets.RemoteOpenTargets;
       const directEndpoints = yield* DirectEndpoints.DirectEndpoints;
+      const configDiscovery = yield* ServerConfigDiscovery.ServerConfigDiscovery;
       const gitWorkflow = yield* GitWorkflowService.GitWorkflowService;
       const review = yield* ReviewService.ReviewService;
       const vcsProvisioning = yield* VcsProvisioningService.VcsProvisioningService;
@@ -1746,10 +1709,8 @@ const layerWsRpc = (
           const environment = yield* serverEnvironment.getDescriptor;
           const auth = yield* serverAuth.getDescriptor();
           const scratchWorkspaceRoot = yield* managedFolders.scratchRoot;
-          const editorConfig = yield* resolveEditorConfig(
-            yield* resolveAvailableEditorsForConfig(externalLauncher.resolveAvailableEditors()),
-            resolveFileManagerRevealKindForConfig(externalLauncher.resolveFileManagerRevealKind()),
-          );
+          const { availableEditors, fileManagerRevealKind, remoteOpenTargets } = yield* configDiscovery.get;
+          const editorConfig = yield* resolveEditorConfig(availableEditors, Effect.succeed(fileManagerRevealKind));
 
           return {
             environment,
@@ -1760,11 +1721,7 @@ const layerWsRpc = (
             issues: keybindingsConfig.issues,
             providers,
             ...editorConfig,
-            // Same discovery-with-timeout treatment as editors: a slow probe
-            // must not stall server.getConfig, so it degrades to no targets.
-            remoteOpenTargets: yield* resolveAvailableEditorsForConfig(
-              remoteOpenTargets.resolveTargets(),
-            ),
+            remoteOpenTargets,
             directEndpoints: yield* resolveAvailableEditorsForConfig(directEndpoints.resolve()),
             observability: {
               logsDirectoryPath: config.logsDir,
