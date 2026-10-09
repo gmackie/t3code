@@ -80,3 +80,4 @@ export * from "./secretRequest.ts";
 export * from "./unityHooks.ts";
 export * from "./unityGame.ts";
 export * from "./unityCommand.ts";
+export * from "./metamask.ts";

@@ -122,6 +122,8 @@ function makeContext(onClose?: (context: BrowserContext) => void) {
     }),
   };
   const context = {
+    on: (name: string, callback: (...args: unknown[]) => void) => events.on(name, callback),
+    pages: () => [page],
     page,
     sessions,
     newPage: async () => page as unknown as Page,
@@ -992,6 +994,58 @@ it.live("a desktop page the desktop takes back reconnects instead of closing", (
       expect(sessions.map((session) => session.tabId)).toContain(opened.tabId);
       yield* browser.attachViewer(viewerInput(opened.tabId, false));
       expect(desktopConnections).toHaveLength(2);
+    }),
+  ).pipe(Effect.provide(layer)),
+);
+
+it.live("keeps wallet tabs human-operable while refusing ordinary agent automation", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const browser = yield* ServerBrowser.ServerBrowser;
+      const broker = yield* Broker.PreviewAutomationBroker;
+      const manager = yield* Manager.PreviewManager;
+      yield* Effect.yieldNow;
+      const opened = yield* manager.open({
+        threadId: testThread.threadId,
+        runtime: "server",
+        profileId: "metamask",
+      });
+      const viewer = yield* browser.attachViewer(viewerInput(opened.tabId, true));
+      yield* viewer.input({ type: "takeControl" });
+      yield* viewer.input({ type: "text", text: "human wallet input" });
+      const cdp = contexts[0]!.sessions.at(-1)!;
+      expect(cdp.send).toHaveBeenCalledWith("Input.insertText", { text: "human wallet input" });
+      yield* viewer.input({ type: "releaseControl" });
+      cdp.send.mockClear();
+      const denied = yield* broker
+        .invoke({
+          scope,
+          tabId: opened.tabId,
+          operation: "evaluate",
+          input: { expression: "sign()" },
+        })
+        .pipe(Effect.flip);
+      expect(denied).toMatchObject({
+        _tag: "PreviewAutomationControlInterruptedError",
+        reason: "agentMismatch",
+      });
+      expect(cdp.send).not.toHaveBeenCalledWith("Runtime.evaluate", expect.anything());
+      const reopen = yield* broker
+        .invoke({
+          scope,
+          tabId: opened.tabId,
+          operation: "open",
+          input: { url: "https://other.example" },
+        })
+        .pipe(Effect.flip);
+      expect(reopen).toMatchObject({
+        _tag: "PreviewAutomationControlInterruptedError",
+        reason: "agentMismatch",
+      });
+      expect(contexts[0]!.page.goto).not.toHaveBeenCalledWith(
+        "https://other.example",
+        expect.anything(),
+      );
     }),
   ).pipe(Effect.provide(layer)),
 );

@@ -12,6 +12,7 @@ import {
 } from "@t3tools/contracts";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
+
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
@@ -63,6 +64,15 @@ const mutations = [
   { type: "viewport", setting: { _tag: "fill" } },
 ];
 
+const unusedWalletMethods = {
+  metamaskOpen: () => Effect.die("Unexpected wallet operation in stream test"),
+  metamaskPending: () => Effect.die("Unexpected wallet operation in stream test"),
+  metamaskRequest: () => Effect.die("Unexpected wallet operation in stream test"),
+  metamaskResult: () => Effect.die("Unexpected wallet operation in stream test"),
+  metamaskApprove: () => Effect.die("Unexpected wallet operation in stream test"),
+  metamaskClose: () => Effect.die("Unexpected wallet operation in stream test"),
+};
+
 it.effect.each([
   { hasOperateScope: false, interactive: true },
   { hasOperateScope: true, interactive: true },
@@ -86,6 +96,7 @@ it.effect.each([
       ack: Effect.sync(() => acked.resolve()),
     });
     const browser = ServerBrowser.ServerBrowser.of({
+      ...unusedWalletMethods,
       clearProfile: () => Effect.void,
       openDownload: () => Effect.succeedNone,
       answerFileChooser: () => Effect.succeed(false),
@@ -162,6 +173,7 @@ it.effect.each([
     const auth = makeAuth(testCase.scopes, testCase.error);
     let attachments = 0;
     const browser = ServerBrowser.ServerBrowser.of({
+      ...unusedWalletMethods,
       clearProfile: () => Effect.void,
       openDownload: () => Effect.succeedNone,
       answerFileChooser: () => Effect.succeed(false),
@@ -202,6 +214,7 @@ it.effect("serves a tab's download only to an authorized session", () =>
     yield* fs.writeFileString(path, "report contents");
     const requests: Array<unknown> = [];
     const browser = ServerBrowser.ServerBrowser.of({
+      ...unusedWalletMethods,
       clearProfile: () => Effect.void,
       openDownload: (input) =>
         Effect.sync(() => {
@@ -249,6 +262,7 @@ it.effect("passes uploaded files to the page's open picker and needs operate sco
   Effect.gen(function* () {
     const answers: Array<{ chooserId: string; files: Array<{ name: string; text: string }> }> = [];
     const browser = ServerBrowser.ServerBrowser.of({
+      ...unusedWalletMethods,
       clearProfile: () => Effect.void,
       openDownload: () => Effect.succeedNone,
       answerFileChooser: (input) =>
@@ -316,6 +330,7 @@ it.effect.each([
 ])("tells viewers the command that sets up the host ($need)", ({ error, need }) =>
   Effect.gen(function* () {
     const browser = ServerBrowser.ServerBrowser.of({
+      ...unusedWalletMethods,
       clearProfile: () => Effect.void,
       openDownload: () => Effect.succeedNone,
       answerFileChooser: () => Effect.succeed(false),

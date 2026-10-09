@@ -1,5 +1,5 @@
 // @effect-diagnostics nodeBuiltinImport:off - Owns Playwright resources outside the Effect runtime.
-import { INCOGNITO_BROWSER_PROFILE_ID } from "@t3tools/contracts";
+import { INCOGNITO_BROWSER_PROFILE_ID, METAMASK_BROWSER_PROFILE_ID } from "@t3tools/contracts";
 import { constVoid } from "effect/Function";
 import * as NodeFSP from "node:fs/promises";
 import * as NodePath from "node:path";
@@ -7,6 +7,7 @@ import type { Browser, BrowserContext } from "playwright-core";
 
 import { sandboxDisabled } from "./PreviewBrowserHost.ts";
 import { loadChromium } from "./playwright.ts";
+import { readWalletConfiguration } from "../wallet/configuration.ts";
 
 interface Options {
   readonly profilesDir: string;
@@ -78,7 +79,14 @@ export class ServerBrowserContexts {
         if (this.contexts.get(key) === pending) this.contexts.delete(key);
         this.options.onContextClose?.(context);
       });
-      for (const page of context.pages()) await page.close().catch(constVoid);
+      for (const page of context.pages()) {
+        if (
+          profileId !== METAMASK_BROWSER_PROFILE_ID ||
+          !page.url().startsWith("chrome-extension://")
+        ) {
+          await page.close().catch(constVoid);
+        }
+      }
       if (this.closing) {
         await context.close().catch(constVoid);
         throw new Error("The preview browser is closed.");
@@ -99,6 +107,26 @@ export class ServerBrowserContexts {
       return browser.newContext(contextOptions);
     }
     const directory = this.profileDirectory(profileId);
+    if (profileId === METAMASK_BROWSER_PROFILE_ID) {
+      const wallet = await readWalletConfiguration(
+        (this.options.env ?? process.env).T3CODE_METAMASK_CONFIG,
+      );
+      const chromium = loadChromium();
+      await NodeFSP.mkdir(directory, { recursive: true });
+      return chromium.launchPersistentContext(directory, {
+        ...contextOptions,
+        executablePath: wallet.chromiumExecutable,
+        channel: "chromium",
+        headless: true,
+        chromiumSandbox: !sandboxDisabled(this.options.env ?? process.env),
+        args: [
+          "--disable-gpu",
+          "--force-device-scale-factor=2",
+          `--disable-extensions-except=${wallet.extensionDirectory}`,
+          `--load-extension=${wallet.extensionDirectory}`,
+        ],
+      });
+    }
     const options = await this.launchOptions();
     const chromium = loadChromium();
     await NodeFSP.mkdir(directory, { recursive: true });

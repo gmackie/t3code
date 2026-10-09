@@ -1,5 +1,10 @@
 import { useAtomValue } from "@effect/atom-react";
-import type { EnvironmentId, PreviewRuntime, PreviewSessionSnapshot } from "@t3tools/contracts";
+import {
+  METAMASK_BROWSER_PROFILE_ID,
+  type EnvironmentId,
+  type PreviewRuntime,
+  type PreviewSessionSnapshot,
+} from "@t3tools/contracts";
 
 import { isElectron } from "~/env";
 import { isPreviewSupportedInRuntime } from "~/previewStateStore";
@@ -31,11 +36,12 @@ export function usePreviewAvailable(environmentId: EnvironmentId | null): boolea
 export function rendersServerTabNatively(
   environmentId: EnvironmentId,
   primaryEnvironmentId: EnvironmentId | null,
-  snapshot: Pick<PreviewSessionSnapshot, "runtime"> | null | undefined,
+  snapshot: Pick<PreviewSessionSnapshot, "runtime" | "profileId"> | null | undefined,
 ): boolean {
   return (
     isElectron &&
     snapshot?.runtime === "server" &&
+    snapshot.profileId !== METAMASK_BROWSER_PROFILE_ID &&
     primaryEnvironmentId !== null &&
     environmentId === primaryEnvironmentId
   );
@@ -43,7 +49,7 @@ export function rendersServerTabNatively(
 
 export function useRendersServerTabNatively(
   environmentId: EnvironmentId,
-  snapshot: Pick<PreviewSessionSnapshot, "runtime"> | null | undefined,
+  snapshot: Pick<PreviewSessionSnapshot, "runtime" | "profileId"> | null | undefined,
 ): boolean {
   return rendersServerTabNatively(environmentId, useAtomValue(primaryEnvironmentIdAtom), snapshot);
 }

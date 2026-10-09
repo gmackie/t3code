@@ -6,10 +6,11 @@
  * "Personal"'s logins. Profiles are client-local, like the other browser
  * defaults, because the Chromium guest they configure is desktop-local.
  *
- * Two profiles are built in and cannot be edited or removed:
+ * Three profiles are built in and cannot be edited or removed:
  * - `default` keeps the partition scope the browser used before profiles
  *   existed, so upgrading does not sign anyone out.
  * - `incognito` maps to a non-persistent partition for throwaway sessions.
+ * - `metamask` uses the environment's persistent extension-enabled server browser.
  *
  * @module BrowserProfile
  */
@@ -58,6 +59,7 @@ export const INCOGNITO_BROWSER_PROFILE_ID: BrowserProfileId = "incognito";
 export const BUILT_IN_BROWSER_PROFILES: ReadonlyArray<BrowserProfile> = [
   { id: DEFAULT_BROWSER_PROFILE_ID, name: "Default", kind: "persistent" },
   { id: INCOGNITO_BROWSER_PROFILE_ID, name: "Incognito", kind: "incognito" },
+  { id: "metamask", name: "MetaMask", kind: "persistent" },
 ];
 
 export function isBuiltInBrowserProfileId(id: string): boolean {

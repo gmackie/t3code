@@ -3,6 +3,9 @@
 // --disable-gpu uses cheaper software compositing while preserving SwiftShader WebGL.
 import {
   FILL_PREVIEW_VIEWPORT,
+  METAMASK_BROWSER_PROFILE_ID,
+  MetaMaskError,
+  type MetaMaskRequestInput,
   INCOGNITO_BROWSER_PROFILE_ID,
   PREVIEW_AUTOMATION_SERVER_OPERATIONS,
   PreviewViewportSetting as PreviewViewportSettingSchema,
@@ -72,6 +75,7 @@ import * as ServerBrowserPage from "./ServerBrowserPage.ts";
 import * as PreviewBrowser from "./PreviewBrowser.ts";
 import * as PreviewBrowserHost from "./PreviewBrowserHost.ts";
 import { ServerBrowserContexts } from "./ServerBrowserContexts.ts";
+import { MetaMaskWallet } from "../wallet/MetaMaskWallet.ts";
 import { BrowserControlInterrupted, SessionControl } from "./SessionControl.ts";
 
 const SERVER_HOST_CLIENT_ID = "server-browser";
@@ -127,6 +131,7 @@ export class ServerBrowserTabNotFoundError extends Schema.TaggedError<ServerBrow
   }
 }
 
+const isMetaMaskError = Schema.is(MetaMaskError);
 const isTabNotFound = Schema.is(ServerBrowserTabNotFoundError);
 const isHostSetupError = Schema.is(
   Schema.Union([
@@ -233,6 +238,29 @@ export class ServerBrowser extends Context.Service<
       readonly tabId: string;
       readonly downloadId: string;
     }) => Effect.Effect<Option.Option<{ readonly path: string; readonly fileName: string }>>;
+    readonly metamaskOpen: (
+      threadId: string,
+      url?: string,
+    ) => Effect.Effect<Awaited<ReturnType<MetaMaskWallet["open"]>>, MetaMaskError>;
+    readonly metamaskPending: (
+      threadId: string,
+    ) => Effect.Effect<Awaited<ReturnType<MetaMaskWallet["pending"]>>, MetaMaskError>;
+    readonly metamaskRequest: (
+      threadId: string,
+      input: MetaMaskRequestInput,
+    ) => Effect.Effect<Awaited<ReturnType<MetaMaskWallet["request"]>>, MetaMaskError>;
+    readonly metamaskResult: (
+      threadId: string,
+      requestId: string,
+    ) => Effect.Effect<Awaited<ReturnType<MetaMaskWallet["result"]>>, MetaMaskError>;
+    readonly metamaskApprove: (
+      threadId: string,
+      id: string,
+      fingerprint: string,
+    ) => Effect.Effect<Awaited<ReturnType<MetaMaskWallet["approve"]>>, MetaMaskError>;
+    readonly metamaskClose: (
+      threadId: string,
+    ) => Effect.Effect<Awaited<ReturnType<MetaMaskWallet["close"]>>, MetaMaskError>;
     /** Deletes a human profile's server-side storage, closing its open tabs first. */
     readonly clearProfile: (profileId: string) => Effect.Effect<void, PreviewClearProfileError>;
   }
@@ -447,6 +475,9 @@ const make = Effect.gen(function* () {
   let hostConnectionId: string | null = null;
   let viewerResizeOrder = 0;
 
+  const walletContextThreads = new WeakMap<BrowserContext, string>();
+  const walletWatchedContexts = new WeakSet<BrowserContext>();
+  const walletPageTabs = new WeakMap<Page, Promise<string>>();
   const contexts = new ServerBrowserContexts({
     profilesDir: NodePath.join(config.stateDir, "server-browser", "profiles"),
     executable: () => Effect.runPromise(previewBrowser.executable),
@@ -609,7 +640,7 @@ const make = Effect.gen(function* () {
    * new tab waits for its `<webview>` instead of launching headless.
    */
   const desktopRenders = (snapshot: PreviewSessionSnapshot) =>
-    desktopChannel.available
+    snapshot.profileId !== METAMASK_BROWSER_PROFILE_ID && desktopChannel.available
       ? Effect.runPromise(
           desktopChannel.awaitAttached(
             { threadId: snapshot.threadId, tabId: snapshot.tabId },
@@ -660,9 +691,20 @@ const make = Effect.gen(function* () {
         snapshot.profileId ?? "default",
         isolatedContext ? tabKey(snapshot.threadId, snapshot.tabId) : undefined,
       ));
+    if (snapshot.profileId === METAMASK_BROWSER_PROFILE_ID) {
+      const owner = walletContextThreads.get(context);
+      if (owner !== undefined && owner !== snapshot.threadId) {
+        throw new MetaMaskError({
+          code: "busy",
+          detail: "The MetaMask browser profile is already open in another thread.",
+        });
+      }
+      walletContextThreads.set(context, snapshot.threadId);
+    }
     if (adopted?.page.isClosed()) throw new Error("The popup closed before it opened.");
     // The desktop page already has its own clipboard; the bridge script is for headless tabs.
-    if (!desktop) await prepareContext(context);
+    if (!desktop && snapshot.profileId !== METAMASK_BROWSER_PROFILE_ID)
+      await prepareContext(context);
     const page = adopted?.page ?? desktop?.page ?? (await context.newPage());
     const cdp = await context.newCDPSession(page);
     page.setDefaultTimeout(NAVIGATION_TIMEOUT_MS);
@@ -760,7 +802,9 @@ const make = Effect.gen(function* () {
     page.on("download", (download) => void saveDownload(tab, download));
     page.on("filechooser", (chooser) => void offerFileChooser(tab, chooser));
     // Popups become tabs and keep `window.opener`, so sign-in popups can report back.
-    page.on("popup", (popup) => void adoptPopup(tab, popup));
+    page.on("popup", (popup) => {
+      if (snapshot.profileId !== METAMASK_BROWSER_PROFILE_ID) void adoptPopup(tab, popup);
+    });
     // Playwright cannot reload a crashed page, so it must leave the tab list.
     const key = tabKey(tab.threadId, tab.tabId);
     if (closedPendingTabs.delete(key)) {
@@ -773,6 +817,20 @@ const make = Effect.gen(function* () {
     page.on("close", () => dropTab(tab, true));
     page.on("crash", () => dropTab(tab, true));
     tabs.set(key, tab);
+    if (snapshot.profileId === METAMASK_BROWSER_PROFILE_ID && !walletWatchedContexts.has(context)) {
+      walletWatchedContexts.add(context);
+      const attachExtension = (extension: Page) => {
+        const reveal = () => {
+          if (extension === page || !extension.url().startsWith("chrome-extension://")) return;
+          void showWalletPage(snapshot.threadId, extension).catch(constVoid);
+        };
+        extension.on("framenavigated", reveal);
+        reveal();
+      };
+      // Extension-created windows have no window.opener, so page.popup is insufficient.
+      context.on("page", attachExtension);
+      for (const extension of context.pages()) attachExtension(extension);
+    }
     reportLiveTabs();
     // A popup is already loading its own URL, and the desktop loads its tab's.
     if (!adopted && !desktop && snapshot.navStatus._tag === "Loading") {
@@ -1379,6 +1437,12 @@ const make = Effect.gen(function* () {
         "No server preview tab is open for this thread. Call preview_open first.",
       );
     }
+    if (tab.profileId === METAMASK_BROWSER_PROFILE_ID) {
+      throw new BrowserControlInterrupted(
+        "Use metamask tools for wallet actions. Ordinary browser automation cannot operate the wallet profile.",
+        "agentMismatch",
+      );
+    }
     if (tab.control.agentId !== request.agentSessionId)
       throw new BrowserControlInterrupted(
         "This tab belongs to another agent session or a human. Open your own tab.",
@@ -1453,6 +1517,11 @@ const make = Effect.gen(function* () {
               }),
             ),
           ));
+        if (tab.profileId === METAMASK_BROWSER_PROFILE_ID)
+          throw new BrowserControlInterrupted(
+            "Use metamask tools for wallet actions. Ordinary browser automation cannot operate the wallet profile.",
+            "agentMismatch",
+          );
         if (existing?.dialog)
           throw new BrowserControlInterrupted(
             "A browser dialog is pending. Read preview_status and use preview_dialog first.",
@@ -2106,13 +2175,76 @@ const make = Effect.gen(function* () {
     }),
   );
 
+  const showWalletPage = (threadId: string, page: Page): Promise<string> => {
+    const existing = [...tabs.values()].find((tab) => tab.page === page);
+    if (existing) return Promise.resolve(existing.tabId);
+    const pending = walletPageTabs.get(page);
+    if (pending) return pending;
+    const opening = (async () => {
+      const snapshot = await Effect.runPromise(
+        manager.open({
+          threadId: ThreadId.make(threadId),
+          runtime: "server",
+          profileId: METAMASK_BROWSER_PROFILE_ID,
+          beforePublish: (snapshot) =>
+            adoptedPages.set(tabKey(snapshot.threadId, snapshot.tabId), { page, openerTabId: "" }),
+        }),
+      );
+      const tab = await ensureTab(snapshot);
+      report(tab, { _tag: "Success", url: page.url(), title: await page.title() });
+      return snapshot.tabId;
+    })();
+    walletPageTabs.set(page, opening);
+    void opening.catch(() => walletPageTabs.delete(page));
+    return opening;
+  };
+
+  const wallet = new MetaMaskWallet({
+    configurationPath: process.env.T3CODE_METAMASK_CONFIG,
+    journalDirectory: NodePath.join(config.stateDir, "server-browser", "wallet-requests"),
+    context: () => contexts.contextFor(METAMASK_BROWSER_PROFILE_ID),
+    showPage: async (threadId, page) => {
+      const tabId = await showWalletPage(threadId, page);
+      await Effect.runPromise(
+        manager.requestReveal({ threadId: ThreadId.make(threadId), tabId, force: true }),
+      );
+      return tabId;
+    },
+  });
+  const walletEffect = <A>(action: () => Promise<A>) =>
+    Effect.tryPromise({
+      try: action,
+      catch: (cause) =>
+        isMetaMaskError(cause)
+          ? cause
+          : new MetaMaskError({
+              code: "request_failed",
+              detail:
+                "The MetaMask operation failed. Check wallet configuration and its visible approval window.",
+            }),
+    });
+
   const clearProfile = (profileId: string) =>
     Effect.tryPromise({
-      try: () => contexts.clearProfile(profileId),
+      try: () => {
+        if (profileId === METAMASK_BROWSER_PROFILE_ID) {
+          throw new Error(
+            "Wallet storage cannot be removed through browser profile cleanup. Manage the wallet in MetaMask.",
+          );
+        }
+        return contexts.clearProfile(profileId);
+      },
       catch: (cause) => new PreviewClearProfileError({ profileId, cause }),
     });
 
   return ServerBrowser.of({
+    metamaskOpen: (threadId, url) => walletEffect(() => wallet.open(threadId, url)),
+    metamaskPending: (threadId) => walletEffect(() => wallet.pending(threadId)),
+    metamaskRequest: (threadId, input) => walletEffect(() => wallet.request(threadId, input)),
+    metamaskResult: (threadId, requestId) => walletEffect(() => wallet.result(threadId, requestId)),
+    metamaskApprove: (threadId, id, fingerprint) =>
+      walletEffect(() => wallet.approve(threadId, id, fingerprint)),
+    metamaskClose: (threadId) => walletEffect(() => wallet.close(threadId)),
     attachViewer,
     clearProfile,
     openDownload,

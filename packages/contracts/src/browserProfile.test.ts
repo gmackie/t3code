@@ -23,6 +23,7 @@ describe("resolveBrowserProfiles", () => {
     expect(resolved.map((profile) => profile.id)).toEqual([
       DEFAULT_BROWSER_PROFILE_ID,
       INCOGNITO_BROWSER_PROFILE_ID,
+      "metamask",
       work.id,
     ]);
   });

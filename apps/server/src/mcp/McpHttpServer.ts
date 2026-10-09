@@ -19,6 +19,8 @@ import { AiError, McpProtocol, McpSchema, McpServer, Tool } from "effect/ai";
 import { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/http";
 import { OrchestratorMcpFailure, PreviewAutomationError } from "@t3tools/contracts";
 
+import { MetaMaskToolkit } from "./toolkits/metamask/tools.ts";
+import * as MetaMaskHandlers from "./toolkits/metamask/handlers.ts";
 import packageJson from "../../package.json" with { type: "json" };
 import * as ServerConfig from "../config.ts";
 import * as DeviceService from "../device/DeviceService.ts";
@@ -786,6 +788,7 @@ const layerMcpTransport = McpServer.layerHttp({
 
 export const layer = Layer.mergeAll(
   layerPreviewToolkit,
+  McpServer.toolkit(MetaMaskToolkit).pipe(Layer.provide(MetaMaskHandlers.layer)),
   layerOrchestratorToolkit,
   layerThreadToolkit,
   layerAttachmentRegistration,

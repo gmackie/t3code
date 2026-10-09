@@ -215,3 +215,17 @@ describe("ServerBrowserContexts", () => {
     expect(browser.contexts[0]?.close).toHaveBeenCalled();
   });
 });
+
+describe("MetaMask browser profile", () => {
+  it("never loads a wallet extension into an isolated agent context", async () => {
+    const browser = makeBrowser();
+    launches.launch.mockResolvedValue(browser as unknown as Browser);
+    const pool = new ServerBrowserContexts(options());
+    await pool.contextFor("metamask", "agent-a");
+    expect(launches.persistent).not.toHaveBeenCalled();
+    expect(launches.launch.mock.calls[0]?.[0]?.args).not.toContainEqual(
+      expect.stringContaining("--load-extension"),
+    );
+    await pool.close();
+  });
+});
