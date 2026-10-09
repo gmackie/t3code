@@ -1,6 +1,10 @@
+import * as Cache from "effect/Cache";
 import * as Context from "effect/Context";
+import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
+import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
+import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
 import * as Result from "effect/Result";
 import * as Clock from "effect/Clock";
@@ -315,11 +319,36 @@ export const make = Effect.gen(function* () {
     });
   };
 
+  // Login lists are account-wide. Pull-request refresh calls this once per project,
+  // and a slow `tea login list` then occupies the server for every reconnect.
+  const LOGIN_CACHE_TTL = Duration.minutes(15);
+  const loginCwd = yield* Ref.make<string | null>(null);
+  const rememberLoginCwd = (cwd: string) =>
+    Ref.update(loginCwd, (current) => current ?? cwd).pipe(Effect.asVoid);
+  const cachedLoginCwd = Effect.gen(function* () {
+    return (yield* Ref.get(loginCwd)) ?? process.cwd();
+  });
+  const fjKeysCache = yield* Cache.makeWith((cwd: string) => readKeys(cwd), {
+    capacity: 1,
+    timeToLive: (exit) =>
+      Exit.isSuccess(exit) ? LOGIN_CACHE_TTL : Duration.minutes(1),
+  });
+  const teaLoginCache = yield* Cache.makeWith(
+    (cwd: string) =>
+      execute({ cwd, args: ["login", "list", "--output", "json"] }).pipe(
+        Effect.map((result) => parseForgejoLogins(result.stdout)),
+      ),
+    {
+      capacity: 1,
+      timeToLive: (exit) => (Exit.isSuccess(exit) ? LOGIN_CACHE_TTL : Duration.minutes(1)),
+    },
+  );
   const listLogins: NonNullable<ForgejoCli["Service"]["listLogins"]> = Effect.fn(
     "ForgejoCli.listLogins",
   )(function* (input) {
+    yield* rememberLoginCwd(input.cwd);
     if (input.command === "fj") {
-      const keys = yield* readKeys(input.cwd).pipe(Effect.result);
+      const keys = yield* Cache.get(fjKeysCache, yield* cachedLoginCwd).pipe(Effect.result);
       if (Result.isFailure(keys)) {
         // Stale credentials from an uninstalled fj must not disable an available tea login.
         const available = yield* execute({ command: "fj", cwd: input.cwd, args: ["version"] }).pipe(
@@ -330,9 +359,7 @@ export const make = Effect.gen(function* () {
       }
       return publicLogins(keys.success, input.remoteUrl);
     }
-    return parseForgejoLogins(
-      (yield* execute({ cwd: input.cwd, args: ["login", "list", "--output", "json"] })).stdout,
-    );
+    return yield* Cache.get(teaLoginCache, yield* cachedLoginCwd);
   });
 
   const requestFj = Effect.fn("ForgejoCli.requestFj")(

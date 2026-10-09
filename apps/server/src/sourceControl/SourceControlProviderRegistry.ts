@@ -246,7 +246,7 @@ export const makeWithProviders = Effect.fn("makeSourceControlProviderRegistryWit
 
         return yield* refineUnknownRemoteProvider({
           specs: discoverySpecs,
-          process,
+          process: cachedRefinementProcess,
           cwd,
           context,
         });
@@ -263,15 +263,105 @@ export const makeWithProviders = Effect.fn("makeSourceControlProviderRegistryWit
         Exit.isSuccess(exit) ? PROVIDER_DETECTION_CACHE_TTL : PROVIDER_DETECTION_FAILURE_TTL,
     });
 
+    // `glab auth status` and the other refinement CLIs are machine-wide. Pull
+    // request listing passes an explicit context, which used to skip the cache
+    // and spawn one probe per project on every shell snapshot.
+    const remoteProbeCache = yield* Cache.makeWith(
+      (key) => {
+        const parsed = JSON.parse(key) as {
+          readonly command: string;
+          readonly args: ReadonlyArray<string>;
+          readonly allowNonZeroExit?: boolean;
+          readonly timeoutMs?: number;
+          readonly maxOutputBytes?: number;
+        };
+        return process.run({
+          operation: "source-control.discovery.refine-unknown-remote",
+          command: parsed.command,
+          args: parsed.args,
+          cwd: config.cwd,
+          allowNonZeroExit: parsed.allowNonZeroExit ?? undefined,
+          timeoutMs: parsed.timeoutMs ?? undefined,
+          maxOutputBytes: parsed.maxOutputBytes ?? undefined,
+          appendTruncationMarker: true,
+        });
+      },
+      {
+        capacity: 32,
+        timeToLive: (exit) =>
+          Exit.isSuccess(exit) ? PROVIDER_DETECTION_CACHE_TTL : PROVIDER_DETECTION_FAILURE_TTL,
+      },
+    );
+    const cachedRefinementProcess: VcsProcess.VcsProcess["Service"] = {
+      run: (input) => {
+        if (
+          input.operation !== "source-control.discovery.refine-unknown-remote" ||
+          input.stdin !== undefined ||
+          input.env !== undefined ||
+          input.onStdoutChunk !== undefined
+        ) {
+          return process.run(input);
+        }
+        return Cache.get(
+          remoteProbeCache,
+          JSON.stringify({
+            command: input.command,
+            args: input.args,
+            allowNonZeroExit: input.allowNonZeroExit ?? null,
+            timeoutMs: input.timeoutMs ?? null,
+            maxOutputBytes: input.maxOutputBytes ?? null,
+          }),
+        );
+      },
+    };
+    const providedContextKey = (input: {
+      readonly cwd: string;
+      readonly context: SourceControlProvider.SourceControlProviderContext;
+    }) =>
+      JSON.stringify([
+        input.cwd,
+        input.context.provider.kind,
+        input.context.provider.name,
+        input.context.provider.baseUrl,
+        input.context.remoteName,
+        input.context.remoteUrl,
+        input.context.requestedHost ?? null,
+      ]);
+    const providedContextCache = yield* Cache.makeWith<
+      string,
+      SourceControlProvider.SourceControlProviderContext | null,
+      SourceControlProviderError
+    >(
+      (key) => {
+        const [cwd, kind, name, baseUrl, remoteName, remoteUrl, requestedHost] = JSON.parse(
+          key,
+        ) as [string, SourceControlProviderKind, string, string, string, string, string | null];
+        return refineUnknownRemoteProvider({
+          specs: discoverySpecs,
+          process: cachedRefinementProcess,
+          cwd,
+          context: {
+            provider: { kind, name, baseUrl },
+            remoteName,
+            remoteUrl,
+            ...(requestedHost === null ? {} : { requestedHost }),
+          },
+        });
+      },
+      {
+        capacity: PROVIDER_DETECTION_CACHE_CAPACITY,
+        timeToLive: (exit) =>
+          Exit.isSuccess(exit) ? PROVIDER_DETECTION_CACHE_TTL : PROVIDER_DETECTION_FAILURE_TTL,
+      },
+    );
+
     const resolveHandle: SourceControlProviderRegistry["Service"]["resolveHandle"] = (input) =>
       (input.context === undefined
         ? Cache.get(providerContextCache, input.cwd)
-        : refineUnknownRemoteProvider({
-            specs: discoverySpecs,
-            process,
-            cwd: input.cwd,
-            context: input.context,
-          })
+        : Cache.get(
+            providedContextCache,
+            providedContextKey({ cwd: input.cwd, context: input.context }),
+          )
       ).pipe(
         Effect.map((context) => {
           const kind = context?.provider.kind ?? "unknown";

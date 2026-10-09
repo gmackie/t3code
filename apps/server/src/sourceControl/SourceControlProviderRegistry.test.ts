@@ -240,6 +240,42 @@ it.effect("refines the caller-selected remote instead of choosing another config
   }),
 );
 
+it.effect("reuses a provided-context host probe across projects", () =>
+  Effect.gen(function* () {
+    let runs = 0;
+    const registry = yield* makeRegistry({
+      remotes: [],
+      process: {
+        run: () =>
+          Effect.sync(() => {
+            runs += 1;
+            return processOutput(`self-hosted.example.test
+  ✓ Logged in to self-hosted.example.test as gitlab-user
+`);
+          }),
+      },
+    });
+    const context = {
+      provider: {
+        kind: "unknown" as const,
+        name: "self-hosted.example.test",
+        baseUrl: "https://self-hosted.example.test",
+      },
+      remoteName: "origin",
+      remoteUrl: "https://self-hosted.example.test/group/project.git",
+    };
+
+    const first = yield* registry.resolveHandle({ cwd: "/repo-a", context });
+    const probed = runs;
+    const second = yield* registry.resolveHandle({ cwd: "/repo-b", context });
+
+    assert.strictEqual(first.context?.provider.kind, "gitlab");
+    assert.strictEqual(second.context?.provider.kind, "gitlab");
+    assert.ok(probed > 0);
+    assert.strictEqual(runs, probed);
+  }),
+);
+
 it.effect("routes authenticated self-hosted GitLab remotes on non-standard ports", () =>
   Effect.gen(function* () {
     const registry = yield* makeRegistry({
