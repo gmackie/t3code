@@ -37,10 +37,14 @@ export class DesktopUserDataInitializationError extends Schema.TaggedError<Deskt
 export const resolveUserDataPath = Effect.fn("desktop.userData.resolveUserDataPath")(
   function* (input: {
     readonly appDataDirectory: string;
+    readonly userDataDirectory?: string | undefined;
     readonly isDevelopment: boolean;
     readonly platform: NodeJS.Platform;
     readonly appVersion?: string;
   }) {
+    // Both Clerk and app startup call this before acquiring Electron's profile lock.
+    // An explicit profile must never import credentials from a fixed default profile.
+    if (input.userDataDirectory !== undefined) return input.userDataDirectory;
     const fs = yield* FileSystem.FileSystem;
     const path = yield* Path.Path;
     // GMACKO fork builds keep their own profile so they install beside the official app.

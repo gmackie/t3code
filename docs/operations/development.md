@@ -199,3 +199,9 @@ passed as `--wsl-runtime`; see the
 Add `--signed` after configuring the platform credentials in the
 [release runbook](./release.md). macOS passkeys need a signed, provisioned app; follow the
 [Connect setup](./connect-setup.md#desktop-passkeys) for local signing and renderer HMR.
+
+### Isolated desktop verification
+
+For a side-by-side desktop review build, set `T3CODE_HOME` to a disposable server-state directory and `T3CODE_DESKTOP_USER_DATA_DIR` to a separate absolute Electron-profile directory. `T3CODE_HOME` alone does not isolate browser storage or the desktop single-instance lock. The profile override applies before Clerk initializes and skips legacy credential migration. Leave it unset for normal installed use.
+
+Disable updates with `T3CODE_DISABLE_AUTO_UPDATE=1` and configure `localEnvironmentEnabled: false` in the isolated desktop settings when the review client should connect to an existing environment through Connections. Do not copy a live Electron profile or authentication storage into the review directory.

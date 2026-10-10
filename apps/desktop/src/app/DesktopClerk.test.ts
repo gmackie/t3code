@@ -50,11 +50,13 @@ const layerDesktopClerk = (
     openSystemSettings: () => Effect.succeed(false),
     copyText: () => Effect.void,
   },
+  userDataDirectory?: string,
 ) => {
   const environment = DesktopEnvironment.DesktopEnvironment.of({
     stateDir: "/tmp/t3-state",
     isDevelopment,
     appDataDirectory: "/tmp/app-data",
+    userDataDirectory,
     platform,
   } as unknown as DesktopEnvironment.DesktopEnvironment["Service"]);
 
@@ -82,6 +84,29 @@ describe("DesktopClerk", () => {
   beforeEach(() => {
     createClerkBridgeMock.mockReset();
     storageMock.mockReset();
+  });
+
+  it.effect("sets the isolated profile before Clerk acquires its single-instance lock", () => {
+    const events: string[] = [];
+    createClerkBridgeMock.mockImplementation(() => {
+      events.push("createClerkBridge");
+      return { cleanup: () => {}, isPrimaryInstance: true };
+    });
+    return Effect.gen(function* () {
+      yield* Effect.scoped(
+        Layer.build(
+          layerDesktopClerk(
+            false,
+            events,
+            "darwin",
+            undefined,
+            undefined,
+            "/isolated/review-profile",
+          ),
+        ),
+      );
+      assert.deepEqual(events, ["setPath:userData:/isolated/review-profile", "createClerkBridge"]);
+    });
   });
 
   it.effect("acquires and releases the SDK bridge with the layer", () => {
