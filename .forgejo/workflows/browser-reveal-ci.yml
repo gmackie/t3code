@@ -1,0 +1,40 @@
+name: Browser reveal CI
+
+on:
+  pull_request:
+    branches:
+      - custom-local
+    paths:
+      - apps/web/src/components/ChatView.tsx
+      - apps/web/src/components/preview/useServerPreviewReveal*
+      - apps/web/src/previewStateStore*
+      - apps/web/src/previewRevealHydration.test.ts
+      - .forgejo/workflows/browser-reveal-ci.yml
+      - pnpm-lock.yaml
+      - pnpm-workspace.yaml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  browser-reveal:
+    runs-on: forgegraph-ci
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.14.0
+      - name: Install pinned dependencies
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.10.0 --activate
+          pnpm install --frozen-lockfile
+      - name: Verify browser reveal behavior
+        working-directory: apps/web
+        run: |
+          pnpm exec vp test run src/previewRevealHydration.test.ts src/previewStateStore.test.ts src/components/preview/useServerPreviewReveal.test.tsx --project unit
+          pnpm exec tsc --noEmit
+          pnpm exec vp lint src/previewStateStore.ts src/previewRevealHydration.test.ts src/components/preview/useServerPreviewReveal.ts src/components/preview/useServerPreviewReveal.test.tsx
+          pnpm exec vp fmt --check src/components/ChatView.tsx src/previewStateStore.ts src/previewRevealHydration.test.ts src/components/preview/useServerPreviewReveal.ts src/components/preview/useServerPreviewReveal.test.tsx
