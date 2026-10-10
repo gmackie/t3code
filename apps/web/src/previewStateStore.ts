@@ -45,6 +45,8 @@ export interface ThreadPreviewState {
   recentlySeenUrls: string[];
   /** Whether the first authoritative tab list has arrived. */
   listLoaded: boolean;
+  /** Forced reveal requests observed live, never inferred from restored tab lists. */
+  pendingRevealRequests: Readonly<Record<string, string>>;
   /** Server process currently authoritative for revision ordering. */
   serverEpoch: string | null;
   /** Latest ordered server revision applied from a list response or event. */
@@ -60,6 +62,7 @@ const EMPTY_THREAD_PREVIEW_STATE: ThreadPreviewState = Object.freeze({
   desktopByTabId: {},
   recentlySeenUrls: [] as string[],
   listLoaded: false,
+  pendingRevealRequests: {},
   serverEpoch: null,
   serverRevision: 0,
 });
@@ -149,6 +152,7 @@ const removeSession = (current: ThreadPreviewState, tabId: string): ThreadPrevie
   if (!current.sessions[tabId]) return current;
   const { [tabId]: _closed, ...sessions } = current.sessions;
   const { [tabId]: _desktop, ...desktopByTabId } = current.desktopByTabId;
+  const { [tabId]: _reveal, ...pendingRevealRequests } = current.pendingRevealRequests;
   const nextSnapshot = latestSnapshot(sessions);
   const activeTabId =
     current.activeTabId === tabId ? (nextSnapshot?.tabId ?? null) : current.activeTabId;
@@ -157,6 +161,7 @@ const removeSession = (current: ThreadPreviewState, tabId: string): ThreadPrevie
     ...current,
     sessions,
     desktopByTabId,
+    pendingRevealRequests,
     activeTabId: snapshot?.tabId ?? null,
     snapshot,
     desktopOverlay: snapshot ? (desktopByTabId[snapshot.tabId] ?? null) : null,
@@ -191,12 +196,22 @@ export function applyPreviewServerEvent(ref: ScopedThreadRef, event: PreviewEven
             snapshot.navStatus._tag === "Idle"
               ? current.recentlySeenUrls
               : dedupeRecentUrls(current.recentlySeenUrls, snapshot.navStatus.url);
+          let pendingRevealRequests = current.pendingRevealRequests;
+          const request = snapshot.revealRequest;
+          if (
+            snapshot.reveal === true &&
+            request?.force === true &&
+            request.id !== current.sessions[snapshot.tabId]?.revealRequest?.id
+          ) {
+            pendingRevealRequests = { ...pendingRevealRequests, [snapshot.tabId]: request.id };
+          }
           const sessions = { ...current.sessions, [snapshot.tabId]: snapshot };
           const activeTabId = event.type === "opened" ? snapshot.tabId : current.activeTabId;
           const activeSnapshot = sessions[activeTabId ?? snapshot.tabId] ?? snapshot;
           return {
             ...current,
             sessions,
+            pendingRevealRequests,
             activeTabId: activeTabId ?? snapshot.tabId,
             snapshot: activeSnapshot,
             desktopOverlay: current.desktopByTabId[activeSnapshot.tabId] ?? null,
@@ -243,6 +258,22 @@ export function applyPreviewServerEvent(ref: ScopedThreadRef, event: PreviewEven
   });
 }
 
+/** A handled request must not reopen a dismissed panel when ChatView remounts. */
+export function consumePreviewRevealRequest(
+  ref: ScopedThreadRef,
+  tabId: string,
+  requestId: string,
+): boolean {
+  let consumed = false;
+  updateThreadPreviewState(ref, (current) => {
+    if (current.pendingRevealRequests[tabId] !== requestId) return current;
+    consumed = true;
+    const { [tabId]: _handled, ...pendingRevealRequests } = current.pendingRevealRequests;
+    return { ...current, pendingRevealRequests };
+  });
+  return consumed;
+}
+
 export function applyPreviewServerSnapshot(
   ref: ScopedThreadRef,
   snapshot: PreviewSessionSnapshot | null,
@@ -254,6 +285,7 @@ export function applyPreviewServerSnapshot(
         ...current,
         snapshot: null,
         sessions: {},
+        pendingRevealRequests: {},
         activeTabId: null,
         desktopOverlay: null,
         desktopByTabId: {},
@@ -355,6 +387,13 @@ export function reconcilePreviewServerSessions(
       desktopOverlay: activeTabId ? (desktopByTabId[activeTabId] ?? null) : null,
       recentlySeenUrls,
       listLoaded: true,
+      pendingRevealRequests: sameServer
+        ? Object.fromEntries(
+            Object.entries(current.pendingRevealRequests).filter(
+              ([tabId, requestId]) => sessions[tabId]?.revealRequest?.id === requestId,
+            ),
+          )
+        : {},
       serverEpoch: result.serverEpoch,
       serverRevision: result.revision,
     };

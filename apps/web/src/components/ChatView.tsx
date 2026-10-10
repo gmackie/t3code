@@ -260,6 +260,7 @@ import { addBrowserSurface } from "./preview/addBrowserSurface";
 import { closePreviewSession } from "./preview/closePreviewSession";
 import { ThreadPreviewMiniPlayer } from "./preview/ThreadPreviewMiniPlayer";
 import { usePreviewSession } from "./preview/usePreviewSession";
+import { useServerPreviewReveal } from "./preview/useServerPreviewReveal";
 import { subscribePreviewAction } from "./preview/previewActionBus";
 import { getConfiguredPreviewUrls } from "./preview/previewEmptyStateLogic";
 
@@ -5378,47 +5379,13 @@ export default function ChatView(props: ChatViewProps) {
     deviceState.sessions,
     deviceState.devices,
   ]);
-  // Baseline loaded tabs so reloads never reopen previews the user dismissed.
-  const previousServerPreviewTabs = useRef(new Map<string, Map<string, string | undefined>>());
-  useEffect(() => {
-    if (!activeThreadRef || !activeEnvironmentServerBrowser || !activePreviewState.listLoaded)
-      return;
-    const threadKey = scopedThreadKey(activeThreadRef);
-    const serverSessions = Object.values(activePreviewState.sessions).filter(
-      (session) => session.runtime === "server",
-    );
-    const previous = previousServerPreviewTabs.current.get(threadKey);
-    previousServerPreviewTabs.current.set(
-      threadKey,
-      new Map(serverSessions.map((session) => [session.tabId, session.revealRequest?.id])),
-    );
-    if (!previous) return;
-    for (const session of serverSessions) {
-      const requested = session.revealRequest;
-      const fresh = requested
-        ? previous.get(session.tabId) !== requested.id
-        : !previous.has(session.tabId);
-      if (!fresh || session.reveal !== true) continue;
-      if (!autoShowFloatingPreview && requested?.force !== true) continue;
-      const surface = rightPanelState.surfaces.find(
-        (surface) => surface.kind === "preview" && surface.resourceId === session.tabId,
-      );
-      if (surface && requested?.force === true) {
-        useRightPanelStore.getState().activateSurface(activeThreadRef, surface.id);
-      } else if (!surface) {
-        usePreviewMiniPlayerStore
-          .getState()
-          .open(activeThreadRef, browserMiniPlayerSource(session.tabId));
-      }
-    }
-  }, [
-    activeEnvironmentServerBrowser,
-    activePreviewState.listLoaded,
-    activePreviewState.sessions,
+  useServerPreviewReveal(
     activeThreadRef,
+    activeEnvironmentServerBrowser,
+    activePreviewState,
     autoShowFloatingPreview,
     rightPanelState.surfaces,
-  ]);
+  );
   // A floating device follows its session: once the agent or another client
   // closes the device there is nothing left to stream.
   useEffect(() => {
