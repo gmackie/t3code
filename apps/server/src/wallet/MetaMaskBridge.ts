@@ -117,7 +117,9 @@ export async function readMetaMaskState(page: Page, extensionId: string) {
 export function decodeMetaMaskApprovals(raw: unknown) {
   const state = decodeState(raw);
   const approvals: Array<typeof MetaMaskApproval.Type> = [];
-  const pendingRequests = Object.values(state.pendingApprovals).map((value) => decodePending(value));
+  const pendingRequests = Object.values(state.pendingApprovals).map((value) =>
+    decodePending(value),
+  );
   for (const pending of pendingRequests) {
     try {
       if (
