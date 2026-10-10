@@ -11,10 +11,18 @@ const Data = Schema.String.check(Schema.isPattern(/^0x(?:[0-9a-fA-F]{2})*$/));
 export const MetaMaskMethod = Schema.Literals([
   "eth_requestAccounts",
   "wallet_switchEthereumChain",
+  "wallet_addEthereumChain",
   "personal_sign",
   "eth_signTypedData_v4",
   "eth_sendTransaction",
 ]);
+export const METAMASK_SEPOLIA = {
+  chainId: "0xaa36a7",
+  chainName: "Sepolia",
+  rpcUrl: "https://11155111.rpc.thirdweb.com",
+  ticker: "ETH",
+  blockExplorerUrl: "https://sepolia.etherscan.io",
+} as const;
 export const MetaMaskGrant = Schema.Struct({
   threadId: TrimmedNonEmptyString,
   origin: Schema.String.check(Schema.isPattern(/^https:\/\/[^/?#]+$/)),
@@ -55,7 +63,21 @@ export type MetaMaskRequestInput = typeof MetaMaskRequestInput.Type;
 export const MetaMaskApproval = Schema.Struct({
   id: Schema.String,
   origin: Schema.String,
-  method: Schema.Literals(["personal_sign", "eth_signTypedData_v4", "eth_sendTransaction"]),
+  method: Schema.Literals([
+    "personal_sign",
+    "eth_signTypedData_v4",
+    "eth_sendTransaction",
+    "wallet_switchEthereumChain",
+    "wallet_addEthereumChain",
+  ]),
+  network: Schema.optionalKey(
+    Schema.Struct({
+      chainName: Schema.String,
+      rpcUrl: Schema.String,
+      ticker: Schema.String,
+      blockExplorerUrl: Schema.String,
+    }),
+  ),
   account: Address,
   chainId: Quantity,
   message: Schema.optionalKey(Data),

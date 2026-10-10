@@ -334,3 +334,61 @@ describe("MetaMask connected wallet status", () => {
     expect(rpc).not.toHaveBeenCalled();
   });
 });
+
+describe("MetaMask network request lifecycle", () => {
+  it("dispatches a permitted switch from another chain only for a connected account", async () => {
+    const { wallet, input, rpc, completion } = await setup();
+    const switchInput = {
+      clientRequestId: input.clientRequestId,
+      account: input.account,
+      origin: input.origin,
+      method: "wallet_switchEthereumChain" as const,
+      chainId: "0xaa36a7",
+    };
+    fixtures.configuration = {
+      ...fixtures.configuration!,
+      grants: [
+        {
+          ...fixtures.configuration!.grants[0]!,
+          chainId: switchInput.chainId,
+          methods: [switchInput.method],
+        },
+      ],
+    };
+    rpc.mockImplementation((expression) => {
+      if (expression.includes("eth_chainId")) return Promise.resolve("0x1");
+      if (expression.includes("eth_accounts")) return Promise.resolve([input.account]);
+      return completion.promise;
+    });
+    expect((await wallet.request("thread-a", switchInput)).status).toBe("pending");
+    expect(rpc).toHaveBeenCalledTimes(3);
+    completion.resolve(null);
+    await wallet.close("thread-a");
+  });
+
+  it("refuses network changes if the granted account is disconnected", async () => {
+    const { wallet, input, rpc } = await setup();
+    const switchInput = {
+      clientRequestId: input.clientRequestId,
+      account: input.account,
+      origin: input.origin,
+      method: "wallet_switchEthereumChain" as const,
+      chainId: "0xaa36a7",
+    };
+    fixtures.configuration = {
+      ...fixtures.configuration!,
+      grants: [
+        {
+          ...fixtures.configuration!.grants[0]!,
+          chainId: switchInput.chainId,
+          methods: [switchInput.method],
+        },
+      ],
+    };
+    rpc.mockImplementation((expression) =>
+      Promise.resolve(expression.includes("eth_chainId") ? "0x1" : []),
+    );
+    await expect(wallet.request("thread-a", switchInput)).rejects.toThrow("not connected");
+    expect(rpc).toHaveBeenCalledTimes(2);
+  });
+});

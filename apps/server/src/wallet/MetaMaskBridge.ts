@@ -8,6 +8,7 @@ const Pending = Schema.Struct({
   id: Schema.String,
   origin: Schema.String,
   type: Schema.String,
+  requestData: Schema.optionalKey(Schema.Unknown),
 });
 const Message = Schema.Struct({
   id: Schema.String,
@@ -31,6 +32,7 @@ const Transaction = Schema.Struct({
 });
 const State = Schema.Struct({
   isUnlocked: Schema.Boolean,
+  selectedAddress: Schema.optionalKey(Schema.String),
   pendingApprovals: Schema.Record(Schema.String, Schema.Unknown),
   unapprovedPersonalMsgs: Schema.optionalKey(Schema.Record(Schema.String, Schema.Unknown)),
   unapprovedTypedMessages: Schema.optionalKey(Schema.Record(Schema.String, Schema.Unknown)),
@@ -38,6 +40,16 @@ const State = Schema.Struct({
   networkConfigurationsByChainId: Schema.optionalKey(Schema.Record(Schema.String, Schema.Unknown)),
 });
 
+const decodeNetworkRequest = Schema.decodeUnknownSync(
+  Schema.Struct({
+    toNetworkConfiguration: Schema.optionalKey(Schema.Struct({ chainId: Schema.String })),
+    chainId: Schema.optionalKey(Schema.String),
+    chainName: Schema.optionalKey(Schema.String),
+    rpcUrl: Schema.optionalKey(Schema.String),
+    ticker: Schema.optionalKey(Schema.String),
+    rpcPrefs: Schema.optionalKey(Schema.Struct({ blockExplorerUrl: Schema.String })),
+  }),
+);
 const decodeState = Schema.decodeUnknownSync(State);
 const decodePending = Schema.decodeUnknownSync(Pending);
 const decodeMessage = Schema.decodeUnknownSync(Message);
@@ -108,6 +120,36 @@ export function decodeMetaMaskApprovals(raw: unknown) {
   for (const value of Object.values(state.pendingApprovals)) {
     const pending = decodePending(value);
     try {
+      if (
+        pending.type === "wallet_switchEthereumChain" ||
+        pending.type === "wallet_addEthereumChain"
+      ) {
+        if (!state.isUnlocked || !state.selectedAddress) continue;
+        const request = decodeNetworkRequest(pending.requestData);
+        approvals.push(
+          decodeApproval({
+            id: pending.id,
+            origin: pending.origin,
+            method: pending.type,
+            account: state.selectedAddress,
+            chainId:
+              pending.type === "wallet_switchEthereumChain"
+                ? request.toNetworkConfiguration?.chainId
+                : request.chainId,
+            ...(pending.type === "wallet_addEthereumChain"
+              ? {
+                  network: {
+                    chainName: request.chainName,
+                    rpcUrl: request.rpcUrl,
+                    ticker: request.ticker,
+                    blockExplorerUrl: request.rpcPrefs?.blockExplorerUrl,
+                  },
+                }
+              : {}),
+          }),
+        );
+        continue;
+      }
       const transaction = state.transactions?.find(
         (item) =>
           typeof item === "object" && item !== null && "id" in item && item.id === pending.id,
@@ -184,11 +226,13 @@ export async function confirmMetaMaskApproval(page: Page, approval: typeof MetaM
     page,
     `(() => {
       const id = ${JSON.stringify(approval.id)};
-      const routes = ['#confirmation/' + encodeURIComponent(id), '#/confirmation/' + encodeURIComponent(id), '#confirm-transaction/' + encodeURIComponent(id) + ${JSON.stringify(approval.method === "eth_sendTransaction" ? "" : "/signature-request")}];
+      const networkMethod = ${JSON.stringify(approval.method === "wallet_switchEthereumChain" || approval.method === "wallet_addEthereumChain")};
+      const routes = ['#confirmation/' + encodeURIComponent(id), '#/confirmation/' + encodeURIComponent(id)];
+      if (!networkMethod) routes.push('#confirm-transaction/' + encodeURIComponent(id) + ${JSON.stringify(approval.method === "eth_sendTransaction" ? "" : "/signature-request")});
       if (!routes.includes(location.hash)) return false;
-      const button = document.querySelector('[data-testid="confirm-footer-button"]');
+      const button = document.querySelector(networkMethod ? '[data-testid="confirmation-submit-button"]' : '[data-testid="confirm-footer-button"]');
       // Review/security-alert flows and disabled/hardware-wallet buttons stay manual.
-      if (!(button instanceof HTMLButtonElement) || button.disabled || button.textContent.trim() !== 'Confirm') return false;
+      if (!(button instanceof HTMLButtonElement) || button.disabled || button.textContent.trim() !== ${JSON.stringify(approval.method === "wallet_switchEthereumChain" ? "Switch network" : approval.method === "wallet_addEthereumChain" ? "Approve" : "Confirm")}) return false;
       button.click(); return true;
     })()`,
   );

@@ -71,7 +71,11 @@ describe("MetaMask approval decoding", () => {
 describe("MetaMask confirmation guard", () => {
   async function confirm(
     hash: string,
-    method: "personal_sign" | "eth_sendTransaction",
+    method:
+      | "personal_sign"
+      | "eth_sendTransaction"
+      | "wallet_switchEthereumChain"
+      | "wallet_addEthereumChain",
     disabled = false,
     label = "Confirm",
   ) {
@@ -120,6 +124,23 @@ describe("MetaMask confirmation guard", () => {
       expect(button.click).toHaveBeenCalledOnce();
     }
   });
+  it("confirms only the exact network confirmation route and expected action", async () => {
+    for (const [method, label] of [
+      ["wallet_switchEthereumChain", "Switch network"],
+      ["wallet_addEthereumChain", "Approve"],
+    ] as const) {
+      expect((await confirm("#confirmation/request-a", method, false, label)).result).toBe(true);
+      expect((await confirm("#confirmation/request-b", method, false, label)).result).toBe(false);
+      expect(
+        (await confirm("#confirm-transaction/request-a/signature-request", method, false, label))
+          .result,
+      ).toBe(false);
+      expect((await confirm("#confirmation/request-a", method, true, label)).result).toBe(false);
+      expect(
+        (await confirm("#confirmation/request-a", method, false, "Proceed anyway")).result,
+      ).toBe(false);
+    }
+  });
   it("refuses another request, review routes, disabled buttons and warning actions", async () => {
     for (const [hash, disabled, label] of [
       ["#confirm-transaction/request-b/signature-request", false, "Confirm"],
@@ -131,5 +152,71 @@ describe("MetaMask confirmation guard", () => {
       expect(result).toBe(false);
       expect(button.click).not.toHaveBeenCalled();
     }
+  });
+});
+
+describe("trusted network request decoding", () => {
+  const raw = {
+    ...state,
+    selectedAddress: account,
+    pendingApprovals: {
+      network: {
+        id: "network",
+        origin: "https://attest.gmac.io",
+        type: "wallet_switchEthereumChain",
+        requestData: {
+          toNetworkConfiguration: { chainId: "0xaa36a7" },
+          fromNetworkConfiguration: { chainId: "0x1" },
+        },
+      },
+    },
+  };
+  it("uses the requested target chain and current wallet account", () => {
+    expect(decodeMetaMaskApprovals(raw).approvals).toEqual([
+      {
+        id: "network",
+        origin: "https://attest.gmac.io",
+        method: "wallet_switchEthereumChain",
+        account,
+        chainId: "0xaa36a7",
+      },
+    ]);
+  });
+  it("leaves locked or incomplete network requests unsupported", () => {
+    expect(decodeMetaMaskApprovals({ ...raw, isUnlocked: false }).approvals).toEqual([]);
+    expect(decodeMetaMaskApprovals({ ...raw, selectedAddress: "" }).approvals).toEqual([]);
+    expect(
+      decodeMetaMaskApprovals({
+        ...raw,
+        pendingApprovals: { network: { ...raw.pendingApprovals.network, requestData: {} } },
+      }).approvals,
+    ).toEqual([]);
+  });
+  it("fingerprints network endpoint changes", () => {
+    const add = {
+      ...raw,
+      pendingApprovals: {
+        network: {
+          ...raw.pendingApprovals.network,
+          type: "wallet_addEthereumChain",
+          requestData: {
+            chainId: "0xaa36a7",
+            chainName: "Sepolia",
+            rpcUrl: "https://11155111.rpc.thirdweb.com",
+            ticker: "ETH",
+            rpcPrefs: { blockExplorerUrl: "https://sepolia.etherscan.io" },
+          },
+        },
+      },
+    };
+    const [approval] = decodeMetaMaskApprovals(add).approvals;
+    expect(approval?.network?.rpcUrl).toBe("https://11155111.rpc.thirdweb.com");
+    if (!approval?.network) throw new Error("Missing fixture");
+    expect(approvalFingerprint(approval)).not.toBe(
+      approvalFingerprint({
+        ...approval,
+        network: { ...approval.network, rpcUrl: "https://other.example" },
+      }),
+    );
   });
 });

@@ -59,3 +59,9 @@ Mobile uses the existing browser stream; no native wallet or local signing keys 
 phone. Chromium's sandbox remains enabled. On Linux, ensure the chosen full Chromium executable has
 its required libraries and host sandbox permission; `t3 browser setup` configures the default
 headless shell, not arbitrary external executables.
+
+For agent-driven Sepolia setup, grant `wallet_switchEthereumChain` on chain `0xaa36a7`
+for the connected account and thread. If the network is absent, separately grant
+`wallet_addEthereumChain`; this method only adds the pinned Sepolia RPC/explorer preset.
+Both methods use the request journal and exact approval fingerprint checks. Neither grant
+permits signing or sending transactions. Revoke setup grants when setup is complete.

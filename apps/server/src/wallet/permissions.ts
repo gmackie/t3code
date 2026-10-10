@@ -1,5 +1,6 @@
 import {
   MetaMaskError,
+  METAMASK_SEPOLIA,
   type MetaMaskApproval,
   type MetaMaskGrant,
   type MetaMaskRequestInput,
@@ -12,6 +13,20 @@ export function requireWalletGrant(
   request: MetaMaskRequestInput | MetaMaskApproval,
   now: number,
 ) {
+  if (request.method === "wallet_addEthereumChain") {
+    if (
+      request.chainId !== METAMASK_SEPOLIA.chainId ||
+      ("network" in request &&
+        (request.network?.chainName !== METAMASK_SEPOLIA.chainName ||
+          request.network?.rpcUrl !== METAMASK_SEPOLIA.rpcUrl ||
+          request.network?.ticker !== METAMASK_SEPOLIA.ticker ||
+          request.network?.blockExplorerUrl !== METAMASK_SEPOLIA.blockExplorerUrl))
+    )
+      throw new MetaMaskError({
+        code: "permission_denied",
+        detail: "Only the pinned Sepolia network preset can be added.",
+      });
+  }
   const origin = new URL(request.origin).origin;
   const grant = grants.find(
     (candidate) =>
@@ -46,6 +61,22 @@ export function walletRpcParameters(request: MetaMaskRequestInput): ReadonlyArra
       return [];
     case "wallet_switchEthereumChain":
       return [{ chainId: request.chainId }];
+    case "wallet_addEthereumChain":
+      if (request.chainId === METAMASK_SEPOLIA.chainId)
+        return [
+          {
+            chainId: METAMASK_SEPOLIA.chainId,
+            chainName: METAMASK_SEPOLIA.chainName,
+            rpcUrls: [METAMASK_SEPOLIA.rpcUrl],
+            nativeCurrency: {
+              name: "Sepolia Ether",
+              symbol: METAMASK_SEPOLIA.ticker,
+              decimals: 18,
+            },
+            blockExplorerUrls: [METAMASK_SEPOLIA.blockExplorerUrl],
+          },
+        ];
+      break;
     case "personal_sign":
       if (request.message !== undefined) return [request.message, request.account];
       break;

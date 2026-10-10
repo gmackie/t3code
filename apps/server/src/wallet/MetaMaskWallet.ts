@@ -21,6 +21,7 @@ import {
   readMetaMaskState,
 } from "./MetaMaskBridge.ts";
 
+const decodeAccounts = Schema.decodeUnknownSync(Schema.Array(Schema.String));
 const decodeWalletStatus = Schema.decodeUnknownSync(MetaMaskWalletStatus);
 
 const decodeJournal = Schema.decodeUnknownSync(
@@ -313,13 +314,24 @@ export class MetaMaskWallet {
     );
     if (
       typeof chainId !== "string" ||
-      (input.method !== "wallet_switchEthereumChain" && BigInt(chainId) !== BigInt(input.chainId))
+      (!["wallet_switchEthereumChain", "wallet_addEthereumChain"].includes(input.method) &&
+        BigInt(chainId) !== BigInt(input.chainId))
     ) {
       throw new MetaMaskError({
         code: "permission_denied",
         detail:
           "MetaMask's current chain does not match the grant. Switch chains explicitly first.",
       });
+    }
+    if (["wallet_switchEthereumChain", "wallet_addEthereumChain"].includes(input.method)) {
+      const accounts = decodeAccounts(
+        await page.evaluate("window.ethereum.request({method: 'eth_accounts'})"),
+      );
+      if (!accounts.some((account) => account.toLowerCase() === input.account.toLowerCase()))
+        throw new MetaMaskError({
+          code: "permission_denied",
+          detail: "The granted account is not connected to this website.",
+        });
     }
     const outcome = { requestId: input.clientRequestId, status: "pending" as const };
     await this.saveJournal(path, fingerprint, outcome);
@@ -402,7 +414,11 @@ export class MetaMaskWallet {
         `chrome-extension://${this.extensionId}/home.html#confirmation/${encodeURIComponent(id)}`,
         { waitUntil: "domcontentloaded" },
       );
-      const button = page.getByTestId("confirm-footer-button");
+      const button = page.getByTestId(
+        ["wallet_switchEthereumChain", "wallet_addEthereumChain"].includes(approval.method)
+          ? "confirmation-submit-button"
+          : "confirm-footer-button",
+      );
       await button.waitFor({ state: "visible", timeout: 10000 });
       // State, grant and immutable request fingerprint are checked again after the UI has loaded.
       const current = (await this.pending(threadId)).approvals.find(

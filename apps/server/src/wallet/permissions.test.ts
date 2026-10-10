@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vite-plus/test";
-import { type MetaMaskGrant, type MetaMaskRequestInput } from "@t3tools/contracts";
+import {
+  METAMASK_SEPOLIA,
+  type MetaMaskGrant,
+  type MetaMaskRequestInput,
+} from "@t3tools/contracts";
 import { requireWalletGrant, walletRpcParameters } from "./permissions.ts";
 
 const account = "0x1111111111111111111111111111111111111111";
@@ -72,5 +76,67 @@ describe("MetaMask grants", () => {
     expect(
       walletRpcParameters({ ...sign, typedData: JSON.stringify({ domain: { chainId: 1 } }) }),
     ).toEqual([account, '{"domain":{"chainId":1}}']);
+  });
+});
+
+describe("network setup permissions", () => {
+  const setup = {
+    clientRequestId: request.clientRequestId,
+    account: request.account,
+    origin: request.origin,
+    method: "wallet_addEthereumChain" as const,
+    chainId: METAMASK_SEPOLIA.chainId,
+  };
+  const networkGrant = {
+    ...grant,
+    chainId: setup.chainId,
+    methods: ["wallet_addEthereumChain" as const],
+  };
+  it("requires an explicit grant and pins Sepolia parameters", () => {
+    expect(() => requireWalletGrant([], "thread-a", setup, now)).toThrow();
+    expect(requireWalletGrant([networkGrant], "thread-a", setup, now)).toBe(networkGrant);
+    expect(walletRpcParameters(setup)).toEqual([
+      {
+        chainId: "0xaa36a7",
+        chainName: "Sepolia",
+        rpcUrls: [METAMASK_SEPOLIA.rpcUrl],
+        nativeCurrency: { name: "Sepolia Ether", symbol: "ETH", decimals: 18 },
+        blockExplorerUrls: [METAMASK_SEPOLIA.blockExplorerUrl],
+      },
+    ]);
+    expect(() => walletRpcParameters({ ...setup, chainId: "0x1" })).toThrow();
+    expect(() =>
+      requireWalletGrant(
+        [{ ...networkGrant, chainId: "0x1" }],
+        "thread-a",
+        { ...setup, chainId: "0x1" },
+        now,
+      ),
+    ).toThrow("pinned Sepolia");
+  });
+  it("refuses changed RPC configuration and revocation before approval", () => {
+    const approval = {
+      id: "add",
+      origin: setup.origin,
+      account,
+      chainId: setup.chainId,
+      method: setup.method,
+      network: {
+        chainName: METAMASK_SEPOLIA.chainName,
+        rpcUrl: METAMASK_SEPOLIA.rpcUrl,
+        ticker: METAMASK_SEPOLIA.ticker,
+        blockExplorerUrl: METAMASK_SEPOLIA.blockExplorerUrl,
+      },
+    };
+    expect(requireWalletGrant([networkGrant], "thread-a", approval, now)).toBe(networkGrant);
+    expect(() =>
+      requireWalletGrant(
+        [networkGrant],
+        "thread-a",
+        { ...approval, network: { ...approval.network, rpcUrl: "https://evil.example" } },
+        now,
+      ),
+    ).toThrow("pinned Sepolia");
+    expect(() => requireWalletGrant([], "thread-a", approval, now)).toThrow();
   });
 });

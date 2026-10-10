@@ -18,7 +18,7 @@ limit, expiry, and whether contract calls are allowed. Remove a grant to revoke 
 read the current grants again immediately before confirming.
 
 Agents use `metamask_request` to prepare a request, `metamask_pending` to inspect its exact intent, and
-`metamask_approve` to confirm it within a matching grant. Connection/network prompts, wallet unlock,
+`metamask_approve` to confirm it within a matching grant. Connection prompts, wallet unlock,
 hardware-wallet steps, security warnings, and unsupported confirmations require your review in
 MetaMask. Agent confirmation currently supports MetaMask 13.5.0 in English.
 
@@ -30,3 +30,7 @@ has been mined.
 One thread uses the wallet profile at a time. `metamask_close` closes its browser session and releases
 it for another thread, while retaining wallet storage. Regular browser profile cleanup cannot delete
 this wallet.
+
+Agents with explicit network-method grants can request `wallet_switchEthereumChain` and confirm
+the matching prompt. If Sepolia is missing, `wallet_addEthereumChain` adds the fixed Sepolia preset;
+this requires its own grant. Network permissions do not permit signatures or transactions.
