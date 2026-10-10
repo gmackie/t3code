@@ -4966,7 +4966,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
               (
                 SELECT item.payload_json
                 FROM orchestration_v2_projection_turn_items item
-                  INDEXED BY orchestration_v2_projection_turn_items_thread_run_idx
+                  INDEXED BY orchestration_v2_projection_turn_items_failed_error_idx
                 INNER JOIN orchestration_v2_projection_runs r ON r.run_id = item.run_id
                 WHERE r.run_id = presented.run_id
                   AND r.status = 'failed'
@@ -4983,7 +4983,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
               (
                 SELECT item.payload_json
                 FROM orchestration_v2_projection_turn_items item
-                  INDEXED BY orchestration_v2_projection_turn_items_thread_run_idx
+                  INDEXED BY orchestration_v2_projection_turn_items_failed_error_idx
                 WHERE item.thread_id = t.thread_id
                   AND item.run_id = blocked.run_id
                   AND item.type = 'error' AND item.status = 'failed'
@@ -5001,12 +5001,15 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
               ) AS pending_request_payload_json,
               (
                 SELECT secret.payload_json
-                FROM orchestration_v2_projection_turn_items secret
-                  INDEXED BY orchestration_v2_projection_turn_items_thread_run_idx
-                INNER JOIN orchestration_v2_projection_runs r ON r.run_id = secret.run_id
-                WHERE secret.thread_id = t.thread_id
-                  AND secret.type = 'secret_request' AND secret.status = 'waiting'
+                -- Bound both the run lookup and the item lookup. A completed
+                -- transcript can contain thousands of unrelated tool payloads.
+                FROM orchestration_v2_projection_runs r
+                CROSS JOIN orchestration_v2_projection_turn_items secret
+                  INDEXED BY orchestration_v2_projection_turn_items_waiting_secret_idx
+                  ON secret.thread_id = t.thread_id AND secret.run_id = r.run_id
+                WHERE r.thread_id = t.thread_id
                   AND r.status IN ('preparing', 'starting', 'running', 'waiting')
+                  AND secret.type = 'secret_request' AND secret.status = 'waiting'
                 ORDER BY secret.updated_at DESC, secret.turn_item_id DESC
                 LIMIT 1
               ) AS pending_secret_request_payload_json,

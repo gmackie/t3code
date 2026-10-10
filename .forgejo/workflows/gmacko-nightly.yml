@@ -324,6 +324,10 @@ jobs:
           src/cli/config.test.ts
           src/serverSettings.test.ts
           src/persistence/Migrations.test.ts
+          src/persistence/Migrations/059_BoundedShellLookups.test.ts
+          src/orchestration-v2/ProjectionStore.shellLookups.test.ts
+          src/orchestration-v2/ProjectionStore.providerSessionLookup.test.ts
+          src/orchestration-v2/ProjectionSettlement.test.ts
 
       - name: Desktop SSH startup regression tests
         run: pnpm vp test run packages/ssh/src/tunnel.test.ts

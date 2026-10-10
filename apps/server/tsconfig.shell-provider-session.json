@@ -2,6 +2,8 @@
   "extends": "./tsconfig.json",
   "include": [
     "src/orchestration-v2/ProjectionStore.ts",
-    "src/orchestration-v2/ProjectionStore.providerSessionLookup.test.ts"
+    "src/orchestration-v2/ProjectionStore.providerSessionLookup.test.ts",
+    "src/orchestration-v2/ProjectionStore.shellLookups.test.ts",
+    "src/persistence/Migrations/059_BoundedShellLookups.test.ts"
   ]
 }
