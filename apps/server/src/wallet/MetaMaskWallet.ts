@@ -19,6 +19,7 @@ import {
   decodeMetaMaskApprovals,
   confirmMetaMaskApproval,
   readMetaMaskState,
+  metaMaskApprovalPresentation,
 } from "./MetaMaskBridge.ts";
 
 const decodeAccounts = Schema.decodeUnknownSync(Schema.Array(Schema.String));
@@ -415,15 +416,11 @@ export class MetaMaskWallet {
       requireWalletGrant(configuration.grants, threadId, approval, Date.now());
       if (approval.method === "eth_signTypedData_v4")
         walletRpcParameters({ ...approval, clientRequestId: id });
-      await page.goto(
-        `chrome-extension://${this.extensionId}/home.html#confirmation/${encodeURIComponent(id)}`,
-        { waitUntil: "domcontentloaded" },
-      );
-      const button = page.getByTestId(
-        ["wallet_switchEthereumChain", "wallet_addEthereumChain"].includes(approval.method)
-          ? "confirmation-submit-button"
-          : "confirm-footer-button",
-      );
+      const presentation = metaMaskApprovalPresentation(approval);
+      await page.goto(`chrome-extension://${this.extensionId}/home.html${presentation.route}`, {
+        waitUntil: "domcontentloaded",
+      });
+      const button = page.getByTestId(presentation.button);
       await button.waitFor({ state: "visible", timeout: 10000 });
       // State, grant and immutable request fingerprint are checked again after the UI has loaded.
       const current = (await this.pending(threadId)).approvals.find(

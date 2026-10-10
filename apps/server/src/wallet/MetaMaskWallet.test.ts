@@ -4,19 +4,16 @@ import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 import type { BrowserContext, Page } from "playwright-core";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
-import { type MetaMaskConfiguration, type MetaMaskRequestInput } from "@t3tools/contracts";
+import {
+  type MetaMaskConfiguration,
+  type MetaMaskRequestInput,
+  MetaMaskApproval,
+} from "@t3tools/contracts";
 import { MetaMaskWallet } from "./MetaMaskWallet.ts";
 
 const fixtures = vi.hoisted(() => ({
   configuration: undefined as MetaMaskConfiguration | undefined,
-  approvals: [] as Array<{
-    id: string;
-    origin: string;
-    method: "eth_sendTransaction";
-    account: string;
-    chainId: string;
-    transaction: { to: string; value: string };
-  }>,
+  approvals: [] as Array<typeof MetaMaskApproval.Type>,
   confirmation: vi.fn(async () => true),
 }));
 vi.mock("./configuration.ts", () => ({
@@ -227,13 +224,58 @@ describe("MetaMask request lifecycle", () => {
     extension.goto.mockImplementation(async () => {
       fixtures.approvals = fixtures.approvals.map((approval) => ({
         ...approval,
-        transaction: { ...approval.transaction, value: "0x1" },
+        transaction: { ...approval.transaction!, value: "0x1" },
       }));
     });
     await expect(wallet.approve("thread-a", pending.id, pending.fingerprint)).rejects.toThrow(
       "confirmation changed",
     );
     expect(confirmation).not.toHaveBeenCalled();
+  });
+  it("binds first-time chain approvals to the full permission snapshot and latest grant", async () => {
+    for (const mutation of ["none", "permission", "grant"] as const) {
+      const { wallet, input, confirmation, extension } = await setup();
+      if (!fixtures.configuration) throw new Error("Missing configuration");
+      fixtures.configuration = {
+        ...fixtures.configuration,
+        grants: [
+          {
+            ...fixtures.configuration.grants[0]!,
+            chainId: "0xaa36a7",
+            methods: ["wallet_switchEthereumChain"],
+          },
+        ],
+      };
+      fixtures.approvals = [
+        {
+          id: "approval-chain",
+          origin: input.origin,
+          method: "wallet_switchEthereumChain",
+          account: input.account,
+          chainId: "0xaa36a7",
+          chainPermission: { fingerprint: "a".repeat(64), chainIds: ["0x1", "0xaa36a7"] },
+        },
+      ];
+      const [pending] = (await wallet.pending("thread-a")).approvals;
+      if (!pending) throw new Error("Missing approval");
+      extension.goto.mockImplementation(async () => {
+        if (mutation === "permission")
+          fixtures.approvals[0] = {
+            ...fixtures.approvals[0]!,
+            chainPermission: { fingerprint: "b".repeat(64), chainIds: ["0x1", "0xaa36a7"] },
+          };
+        if (mutation === "grant")
+          fixtures.configuration = { ...fixtures.configuration!, grants: [] };
+      });
+      const result = wallet.approve("thread-a", pending.id, pending.fingerprint);
+      if (mutation === "none") await expect(result).resolves.toMatchObject({ status: "submitted" });
+      else
+        await expect(result).rejects.toThrow(
+          mutation === "permission" ? "confirmation changed" : "No current wallet grant",
+        );
+      expect(confirmation).toHaveBeenCalledTimes(mutation === "none" ? 1 : 0);
+      await wallet.close("thread-a");
+    }
   });
   it("rereads revoked grants before clicking a pending confirmation", async () => {
     const { wallet, input, confirmation } = await setup();

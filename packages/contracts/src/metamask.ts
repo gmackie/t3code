@@ -78,6 +78,12 @@ export const MetaMaskApproval = Schema.Struct({
       blockExplorerUrl: Schema.String,
     }),
   ),
+  chainPermission: Schema.optionalKey(
+    Schema.Struct({
+      fingerprint: Schema.String.check(Schema.isPattern(/^[0-9a-f]{64}$/)),
+      chainIds: Schema.Array(Quantity),
+    }),
+  ),
   account: Address,
   chainId: Quantity,
   message: Schema.optionalKey(Data),

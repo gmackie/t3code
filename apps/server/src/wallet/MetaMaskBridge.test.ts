@@ -138,6 +138,77 @@ describe("MetaMask confirmation guard", () => {
     expect(detach).toHaveBeenCalledOnce();
     return { result, button };
   }
+  it("approves incremental chain access only with unchanged trusted UI selections", async () => {
+    const trustedProps = {
+      request: { metadata: { id: "request-a" } },
+      approvePermissionsRequest: () => undefined,
+      selectedAccounts: [{ address: account }],
+      requestedChainIds: ["0x1", "0xaa36a7"],
+    };
+    for (const scenario of [
+      { props: trustedProps, accepted: true },
+      { props: { ...trustedProps, selectedAccounts: [] } },
+      {
+        props: { ...trustedProps, selectedAccounts: [{ address: account }, { address: account }] },
+      },
+      {
+        props: {
+          ...trustedProps,
+          selectedAccounts: [{ address: "0x2222222222222222222222222222222222222222" }],
+        },
+      },
+      { props: { ...trustedProps, requestedChainIds: ["0x1", "0x89"] } },
+      { props: { ...trustedProps, requestedChainIds: ["0x1", "0xaa36a7", "0x89"] } },
+      { props: { ...trustedProps, request: { metadata: { id: "request-b" } } } },
+      { props: {} },
+      { props: trustedProps, warning: true },
+      { props: trustedProps, disabled: true },
+      { props: trustedProps, hash: "#connect/request-b/confirm-permissions" },
+    ]) {
+      const button = {
+        tagName: "BUTTON",
+        disabled: scenario.disabled ?? false,
+        textContent: "Confirm",
+        querySelector: () => (scenario.warning ? {} : null),
+        click: vi.fn(),
+      };
+      const send = vi.fn(
+        async (command: string, parameters?: { expression?: string; contextId?: number }) => {
+          if (command === "Page.getFrameTree") return { frameTree: { frame: { id: "frame" } } };
+          if (command === "Page.createIsolatedWorld") return { executionContextId: 1 };
+          expect(command).toBe("Runtime.evaluate");
+          expect(parameters?.contextId).toBeUndefined();
+          return {
+            result: {
+              value: NodeVM.runInNewContext(parameters!.expression!, {
+                location: { hash: scenario.hash ?? "#connect/request-a/confirm-permissions" },
+                document: {
+                  querySelector: () => button,
+                  querySelectorAll: () => [
+                    { __reactFiber$test: { memoizedProps: scenario.props } },
+                  ],
+                },
+              }),
+            },
+          };
+        },
+      );
+      const page = {
+        context: () => ({ newCDPSession: async () => ({ send, detach: async () => undefined }) }),
+      } as unknown as Page;
+      expect(
+        await confirmMetaMaskApproval(page, {
+          id: "request-a",
+          origin: "https://attest.gmac.io",
+          method: "wallet_switchEthereumChain",
+          account,
+          chainId: "0xaa36a7",
+          chainPermission: { fingerprint: "a".repeat(64), chainIds: ["0x1", "0xaa36a7"] },
+        }),
+      ).toBe(scenario.accepted ?? false);
+      expect(button.click).toHaveBeenCalledTimes(scenario.accepted ? 1 : 0);
+    }
+  });
   it("confirms the pinned MetaMask signature and transaction routes", async () => {
     for (const [hash, method] of [
       ["#confirm-transaction/request-a/signature-request", "personal_sign"],

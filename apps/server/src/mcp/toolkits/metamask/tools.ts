@@ -26,7 +26,7 @@ const Open = Tool.make("metamask_open", {
 const Pending = Tool.make("metamask_pending", {
   ...shared,
   description:
-    "Read supported MetaMask signature/transaction confirmations from the extension's own state. Returns an immutable fingerprint for each approval. Includes supported network switch and Sepolia-add confirmations. Reports unsupported approval IDs, origins and types plus the wallet route for diagnosis; unknown request data is never returned. Unsupported confirmations and connection prompts require manual review. Never returns vaults or seed phrases.",
+    "Read supported MetaMask signature/transaction confirmations from the extension's own state. Returns an immutable fingerprint for each approval. Includes network switches, first-time chain access for an already-connected account, and Sepolia-add confirmations. Reports unsupported approval IDs, origins and types plus the wallet route for diagnosis; unknown request data is never returned. Unsupported confirmations and connection prompts require manual review. Never returns vaults or seed phrases.",
   success: MetaMaskPendingStatus,
 })
   .annotate(Tool.Readonly, true)

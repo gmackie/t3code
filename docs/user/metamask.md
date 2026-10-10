@@ -18,7 +18,8 @@ limit, expiry, and whether contract calls are allowed. Remove a grant to revoke 
 read the current grants again immediately before confirming.
 
 Agents use `metamask_request` to prepare a request, `metamask_pending` to inspect its exact intent, and
-`metamask_approve` to confirm it within a matching grant. Connection prompts, wallet unlock,
+`metamask_approve` to confirm it within a matching grant. Network grants can approve first-time chain
+access for an already-connected account. New account connections, wallet unlock,
 hardware-wallet steps, security warnings, and unsupported confirmations require your review in
 MetaMask. Agent confirmation currently supports MetaMask 13.5.0 in English.
 
