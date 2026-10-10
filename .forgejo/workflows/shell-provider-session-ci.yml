@@ -1,0 +1,38 @@
+name: Shell provider session CI
+
+on:
+  pull_request:
+    branches:
+      - custom-local
+    paths:
+      - apps/server/src/orchestration-v2/ProjectionStore*
+      - apps/server/src/orchestration-v2/ThreadPullRequestService*
+      - apps/server/tsconfig.shell-provider-session.json
+      - .forgejo/workflows/shell-provider-session-ci.yml
+      - pnpm-lock.yaml
+      - pnpm-workspace.yaml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  shell-provider-session:
+    runs-on: forgegraph-ci
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.14.0
+      - name: Install pinned dependencies
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.10.0 --activate
+          pnpm install --frozen-lockfile
+      - name: Verify shell provider session lookup
+        run: |
+          pnpm exec vp test run apps/server/src/orchestration-v2/ProjectionStore.providerSessionLookup.test.ts apps/server/src/orchestration-v2/ProjectionStore.test.ts apps/server/src/orchestration-v2/ThreadPullRequestService.test.ts
+          pnpm exec tsc --noEmit --project apps/server/tsconfig.shell-provider-session.json
+          pnpm exec vp lint apps/server/src/orchestration-v2/ProjectionStore.ts apps/server/src/orchestration-v2/ProjectionStore.providerSessionLookup.test.ts
+          pnpm exec vp fmt --check apps/server/src/orchestration-v2/ProjectionStore.ts apps/server/src/orchestration-v2/ProjectionStore.providerSessionLookup.test.ts apps/server/tsconfig.shell-provider-session.json .forgejo/workflows/shell-provider-session-ci.yml

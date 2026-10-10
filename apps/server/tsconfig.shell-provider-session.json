@@ -1,0 +1,7 @@
+{
+  "extends": "./tsconfig.json",
+  "include": [
+    "src/orchestration-v2/ProjectionStore.ts",
+    "src/orchestration-v2/ProjectionStore.providerSessionLookup.test.ts"
+  ]
+}
