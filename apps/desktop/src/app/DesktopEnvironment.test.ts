@@ -161,3 +161,40 @@ describe("DesktopEnvironment", () => {
     }),
   );
 });
+
+it.effect("keeps an explicit Electron profile separate from T3 server state", () =>
+  Effect.gen(function* () {
+    const environment = yield* makeEnvironment(
+      {},
+      {
+        T3CODE_HOME: "/isolated/server-state",
+        T3CODE_DESKTOP_USER_DATA_DIR: " /isolated/electron-profile ",
+      },
+    );
+    assert.equal(environment.userDataDirectory, "/isolated/electron-profile");
+    assert.equal(environment.stateDir, "/isolated/server-state/userdata");
+    assert.equal(environment.appDataDirectory, "/Users/alice/Library/Application Support");
+  }),
+);
+
+it.effect.each(["relative/profile", "~/profile"])(
+  "rejects a nonabsolute Electron profile %s before service construction",
+  (userDataDirectory) =>
+    Effect.gen(function* () {
+      const error = yield* makeEnvironment(
+        {},
+        {
+          T3CODE_DESKTOP_USER_DATA_DIR: userDataDirectory,
+        },
+      ).pipe(Effect.flip);
+      assert.equal(error._tag, "ConfigError");
+      assert.include(error.message, "must be an absolute path");
+    }),
+);
+
+it.effect("ignores a blank Electron profile override", () =>
+  Effect.gen(function* () {
+    const environment = yield* makeEnvironment({}, { T3CODE_DESKTOP_USER_DATA_DIR: "   " });
+    assert.equal(environment.userDataDirectory, undefined);
+  }),
+);

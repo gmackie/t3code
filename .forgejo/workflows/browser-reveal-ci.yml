@@ -5,6 +5,10 @@ on:
     branches:
       - custom-local
     paths:
+      - apps/desktop/src/app/DesktopConfig.ts
+      - apps/desktop/src/app/DesktopEnvironment*
+      - apps/desktop/src/app/DesktopUserData*
+      - apps/desktop/src/app/DesktopClerk.test.ts
       - apps/web/src/components/ChatView.tsx
       - apps/web/src/components/preview/useServerPreviewReveal*
       - apps/web/src/previewStateStore*
@@ -38,3 +42,24 @@ jobs:
           pnpm exec tsc --noEmit
           pnpm exec vp lint src/previewStateStore.ts src/previewRevealHydration.test.ts src/components/preview/useServerPreviewReveal.ts src/components/preview/useServerPreviewReveal.test.tsx
           pnpm exec vp fmt --check src/components/ChatView.tsx src/previewStateStore.ts src/previewRevealHydration.test.ts src/components/preview/useServerPreviewReveal.ts src/components/preview/useServerPreviewReveal.test.tsx
+
+  desktop-profile:
+    runs-on: forgegraph-ci
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.14.0
+      - name: Install pinned dependencies
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.10.0 --activate
+          pnpm install --frozen-lockfile
+      - name: Verify desktop profile isolation
+        working-directory: apps/desktop
+        run: |
+          pnpm exec vp test run src/app/DesktopEnvironment.test.ts src/app/DesktopUserData.test.ts src/app/DesktopAppIdentity.test.ts src/app/DesktopClerk.test.ts
+          pnpm exec tsc --noEmit
+          pnpm exec vp lint src/app/DesktopConfig.ts src/app/DesktopEnvironment.ts src/app/DesktopUserData.ts
+          pnpm exec vp fmt --check src/app/DesktopConfig.ts src/app/DesktopEnvironment.ts src/app/DesktopUserData.ts src/app/DesktopEnvironment.test.ts src/app/DesktopUserData.test.ts src/app/DesktopClerk.test.ts

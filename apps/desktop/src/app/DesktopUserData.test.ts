@@ -91,3 +91,26 @@ it.effect("keeps GMACKO builds on their own profile beside the official app", ()
     Effect.provide(NodeServices.layer),
   ),
 );
+
+it.effect.each(["darwin", "linux", "win32"] as const)(
+  "selects an explicit %s profile without inspecting or migrating default credential stores",
+  (platform) =>
+    Effect.gen(function* () {
+      const profile = yield* resolveUserDataPath({
+        appDataDirectory: "/live-profile-parent",
+        userDataDirectory: "/isolated/profile",
+        appVersion: "0.0.45-gmacko.202610101637",
+        isDevelopment: false,
+        platform,
+      });
+      assert.equal(profile, "/isolated/profile");
+    }).pipe(
+      Effect.provideService(
+        FileSystem.FileSystem,
+        FileSystem.makeNoop({
+          exists: () => Effect.die("explicit profiles must not inspect defaults"),
+        }),
+      ),
+      Effect.provide(NodeServices.layer),
+    ),
+);
