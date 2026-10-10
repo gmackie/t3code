@@ -4,7 +4,7 @@ import { decodeMetaMaskApprovals, approvalFingerprint } from "./MetaMaskBridge.t
 const account = "0x1111111111111111111111111111111111111111";
 const origin = "https://attest.gmac.io";
 const capability = "endowment:caip25";
-function fixture() {
+function fixture(isMultichainOrigin = false) {
   const currentValue = {
     requiredScopes: {},
     optionalScopes: {
@@ -12,7 +12,7 @@ function fixture() {
       "eip155:1": { accounts: [] },
     },
     sessionProperties: {},
-    isMultichainOrigin: false,
+    isMultichainOrigin,
   };
   const current = {
     [capability]: {
@@ -27,7 +27,7 @@ function fixture() {
     requiredScopes: {},
     optionalScopes: { "eip155:11155111": { accounts: [] as string[] } },
     sessionProperties: {},
-    isMultichainOrigin: false,
+    isMultichainOrigin,
   };
   return {
     isUnlocked: true,
@@ -78,6 +78,39 @@ describe("incremental MetaMask chain permissions", () => {
       chainPermission: { chainIds: ["0x1", "0xaa36a7"] },
     });
     expect(approval?.chainPermission?.fingerprint).toMatch(/^[0-9a-f]{64}$/);
+  });
+  it("preserves an existing multichain origin when adding one chain", () => {
+    const raw = fixture(true);
+    expect(decodeMetaMaskApprovals(raw).approvals).toMatchObject([
+      { method: "wallet_switchEthereumChain", chainId: "0xaa36a7" },
+    ]);
+    raw.pendingApprovals.network.requestData.diff.permissionDiffMap[
+      capability
+    ].authorizedScopes.isMultichainOrigin = false;
+    expect(decodeMetaMaskApprovals(raw).approvals).toEqual([]);
+  });
+  it("recognizes Attest's existing per-chain account scopes without expanding them", () => {
+    const raw = fixture(true);
+    const request = raw.pendingApprovals.network.requestData;
+    const value = raw.subjects[origin].permissions[capability].caveats[0]!.value;
+    value.optionalScopes["wallet:eip155"].accounts = [];
+    Object.assign(value.optionalScopes, {
+      "eip155:1": { accounts: [`eip155:1:${account}`] },
+      "eip155:59144": { accounts: [`eip155:59144:${account}`] },
+      "eip155:8453": { accounts: [`eip155:8453:${account}`] },
+    });
+    request.permissions[capability].caveats[0]!.value.optionalScopes = {
+      ...value.optionalScopes,
+      "eip155:11155111": { accounts: [] },
+    };
+    expect(decodeMetaMaskApprovals(raw).approvals).toMatchObject([
+      {
+        chainId: "0xaa36a7",
+        chainPermission: { chainIds: ["0x1", "0xe708", "0x2105", "0xaa36a7"] },
+      },
+    ]);
+    request.permissions[capability].caveats[0]!.value.isMultichainOrigin = false;
+    expect(decodeMetaMaskApprovals(raw).approvals).toEqual([]);
   });
   it("leaves changed permission intent unsupported", () => {
     const mutations = [

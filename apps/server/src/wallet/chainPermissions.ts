@@ -9,7 +9,7 @@ const Value = Schema.Struct({
   requiredScopes: Scopes,
   optionalScopes: Scopes,
   sessionProperties: Schema.Record(Schema.String, Schema.Unknown),
-  isMultichainOrigin: Schema.Literal(false),
+  isMultichainOrigin: Schema.Boolean,
 });
 const Permission = Schema.Struct({
   caveats: Schema.Array(Schema.Struct({ type: Schema.Literal("authorizedScopes"), value: Value })),
@@ -77,6 +77,7 @@ export function decodeChainPermission(
   if (!caveat || previous.caveats.length !== 1) return undefined;
   const value = decodeValue(caveat.value);
   if (
+    delta.isMultichainOrigin !== value.isMultichainOrigin ||
     Object.keys(value.sessionProperties).length ||
     value.requiredScopes[scope] ||
     value.optionalScopes[scope]
