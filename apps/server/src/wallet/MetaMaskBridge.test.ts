@@ -183,7 +183,10 @@ describe("MetaMask confirmation guard", () => {
 describe("trusted network request decoding", () => {
   const raw = {
     ...state,
-    selectedAddress: account,
+    internalAccounts: {
+      selectedAccount: "account-id",
+      accounts: { "account-id": { address: account, type: "eip155:eoa" } },
+    },
     pendingApprovals: {
       network: {
         id: "network",
@@ -209,13 +212,53 @@ describe("trusted network request decoding", () => {
   });
   it("leaves locked or incomplete network requests unsupported", () => {
     expect(decodeMetaMaskApprovals({ ...raw, isUnlocked: false }).approvals).toEqual([]);
-    expect(decodeMetaMaskApprovals({ ...raw, selectedAddress: "" }).approvals).toEqual([]);
+    expect(
+      decodeMetaMaskApprovals({
+        ...raw,
+        internalAccounts: { ...raw.internalAccounts, selectedAccount: "" },
+      }).approvals,
+    ).toEqual([]);
     expect(
       decodeMetaMaskApprovals({
         ...raw,
         pendingApprovals: { network: { ...raw.pendingApprovals.network, requestData: {} } },
       }).approvals,
     ).toEqual([]);
+  });
+  it("does not use a stale legacy address or another account when selection is missing", () => {
+    for (const selectedAccount of ["", "missing-account-id"]) {
+      expect(
+        decodeMetaMaskApprovals({
+          ...raw,
+          selectedAddress: account,
+          internalAccounts: { ...raw.internalAccounts, selectedAccount },
+        }).approvals,
+      ).toEqual([]);
+    }
+  });
+  it("leaves non-Ethereum selected accounts unsupported", () => {
+    expect(
+      decodeMetaMaskApprovals({
+        ...raw,
+        internalAccounts: {
+          ...raw.internalAccounts,
+          accounts: { "account-id": { address: account, type: "solana:data-account" } },
+        },
+      }).approvals,
+    ).toEqual([]);
+  });
+  it("fingerprints a change to the selected Ethereum account", () => {
+    const [before] = decodeMetaMaskApprovals(raw).approvals;
+    const [after] = decodeMetaMaskApprovals({
+      ...raw,
+      internalAccounts: {
+        ...raw.internalAccounts,
+        accounts: { "account-id": { address: recipient, type: "eip155:eoa" } },
+      },
+    }).approvals;
+    expect(before?.account).toBe(account);
+    expect(after?.account).toBe(recipient);
+    expect(approvalFingerprint(before!)).not.toBe(approvalFingerprint(after!));
   });
   it("fingerprints network endpoint changes", () => {
     const add = {

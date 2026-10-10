@@ -32,7 +32,15 @@ const Transaction = Schema.Struct({
 });
 const State = Schema.Struct({
   isUnlocked: Schema.Boolean,
-  selectedAddress: Schema.optionalKey(Schema.String),
+  internalAccounts: Schema.optionalKey(
+    Schema.Struct({
+      selectedAccount: Schema.String,
+      accounts: Schema.Record(
+        Schema.String,
+        Schema.Struct({ address: Schema.String, type: Schema.String }),
+      ),
+    }),
+  ),
   pendingApprovals: Schema.Record(Schema.String, Schema.Unknown),
   unapprovedPersonalMsgs: Schema.optionalKey(Schema.Record(Schema.String, Schema.Unknown)),
   unapprovedTypedMessages: Schema.optionalKey(Schema.Record(Schema.String, Schema.Unknown)),
@@ -126,14 +134,17 @@ export function decodeMetaMaskApprovals(raw: unknown) {
         pending.type === "wallet_switchEthereumChain" ||
         pending.type === "wallet_addEthereumChain"
       ) {
-        if (!state.isUnlocked || !state.selectedAddress) continue;
+        const selected = state.internalAccounts;
+        if (!state.isUnlocked || !selected?.selectedAccount) continue;
+        const account = selected?.accounts[selected.selectedAccount];
+        if (account?.type !== "eip155:eoa") continue;
         const request = decodeNetworkRequest(pending.requestData);
         approvals.push(
           decodeApproval({
             id: pending.id,
             origin: pending.origin,
             method: pending.type,
-            account: state.selectedAddress,
+            account: account.address,
             chainId:
               pending.type === "wallet_switchEthereumChain"
                 ? request.toNetworkConfiguration?.chainId
