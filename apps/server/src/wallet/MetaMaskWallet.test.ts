@@ -1,4 +1,5 @@
 import * as NodeFSP from "node:fs/promises";
+import * as NodeVM from "node:vm";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 import type { BrowserContext, Page } from "playwright-core";
@@ -133,6 +134,41 @@ describe("MetaMask request lifecycle", () => {
     ).rejects.toThrow("different wallet request");
     completion.resolve("0xtransaction");
     await wallet.close("thread-a");
+  });
+  it("preserves RPC failure code and message without serializing error data", async () => {
+    const { wallet, input, rpc } = await setup();
+    rpc.mockImplementation((expression: string) =>
+      expression.includes("eth_chainId")
+        ? Promise.resolve("0x1")
+        : NodeVM.runInNewContext(expression, {
+            location: { origin: input.origin },
+            window: {
+              ethereum: {
+                isMetaMask: true,
+                request: async () => {
+                  throw {
+                    code: -32002,
+                    message: "Request already pending",
+                    data: "private-error-data",
+                  };
+                },
+              },
+            },
+          }).catch((cause: unknown) => {
+            throw new Error(
+              typeof cause === "object" && cause !== null && "message" in cause
+                ? String(cause.message)
+                : "Object",
+            );
+          }),
+    );
+    await wallet.request("thread-a", input);
+    await wallet.close("thread-a");
+    const result = await wallet.result("thread-a", input.clientRequestId);
+    expect(result).toMatchObject({ status: "failed" });
+    expect(result.error).toContain("-32002");
+    expect(result.error).toContain("Request already pending");
+    expect(result.error).not.toContain("private-error-data");
   });
   it("never resends an unfinished request after a server restart", async () => {
     const { wallet, options, input, rpc, completion } = await setup();

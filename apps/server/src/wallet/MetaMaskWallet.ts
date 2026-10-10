@@ -342,7 +342,11 @@ export class MetaMaskWallet {
       `(() => {
       const { origin, request } = ${JSON.stringify({ origin: input.origin, request: { method: input.method, params: parameters } })};
       if (location.origin !== origin || !window.ethereum?.isMetaMask) throw new Error('Wallet origin changed');
-      return window.ethereum.request(request);
+      return window.ethereum.request(request).catch(error => {
+        const code = typeof error?.code === 'number' ? ' (' + error.code + ')' : '';
+        const message = typeof error?.message === 'string' ? error.message.slice(0, 500) : 'Wallet request failed';
+        throw new Error('MetaMask RPC' + code + ': ' + message);
+      });
     })()`,
     );
     const saved = completion
