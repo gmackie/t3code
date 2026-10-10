@@ -523,6 +523,13 @@ jobs:
         with:
           ref: ${{ needs.sync.outputs.ref }}
 
+      - name: Require SSD-backed Mini build storage
+        if: matrix.runner == 'gmacko-mini'
+        shell: bash
+        env:
+          T3CODE_MINI_CI_ROOT: ${{ vars.MINI_CI_STORAGE_ROOT || '/Volumes/FleetNativeFast-20261009/t3-ci' }}
+        run: python3 scripts/mini-ci-storage.py
+
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
@@ -608,7 +615,6 @@ jobs:
       - name: Build desktop artifact
         shell: bash
         env:
-          TMPDIR: ${{ matrix.platform == 'mac' && vars.MACOS_BUILD_TMPDIR || '/tmp' }}
           CSC_LINK: ${{ secrets.CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
           APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
@@ -790,6 +796,12 @@ jobs:
         with:
           ref: ${{ needs.sync.outputs.ref }}
 
+      - name: Require SSD-backed Mini build storage
+        shell: bash
+        env:
+          T3CODE_MINI_CI_ROOT: ${{ vars.MINI_CI_STORAGE_ROOT || '/Volumes/FleetNativeFast-20261009/t3-ci' }}
+        run: python3 scripts/mini-ci-storage.py
+
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
@@ -851,7 +863,6 @@ jobs:
       - name: Build desktop artifact
         shell: bash
         env:
-          TMPDIR: ${{ vars.MACOS_BUILD_TMPDIR || '/tmp' }}
           CSC_LINK: ${{ secrets.CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
           APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
@@ -970,6 +981,12 @@ jobs:
         with:
           ref: ${{ needs.sync.outputs.ref }}
 
+      - name: Require SSD-backed Mini build storage
+        shell: bash
+        env:
+          T3CODE_MINI_CI_ROOT: ${{ vars.MINI_CI_STORAGE_ROOT || '/Volumes/FleetNativeFast-20261009/t3-ci' }}
+        run: python3 scripts/mini-ci-storage.py
+
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
@@ -991,7 +1008,6 @@ jobs:
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
           APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
           RELEASE_VERSION: ${{ needs.sync.outputs.version }}
-          TMPDIR: ${{ vars.IOS_BUILD_TMPDIR || '/tmp' }}
         run: |
           set -euo pipefail
           key_path="$RUNNER_TEMP/AuthKey_${APPLE_API_KEY_ID}.p8"
