@@ -15,6 +15,8 @@ import { McpProtocol, McpSchema, McpServer, Tool } from "effect/unstable/ai";
 import { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/unstable/http";
 import { PreviewAutomationError } from "@t3tools/contracts";
 
+import { CoordinationToolkit } from "./toolkits/coordination/tools.ts";
+import { CoordinationHandlersLive } from "./toolkits/coordination/handlers.ts";
 import packageJson from "../../package.json" with { type: "json" };
 import * as ServerConfig from "../config.ts";
 import * as DeviceService from "../device/DeviceService.ts";
@@ -716,6 +718,7 @@ const McpTransportLive = McpServer.layerHttp({
 }).pipe(Layer.provide(McpAuthMiddlewareLive));
 
 export const layer = Layer.mergeAll(
+  McpServer.toolkit(CoordinationToolkit).pipe(Layer.provide(CoordinationHandlersLive)),
   PreviewToolkitRegistrationLive,
   OrchestratorToolkitRegistrationLive,
   ThreadToolkitRegistrationLive,

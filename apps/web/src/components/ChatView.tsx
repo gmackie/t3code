@@ -667,6 +667,7 @@ const PreviewPanel = lazy(() =>
   import("./preview/PreviewPanel").then((module) => ({ default: module.PreviewPanel })),
 );
 const DiffPanel = lazy(() => import("./DiffPanel"));
+const WorkPanel = lazy(() => import("./coordination/WorkPanel"));
 const selectAutoShowFloatingPreview = (settings: { browserAutoShowFloatingPreview: boolean }) =>
   settings.browserAutoShowFloatingPreview;
 const DevicePanel = lazy(() =>
@@ -7402,6 +7403,13 @@ export default function ChatView(props: ChatViewProps) {
         return;
       }
 
+      if (command === "work.open") {
+        event.preventDefault();
+        event.stopPropagation();
+        if (activeThreadRef) useRightPanelStore.getState().open(activeThreadRef, "work");
+        return;
+      }
+
       if (command === "rightPanel.toggle") {
         event.preventDefault();
         event.stopPropagation();
@@ -10303,6 +10311,14 @@ export default function ChatView(props: ChatViewProps) {
       />
     ) : renderedRightPanelSurface?.kind === "pull-requests" && activeThreadRef ? (
       <ThreadPullRequestsPanel threadRef={activeThreadRef} />
+    ) : renderedRightPanelSurface?.kind === "work" && activeThreadRef ? (
+      <Suspense fallback={null}>
+        <WorkPanel
+          key={`${activeThreadRef.environmentId}:${activeThread.projectId}`}
+          environmentId={activeThreadRef.environmentId}
+          projectId={activeThread.projectId}
+        />
+      </Suspense>
     ) : renderedRightPanelSurface?.kind === "device" ? (
       <Suspense fallback={null}>
         <DevicePanel
@@ -11163,6 +11179,7 @@ export default function ChatView(props: ChatViewProps) {
           onAddTerminal={addTerminalSurface}
           onAddDiff={addDiffSurface}
           onAddFiles={addFilesSurface}
+          onAddWork={() => useRightPanelStore.getState().open(activeThreadRef, "work")}
           onAddPullRequest={addPullRequestSurface}
           onAddPullRequests={addPullRequestsSurface}
           onAddDevice={addDeviceSurface}
@@ -11217,6 +11234,7 @@ export default function ChatView(props: ChatViewProps) {
             onAddTerminal={addTerminalSurface}
             onAddDiff={addDiffSurface}
             onAddFiles={addFilesSurface}
+            onAddWork={() => useRightPanelStore.getState().open(activeThreadRef, "work")}
             onAddPullRequest={addPullRequestSurface}
             onAddPullRequests={addPullRequestsSurface}
             onAddDevice={addDeviceSurface}

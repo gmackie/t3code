@@ -173,6 +173,10 @@ import {
   persistServerRuntimeState,
 } from "./serverRuntimeState.ts";
 import { orchestrationHttpApiLayer } from "./orchestration-v2/http.ts";
+import * as BobCoordination from "./coordination/BobCoordination.ts";
+import * as ExecutionReceipts from "./coordination/ExecutionReceipts.ts";
+import * as ExecutionAdmission from "./coordination/ExecutionAdmission.ts";
+import { executionHttpApiLayer } from "./coordination/http.ts";
 import { projectHttpApiLayer } from "./project/http.ts";
 import * as NetService from "@t3tools/shared/Net";
 import * as RelayClient from "@t3tools/shared/relayClient";
@@ -612,7 +616,15 @@ const RuntimeCoreDependenciesLive = RuntimeCoreDependenciesBaseLive.pipe(
   ),
 );
 
-const RuntimeDependenciesLive = RuntimeCoreDependenciesLive.pipe(
+const CoordinationDependenciesLive = Layer.mergeAll(
+  BobCoordination.layer,
+  ExecutionAdmission.layer,
+  ExecutionReceipts.layer.pipe(Layer.provide(ProcessRunner.layer)),
+).pipe(
+  Layer.provideMerge(BobCoordination.configurationLayer),
+  Layer.provideMerge(RuntimeCoreDependenciesLive),
+);
+const RuntimeDependenciesLive = CoordinationDependenciesLive.pipe(
   // Misc.
   Layer.provideMerge(BackgroundLayerLive),
   Layer.provideMerge(ResourceDiagnosticsLayerLive),
@@ -639,6 +651,7 @@ const makeRoutesLayer = Layer.mergeAll(
       Layer.provide(authHttpApiLayer),
       Layer.provide(connectHttpApiLayer),
       Layer.provide(orchestrationHttpApiLayer),
+      Layer.provide(executionHttpApiLayer),
       Layer.provide(pullRequestHttpApiLayer),
       Layer.provide(projectHttpApiLayer),
       Layer.provide(serverEnvironmentHttpApiLayer),

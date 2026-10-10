@@ -80,6 +80,8 @@ export const RPC_REQUIRED_SCOPES = {
   [WS_METHODS.serverUpdateSettings]: AuthOrchestrationOperateScope,
   [WS_METHODS.serverValidateLinearIssues]: AuthOrchestrationReadScope,
   [WS_METHODS.serverListProjectIssues]: AuthOrchestrationReadScope,
+  [WS_METHODS.serverBobCoordination]: AuthOrchestrationReadScope,
+  [WS_METHODS.serverBobConnection]: AuthOrchestrationReadScope,
   [WS_METHODS.serverListProjectIssueStatuses]: AuthOrchestrationReadScope,
   [WS_METHODS.serverCreateProjectIssue]: AuthOrchestrationOperateScope,
   [WS_METHODS.serverUpdateProjectIssueStatus]: AuthOrchestrationOperateScope,
