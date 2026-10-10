@@ -24,6 +24,8 @@ const invoke = Effect.fn("MetaMaskToolkit.invoke")(function* <A>(
 export const layer = MetaMaskToolkit.toLayer({
   metamask_open: (input) =>
     invoke((browser, threadId) => browser.metamaskOpen(threadId, input.url)),
+  metamask_status: (input) =>
+    invoke((browser, threadId) => browser.metamaskStatus(threadId, input.origin)),
   metamask_pending: () => invoke((browser, threadId) => browser.metamaskPending(threadId)),
   metamask_request: (input) =>
     invoke((browser, threadId) => browser.metamaskRequest(threadId, input)),

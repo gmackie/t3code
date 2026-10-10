@@ -66,6 +66,7 @@ const mutations = [
 
 const unusedWalletMethods = {
   metamaskOpen: () => Effect.die("Unexpected wallet operation in stream test"),
+  metamaskStatus: () => Effect.die("unused"),
   metamaskPending: () => Effect.die("Unexpected wallet operation in stream test"),
   metamaskRequest: () => Effect.die("Unexpected wallet operation in stream test"),
   metamaskResult: () => Effect.die("Unexpected wallet operation in stream test"),

@@ -6,7 +6,8 @@ desktop, and mobile. Ask your environment administrator to configure MetaMask fi
 wallet setup and unlock in MetaMask itself. Wallet storage stays on the server between sessions.
 
 An agent can open the wallet with `metamask_open`, which starts at `https://attest.gmac.io` by default.
-Connect the website and choose its network in MetaMask. You can review and confirm requests directly
+Connect the website and choose its network in MetaMask. Agents can use `metamask_status` to read
+the connected public addresses, current network, and native balances without requesting wallet access. You can review and confirm requests directly
 in the browser from any connected device.
 
 ## Give an agent wallet access

@@ -256,3 +256,81 @@ describe("MetaMask extension home lifecycle", () => {
     expect(duplicate.close).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("MetaMask connected wallet status", () => {
+  it("reads connected public accounts and balances with no signing grants or access prompts", async () => {
+    const { wallet, rpc, input } = await setup();
+    fixtures.configuration = { ...fixtures.configuration!, grants: [] };
+    await wallet.open("thread-a");
+    const request = vi.fn(async ({ method }: { method: string }) => {
+      if (method === "eth_chainId") return "0xaa36a7";
+      if (method === "eth_accounts") return [input.account];
+      if (method === "eth_getBalance") return "0x123";
+      throw new Error("Unexpected RPC method");
+    });
+    rpc.mockImplementation((expression) =>
+      new Function("window", "location", `return ${expression}`)(
+        { ethereum: { isMetaMask: true, request } },
+        { origin: input.origin },
+      ),
+    );
+    await expect(wallet.status("thread-a")).resolves.toEqual({
+      origin: input.origin,
+      unlocked: true,
+      chainId: "0xaa36a7",
+      accounts: [{ address: input.account, balanceWei: "0x123" }],
+    });
+    expect(request.mock.calls.map(([call]) => call.method)).toEqual([
+      "eth_chainId",
+      "eth_accounts",
+      "eth_getBalance",
+      "eth_chainId",
+      "eth_accounts",
+    ]);
+  });
+
+  it("does not request account access when the site is disconnected", async () => {
+    const { wallet, rpc } = await setup();
+    await wallet.open("thread-a");
+    const request = vi.fn(async ({ method }: { method: string }) => {
+      if (method === "eth_chainId") return "0xaa36a7";
+      if (method === "eth_accounts") return [];
+      throw new Error("Unexpected RPC method");
+    });
+    rpc.mockImplementation((expression) =>
+      new Function("window", "location", `return ${expression}`)(
+        { ethereum: { isMetaMask: true, request } },
+        { origin: "https://attest.gmac.io" },
+      ),
+    );
+    expect((await wallet.status("thread-a")).accounts).toEqual([]);
+    expect(request).toHaveBeenCalledTimes(4);
+  });
+
+  it("rejects a changed network instead of mislabeling balances", async () => {
+    const { wallet, rpc } = await setup();
+    await wallet.open("thread-a");
+    let reads = 0;
+    const request = async ({ method }: { method: string }) =>
+      method === "eth_chainId" ? (++reads === 1 ? "0xaa36a7" : "0x1") : [];
+    rpc.mockImplementation((expression) =>
+      new Function("window", "location", `return ${expression}`)(
+        { ethereum: { isMetaMask: true, request } },
+        { origin: "https://attest.gmac.io" },
+      ),
+    );
+    await expect(wallet.status("thread-a")).rejects.toThrow("Wallet changed");
+  });
+
+  it("rejects another thread, ungranted origins, and navigated sites before RPC", async () => {
+    const { wallet, rpc, website } = await setup();
+    await wallet.open("thread-a");
+    await expect(wallet.status("thread-b")).rejects.toThrow("another thread");
+    await expect(wallet.status("thread-a", "https://other.example")).rejects.toThrow(
+      "allowed website",
+    );
+    website.url.mockReturnValue("https://other.example/");
+    await expect(wallet.status("thread-a")).rejects.toThrow("navigated away");
+    expect(rpc).not.toHaveBeenCalled();
+  });
+});

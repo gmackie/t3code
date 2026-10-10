@@ -8,6 +8,7 @@ import {
   METAMASK_DEFAULT_SITE,
   MetaMaskError,
   MetaMaskRequestResult,
+  MetaMaskWalletStatus,
   type MetaMaskRequestInput,
 } from "@t3tools/contracts";
 import type { BrowserContext, Page } from "playwright-core";
@@ -19,6 +20,8 @@ import {
   confirmMetaMaskApproval,
   readMetaMaskState,
 } from "./MetaMaskBridge.ts";
+
+const decodeWalletStatus = Schema.decodeUnknownSync(MetaMaskWalletStatus);
 
 const decodeJournal = Schema.decodeUnknownSync(
   Schema.Struct({ fingerprint: Schema.String, outcome: MetaMaskRequestResult }),
@@ -167,6 +170,59 @@ export class MetaMaskWallet {
         fingerprint: approvalFingerprint(approval),
       })),
     };
+  }
+
+  async status(threadId: string, origin = METAMASK_DEFAULT_SITE) {
+    await this.connect(threadId);
+    const configuration = await readWalletConfiguration(this.options.configurationPath);
+    if (
+      origin !== METAMASK_DEFAULT_SITE &&
+      !configuration.grants.some(
+        (grant) =>
+          grant.threadId === threadId &&
+          grant.origin === origin &&
+          Date.parse(grant.expiresAt) > Date.now(),
+      )
+    )
+      throw new MetaMaskError({
+        code: "permission_denied",
+        detail: "Wallet status requires an allowed website origin.",
+      });
+    const page = this.pages.get(origin);
+    if (!page || page.isClosed())
+      throw new MetaMaskError({
+        code: "unavailable",
+        detail: "Open the wallet website before reading its status.",
+      });
+    if (new URL(page.url()).origin !== origin)
+      throw new MetaMaskError({
+        code: "permission_denied",
+        detail: "The wallet website navigated away from the allowed origin.",
+      });
+    const { unlocked } = await this.pending(threadId);
+    const raw: unknown = await page.evaluate(`(async () => {
+      const origin = ${JSON.stringify(origin)};
+      if (location.origin !== origin || !window.ethereum?.isMetaMask) throw new Error('Wallet origin changed or provider unavailable');
+      const provider = window.ethereum;
+      const chainId = await provider.request({ method: 'eth_chainId' });
+      const addresses = await provider.request({ method: 'eth_accounts' });
+      const accounts = await Promise.all(addresses.map(async address => ({
+        address, balanceWei: await provider.request({ method: 'eth_getBalance', params: [address, 'latest'] }),
+      })));
+      const currentChain = await provider.request({ method: 'eth_chainId' });
+      const currentAccounts = await provider.request({ method: 'eth_accounts' });
+      if (location.origin !== origin || provider !== window.ethereum || chainId !== currentChain || JSON.stringify(addresses) !== JSON.stringify(currentAccounts)) throw new Error('Wallet changed while reading status; retry');
+      return { origin, chainId, accounts };
+    })()`);
+    if (new URL(page.url()).origin !== origin)
+      throw new MetaMaskError({
+        code: "permission_denied",
+        detail: "Wallet origin changed while reading status.",
+      });
+    return decodeWalletStatus({
+      ...(typeof raw === "object" && raw !== null ? raw : {}),
+      unlocked,
+    });
   }
 
   private journalPath(threadId: string, clientRequestId: string) {

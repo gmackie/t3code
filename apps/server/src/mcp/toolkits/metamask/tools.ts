@@ -3,6 +3,7 @@ import {
   MetaMaskError,
   MetaMaskRequestInput,
   MetaMaskRequestResult,
+  MetaMaskWalletStatus,
 } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
 import { Tool, Toolkit } from "effect/ai";
@@ -32,6 +33,15 @@ const Pending = Tool.make("metamask_pending", {
       Schema.Struct({ ...MetaMaskApproval.fields, fingerprint: Schema.String }),
     ),
   }),
+})
+  .annotate(Tool.Readonly, true)
+  .annotate(Tool.Destructive, false);
+const Status = Tool.make("metamask_status", {
+  ...shared,
+  description:
+    "Read the connected public accounts, chain ID and native balances for an already-open wallet website. Uses eth_accounts without requesting access or prompting. Defaults to Attest; other origins require a current thread grant. Never returns wallet secrets or submits transactions.",
+  parameters: Schema.Struct({ origin: Schema.optionalKey(Schema.String) }),
+  success: MetaMaskWalletStatus,
 })
   .annotate(Tool.Readonly, true)
   .annotate(Tool.Destructive, false);
@@ -68,4 +78,4 @@ const Close = Tool.make("metamask_close", {
     "Close this thread's wallet browser session without deleting persistent wallet storage. Ends its tabs and releases it for another thread. Pending wallet requests may become unknown; inspect chain history before retrying them.",
   success: Schema.Struct({ closed: Schema.Boolean }),
 }).annotate(Tool.Destructive, true);
-export const MetaMaskToolkit = Toolkit.make(Open, Pending, Request, Result, Approve, Close);
+export const MetaMaskToolkit = Toolkit.make(Open, Pending, Status, Request, Result, Approve, Close);

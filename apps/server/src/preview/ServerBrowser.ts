@@ -242,6 +242,10 @@ export class ServerBrowser extends Context.Service<
       threadId: string,
       url?: string,
     ) => Effect.Effect<Awaited<ReturnType<MetaMaskWallet["open"]>>, MetaMaskError>;
+    readonly metamaskStatus: (
+      threadId: string,
+      origin?: string,
+    ) => Effect.Effect<Awaited<ReturnType<MetaMaskWallet["status"]>>, MetaMaskError>;
     readonly metamaskPending: (
       threadId: string,
     ) => Effect.Effect<Awaited<ReturnType<MetaMaskWallet["pending"]>>, MetaMaskError>;
@@ -2239,6 +2243,7 @@ const make = Effect.gen(function* () {
 
   return ServerBrowser.of({
     metamaskOpen: (threadId, url) => walletEffect(() => wallet.open(threadId, url)),
+    metamaskStatus: (threadId, origin) => walletEffect(() => wallet.status(threadId, origin)),
     metamaskPending: (threadId) => walletEffect(() => wallet.pending(threadId)),
     metamaskRequest: (threadId, input) => walletEffect(() => wallet.request(threadId, input)),
     metamaskResult: (threadId, requestId) => walletEffect(() => wallet.result(threadId, requestId)),

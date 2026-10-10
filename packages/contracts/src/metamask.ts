@@ -63,6 +63,12 @@ export const MetaMaskApproval = Schema.Struct({
   transaction: MetaMaskRequestInput.fields.transaction,
 });
 export type MetaMaskApproval = typeof MetaMaskApproval.Type;
+export const MetaMaskWalletStatus = Schema.Struct({
+  origin: Schema.String,
+  unlocked: Schema.Boolean,
+  chainId: Quantity,
+  accounts: Schema.Array(Schema.Struct({ address: Address, balanceWei: Quantity })),
+});
 export const MetaMaskRequestResult = Schema.Struct({
   requestId: Schema.String,
   status: Schema.Literals(["pending", "completed", "failed", "unknown"]),
