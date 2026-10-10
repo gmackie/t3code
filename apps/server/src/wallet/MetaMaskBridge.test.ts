@@ -20,6 +20,7 @@ describe("MetaMask approval decoding", () => {
   it("uses trusted transaction state and preserves the exact origin, account, chain and value", () => {
     expect(decodeMetaMaskApprovals(state)).toEqual({
       unlocked: true,
+      unsupportedApprovals: [],
       approvals: [
         {
           id: "tx",
@@ -40,6 +41,30 @@ describe("MetaMask approval decoding", () => {
         pendingApprovals: { tx: { ...state.pendingApprovals.tx, type: "wallet_addEthereumChain" } },
       }).approvals,
     ).toEqual([]);
+  });
+  it("reports unsupported permission requests without exposing request data", () => {
+    const result = decodeMetaMaskApprovals({
+      isUnlocked: true,
+      pendingApprovals: {
+        permissions: {
+          id: "permissions",
+          origin: "https://attest.gmac.io",
+          type: "wallet_requestPermissions",
+          requestData: { metadata: { isSwitchEthereumChain: true }, secret: "never-return-this" },
+        },
+      },
+      vault: "never-return-this-either",
+    });
+    expect(result.approvals).toEqual([]);
+    expect(result.unsupportedApprovals).toEqual([
+      { id: "permissions", origin: "https://attest.gmac.io", type: "wallet_requestPermissions" },
+    ]);
+    expect(JSON.stringify(result)).not.toContain("never-return");
+  });
+  it("reports malformed supported requests instead of silently hiding them", () => {
+    expect(decodeMetaMaskApprovals({ ...state, transactions: [] }).unsupportedApprovals).toEqual([
+      { id: "tx", origin: "https://attest.gmac.io", type: "transaction" },
+    ]);
   });
   it("changes the fingerprint when transaction intent changes", () => {
     const [approval] = decodeMetaMaskApprovals(state).approvals;

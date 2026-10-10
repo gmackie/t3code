@@ -117,8 +117,8 @@ export async function readMetaMaskState(page: Page, extensionId: string) {
 export function decodeMetaMaskApprovals(raw: unknown) {
   const state = decodeState(raw);
   const approvals: Array<typeof MetaMaskApproval.Type> = [];
-  for (const value of Object.values(state.pendingApprovals)) {
-    const pending = decodePending(value);
+  const pendingRequests = Object.values(state.pendingApprovals).map((value) => decodePending(value));
+  for (const pending of pendingRequests) {
     try {
       if (
         pending.type === "wallet_switchEthereumChain" ||
@@ -213,7 +213,12 @@ export function decodeMetaMaskApprovals(raw: unknown) {
       // A malformed or newer request shape needs manual review in MetaMask.
     }
   }
-  return { unlocked: state.isUnlocked, approvals };
+  const supportedIds = new Set(approvals.map((approval) => approval.id));
+  // Report only public request identity. Unknown requestData can contain sensitive wallet state.
+  const unsupportedApprovals = pendingRequests
+    .filter((pending) => !supportedIds.has(pending.id))
+    .map(({ id, origin, type }) => ({ id, origin, type }));
+  return { unlocked: state.isUnlocked, approvals, unsupportedApprovals };
 }
 
 export function approvalFingerprint(approval: typeof MetaMaskApproval.Type) {

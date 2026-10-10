@@ -166,6 +166,7 @@ export class MetaMaskWallet {
     const state = decodeMetaMaskApprovals(raw);
     return {
       ...state,
+      walletRoute: new URL(page.url()).hash,
       approvals: state.approvals.map((approval) => ({
         ...approval,
         fingerprint: approvalFingerprint(approval),
