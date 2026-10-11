@@ -1266,6 +1266,9 @@ export interface DesktopBridge {
   preview?: DesktopPreviewBridge;
 }
 
+/** Renderer lease that keeps an inactive desktop guest compositing during a screenshot. */
+export const DESKTOP_PREVIEW_CAPTURE_ACTIVITY = "__t3DesktopPreviewCaptureActivity";
+
 /** Renderer callback invoked by Electron with a fresh user gesture before display-media capture. */
 export const DESKTOP_PREVIEW_RECORDING_CAPTURE_TRIGGER = "__t3DesktopPreviewRecordingCapture";
 

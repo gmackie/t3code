@@ -23,11 +23,16 @@ const makeDebuggee = () => {
   const debuggee = Object.assign(emitter, {
     sendCommand: (method: string) =>
       new Promise((resolve) => {
+        if (method === "Runtime.disable") {
+          resolve({});
+          return;
+        }
         if (method === "Target.getTargetInfo") {
           resolve({ targetInfo: { targetId: "GUEST" } });
           return;
         }
         pending.push(() => resolve({ method }));
+        emitter.emit("command", method);
       }),
   });
   const webContents = {
@@ -40,6 +45,7 @@ const makeDebuggee = () => {
       webContents: webContents as unknown as Electron.WebContents,
       debugger: debuggee as unknown as Electron.Debugger,
     },
+    nextCommand: () => new Promise<void>((resolve) => emitter.once("command", () => resolve())),
     emit: (method: string, params: unknown) => emitter.emit("message", {}, method, params, ""),
     release: () => pending.splice(0).forEach((resolve) => resolve()),
   };
@@ -82,7 +88,9 @@ describe("DesktopBrowserHost", () => {
         );
       yield* command(1, "Page.captureScreenshot");
       yield* host.handleCommandLine(encodeJson({ type: "release", ...key }));
+      const sent = debuggee.nextCommand();
       yield* command(2, "DOM.enable");
+      yield* Effect.promise(() => sent);
       debuggee.release();
       yield* Effect.promise(() => new Promise((resolve) => setImmediate(resolve)));
       const [, reply] = yield* Fiber.join(reader);
@@ -90,6 +98,70 @@ describe("DesktopBrowserHost", () => {
       expect(reply).toMatchObject({ type: "cdp" });
       expect(decodeCdpReply((reply as { message: string }).message).id).toBe(2);
     }).pipe(Effect.scoped),
+  );
+
+  it.effect(
+    "replays execution contexts when Playwright reconnects to an already-enabled Runtime",
+    () =>
+      Effect.gen(function* () {
+        const host = yield* DesktopBrowserHost.make;
+        const events = new NodeEvents.EventEmitter();
+        let enabled = true;
+        const debuggerWithRuntime = Object.assign(events, {
+          async sendCommand(method: string) {
+            if (method === "Target.getTargetInfo") return { targetInfo: { targetId: "GUEST" } };
+            if (method === "Runtime.disable") enabled = false;
+            if (method === "Runtime.enable" && !enabled) {
+              enabled = true;
+              events.emit(
+                "message",
+                {},
+                "Runtime.executionContextCreated",
+                { context: { id: 1 } },
+                "",
+              );
+            }
+            return {};
+          },
+        });
+        host.attach(key, {
+          ...makeDebuggee().tab,
+          debugger: debuggerWithRuntime as unknown as Electron.Debugger,
+        });
+        const connect = Effect.gen(function* () {
+          const reading = yield* takeEvents(host, 5).pipe(Effect.forkScoped);
+          yield* Effect.yieldNow;
+          yield* host.handleCommandLine(
+            encodeJson({
+              type: "cdp",
+              ...key,
+              message: encodeJson({ id: 1, method: "Target.setAutoAttach" }),
+            }),
+          );
+          yield* host.handleCommandLine(
+            encodeJson({
+              type: "cdp",
+              ...key,
+              message: encodeJson({
+                id: 2,
+                method: "Runtime.enable",
+                sessionId: "t3-preview-page",
+              }),
+            }),
+          );
+          const received = yield* Fiber.join(reading);
+          return received
+            .filter((event) => event.type === "cdp")
+            .map((event) => JSON.parse(event.message));
+        });
+        expect(yield* connect).toContainEqual(
+          expect.objectContaining({ method: "Runtime.executionContextCreated" }),
+        );
+        yield* host.handleCommandLine(encodeJson({ type: "release", ...key }));
+        expect(yield* connect).toContainEqual(
+          expect.objectContaining({ method: "Runtime.executionContextCreated" }),
+        );
+      }).pipe(Effect.scoped),
   );
 
   it.effect("saves a server tab's download under its CDP guid where the server asked", () =>

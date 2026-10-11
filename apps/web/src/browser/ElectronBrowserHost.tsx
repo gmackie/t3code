@@ -18,12 +18,14 @@ import { useAtomCommand } from "~/state/use-atom-command";
 import { readPreviewAnnotationTheme } from "./annotationTheme";
 import { useBrowserDefaults } from "./browserDefaults";
 import { useBrowserPointerStore } from "./browserPointerStore";
+import { installDesktopCaptureActivity } from "./desktopCaptureActivity";
 import { HostedBrowserWebview } from "./HostedBrowserWebview";
 import { openUrlInPreview } from "./openFileInPreview";
 import { rendersServerTabNatively } from "./previewRuntime";
 import { previewRuntimeTabId } from "./previewRuntimeTabId";
 
 export function ElectronBrowserHost() {
+  useEffect(installDesktopCaptureActivity, []);
   const { resolvedTheme } = useTheme();
   const previewByThreadKey = useActivePreviewSessions();
   const primaryEnvironmentId = useAtomValue(primaryEnvironmentIdAtom);

@@ -23,6 +23,7 @@ import * as PubSub from "effect/PubSub";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 
+import { withDesktopCaptureActivity } from "./DesktopBrowserCapture.ts";
 import { createCdpRelayConnection, type CdpRelayConnection } from "./CdpRelay.ts";
 
 const encodeEvent = Schema.encodeSync(Schema.fromJsonString(DesktopBrowserEvent));
@@ -111,12 +112,22 @@ export const make = Effect.gen(function* () {
   const relayFor = (tab: AttachedTab) => {
     if (tab.relay) return tab.relay;
     const { webContents, debugger: debuggee } = tab.debuggee;
+    // A fresh relay must get fresh Runtime.executionContextCreated events even
+    // when Electron had already enabled Runtime before Playwright connected.
+    const runtimeReset = debuggee.sendCommand("Runtime.disable");
+    // A detached guest can reject before Playwright sends its first page command.
+    void runtimeReset.catch(() => {});
     const relay: CdpRelayConnection = createCdpRelayConnection(
       {
-        send: (method, params, sessionId) =>
-          sessionId === undefined
-            ? debuggee.sendCommand(method, params)
-            : debuggee.sendCommand(method, params, sessionId),
+        send: async (method, params, sessionId) => {
+          await runtimeReset;
+          const send = () =>
+            sessionId === undefined
+              ? debuggee.sendCommand(method, params)
+              : debuggee.sendCommand(method, params, sessionId);
+          if (method !== "Page.captureScreenshot") return send();
+          return withDesktopCaptureActivity(webContents.hostWebContents, tab.key.tabId, send);
+        },
         targetId: () =>
           debuggee
             .sendCommand("Target.getTargetInfo")
