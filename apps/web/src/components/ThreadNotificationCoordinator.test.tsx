@@ -20,6 +20,7 @@ const state = vi.hoisted(() => ({
   turnError: false,
   limited: false,
   subagent: false,
+  autolab: false,
   background: [] as Array<{ taskId: string; kind: "command" | "monitor" }>,
   add: vi.fn(
     (_toast: { title: string; description: string; actionProps: { onClick: () => void } }) =>
@@ -40,6 +41,7 @@ function mockThreadShell() {
     id: "thread-1",
     projectId: "project-1",
     title: "Fix the login form",
+    ...(state.autolab ? { completionPolicy: "autolab" } : {}),
     providerInstanceId: "codex",
     modelSelection: { instanceId: "codex", model: "gpt-5.4" },
     runtimeMode: "full-access",
@@ -145,6 +147,7 @@ beforeEach(() => {
     focused: true,
     visible: "visible",
     live: true,
+    autolab: false,
     completedAt: null,
     archivedAt: null,
     input: false,
@@ -185,6 +188,17 @@ describe("thread notifications", () => {
     await render();
     expect(state.sound).not.toHaveBeenCalled();
     expect(state.add).not.toHaveBeenCalled();
+    expect(state.notification).not.toHaveBeenCalled();
+  });
+
+  it.each([true, false])("keeps autolab completion quiet with focus=%s", async (focused) => {
+    state.autolab = true;
+    state.focused = focused;
+    state.mode = "notifications-and-sound";
+    await render();
+    await complete();
+    expect(state.add).not.toHaveBeenCalled();
+    expect(state.sound).not.toHaveBeenCalled();
     expect(state.notification).not.toHaveBeenCalled();
   });
 

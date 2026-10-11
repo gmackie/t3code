@@ -170,6 +170,11 @@ export function resolveAutoSettlementAt(input: {
   readonly autoSettleOnMerge: boolean;
 }): DateTime.Utc | null {
   const { thread } = input;
+  if (!isAutoSettlementCandidate(thread, input.nowMs)) return null;
+  // Bob consumes the research result; no human review or PR merge is needed.
+  if (thread.completionPolicy === "autolab" && thread.status === "completed") {
+    return thread.latestRunCompletedAt ?? null;
+  }
   let pullRequest = input.pullRequest;
   const links = visibleThreadPullRequests(thread.pullRequests ?? []);
   if (links.some((link) => link.snapshot === null || link.snapshot.state === "open")) return null;
@@ -271,9 +276,7 @@ export const make = Effect.gen(function* () {
     threadId?: ThreadId,
   ) {
     const settings = yield* settingsService.getSettings;
-    if (!autoSettlementConfigured(settings)) {
-      return;
-    }
+    const configured = autoSettlementConfigured(settings);
     // A sweep for one thread reads only that thread's candidate row.
     const threads = yield* projections.getSettlementCandidates(threadId);
     if (threads.length === 0) return;
@@ -284,7 +287,11 @@ export const make = Effect.gen(function* () {
     // the merged pull request: most threads carry no link and settle from
     // their branch lookup, which would otherwise wait for the next minute's
     // sweep on a possibly stale cached answer.
-    const candidates = threads.filter((thread) => isAutoSettlementCandidate(thread, nowMs));
+    const candidates = threads.filter(
+      (thread) =>
+        (configured || thread.completionPolicy === "autolab") &&
+        isAutoSettlementCandidate(thread, nowMs),
+    );
 
     const settleThread = Effect.fn("ThreadSettlementServiceV2.settleThread")(
       function* (thread: (typeof candidates)[number], pullRequest: SettlementPullRequest | null) {
@@ -539,6 +546,7 @@ export const make = Effect.gen(function* () {
     switch (event.type) {
       case "thread.settled":
         return closeIdleTerminals(event.threadId);
+      case "thread.metadata-updated":
       case "thread.pull-request-synced":
       case "provider-session.detached":
         return worker.enqueue(event.threadId);

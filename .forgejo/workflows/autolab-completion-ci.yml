@@ -1,0 +1,36 @@
+name: Autolab completion CI
+
+on:
+  pull_request:
+    branches:
+      - custom-local
+    paths:
+      - apps/server/src/orchestration-v2/ThreadSettlementService*
+      - apps/server/src/orchestration-v2/ThreadLaunchService*
+      - packages/shared/src/agentAwareness*
+      - apps/web/src/components/ThreadNotificationCoordinator*
+      - .forgejo/workflows/autolab-completion-ci.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  autolab-completion:
+    runs-on: forgegraph-ci
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.14.0
+      - name: Install pinned dependencies
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.10.0 --activate
+          pnpm install --frozen-lockfile
+      - name: Verify lifecycle and notifications
+        run: |
+          pnpm exec vp test run packages/shared/src/agentAwareness.test.ts apps/server/src/orchestration-v2/ThreadSettlementService.test.ts apps/server/src/orchestration-v2/ThreadLaunchService.test.ts apps/web/src/components/ThreadNotificationCoordinator.test.tsx
+          pnpm exec vp lint packages/contracts/src/orchestrationV2.ts packages/shared/src/agentAwareness.ts apps/server/src/orchestration-v2/ThreadSettlementService.ts apps/server/src/orchestration-v2/ThreadLaunchService.ts apps/server/src/orchestration-v2/ProjectionStore.ts apps/server/src/orchestration-v2/Orchestrator.ts apps/server/src/ws.ts apps/web/src/components/ThreadNotificationCoordinator.tsx
+          pnpm --filter t3 exec vp pack

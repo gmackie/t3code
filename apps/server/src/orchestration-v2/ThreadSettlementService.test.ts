@@ -209,6 +209,38 @@ describe("isAutoSettlementCandidate", () => {
   });
 });
 
+describe("autolab settlement", () => {
+  const decision = (overrides: Partial<SettlementShell>) =>
+    ThreadSettlementService.resolveAutoSettlementAt({
+      thread: shell({
+        completionPolicy: "autolab",
+        status: "completed",
+        latestRunCompletedAt: at(-1000),
+        ...overrides,
+      }),
+      pullRequest: { state: "open" },
+      nowMs: NOW_MS,
+      autoSettleAfterDays: null,
+      autoSettleOnMerge: false,
+    });
+  it("settles a completed experiment while preserving live work and explicit overrides", () => {
+    expect(decision({})).toEqual(at(-1000));
+    expect(decision({ completionPolicy: undefined })).toBeNull();
+    expect(decision({ status: "failed" })).toBeNull();
+    expect(decision({ activityRunStatus: "running" })).toBeNull();
+    expect(decision({ settledOverride: "active" })).toBeNull();
+    expect(decision({ pinnedAt: at(-1000) })).toBeNull();
+    expect(
+      decision({ pendingBackgroundTasks: [{ taskId: "review", kind: "subagent" }] }),
+    ).toBeNull();
+    expect(
+      decision({
+        pendingRuntimeRequest: { id: "input" as never, kind: "user_input", createdAt: at(-1000) },
+      }),
+    ).toBeNull();
+  });
+});
+
 describe("threadHasQueuedTurnStart", () => {
   it("holds a fresh unadopted user message inside the grace window only", () => {
     const fresh = shell({ latestUserMessageAt: at(-1_000) });
@@ -656,6 +688,42 @@ const startHarness = Effect.fn("startThreadSettlementHarness")(function* (
 });
 
 describe("ThreadSettlementServiceV2 worker", () => {
+  it.effect("settles autolab completion without global settings or a PR lookup", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        yield* TestClock.setTime(Date.parse(NOW));
+        const thread = makeThread("autolab", {
+          completionPolicy: "autolab",
+          status: "completed",
+          latestRunCompletedAt: DateTime.makeUnsafe(NOW),
+        });
+        const normal = makeThread("normal", {
+          status: "completed",
+          latestRunCompletedAt: DateTime.makeUnsafe(NOW),
+        });
+        const failed = makeThread("autolab-failed", {
+          completionPolicy: "autolab",
+          status: "failed",
+        });
+        const fixture = yield* makeHarness({
+          snapshot: makeSnapshot([thread, normal, failed]),
+          settings: {
+            ...DEFAULT_SERVER_SETTINGS,
+            sidebarAutoSettleAfterDays: null,
+            sidebarAutoSettleOnMerge: false,
+          },
+        });
+        yield* Effect.gen(function* () {
+          const service = yield* ThreadSettlementService.ThreadSettlementServiceV2;
+          yield* startHarness(service, fixture.activation, fixture.snapshotReads);
+          const commands = yield* Ref.get(fixture.commands);
+          expect(commands.map((command) => command.threadId)).toEqual([thread.id]);
+          expect(commands[0]?.settledAt).toEqual(thread.latestRunCompletedAt);
+        }).pipe(Effect.provide(fixture.layer));
+      }),
+    ),
+  );
+
   it.effect("settles a merged pull request stored only in the thread links", () =>
     Effect.scoped(
       Effect.gen(function* () {

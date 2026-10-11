@@ -2269,3 +2269,18 @@ it.effect.each([0, 1])("releases an async setup before its completion with exit 
     }).pipe(Effect.provide(harness.layer));
   }),
 );
+
+it.effect("persists autolab completion policy in thread and shell projections", () => {
+  const harness = makeHarness({ runSetup: () => Effect.never });
+  return Effect.gen(function* () {
+    const launches = yield* ThreadLaunch.ThreadLaunchService;
+    const threads = yield* ThreadManagement.ThreadManagementService;
+    const launched = yield* launches.launch({
+      ...launchInput({ command: "command:autolab", thread: "thread:autolab" }),
+      completionPolicy: "autolab",
+    });
+    const projection = yield* threads.getThreadProjection(launched.threadId);
+    const wire = yield* encodeThreadProjection(projection);
+    assert.equal(wire.thread.completionPolicy, "autolab");
+  }).pipe(Effect.provide(harness.layer));
+});

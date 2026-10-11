@@ -153,7 +153,7 @@ function EnvironmentNotifications({
           : completion !== null && (prior.completion === null || completion > prior.completion)
             ? "completion"
             : null;
-      if (!kind) continue;
+      if (!kind || (kind === "completion" && rawThread.completionPolicy === "autolab")) continue;
       const title =
         kind === "completion"
           ? "Thread completed"

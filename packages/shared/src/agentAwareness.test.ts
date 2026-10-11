@@ -23,6 +23,7 @@ describe("projectThreadAwarenessV2", () => {
     overrides: Partial<
       Pick<
         OrchestrationV2ThreadShell,
+        | "completionPolicy"
         | "activityRunStatus"
         | "status"
         | "pendingBackgroundTasks"
@@ -43,6 +44,34 @@ describe("projectThreadAwarenessV2", () => {
     pendingRuntimeRequest: null,
     updatedAt,
     ...overrides,
+  });
+
+  it("suppresses only autolab completion alerts", () => {
+    const awareness = (overrides: Parameters<typeof v2Thread>[0]) =>
+      projectThreadAwarenessV2({
+        environmentId: "env-1" as EnvironmentId,
+        project,
+        thread: v2Thread(overrides),
+      });
+    expect(awareness({ status: "completed", completionPolicy: "autolab" })).toBeNull();
+    expect(awareness({ status: "completed" })).toMatchObject({ headline: "Agent finished" });
+    expect(awareness({ status: "running", completionPolicy: "autolab" })).toMatchObject({
+      phase: "running",
+    });
+    expect(awareness({ status: "failed", completionPolicy: "autolab" })).toMatchObject({
+      phase: "failed",
+    });
+    expect(
+      awareness({
+        status: "completed",
+        completionPolicy: "autolab",
+        pendingRuntimeRequest: {
+          id: RuntimeRequestId.make("input"),
+          kind: "user_input",
+          createdAt: updatedAt,
+        },
+      }),
+    ).toMatchObject({ phase: "waiting_for_input" });
   });
 
   it("projects V2 run state", () => {

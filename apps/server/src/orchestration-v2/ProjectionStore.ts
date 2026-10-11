@@ -168,6 +168,7 @@ export type ProjectionSettlementCandidate = Pick<
   OrchestrationV2ThreadShell,
   | "id"
   | "projectId"
+  | "completionPolicy"
   | "branch"
   | "worktreePath"
   | "pullRequests"
@@ -1394,6 +1395,9 @@ export function threadShellFromProjection(
     id: projection.thread.id,
     projectId: projection.thread.projectId,
     title: projection.thread.title,
+    ...(projection.thread.completionPolicy === undefined
+      ? {}
+      : { completionPolicy: projection.thread.completionPolicy }),
     providerInstanceId: projection.thread.providerInstanceId,
     modelSelection: projection.thread.modelSelection,
     runtimeMode: projection.thread.runtimeMode,
@@ -1662,6 +1666,9 @@ function shellFromState(input: {
     id: input.state.thread.id,
     projectId: input.state.thread.projectId,
     title: input.state.thread.title,
+    ...(input.state.thread.completionPolicy === undefined
+      ? {}
+      : { completionPolicy: input.state.thread.completionPolicy }),
     providerInstanceId: input.state.thread.providerInstanceId,
     modelSelection: input.state.thread.modelSelection,
     runtimeMode: input.state.thread.runtimeMode,

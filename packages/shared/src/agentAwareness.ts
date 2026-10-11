@@ -42,6 +42,7 @@ export interface ProjectThreadAwarenessV2Input {
   readonly project: Pick<Project, "title">;
   readonly thread: Pick<
     OrchestrationV2ThreadShell,
+    | "completionPolicy"
     | "activityRunStatus"
     | "id"
     | "lineage"
@@ -61,7 +62,7 @@ export function projectThreadAwarenessV2(
   const { environmentId, project, thread } = input;
   if (thread.lineage.relationshipToParent === "subagent") return null;
   const phase = resolveThreadAwarenessPhaseV2(thread);
-  if (phase === null) {
+  if (phase === null || (phase === "completed" && thread.completionPolicy === "autolab")) {
     return null;
   }
   const detail =

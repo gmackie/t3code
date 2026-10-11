@@ -1991,6 +1991,9 @@ const layerWsRpc = (
                     : { reuseExistingThread: input.reuseExistingThread }),
                   projectId: input.projectId,
                   title: input.title,
+                  ...(input.completionPolicy === undefined
+                    ? {}
+                    : { completionPolicy: input.completionPolicy }),
                   ...(input.generateTitle === undefined
                     ? {}
                     : { generateTitle: input.generateTitle }),
