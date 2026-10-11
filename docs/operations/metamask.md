@@ -65,3 +65,41 @@ for the connected account and thread. If the network is absent, separately grant
 `wallet_addEthereumChain`; this method only adds the pinned Sepolia RPC/explorer preset.
 Both methods use the request journal and exact approval fingerprint checks. Neither grant
 permits signing or sending transactions. Revoke setup grants when setup is complete.
+
+
+## Fee limits and adapter updates
+
+Transaction grants now need `maxGasFeeWei` in addition to `maxValueWei`. The
+maximum gas cost is `gas * maxFeePerGas` (or `gas * gasPrice` for legacy
+transactions); it is separate from the amount sent. Old value-only grants
+continue to support their non-transaction methods, but cannot authorize a
+transaction. Requests must specify a positive gas limit and either both
+EIP-1559 prices or a legacy gas price, as hexadecimal quantities in wei.
+Pending approvals expose these fields and include them in their fingerprint.
+
+`metamask_update_fees` edits one pending EIP-1559 transaction using its current
+fingerprint. It requires a grant for the proposed maximum fee, rechecks the
+transaction and grant before saving, and never confirms the transaction.
+Read `metamask_pending` again and verify the saved fees before approval.
+Security alerts and unsupported layouts still require manual review.
+
+The stateless MetaMask adapter can be updated independently of the desktop:
+
+```sh
+node scripts/build-wallet-bridge.ts /absolute/path/to/wallet-build
+node scripts/install-wallet-bridge.ts /absolute/path/to/wallet-build/bridge-module.json /absolute/path/to/metamask/config.json
+```
+
+The installer copies a content-addressed module beside the configuration and
+atomically changes its `bridgeModule` entry, preserving grants and other host
+settings. Wallet actions reread this entry and verify the module checksum;
+checksum or API mismatches disable the action rather than falling back.
+Remove `bridgeModule` to return to the bundled adapter. Install only trusted
+locally built adapters: these are executable host code, not wallet permissions.
+
+This mechanism requires a server that includes the adapter loader. Older
+servers, including the initial MetaMask release, need a one-time server update
+and restart first. Installing a bridge alone cannot add new MCP schemas to an
+older running server. Browser ownership, journals and permission enforcement
+remain in the server and require a server update when changed. Building this
+adapter does not build or sign a desktop app.

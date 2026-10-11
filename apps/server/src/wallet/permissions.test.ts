@@ -17,16 +17,18 @@ const grant: MetaMaskGrant = {
   methods: ["eth_sendTransaction", "eth_signTypedData_v4", "personal_sign"],
   expiresAt: "2026-10-10T00:00:00Z",
   maxValueWei: "0xa",
+  maxGasFeeWei: "0x5208",
   recipients: [recipient],
   allowContractCalls: false,
 };
+const fees = { gas: "0x5208", maxFeePerGas: "0x1", maxPriorityFeePerGas: "0x1" };
 const request: MetaMaskRequestInput = {
   clientRequestId: "request-a",
   origin: grant.origin,
   method: "eth_sendTransaction",
   account,
   chainId: "0x1",
-  transaction: { to: recipient, value: "0xa" },
+  transaction: { ...fees, to: recipient, value: "0xa" },
 };
 
 describe("MetaMask grants", () => {
@@ -46,9 +48,9 @@ describe("MetaMask grants", () => {
     { account: recipient },
     { chainId: "0x2" },
     { method: "eth_requestAccounts" as const },
-    { transaction: { to: account, value: "0xa" } },
-    { transaction: { to: recipient, value: "0xb" } },
-    { transaction: { to: recipient, value: "0x0", data: "0x1234" } },
+    { transaction: { ...fees, to: account, value: "0xa" } },
+    { transaction: { ...fees, to: recipient, value: "0xb" } },
+    { transaction: { ...fees, to: recipient, value: "0x0", data: "0x1234" } },
   ])("denies a request outside the grant: %j", (change) => {
     expect(() => requireWalletGrant([grant], "thread-a", { ...request, ...change }, now)).toThrow();
   });
@@ -56,13 +58,18 @@ describe("MetaMask grants", () => {
     expect(() => requireWalletGrant([grant], "thread-b", request, now)).toThrow();
   });
   it("only permits contract calldata when the user explicitly allows it", () => {
-    const call = { ...request, transaction: { to: recipient, value: "0x0", data: "0x1234" } };
+    const call = {
+      ...request,
+      transaction: { ...fees, to: recipient, value: "0x0", data: "0x1234" },
+    };
     expect(() =>
       requireWalletGrant([{ ...grant, allowContractCalls: true }], "thread-a", call, now),
     ).not.toThrow();
   });
   it("builds RPC parameters without allowing caller-supplied sender overrides", () => {
-    expect(walletRpcParameters(request)).toEqual([{ from: account, to: recipient, value: "0xa" }]);
+    expect(walletRpcParameters(request)).toEqual([
+      { ...fees, from: account, to: recipient, value: "0xa" },
+    ]);
     const { transaction: _transaction, ...withoutTransaction } = request;
     expect(() => walletRpcParameters(withoutTransaction)).toThrow();
   });
@@ -138,5 +145,50 @@ describe("network setup permissions", () => {
       ),
     ).toThrow("pinned Sepolia");
     expect(() => requireWalletGrant([], "thread-a", approval, now)).toThrow();
+  });
+});
+
+describe("transaction fee permissions", () => {
+  it("enforces worst-case gas cost even when transfer value is allowed", () => {
+    const tx = { ...request, transaction: { ...request.transaction!, maxFeePerGas: "0x2" } };
+    expect(() => requireWalletGrant([grant], "thread-a", tx, now)).toThrow("maximum gas fee");
+    expect(
+      requireWalletGrant([{ ...grant, maxGasFeeWei: "0xa410" }], "thread-a", tx, now),
+    ).toBeDefined();
+  });
+  it("old value-only grants do not authorize transaction gas", () => {
+    const { maxGasFeeWei: _, ...old } = grant;
+    expect(() => requireWalletGrant([old], "thread-a", request, now)).toThrow();
+  });
+  it.each([
+    {},
+    { gas: "0x5208" },
+    { gas: "0x0", gasPrice: "0x1" },
+    { gas: "0x5208", maxFeePerGas: "0x1" },
+    { ...fees, gasPrice: "0x1" },
+    { ...fees, maxPriorityFeePerGas: "0x2" },
+    { gas: "0x5208", gasPrice: "0x0" },
+  ])("denies missing, mixed or inconsistent fees: %j", (fee) => {
+    expect(() =>
+      requireWalletGrant(
+        [grant],
+        "thread-a",
+        { ...request, transaction: { to: recipient, value: "0xa", ...fee } },
+        now,
+      ),
+    ).toThrow();
+  });
+  it("permits a fully bounded legacy transaction", () => {
+    expect(
+      requireWalletGrant(
+        [grant],
+        "thread-a",
+        {
+          ...request,
+          transaction: { to: recipient, value: "0xa", gas: "0x5208", gasPrice: "0x1" },
+        },
+        now,
+      ),
+    ).toBe(grant);
   });
 });

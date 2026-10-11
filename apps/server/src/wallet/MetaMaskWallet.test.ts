@@ -15,6 +15,9 @@ const fixtures = vi.hoisted(() => ({
   configuration: undefined as MetaMaskConfiguration | undefined,
   approvals: [] as Array<typeof MetaMaskApproval.Type>,
   confirmation: vi.fn(async () => true),
+  editFees: vi.fn(async (_page: Page, _input: unknown, beforeSave: () => Promise<void>) => {
+    await beforeSave();
+  }),
 }));
 vi.mock("./configuration.ts", () => ({
   readWalletConfiguration: async () => fixtures.configuration,
@@ -24,12 +27,14 @@ vi.mock("./MetaMaskBridge.ts", async (original) => ({
   readMetaMaskState: async () => ({ isUnlocked: true, pendingApprovals: {} }),
   decodeMetaMaskApprovals: () => ({ unlocked: true, approvals: fixtures.approvals }),
   confirmMetaMaskApproval: () => fixtures.confirmation(),
+  editMetaMaskFees: (...args: Parameters<typeof fixtures.editFees>) => fixtures.editFees(...args),
 }));
 const directories: string[] = [];
 afterEach(async () => {
   for (const directory of directories.splice(0))
     await NodeFSP.rm(directory, { recursive: true, force: true });
   fixtures.approvals = [];
+  fixtures.editFees.mockClear();
 });
 
 async function setup() {
@@ -51,6 +56,7 @@ async function setup() {
         methods: ["eth_sendTransaction"],
         expiresAt: "2099-01-01T00:00:00Z",
         maxValueWei: "0xa",
+        maxGasFeeWei: "0x5208",
         recipients: [to],
         allowContractCalls: false,
       },
@@ -101,7 +107,13 @@ async function setup() {
     method: "eth_sendTransaction",
     account,
     chainId: "0x1",
-    transaction: { to, value: "0xa" },
+    transaction: {
+      to,
+      value: "0xa",
+      gas: "0x5208",
+      maxFeePerGas: "0x1",
+      maxPriorityFeePerGas: "0x1",
+    },
   };
   return { wallet, options, input, rpc, completion, confirmation, website, extension, context };
 }
@@ -468,5 +480,50 @@ describe("MetaMask network request lifecycle", () => {
     );
     await expect(wallet.request("thread-a", switchInput)).rejects.toThrow("not connected");
     expect(rpc).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("pending fee editing", () => {
+  it("checks the fingerprint and proposed fee cap without confirming", async () => {
+    const { wallet, input, confirmation } = await setup();
+    fixtures.approvals = [{ ...input, id: "tx", method: "eth_sendTransaction" }];
+    const before = (await wallet.pending("thread-a")).approvals[0]!;
+    const update = {
+      approvalId: "tx",
+      fingerprint: before.fingerprint,
+      gas: "0x5208",
+      maxFeePerGas: "0x1",
+      maxPriorityFeePerGas: "0x1",
+    };
+    await expect(
+      wallet.updateFees("thread-a", { ...update, fingerprint: "stale" }),
+    ).rejects.toThrow("changed");
+    await expect(wallet.updateFees("thread-a", { ...update, maxFeePerGas: "0x2" })).rejects.toThrow(
+      "maximum gas fee",
+    );
+    expect(fixtures.editFees).not.toHaveBeenCalled();
+    await wallet.updateFees("thread-a", update);
+    expect(fixtures.editFees).toHaveBeenCalledOnce();
+    expect(confirmation).not.toHaveBeenCalled();
+    await wallet.close("thread-a");
+  });
+  it("rereads grants before saving edited fees", async () => {
+    const { wallet, input } = await setup();
+    fixtures.approvals = [{ ...input, id: "tx", method: "eth_sendTransaction" }];
+    const before = (await wallet.pending("thread-a")).approvals[0]!;
+    fixtures.editFees.mockImplementationOnce(async (_page, _input, beforeSave) => {
+      fixtures.configuration = { ...fixtures.configuration!, grants: [] };
+      await beforeSave();
+    });
+    await expect(
+      wallet.updateFees("thread-a", {
+        approvalId: "tx",
+        fingerprint: before.fingerprint,
+        gas: "0x5208",
+        maxFeePerGas: "0x1",
+        maxPriorityFeePerGas: "0x1",
+      }),
+    ).rejects.toThrow("No current wallet grant");
+    await wallet.close("thread-a");
   });
 });

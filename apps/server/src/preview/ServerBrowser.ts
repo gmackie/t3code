@@ -6,6 +6,7 @@ import {
   METAMASK_BROWSER_PROFILE_ID,
   MetaMaskError,
   type MetaMaskRequestInput,
+  type MetaMaskFeeUpdate,
   INCOGNITO_BROWSER_PROFILE_ID,
   PREVIEW_AUTOMATION_SERVER_OPERATIONS,
   PreviewViewportSetting as PreviewViewportSettingSchema,
@@ -257,6 +258,10 @@ export class ServerBrowser extends Context.Service<
       threadId: string,
       requestId: string,
     ) => Effect.Effect<Awaited<ReturnType<MetaMaskWallet["result"]>>, MetaMaskError>;
+    readonly metamaskUpdateFees: (
+      threadId: string,
+      input: MetaMaskFeeUpdate,
+    ) => Effect.Effect<Awaited<ReturnType<MetaMaskWallet["updateFees"]>>, MetaMaskError>;
     readonly metamaskApprove: (
       threadId: string,
       id: string,
@@ -2247,6 +2252,7 @@ const make = Effect.gen(function* () {
     metamaskPending: (threadId) => walletEffect(() => wallet.pending(threadId)),
     metamaskRequest: (threadId, input) => walletEffect(() => wallet.request(threadId, input)),
     metamaskResult: (threadId, requestId) => walletEffect(() => wallet.result(threadId, requestId)),
+    metamaskUpdateFees: (threadId, input) => walletEffect(() => wallet.updateFees(threadId, input)),
     metamaskApprove: (threadId, id, fingerprint) =>
       walletEffect(() => wallet.approve(threadId, id, fingerprint)),
     metamaskClose: (threadId) => walletEffect(() => wallet.close(threadId)),

@@ -6,6 +6,34 @@ import {
   type MetaMaskRequestInput,
 } from "@t3tools/contracts";
 
+/** Bound the worst-case fee, never an RPC estimate or the wallet's suggested price. */
+function transactionGasFee(transaction: NonNullable<MetaMaskRequestInput["transaction"]>) {
+  const { gas, gasPrice, maxFeePerGas, maxPriorityFeePerGas } = transaction;
+  const legacy =
+    gasPrice !== undefined && maxFeePerGas === undefined && maxPriorityFeePerGas === undefined;
+  const dynamic =
+    gasPrice === undefined && maxFeePerGas !== undefined && maxPriorityFeePerGas !== undefined;
+  if (
+    gas === undefined ||
+    BigInt(gas) <= 0n ||
+    (!legacy && !dynamic) ||
+    (dynamic && BigInt(maxPriorityFeePerGas!) > BigInt(maxFeePerGas!))
+  ) {
+    throw new MetaMaskError({
+      code: "permission_denied",
+      detail:
+        "Transactions require a positive gas limit and either gasPrice or both EIP-1559 fee fields; priority fee must not exceed max fee.",
+    });
+  }
+  const price = BigInt(gasPrice ?? maxFeePerGas!);
+  if (price <= 0n)
+    throw new MetaMaskError({
+      code: "permission_denied",
+      detail: "The maximum gas price must be positive.",
+    });
+  return BigInt(gas) * price;
+}
+
 /** The same check runs before submission and again immediately before approval. */
 export function requireWalletGrant(
   grants: ReadonlyArray<MetaMaskGrant>,
@@ -27,6 +55,8 @@ export function requireWalletGrant(
         detail: "Only the pinned Sepolia network preset can be added.",
       });
   }
+  const gasFee =
+    request.transaction === undefined ? undefined : transactionGasFee(request.transaction);
   const origin = new URL(request.origin).origin;
   const grant = grants.find(
     (candidate) =>
@@ -38,7 +68,10 @@ export function requireWalletGrant(
       candidate.methods.includes(request.method) &&
       Date.parse(candidate.expiresAt) > now &&
       (request.transaction === undefined ||
-        (BigInt(request.transaction.value) <= BigInt(candidate.maxValueWei) &&
+        (candidate.maxGasFeeWei !== undefined &&
+          gasFee !== undefined &&
+          gasFee <= BigInt(candidate.maxGasFeeWei) &&
+          BigInt(request.transaction.value) <= BigInt(candidate.maxValueWei) &&
           candidate.recipients.some(
             (recipient) => recipient.toLowerCase() === request.transaction?.to.toLowerCase(),
           ) &&
@@ -50,7 +83,7 @@ export function requireWalletGrant(
     throw new MetaMaskError({
       code: "permission_denied",
       detail:
-        "No current wallet grant matches this thread, origin, method, account, chain, recipient and value.",
+        "No current wallet grant matches this thread, origin, method, account, chain, recipient, value and maximum gas fee.",
     });
   return grant;
 }

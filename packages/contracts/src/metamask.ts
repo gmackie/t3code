@@ -31,6 +31,7 @@ export const MetaMaskGrant = Schema.Struct({
   methods: Schema.Array(MetaMaskMethod),
   expiresAt: Schema.String,
   maxValueWei: Quantity,
+  maxGasFeeWei: Schema.optionalKey(Quantity),
   recipients: Schema.Array(Address),
   allowContractCalls: Schema.Boolean,
 });
@@ -41,6 +42,12 @@ export const MetaMaskConfiguration = Schema.Struct({
   extensionId: Schema.optionalKey(Schema.String.check(Schema.isPattern(/^[a-p]{32}$/))),
   extensionVersion: Schema.Literal(METAMASK_SUPPORTED_VERSION),
   grants: Schema.Array(MetaMaskGrant),
+  bridgeModule: Schema.optionalKey(
+    Schema.Struct({
+      path: TrimmedNonEmptyString,
+      sha256: Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/)),
+    }),
+  ),
 });
 export type MetaMaskConfiguration = typeof MetaMaskConfiguration.Type;
 export const MetaMaskRequestInput = Schema.Struct({
@@ -56,10 +63,22 @@ export const MetaMaskRequestInput = Schema.Struct({
       to: Address,
       value: Quantity,
       data: Schema.optionalKey(Data),
+      gas: Schema.optionalKey(Quantity),
+      maxFeePerGas: Schema.optionalKey(Quantity),
+      maxPriorityFeePerGas: Schema.optionalKey(Quantity),
+      gasPrice: Schema.optionalKey(Quantity),
     }),
   ),
 });
 export type MetaMaskRequestInput = typeof MetaMaskRequestInput.Type;
+export const MetaMaskFeeUpdate = Schema.Struct({
+  approvalId: Schema.String,
+  fingerprint: Schema.String,
+  gas: Quantity,
+  maxFeePerGas: Quantity,
+  maxPriorityFeePerGas: Quantity,
+});
+export type MetaMaskFeeUpdate = typeof MetaMaskFeeUpdate.Type;
 export const MetaMaskApproval = Schema.Struct({
   id: Schema.String,
   origin: Schema.String,

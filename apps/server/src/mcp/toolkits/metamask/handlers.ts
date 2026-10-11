@@ -31,6 +31,8 @@ export const layer = MetaMaskToolkit.toLayer({
     invoke((browser, threadId) => browser.metamaskRequest(threadId, input)),
   metamask_request_status: (input) =>
     invoke((browser, threadId) => browser.metamaskResult(threadId, input.clientRequestId)),
+  metamask_update_fees: (input) =>
+    invoke((browser, threadId) => browser.metamaskUpdateFees(threadId, input)),
   metamask_approve: (input) =>
     invoke((browser, threadId) =>
       browser.metamaskApprove(threadId, input.approvalId, input.fingerprint),

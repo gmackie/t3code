@@ -35,3 +35,10 @@ this wallet.
 Agents with explicit network-method grants can request `wallet_switchEthereumChain` and confirm
 the matching prompt. If Sepolia is missing, `wallet_addEthereumChain` adds the fixed Sepolia preset;
 this requires its own grant. Network permissions do not permit signatures or transactions.
+
+
+For agent transactions, grant both an amount limit and a maximum network-fee
+limit. The agent can specify gas fees when preparing a transaction and adjust
+fees on a pending request. Changing fees does not approve the transaction;
+the agent must inspect the updated request before confirming it. Existing
+transaction grants need a fee limit before agents can use them again.

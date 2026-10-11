@@ -70,6 +70,7 @@ const unusedWalletMethods = {
   metamaskPending: () => Effect.die("Unexpected wallet operation in stream test"),
   metamaskRequest: () => Effect.die("Unexpected wallet operation in stream test"),
   metamaskResult: () => Effect.die("Unexpected wallet operation in stream test"),
+  metamaskUpdateFees: () => Effect.die("unused"),
   metamaskApprove: () => Effect.die("Unexpected wallet operation in stream test"),
   metamaskClose: () => Effect.die("Unexpected wallet operation in stream test"),
 };

@@ -10,17 +10,12 @@ import {
   MetaMaskRequestResult,
   MetaMaskWalletStatus,
   type MetaMaskRequestInput,
+  type MetaMaskFeeUpdate,
 } from "@t3tools/contracts";
 import type { BrowserContext, Page } from "playwright-core";
 import { readWalletConfiguration } from "./configuration.ts";
 import { requireWalletGrant, walletRpcParameters } from "./permissions.ts";
-import {
-  approvalFingerprint,
-  decodeMetaMaskApprovals,
-  confirmMetaMaskApproval,
-  readMetaMaskState,
-  metaMaskApprovalPresentation,
-} from "./MetaMaskBridge.ts";
+import { loadWalletBridge } from "./bridgeModule.ts";
 
 const decodeAccounts = Schema.decodeUnknownSync(Schema.Array(Schema.String));
 const decodeWalletStatus = Schema.decodeUnknownSync(MetaMaskWalletStatus);
@@ -160,7 +155,9 @@ export class MetaMaskWallet {
 
   async pending(threadId: string) {
     await this.connect(threadId);
-    await readWalletConfiguration(this.options.configurationPath);
+    const configuration = await readWalletConfiguration(this.options.configurationPath);
+    const { readMetaMaskState, decodeMetaMaskApprovals, approvalFingerprint } =
+      await loadWalletBridge(configuration.bridgeModule);
     const page = this.extensionPage;
     if (!page || !this.extensionId) throw new Error("Wallet page closed");
     const raw = await readMetaMaskState(page, this.extensionId);
@@ -394,6 +391,71 @@ export class MetaMaskWallet {
     return record.outcome;
   }
 
+  async updateFees(threadId: string, input: MetaMaskFeeUpdate) {
+    if (this.approving)
+      throw new MetaMaskError({
+        code: "busy",
+        detail: "A wallet confirmation is already being handled.",
+      });
+    this.approving = true;
+    try {
+      const current = (await this.pending(threadId)).approvals.find(
+        (a) => a.id === input.approvalId,
+      );
+      if (
+        !current ||
+        current.method !== "eth_sendTransaction" ||
+        !current.transaction ||
+        current.fingerprint !== input.fingerprint
+      )
+        throw new MetaMaskError({
+          code: "unsupported_approval",
+          detail: "The transaction changed. Read metamask_pending again.",
+        });
+      const { gasPrice: _legacy, ...transaction } = current.transaction;
+      const proposed = {
+        ...current,
+        transaction: {
+          ...transaction,
+          gas: input.gas,
+          maxFeePerGas: input.maxFeePerGas,
+          maxPriorityFeePerGas: input.maxPriorityFeePerGas,
+        },
+      };
+      const check = async () => {
+        const latest = (await this.pending(threadId)).approvals.find(
+          (a) => a.id === input.approvalId,
+        );
+        if (!latest || latest.fingerprint !== input.fingerprint)
+          throw new MetaMaskError({
+            code: "unsupported_approval",
+            detail: "The transaction changed while editing fees.",
+          });
+        requireWalletGrant(
+          (await readWalletConfiguration(this.options.configurationPath)).grants,
+          threadId,
+          proposed,
+          Date.now(),
+        );
+      };
+      await check();
+      const page = this.extensionPage;
+      if (!page) throw new Error("Wallet page closed");
+      await page.goto(
+        `chrome-extension://${this.extensionId}/home.html#confirm-transaction/${encodeURIComponent(input.approvalId)}`,
+        { waitUntil: "domcontentloaded" },
+      );
+      const { editMetaMaskFees } = await loadWalletBridge(
+        (await readWalletConfiguration(this.options.configurationPath)).bridgeModule,
+      );
+      await editMetaMaskFees(page, input, check);
+      // Return state rather than approve: the caller must inspect a new fee-inclusive fingerprint.
+      return this.pending(threadId);
+    } finally {
+      this.approving = false;
+    }
+  }
+
   async approve(threadId: string, id: string, fingerprint: string) {
     if (this.approving)
       throw new MetaMaskError({
@@ -416,6 +478,9 @@ export class MetaMaskWallet {
       requireWalletGrant(configuration.grants, threadId, approval, Date.now());
       if (approval.method === "eth_signTypedData_v4")
         walletRpcParameters({ ...approval, clientRequestId: id });
+      const { metaMaskApprovalPresentation, confirmMetaMaskApproval } = await loadWalletBridge(
+        configuration.bridgeModule,
+      );
       const presentation = metaMaskApprovalPresentation(approval);
       await page.goto(`chrome-extension://${this.extensionId}/home.html${presentation.route}`, {
         waitUntil: "domcontentloaded",

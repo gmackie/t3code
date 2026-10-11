@@ -1,5 +1,6 @@
 import {
   MetaMaskPendingStatus,
+  MetaMaskFeeUpdate,
   MetaMaskError,
   MetaMaskRequestInput,
   MetaMaskRequestResult,
@@ -43,7 +44,7 @@ const Status = Tool.make("metamask_status", {
 const Request = Tool.make("metamask_request", {
   ...shared,
   description:
-    "Submit a wallet RPC request from a granted website. Requires an explicit unexpired grant for this thread, origin, method, account and chain; transactions also require recipient, native value and contract-call permission. Supply a stable clientRequestId: retries never resend. Returns pending immediately; use metamask_pending to inspect, metamask_approve to confirm, and metamask_request_status for the result. Network switching and adding the fixed Sepolia preset require explicit matching grants; inspect and approve supported prompts with metamask_pending/metamask_approve. Connection prompts are manual.",
+    "Submit a wallet RPC request from a granted website. Requires an explicit unexpired grant for this thread, origin, method, account and chain; transactions also require recipient, native value, maxGasFeeWei and contract-call permission. Supply gas plus either gasPrice or both maxFeePerGas and maxPriorityFeePerGas as hexadecimal wei quantities. Supply a stable clientRequestId: retries never resend. Returns pending immediately; use metamask_pending to inspect, metamask_approve to confirm, and metamask_request_status for the result. Network switching and adding the fixed Sepolia preset require explicit matching grants; inspect and approve supported prompts with metamask_pending/metamask_approve. Connection prompts are manual.",
   parameters: MetaMaskRequestInput,
   success: MetaMaskRequestResult,
 })
@@ -58,6 +59,15 @@ const Result = Tool.make("metamask_request_status", {
 })
   .annotate(Tool.Readonly, true)
   .annotate(Tool.Destructive, false);
+const UpdateFees = Tool.make("metamask_update_fees", {
+  ...shared,
+  description:
+    "Edit gas limit and EIP-1559 fees on one pending transaction, in hexadecimal wei quantities. Requires the current approval fingerprint and an explicit maxGasFeeWei grant. Saves fee settings only; never confirms the transaction or dismisses review alerts. Read metamask_pending afterwards and verify the new fees before approving with its new fingerprint.",
+  parameters: MetaMaskFeeUpdate,
+  success: MetaMaskPendingStatus,
+})
+  .annotate(Tool.Destructive, true)
+  .annotate(Tool.OpenWorld, true);
 const Approve = Tool.make("metamask_approve", {
   ...shared,
   description:
@@ -73,4 +83,13 @@ const Close = Tool.make("metamask_close", {
     "Close this thread's wallet browser session without deleting persistent wallet storage. Ends its tabs and releases it for another thread. Pending wallet requests may become unknown; inspect chain history before retrying them.",
   success: Schema.Struct({ closed: Schema.Boolean }),
 }).annotate(Tool.Destructive, true);
-export const MetaMaskToolkit = Toolkit.make(Open, Pending, Status, Request, Result, Approve, Close);
+export const MetaMaskToolkit = Toolkit.make(
+  Open,
+  Pending,
+  Status,
+  Request,
+  Result,
+  UpdateFees,
+  Approve,
+  Close,
+);

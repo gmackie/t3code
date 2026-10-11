@@ -359,3 +359,119 @@ describe("trusted network request decoding", () => {
     );
   });
 });
+
+it("fingerprints gas limit and both EIP-1559 prices from extension state", () => {
+  const txParams = {
+    ...state.transactions[0]!.txParams,
+    gas: "0x5208",
+    maxFeePerGas: "0x2",
+    maxPriorityFeePerGas: "0x1",
+  };
+  const decode = (params: typeof txParams) =>
+    decodeMetaMaskApprovals({
+      ...state,
+      transactions: [{ ...state.transactions[0], txParams: params }],
+    }).approvals[0]!;
+  const approval = decode(txParams);
+  expect(approval.transaction).toMatchObject({
+    gas: "0x5208",
+    maxFeePerGas: "0x2",
+    maxPriorityFeePerGas: "0x1",
+  });
+  for (const delta of [
+    { gas: "0x5209" },
+    { maxFeePerGas: "0x3" },
+    { maxPriorityFeePerGas: "0x2" },
+  ]) {
+    expect(approvalFingerprint(decode({ ...txParams, ...delta }))).not.toBe(
+      approvalFingerprint(approval),
+    );
+  }
+});
+
+it("edits hexadecimal wei fees through the fee form without invoking Confirm", async () => {
+  const { editMetaMaskFees } = await import("./MetaMaskBridge.ts");
+  class Element {
+    disabled = false;
+    textContent = "";
+    click = vi.fn();
+    matches() {
+      return this.disabled;
+    }
+  }
+  class Input extends Element {
+    stored = "";
+    get value() {
+      return this.stored;
+    }
+    set value(value: string) {
+      this.stored = value;
+    }
+    dispatchEvent = vi.fn();
+  }
+  const max = new Input();
+  const priority = new Input();
+  const gas = new Input();
+  const save = new Element();
+  save.textContent = "Save";
+  const confirm = new Element();
+  confirm.textContent = "Confirm";
+  const edit = new Element();
+  const selectors: Record<string, unknown> = {
+    '[data-testid="edit-gas-fee-icon"]': edit,
+    '[data-testid="edit-gas-fee-item-custom"]': edit,
+    '[data-testid="advanced-gas-fee-edit"]': edit,
+    '[data-testid="base-fee-input"]': max,
+    '[data-testid="priority-fee-input"]': priority,
+    '[data-testid="gas-limit-input"]': gas,
+    ".advanced-gas-fee-popover": { querySelectorAll: () => [save] },
+    '[data-testid="confirm-footer-button"]': confirm,
+  };
+  const session = {
+    send: async (command: string, parameters?: { expression: string }) => {
+      if (command === "Page.getFrameTree") return { frameTree: { frame: { id: "frame" } } };
+      if (command === "Page.createIsolatedWorld") return { executionContextId: 1 };
+      return {
+        result: {
+          value: NodeVM.runInNewContext(parameters!.expression, {
+            location: { hash: "#confirm-transaction/tx" },
+            document: { querySelector: (selector: string) => selectors[selector] },
+            HTMLElement: Element,
+            HTMLInputElement: Input,
+            Event: class {
+              readonly type = "test";
+            },
+          }),
+        },
+      };
+    },
+    detach: async () => {},
+  };
+  const page = {
+    context: () => ({ newCDPSession: async () => session }),
+    locator: () => ({ waitFor: async () => {} }),
+    getByTestId: () => ({ waitFor: async () => {} }),
+  } as unknown as Page;
+  const beforeSave = vi.fn(async () => {
+    expect(save.click).not.toHaveBeenCalled();
+  });
+  const input = {
+    approvalId: "tx",
+    fingerprint: "test",
+    gas: "0x5208",
+    maxFeePerGas: "0x989680",
+    maxPriorityFeePerGas: "0xf4240",
+  };
+  await editMetaMaskFees(page, input, beforeSave);
+  expect([max.value, priority.value, gas.value]).toEqual(["0.010000000", "0.001000000", "21000"]);
+  expect(beforeSave).toHaveBeenCalledOnce();
+  expect(save.click).toHaveBeenCalledOnce();
+  expect(confirm.click).not.toHaveBeenCalled();
+  save.click.mockClear();
+  await expect(
+    editMetaMaskFees(page, input, async () => {
+      throw new Error("revoked");
+    }),
+  ).rejects.toThrow("revoked");
+  expect(save.click).not.toHaveBeenCalled();
+});

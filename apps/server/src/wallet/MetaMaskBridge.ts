@@ -1,9 +1,11 @@
 // @effect-diagnostics nodeBuiltinImport:off - Playwright promises and request fingerprints.
 import * as NodeCrypto from "node:crypto";
 import * as Schema from "effect/Schema";
-import { MetaMaskApproval, MetaMaskError } from "@t3tools/contracts";
+import { MetaMaskApproval, MetaMaskError, type MetaMaskFeeUpdate } from "@t3tools/contracts";
 import type { Page } from "playwright-core";
 import { decodeChainPermission } from "./chainPermissions.ts";
+
+export const walletBridgeApiVersion = 1;
 
 const Pending = Schema.Struct({
   id: Schema.String,
@@ -29,6 +31,10 @@ const Transaction = Schema.Struct({
     to: Schema.String,
     value: Schema.optionalKey(Schema.String),
     data: Schema.optionalKey(Schema.String),
+    gas: Schema.optionalKey(Schema.String),
+    maxFeePerGas: Schema.optionalKey(Schema.String),
+    maxPriorityFeePerGas: Schema.optionalKey(Schema.String),
+    gasPrice: Schema.optionalKey(Schema.String),
   }),
 });
 const State = Schema.Struct({
@@ -208,6 +214,14 @@ export function decodeMetaMaskApprovals(raw: unknown) {
               to: tx.txParams.to,
               value: tx.txParams.value ?? "0x0",
               ...(tx.txParams.data ? { data: tx.txParams.data } : {}),
+              ...(tx.txParams.gas !== undefined ? { gas: tx.txParams.gas } : {}),
+              ...(tx.txParams.maxFeePerGas !== undefined
+                ? { maxFeePerGas: tx.txParams.maxFeePerGas }
+                : {}),
+              ...(tx.txParams.maxPriorityFeePerGas !== undefined
+                ? { maxPriorityFeePerGas: tx.txParams.maxPriorityFeePerGas }
+                : {}),
+              ...(tx.txParams.gasPrice !== undefined ? { gasPrice: tx.txParams.gasPrice } : {}),
             },
           }),
         );
@@ -318,4 +332,66 @@ export async function confirmMetaMaskApproval(page: Page, approval: typeof MetaM
     })()`,
     chainPermission === undefined,
   );
+}
+
+/** Use only the fee editor; never invoke transaction confirmation or dismiss review alerts. */
+export async function editMetaMaskFees(
+  page: Page,
+  input: MetaMaskFeeUpdate,
+  beforeSave: () => Promise<void>,
+) {
+  const route = `#confirm-transaction/${encodeURIComponent(input.approvalId)}`;
+  const click = async (selector: string) => {
+    await page.locator(selector).waitFor({ state: "visible", timeout: 10000 });
+    const clicked = await evaluateMetaMaskPage(
+      page,
+      `(() => {
+      if (location.hash !== ${JSON.stringify(route)}) return false;
+      const element = document.querySelector(${JSON.stringify(selector)});
+      if (!(element instanceof HTMLElement) || element.matches(':disabled')) return false;
+      element.click(); return true;
+    })()`,
+    );
+    if (clicked !== true)
+      throw new Error("MetaMask fee editor changed; inspect the wallet manually.");
+  };
+  await click('[data-testid="edit-gas-fee-icon"]');
+  await click('[data-testid="edit-gas-fee-item-custom"]');
+  const gwei = (value: string) => {
+    const wei = BigInt(value);
+    return `${wei / 1000000000n}.${(wei % 1000000000n).toString().padStart(9, "0")}`;
+  };
+  const fill = async (id: string, value: string) => {
+    await page.getByTestId(id).waitFor({ state: "visible", timeout: 10000 });
+    const filled = await evaluateMetaMaskPage(
+      page,
+      `(() => {
+      if (location.hash !== ${JSON.stringify(route)}) return false;
+      const root = document.querySelector(${JSON.stringify(`[data-testid="${id}"]`)});
+      const element = root instanceof HTMLInputElement ? root : root?.querySelector('input');
+      if (!(element instanceof HTMLInputElement) || element.disabled) return false;
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(element, ${JSON.stringify(value)});
+      element.dispatchEvent(new Event('input', { bubbles: true }));
+      element.dispatchEvent(new Event('change', { bubbles: true }));
+      return true;
+    })()`,
+    );
+    if (filled !== true) throw new Error("MetaMask fee input is unavailable.");
+  };
+  await fill("base-fee-input", gwei(input.maxFeePerGas));
+  await fill("priority-fee-input", gwei(input.maxPriorityFeePerGas));
+  await click('[data-testid="advanced-gas-fee-edit"]');
+  await fill("gas-limit-input", BigInt(input.gas).toString());
+  await beforeSave();
+  const saved = await evaluateMetaMaskPage(
+    page,
+    `(() => {
+    if (location.hash !== ${JSON.stringify(route)}) return false;
+    const root = document.querySelector('.advanced-gas-fee-popover');
+    const buttons = root ? Array.from(root.querySelectorAll('button')).filter(b => b.textContent.trim() === 'Save') : [];
+    if (buttons.length !== 1 || buttons[0].disabled) return false;
+    buttons[0].click(); return true;
+  })()`,
+  );
+  if (saved !== true) throw new Error("MetaMask fee settings require manual review.");
 }
