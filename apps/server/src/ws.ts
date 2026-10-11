@@ -119,6 +119,7 @@ import * as ExternalLauncher from "./process/externalLauncher.ts";
 import * as ThreadManagementService from "./orchestration-v2/ThreadManagementService.ts";
 import * as ProviderSessionManager from "./orchestration-v2/ProviderSessionManager.ts";
 import * as ThreadLaunchService from "./orchestration-v2/ThreadLaunchService.ts";
+import * as BobCoordination from "./coordination/BobCoordination.ts";
 import * as ThreadMessageIntake from "./orchestration-v2/ThreadMessageIntake.ts";
 import * as IdAllocator from "./orchestration-v2/IdAllocator.ts";
 import * as ScheduledTasks from "./scheduledTasks/ScheduledTaskService.ts";
@@ -1163,6 +1164,7 @@ const makeWsRpcLayer = (
         }
       };
       const threadLaunch = yield* ThreadLaunchService.ThreadLaunchService;
+      const bobCoordination = yield* BobCoordination.BobCoordination;
       const providerSessionManager = yield* ProviderSessionManager.ProviderSessionManagerV2;
       const scheduledTasks = yield* ScheduledTasks.ScheduledTaskService;
       const pullRequests = yield* PullRequestService.PullRequestService;
@@ -2866,6 +2868,17 @@ const makeWsRpcLayer = (
             ),
             { "rpc.aggregate": "server" },
           ),
+        [WS_METHODS.serverBobConnection]: () => bobCoordination.state,
+        [WS_METHODS.serverBobCoordination]: (input) =>
+          !BobCoordination.readOperations.has(input.operation) &&
+          !currentSession.scopes.includes(AuthOrchestrationOperateScope)
+            ? Effect.fail(
+                new EnvironmentAuthorizationError({
+                  requiredScope: AuthOrchestrationOperateScope,
+                  message: "This credential cannot mutate Bob work.",
+                }),
+              )
+            : bobCoordination.call(input),
         [WS_METHODS.serverListProjectIssueStatuses]: (input) =>
           observeRpcEffect(
             WS_METHODS.serverListProjectIssueStatuses,

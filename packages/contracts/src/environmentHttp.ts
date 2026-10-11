@@ -1,4 +1,5 @@
 import * as Context from "effect/Context";
+import { BobCoordinationError } from "./bobCoordination.ts";
 import type * as DateTime from "effect/DateTime";
 import * as Schema from "effect/Schema";
 import * as HttpApi from "effect/unstable/httpapi/HttpApi";
@@ -651,7 +652,37 @@ class EnvironmentConnectHttpApi extends HttpApiGroup.make("connect")
     }),
   ) {}
 
+class EnvironmentExecutionHttpApi extends HttpApiGroup.make("execution")
+  .add(
+    HttpApiEndpoint.post("capabilities", "/api/v1/coordination/capabilities/query", {
+      headers: OptionalBearerHeaders,
+      payload: Schema.Unknown,
+      success: Schema.Unknown,
+      error: [BobCoordinationError, EnvironmentScopeRequiredError],
+    }).middleware(EnvironmentAuthenticatedAuth),
+  )
+  .add(
+    HttpApiEndpoint.post("submit", "/api/v1/execution/requests", {
+      headers: Schema.Struct({
+        authorization: Schema.optionalKey(Schema.String),
+        dpop: Schema.optionalKey(Schema.String),
+        "idempotency-key": Schema.optionalKey(Schema.String),
+      }),
+      payload: Schema.Unknown,
+      success: Schema.Unknown,
+      error: [BobCoordinationError, EnvironmentScopeRequiredError],
+    }).middleware(EnvironmentAuthenticatedAuth),
+  )
+  .add(
+    HttpApiEndpoint.post("find", "/api/v1/execution/requests/query", {
+      headers: OptionalBearerHeaders,
+      payload: Schema.Unknown,
+      success: Schema.Unknown,
+      error: [BobCoordinationError, EnvironmentScopeRequiredError],
+    }).middleware(EnvironmentAuthenticatedAuth),
+  ) {}
 export class EnvironmentHttpApi extends HttpApi.make("environment")
+  .add(EnvironmentExecutionHttpApi)
   .add(EnvironmentMetadataHttpApi)
   .add(EnvironmentAuthHttpApi)
   .add(EnvironmentOrchestrationHttpApi)

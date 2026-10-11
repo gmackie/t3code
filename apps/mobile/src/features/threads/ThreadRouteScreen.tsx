@@ -93,6 +93,7 @@ function ThreadHeader(
     readonly onToggleInspector: () => void;
     readonly onOpenGitInspector: () => void;
     readonly onOpenFilesInspector: () => void;
+    readonly onOpenWork: () => void;
   },
 ) {
   const navigation = useNavigation();
@@ -125,6 +126,11 @@ function ThreadHeader(
       });
     }
     actions.push({
+      accessibilityLabel: "Open Work",
+      icon: "list.number",
+      onPress: props.onOpenWork,
+    });
+    actions.push({
       accessibilityLabel: "Open git controls",
       icon: "point.topleft.down.curvedto.point.bottomright.up",
       onPress: props.onOpenGitInspector,
@@ -144,6 +150,7 @@ function ThreadHeader(
     onOpenTerminal,
     onMergeBack,
     props.onOpenGitInspector,
+    props.onOpenWork,
     toggleAuxiliaryPane,
     props.onReturnToThread,
     props.hasThreadCwd,
@@ -159,18 +166,25 @@ function ThreadHeader(
         options={native.options}
         optionsVersion={props.gitControls.projectScripts}
         trailing={
-          props.fileInspectorSupported && props.hasThreadCwd ? (
+          <View className="flex-row">
             <ScreenHeaderButton
-              accessibilityLabel={
-                props.inspectorMode !== null && panes.auxiliaryPaneVisible
-                  ? "Hide inspector"
-                  : "Show inspector"
-              }
-              icon="sidebar.right"
-              selected={props.inspectorMode !== null && panes.auxiliaryPaneVisible}
-              onPress={props.onToggleInspector}
+              accessibilityLabel="Open Work"
+              icon="list.number"
+              onPress={props.onOpenWork}
             />
-          ) : null
+            {props.fileInspectorSupported && props.hasThreadCwd ? (
+              <ScreenHeaderButton
+                accessibilityLabel={
+                  props.inspectorMode !== null && panes.auxiliaryPaneVisible
+                    ? "Hide inspector"
+                    : "Show inspector"
+                }
+                icon="sidebar.right"
+                selected={props.inspectorMode !== null && panes.auxiliaryPaneVisible}
+                onPress={props.onToggleInspector}
+              />
+            ) : null}
+          </View>
         }
         onBack={
           layout.usesSplitView
@@ -1098,6 +1112,12 @@ function ThreadRouteContent(
         onToggleInspector={handleToggleInspector}
         onOpenGitInspector={handleOpenGitInspector}
         onOpenFilesInspector={handleOpenFilesInspector}
+        onOpenWork={() =>
+          navigation.navigate("ThreadWork", {
+            environmentId: selectedThread.environmentId,
+            threadId: selectedThread.id,
+          })
+        }
         onReturnToThread={props.onReturnToThread}
       />
 

@@ -20,6 +20,7 @@ import {
   ChevronRight,
   FileDiff,
   Files,
+  ClipboardList,
   Globe2,
   Plus,
   TerminalSquare,
@@ -120,6 +121,7 @@ interface RightPanelTabsProps {
   onAddTerminal: () => void;
   onAddDiff: () => void;
   onAddFiles: () => void;
+  onAddWork?: (() => void) | undefined;
   onAddPullRequest: () => void;
   onAddPullRequests: () => void;
   onAddDevice: () => void;
@@ -317,6 +319,7 @@ function RightPanelEmptyState(props: {
   onAddTerminal: () => void;
   onAddDiff: () => void;
   onAddFiles: () => void;
+  onAddWork?: (() => void) | undefined;
   onAddPullRequest: () => void;
   onAddPullRequests: () => void;
   onAddDevice: () => void;
@@ -332,6 +335,14 @@ function RightPanelEmptyState(props: {
   const [highlight, setHighlight] = useState(-1);
 
   const actions = [
+    {
+      label: "Work",
+      icon: ClipboardList,
+      shortcut: "W",
+      available: props.onAddWork !== undefined,
+      disabledReason: "Work is available beside a thread.",
+      onClick: () => props.onAddWork?.(),
+    },
     {
       label: "Browser",
       icon: Globe2,
@@ -596,6 +607,8 @@ function surfaceTitle(
       return `#${surface.number}`;
     case "pull-requests":
       return "Pull requests";
+    case "work":
+      return "Work";
     case "device":
       return surface.title ?? surface.target?.name ?? "Device";
     case "preview": {
@@ -679,6 +692,8 @@ function SurfaceIcon({
       );
     case "pull-requests":
       return <PullRequestGlyph.link className="size-3 shrink-0" />;
+    case "work":
+      return <ClipboardList className="size-3 shrink-0" />;
     case "device":
       return surface.target?.platform === "ios" ? (
         <AppleIcon className="size-3 shrink-0" />
@@ -833,6 +848,14 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
   }, []);
 
   const addSurfaceActions = [
+    {
+      label: "Work",
+      icon: ClipboardList,
+      shortcut: "W",
+      available: props.onAddWork !== undefined,
+      disabledReason: "Work is available beside a thread.",
+      onClick: () => props.onAddWork?.(),
+    },
     {
       label: "Browser",
       icon: Globe2,
@@ -1369,6 +1392,7 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
             onAddTerminal={props.onAddTerminal}
             onAddDiff={props.onAddDiff}
             onAddFiles={props.onAddFiles}
+            onAddWork={props.onAddWork}
             onAddPullRequest={props.onAddPullRequest}
             onAddPullRequests={props.onAddPullRequests}
             onAddDevice={props.onAddDevice}

@@ -3,6 +3,7 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./state/bobCoordination": "./src/state/bobCoordination.ts",
     "./plugins": {
       "types": "./src/plugins/index.ts",
       "default": "./src/plugins/index.ts"
