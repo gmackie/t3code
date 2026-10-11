@@ -66,7 +66,6 @@ for the connected account and thread. If the network is absent, separately grant
 Both methods use the request journal and exact approval fingerprint checks. Neither grant
 permits signing or sending transactions. Revoke setup grants when setup is complete.
 
-
 ## Fee limits and adapter updates
 
 Transaction grants now need `maxGasFeeWei` in addition to `maxValueWei`. The
