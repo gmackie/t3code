@@ -1,0 +1,35 @@
+name: Mini CI storage guards
+
+on:
+  pull_request:
+    branches:
+      - custom-local
+    paths:
+      - scripts/mini-ci-storage*
+      - .forgejo/workflows/mini-ci-storage.yml
+      - .forgejo/workflows/gmacko-nightly.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  storage-guards:
+    runs-on: forgegraph-ci
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.14.0
+      - name: Prepare the release package manager
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.10.0 --activate
+      - name: Verify storage rejection and preservation
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: python3 scripts/mini-ci-storage.test.py
