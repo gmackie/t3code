@@ -26,6 +26,21 @@ import { resolveServerConfig } from "./config.ts";
 const deriveExplicitServerPaths = (baseDir: string, devUrl: URL | undefined) =>
   deriveServerPaths(baseDir, devUrl, { baseDirIsExplicit: true });
 
+const minimalDesktopFlags = (baseDir: string) => ({
+  mode: Option.some("desktop" as const),
+  port: Option.some(4888),
+  host: Option.none<string>(),
+  baseDir: Option.some(baseDir),
+  cwd: Option.none<string>(),
+  devUrl: Option.none<URL>(),
+  noBrowser: Option.none<boolean>(),
+  bootstrapFd: Option.none<number>(),
+  autoBootstrapProjectFromCwd: Option.none<boolean>(),
+  logWebSocketEvents: Option.none<boolean>(),
+  tailscaleServeEnabled: Option.none<boolean>(),
+  tailscaleServePort: Option.none<number>(),
+});
+
 const encodeDesktopBootstrap = Schema.encodeEffect(Schema.fromJsonString(DesktopBackendBootstrap));
 const encodeUnknownJson = Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown));
 
@@ -703,6 +718,36 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
     }),
   );
 
+  it.effect("carries the desktop's shell environment handoff only when the envelope sets it", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const baseDir = yield* fs.makeTempDirectoryScoped({ prefix: "t3-cli-config-shell-env-" });
+      const resolveWith = Effect.fn(function* (overrides: Partial<DesktopBackendBootstrapValue>) {
+        const fd = yield* openBootstrapFd(makeDesktopBootstrap(overrides));
+        return yield* resolveServerConfig(
+          {
+            ...minimalDesktopFlags(baseDir),
+            bootstrapFd: Option.some(fd),
+          },
+          Option.none(),
+        ).pipe(
+          Effect.provide(
+            Layer.mergeAll(
+              ConfigProvider.layer(ConfigProvider.fromEnv({ env: {} })),
+              NetService.layer,
+            ),
+          ),
+        );
+      });
+
+      assert.equal((yield* resolveWith({})).shellEnvironmentPrepared, undefined);
+      assert.equal(
+        (yield* resolveWith({ shellEnvironmentPrepared: true })).shellEnvironmentPrepared,
+        true,
+      );
+    }),
+  );
+
   it.effect("creates derived runtime directories during config resolution", () =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;
@@ -838,7 +883,6 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
       yield* fs.makeDirectory(path.dirname(derivedPaths.settingsPath), { recursive: true });
       yield* fs.writeFileString(
         derivedPaths.settingsPath,
-        // @effect-diagnostics-next-line preferSchemaOverJson:off
         `${JSON.stringify({
           observability: {
             otlpTracesUrl: "http://localhost:4318/v1/traces",
@@ -910,7 +954,6 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
       yield* fs.makeDirectory(path.dirname(derivedPaths.settingsPath), { recursive: true });
       yield* fs.writeFileString(
         derivedPaths.settingsPath,
-        // @effect-diagnostics-next-line preferSchemaOverJson:off
         `${JSON.stringify({
           observability: {
             otlpTracesUrl: "http://localhost:4318/v1/traces",
@@ -962,7 +1005,6 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
       yield* fs.makeDirectory(path.dirname(derivedPaths.settingsPath), { recursive: true });
       yield* fs.writeFileString(
         derivedPaths.settingsPath,
-        // @effect-diagnostics-next-line preferSchemaOverJson:off
         `${JSON.stringify({
           observability: {
             otlpTracesUrl: "http://localhost:4318/v1/traces",
@@ -1261,7 +1303,6 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
         yield* fs.makeDirectory(path.dirname(derivedPaths.settingsPath), { recursive: true });
         yield* fs.writeFileString(
           derivedPaths.settingsPath,
-          // @effect-diagnostics-next-line preferSchemaOverJson:off
           `${JSON.stringify({ observability: { otlpLogsUrl: "http://settings:4318/v1/logs" } })}\n`,
         );
 
@@ -1333,7 +1374,6 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
         yield* fs.makeDirectory(path.dirname(derivedPaths.settingsPath), { recursive: true });
         yield* fs.writeFileString(
           derivedPaths.settingsPath,
-          // @effect-diagnostics-next-line preferSchemaOverJson:off
           `${JSON.stringify({ observability: { otlpLogsUrl: "http://settings:4318/v1/logs" } })}\n`,
         );
 

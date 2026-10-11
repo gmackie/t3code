@@ -1,3 +1,4 @@
+import { SourceControlProviderKind } from "@t3tools/contracts";
 import * as Cache from "effect/Cache";
 import * as Context from "effect/Context";
 import * as Duration from "effect/Duration";
@@ -8,23 +9,20 @@ import {
   SourceControlProviderError,
   type SourceControlProviderDiscoveryItem,
 } from "@t3tools/contracts";
-import type { SourceControlProviderKind } from "@t3tools/contracts";
+import type {} from "@t3tools/contracts";
 import { detectSourceControlProviderFromRemoteUrl } from "@t3tools/shared/sourceControl";
 
-import * as AzureDevOpsSourceControlProvider from "./AzureDevOpsSourceControlProvider.ts";
-import * as BitbucketSourceControlProvider from "./BitbucketSourceControlProvider.ts";
-import * as GitHubSourceControlProvider from "./GitHubSourceControlProvider.ts";
-import * as GitLabSourceControlProvider from "./GitLabSourceControlProvider.ts";
-import * as ForgejoSourceControlProvider from "./ForgejoSourceControlProvider.ts";
-import * as SourceControlProvider from "./SourceControlProvider.ts";
+import * as BuiltInDrivers from "./builtInDrivers.ts";
+import * as SourceControlProvider from "@t3tools/source-control-core/server/SourceControlProvider";
 import {
   probeSourceControlProvider,
   refineUnknownRemoteProvider,
   type SourceControlProviderDiscoverySpec,
-} from "./SourceControlProviderDiscovery.ts";
+} from "@t3tools/source-control-core/server/discovery";
+import * as SourceControlHost from "@t3tools/source-control-core/server/SourceControlHost";
+
 import * as ServerConfig from "../config.ts";
 import * as VcsDriverRegistry from "../vcs/VcsDriverRegistry.ts";
-import * as VcsProcess from "../vcs/VcsProcess.ts";
 
 const PROVIDER_DETECTION_CACHE_CAPACITY = 2_048;
 // Detection runs for every project on a shell snapshot, and a missing host CLI
@@ -165,8 +163,7 @@ function bindProviderContext(
   }
 
   return SourceControlProvider.SourceControlProvider.of({
-    kind: provider.kind,
-    ...(provider.resolveLink ? { resolveLink: provider.resolveLink } : {}),
+    ...provider,
     listChangeRequests: (input) =>
       provider.listChangeRequests({
         ...input,
@@ -205,7 +202,7 @@ function bindProviderContext(
 export const makeWithProviders = Effect.fn("makeSourceControlProviderRegistryWithProviders")(
   function* (registrations: ReadonlyArray<SourceControlProviderRegistration>) {
     const config = yield* ServerConfig.ServerConfig;
-    const process = yield* VcsProcess.VcsProcess;
+    const { process } = yield* SourceControlHost.SourceControlHost;
     const vcsRegistry = yield* VcsDriverRegistry.VcsDriverRegistry;
     const providers = new Map<
       SourceControlProviderKind,
@@ -222,7 +219,7 @@ export const makeWithProviders = Effect.fn("makeSourceControlProviderRegistryWit
           Effect.mapError(
             (error) =>
               new SourceControlProviderError({
-                provider: "unknown",
+                provider: SourceControlProviderKind.make("unknown"),
                 operation: "detectProvider",
                 cwd,
                 detail: "Failed to detect source control provider.",
@@ -234,7 +231,7 @@ export const makeWithProviders = Effect.fn("makeSourceControlProviderRegistryWit
           Effect.mapError(
             (error) =>
               new SourceControlProviderError({
-                provider: "unknown",
+                provider: SourceControlProviderKind.make("unknown"),
                 operation: "detectProvider",
                 cwd,
                 detail: "Failed to detect source control provider.",
@@ -296,7 +293,7 @@ export const makeWithProviders = Effect.fn("makeSourceControlProviderRegistryWit
           Exit.isSuccess(exit) ? PROVIDER_DETECTION_CACHE_TTL : PROVIDER_DETECTION_FAILURE_TTL,
       },
     );
-    const cachedRefinementProcess: VcsProcess.VcsProcess["Service"] = {
+    const cachedRefinementProcess: SourceControlHost.SourceControlHost["Service"]["process"] = {
       run: (input) => {
         if (
           input.operation !== "source-control.discovery.refine-unknown-remote" ||
@@ -368,7 +365,7 @@ export const makeWithProviders = Effect.fn("makeSourceControlProviderRegistryWit
           )
       ).pipe(
         Effect.map((context) => {
-          const kind = context?.provider.kind ?? "unknown";
+          const kind = context?.provider.kind ?? SourceControlProviderKind.make("unknown");
           const provider = providers.get(kind) ?? unsupportedProvider(kind);
           return {
             provider: bindProviderContext(provider, context),
@@ -403,36 +400,16 @@ export const makeWithProviders = Effect.fn("makeSourceControlProviderRegistryWit
 );
 
 export const make = Effect.gen(function* () {
-  const github = yield* GitHubSourceControlProvider.make;
-  const gitlab = yield* GitLabSourceControlProvider.make;
-  const forgejo = yield* ForgejoSourceControlProvider.make;
-  const forgejoDiscovery = yield* ForgejoSourceControlProvider.makeDiscovery;
-  const bitbucket = yield* BitbucketSourceControlProvider.make;
-  const bitbucketDiscovery = yield* BitbucketSourceControlProvider.makeDiscovery;
-  const azureDevOps = yield* AzureDevOpsSourceControlProvider.make;
-  return yield* makeWithProviders([
-    {
-      kind: "github",
-      provider: github,
-      discovery: GitHubSourceControlProvider.discovery,
-    },
-    {
-      kind: "gitlab",
-      provider: gitlab,
-      discovery: GitLabSourceControlProvider.discovery,
-    },
-    {
-      kind: "azure-devops",
-      provider: azureDevOps,
-      discovery: AzureDevOpsSourceControlProvider.discovery,
-    },
-    {
-      kind: "bitbucket",
-      provider: bitbucket,
-      discovery: bitbucketDiscovery,
-    },
-    { kind: "forgejo", provider: forgejo, discovery: forgejoDiscovery },
-  ]);
+  const drivers = yield* Effect.forEach(BuiltInDrivers.BUILT_IN_SOURCE_CONTROL_DRIVERS, (driver) =>
+    driver.make.pipe(
+      Effect.map((instance): SourceControlProviderRegistration => ({
+        kind: driver.kind,
+        provider: instance.sourceControl,
+        discovery: instance.discovery,
+      })),
+    ),
+  );
+  return yield* makeWithProviders(drivers);
 });
 
 export const layer = Layer.effect(SourceControlProviderRegistry, make);

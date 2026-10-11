@@ -17,7 +17,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as SqlClient from "effect/sql/SqlClient";
 import * as Tracer from "effect/Tracer";
-import * as Persistence from "../persistence/Layers/Sqlite.ts";
+import * as Persistence from "../persistence/Sqlite.ts";
 import * as ProjectionStore from "./ProjectionStore.ts";
 
 const layer = ProjectionStore.layer.pipe(Layer.provideMerge(Persistence.layerMemory));

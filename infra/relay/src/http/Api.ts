@@ -91,28 +91,6 @@ export const RELAY_HTTP_ROUTER_CONFIG = {
   maxParamLength: 512,
 } as const;
 
-const relayCorsAllowedMethods = ["GET", "POST", "DELETE", "OPTIONS"] as const;
-const relayCorsAllowedHeaders = [
-  "authorization",
-  "b3",
-  "traceparent",
-  "content-type",
-  "dpop",
-] as const;
-const relayCorsExposedHeaders = ["traceparent", "www-authenticate"] as const;
-
-const relayCorsHeaders = {
-  "access-control-allow-origin": "*",
-  "access-control-expose-headers": relayCorsExposedHeaders.join(","),
-} as const;
-
-const relayCorsPreflightHeaders = {
-  ...relayCorsHeaders,
-  "access-control-allow-methods": relayCorsAllowedMethods.join(","),
-  "access-control-allow-headers": relayCorsAllowedHeaders.join(","),
-  "access-control-max-age": "86400",
-} as const;
-
 const decodeManagedTunnelRecoveryProof = Schema.decodeUnknownEffect(
   RelayManagedEndpointRecoveryProofPayload,
 );
@@ -158,6 +136,16 @@ export function resolveManagedEndpointReleaseProvider(input: {
   return input.connectorLeaseId === undefined ? "cloudflare_tunnel" : "t3_relay";
 }
 
+const relayCorsMiddleware = HttpMiddleware.cors({
+  allowedMethods: ["GET", "POST", "DELETE", "OPTIONS"],
+  allowedHeaders: ["authorization", "b3", "traceparent", "content-type", "dpop"],
+  exposedHeaders: ["traceparent", "www-authenticate"],
+  maxAge: 86_400,
+});
+
+// The CORS headers come from a pre-response handler, so they reach every response
+// the request sends: handler failures and defects, and the deadline 504 that
+// `traceRelayHttpRequest` produces outside the router.
 export const layerCors = HttpRouter.middleware(
   Effect.fnUntraced(function* <E, R>(
     httpEffect: Effect.Effect<
@@ -171,14 +159,7 @@ export const layerCors = HttpRouter.middleware(
     if (isRelayHookPath(request.url)) {
       return yield* httpEffect;
     }
-    if (request.method === "OPTIONS") {
-      return HttpServerResponse.empty({
-        status: 204,
-        headers: relayCorsPreflightHeaders,
-      });
-    }
-    const response = yield* httpEffect;
-    return HttpServerResponse.setHeaders(response, relayCorsHeaders);
+    return yield* relayCorsMiddleware(httpEffect);
   }),
   { global: true },
 );
@@ -259,8 +240,12 @@ export const traceRelayHttpRequest = <E, R>(
       Effect.andThen(relayRequestDeadline(httpEffect)),
     );
     if (!isRelayHookPath(request.url)) {
-      // HttpMiddleware finalizes its span on the dispatcher; do not close a request-scoped exporter first.
-      return yield* HttpMiddleware.tracer(traced).pipe(Effect.ensuring(Effect.yieldNow));
+      return yield* HttpMiddleware.tracer(traced).pipe(
+        // The worker turns its own request span off; this one is ours.
+        Effect.provideService(HttpMiddleware.TracerDisabledWhen, () => false),
+        // HttpMiddleware finalizes its span on the dispatcher; do not close a request-scoped exporter first.
+        Effect.ensuring(Effect.yieldNow),
+      );
     }
     // Hook URLs carry a secret token: the tracer and deadline log see a redacted
     // request, while the route itself still receives the original. A webhook
@@ -284,7 +269,7 @@ export const traceRelayHttpRequest = <E, R>(
       ),
     ).pipe(
       Effect.provideService(HttpServerRequest.HttpServerRequest, redacted),
-      // The worker disables its own span for hook paths; this one is ours.
+      // The worker turns its own request span off; this one is ours.
       Effect.provideService(HttpMiddleware.TracerDisabledWhen, () => false),
       Effect.ensuring(Effect.yieldNow),
     );

@@ -1,7 +1,7 @@
 import * as NodeEvents from "node:events";
 
 import { INCOGNITO_BROWSER_PROFILE_ID } from "@t3tools/contracts";
-import type { Browser, BrowserContext, BrowserType } from "playwright-core";
+import { chromium, type Browser, type BrowserContext, type BrowserType } from "playwright-core";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { ServerBrowserContexts } from "./ServerBrowserContexts.ts";
@@ -12,9 +12,8 @@ const launches = vi.hoisted(() => ({
   mkdir: vi.fn().mockResolvedValue(undefined),
   rm: vi.fn().mockResolvedValue(undefined),
 }));
-vi.mock("./playwright.ts", () => ({
-  loadChromium: () => ({ launch: launches.launch, launchPersistentContext: launches.persistent }),
-}));
+vi.spyOn(chromium, "launch").mockImplementation(launches.launch);
+vi.spyOn(chromium, "launchPersistentContext").mockImplementation(launches.persistent);
 vi.mock("node:fs/promises", () => ({ mkdir: launches.mkdir, rm: launches.rm }));
 
 const makeContext = () => {
@@ -135,6 +134,34 @@ describe("ServerBrowserContexts", () => {
       recursive: true,
       force: true,
     });
+    await pool.close();
+  });
+
+  it("opens a profile requested during its clear only after the storage is deleted", async () => {
+    launches.persistent.mockImplementation(async () => makeContext() as unknown as BrowserContext);
+    const configuration = options();
+    const pool = new ServerBrowserContexts(configuration);
+    await pool.contextFor("work/team");
+    const removing = Promise.withResolvers<void>();
+    const removed = Promise.withResolvers<void>();
+    let deleted = false;
+    launches.rm.mockImplementationOnce(async () => {
+      removing.resolve();
+      await removed.promise;
+      deleted = true;
+    });
+    // Launching starts by resolving the executable; record whether storage was gone by then.
+    const launchedAfterDelete: Array<boolean> = [];
+    configuration.executable.mockImplementation(async () => {
+      launchedAfterDelete.push(deleted);
+      return "/test/chromium";
+    });
+    const clearing = pool.clearProfile("work/team");
+    const reopening = pool.contextFor("work/team");
+    await removing.promise;
+    removed.resolve();
+    await Promise.all([clearing, reopening]);
+    expect(launchedAfterDelete).toEqual([true]);
     await pool.close();
   });
 

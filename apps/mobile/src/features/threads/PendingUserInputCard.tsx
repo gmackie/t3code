@@ -36,6 +36,7 @@ import {
 } from "../../lib/threadActivity";
 
 export interface PendingUserInputCardProps {
+  readonly canOperateThread: boolean;
   readonly pendingUserInput: PendingUserInput;
   /** Available height above the bottom inset, before the keyboard opens. */
   readonly maxHeight: number;
@@ -219,6 +220,7 @@ export function PendingUserInputCard(props: PendingUserInputCardProps) {
           icon="stop.fill"
           variant="danger"
           className="h-9 w-9"
+          disabled={!props.canOperateThread}
           onPress={props.onStopThread}
         />
       ) : null}
@@ -394,7 +396,11 @@ export function PendingUserInputCard(props: PendingUserInputCardProps) {
             label={isResponding ? "Submitting…" : showSubmit ? "Submit answers" : "Next"}
             size="large"
             tone={showSubmit && props.answers === null ? "secondary" : "primary"}
-            disabled={isResponding || (showSubmit && (responseDisabled || props.answers === null))}
+            disabled={
+              isResponding ||
+              (showSubmit &&
+                (!props.canOperateThread || responseDisabled || props.answers === null))
+            }
             onPress={() => {
               if (showSubmit) void props.onSubmit();
               else navigateToQuestion(activeQuestionIndex + 1);
@@ -413,6 +419,11 @@ export function PendingUserInputCard(props: PendingUserInputCardProps) {
             Dismiss without answering
           </Text>
         </Pressable>
+      ) : null}
+      {!props.canOperateThread ? (
+        <Text className="font-sans text-xs text-foreground-tertiary">
+          This connection cannot submit answers.
+        </Text>
       ) : null}
     </Animated.View>
   ) : null;

@@ -99,6 +99,7 @@ function layerDesktopWindow(
     dispatchSnapShotEvent: () => Effect.void,
     zoomMain: () => Effect.void,
     setWindowOpacity: () => Effect.void,
+    runMainContentsCommand: () => Effect.void,
     syncAppearance: Effect.void,
   });
 }

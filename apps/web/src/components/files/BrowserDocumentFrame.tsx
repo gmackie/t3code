@@ -35,7 +35,7 @@ export function BrowserDocumentFrame(props: {
 }) {
   const className = "min-h-0 flex-1 border-0 bg-white";
   return props.pdf ? (
-    // oxlint-disable-next-line react/iframe-missing-sandbox
+    // oxlint-disable-next-line react/iframe-missing-sandbox -- the built-in PDF viewer needs an unsandboxed frame.
     <iframe
       key={props.src}
       src={`${props.src}${PDF_VIEWER_FRAGMENT}`}
@@ -55,7 +55,7 @@ export function BrowserDocumentFrame(props: {
       src={props.src}
       title={props.title}
       className={className}
-      sandbox="allow-scripts allow-forms allow-popups"
+      sandbox="allow-scripts allow-forms allow-popups allow-downloads"
     />
   );
 }

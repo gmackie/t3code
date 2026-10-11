@@ -5,7 +5,7 @@ import {
   type RelayClientInstallProgressStage,
 } from "@t3tools/contracts";
 import { RelayOkResponse } from "@t3tools/contracts/relay";
-import { HostProcessPlatform } from "@t3tools/shared/hostProcess";
+import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as RelayClient from "@t3tools/shared/relayClient";
 import { withRelayClientTracing } from "@t3tools/shared/relayTracing";
 import * as Cause from "effect/Cause";
@@ -105,11 +105,12 @@ const authorizeCli = Effect.fn("cloud.cli.authorize")(function* (options: {
   // A stored credential whose refresh fails (revoked, expired grant) must
   // fall through to a fresh device authorization, not dead-end the command.
   const existing = yield* tokens.getExisting.pipe(
-    Effect.catchTag("CloudCliCredentialRefreshError", () =>
-      Console.log(
-        "The stored T3 Connect credential could not be refreshed; signing in again.",
-      ).pipe(Effect.as(Option.none())),
-    ),
+    Effect.catchTags({
+      CloudCliCredentialRefreshError: () =>
+        Console.log(
+          "The stored T3 Connect credential could not be refreshed; signing in again.",
+        ).pipe(Effect.as(Option.none())),
+    }),
   );
   if (Option.isSome(existing)) {
     return existing.value.identity ?? null;
@@ -685,7 +686,7 @@ export const connectCommand = Command.make("connect", {
         // show how to run the server manually.
         const background = yield* recoverServiceOnboardingOffer(offerServiceDuringOnboarding);
         if (background) {
-          const platform = yield* HostProcessPlatform;
+          const platform = yield* HostProcess.Platform;
           yield* Console.log(
             platform === "darwin"
               ? "\n✓ Background service ready\n\nT3 Code is set to run while you are logged in to this Mac. The server establishes the T3 Connect link on startup."

@@ -1,6 +1,6 @@
 import { expect, it } from "vite-plus/test";
 import * as Schema from "effect/Schema";
-import { UnityHookRequest, UnityHookCatalog } from "./unityHooks";
+import { UnityHookRequest, UnityHookCatalog } from "./unityHooks.ts";
 const decode = Schema.decodeUnknownSync(UnityHookRequest);
 const decodeCatalog = Schema.decodeUnknownSync(UnityHookCatalog);
 it("accepts bounded vector writes and rejects malformed vector values", () => {

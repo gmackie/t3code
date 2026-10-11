@@ -3,8 +3,18 @@ import { OrchestratorMcpFailure } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as UnityHooks from "../../../game/UnityHooks.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
-import { readFullAccessCaller } from "../../threadAccess.ts";
+import { assertFullAccess, assertLiveCaller, readCaller } from "../../threadAccess.ts";
 import { UnityToolkit, UnitySnapshotToolkit } from "./tools.ts";
+
+/** Unity tools act on the environment, so they need a live full-access/default caller. */
+const readFullAccessCaller = Effect.fn("mcp.unity.readFullAccessCaller")(function* (
+  message: string,
+) {
+  const context = yield* readCaller();
+  yield* assertLiveCaller(context);
+  yield* assertFullAccess(context, message);
+  return context;
+});
 
 export const layer = UnityToolkit.toLayer({
   unity_command: ({ request }) =>

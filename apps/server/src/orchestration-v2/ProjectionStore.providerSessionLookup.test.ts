@@ -12,7 +12,7 @@ import * as Layer from "effect/Layer";
 import * as Tracer from "effect/Tracer";
 import * as Schema from "effect/Schema";
 import * as SqlClient from "effect/sql/SqlClient";
-import * as Persistence from "../persistence/Layers/Sqlite.ts";
+import * as Persistence from "../persistence/Sqlite.ts";
 import * as ProjectionStore from "./ProjectionStore.ts";
 
 const encodeSessionError = Schema.encodeSync(

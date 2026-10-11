@@ -27,7 +27,7 @@ export function WorkspaceModeSwitcher({ threadRef }: { threadRef: ScopedThreadRe
             aria-label={`Switch to ${label} mode`}
             aria-pressed={selected}
             className={cn(
-              "rounded px-2 py-1 text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+              "rounded px-2 py-1 text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
               selected
                 ? "bg-accent text-accent-foreground"
                 : "text-muted-foreground hover:bg-accent/50 hover:text-foreground",

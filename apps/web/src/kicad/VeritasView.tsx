@@ -91,7 +91,7 @@ export function VeritasView({
     status?.configured && status.canOperate && !status.link.pendingOperation && !busy,
   );
   return (
-    <div className="h-full overflow-auto p-4 text-sm">
+    <div className="scrollbar-gutter-both h-full overflow-auto p-4 text-sm">
       <div className="mx-auto max-w-4xl space-y-6">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>

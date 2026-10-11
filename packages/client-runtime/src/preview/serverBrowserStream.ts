@@ -90,7 +90,7 @@ export type PreviewStreamInput =
   | { readonly type: "resize"; readonly width: number; readonly height: number }
   | { readonly type: "navigate"; readonly url: string }
   | { readonly type: "history"; readonly delta: -1 | 1 }
-  | { readonly type: "reload" }
+  | { readonly type: "reload"; readonly ignoreCache?: boolean }
   /** Asks whether the page point takes text. Touch viewers send it on touch start. */
   | { readonly type: "probe"; readonly x: number; readonly y: number };
 
@@ -139,7 +139,8 @@ export async function uploadPreviewStreamFiles(
   if (!response.ok) throw new Error((await response.text()) || "The upload was refused.");
 }
 
-const previewStreamDownloadUrl = (
+/** A file a server tab downloaded, served with the stream's own access. */
+export const previewStreamDownloadUrl = (
   target: Pick<PreviewStreamTarget, "access" | "threadId" | "tabId">,
   id: string,
 ): string =>
@@ -202,6 +203,8 @@ export interface PreviewStreamEvents {
   readonly onClipboard?: (text: string) => void;
   /** A file the page downloaded while this viewer had control. */
   readonly onDownload?: (download: PreviewStreamDownload) => void;
+  /** The page this viewer controls opened a new tab (a link or `window.open`). */
+  readonly onPopup?: (tabId: string) => void;
   /** The page opened a file picker (`null` once answered or replaced). */
   readonly onFileChooser?: (chooser: PreviewStreamFileChooser | null) => void;
   /** Input sent while disconnected is dropped. */
@@ -286,6 +289,7 @@ export function createPreviewStreamClient(
         accept,
         phase,
         sequence,
+        tabId,
       } = message as Record<string, unknown>;
       if (
         type === "fileChooser" &&
@@ -312,6 +316,8 @@ export function createPreviewStreamClient(
         typeof sequence === "number"
       ) {
         events.onPointer?.({ phase, x, y, sequence });
+      } else if (type === "popup" && typeof tabId === "string") {
+        events.onPopup?.(tabId);
       } else if (type === "clipboard" && typeof text === "string") {
         events.onClipboard?.(text);
       } else if (

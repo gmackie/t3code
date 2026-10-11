@@ -1,19 +1,14 @@
 import type { AssetResource, EnvironmentId } from "@t3tools/contracts";
 import { createContext, useContext, useEffect, useId, useState } from "react";
-import {
-  ActivityIndicator,
-  Image,
-  Pressable,
-  StyleSheet,
-  View,
-  type ViewStyle,
-} from "react-native";
+import { Image, Pressable, StyleSheet, View, type ViewStyle } from "react-native";
 
+import { AppActivityIndicator } from "../../components/AppActivityIndicator";
 import { AppText as Text } from "../../components/AppText";
 import type { FilePreviewSource } from "../../components/FilePreviewModal";
 import { MediaActionsMenu } from "../../components/MediaActionsMenu";
 import { PresentationSource } from "../../components/NativePresentation";
-import { useMediaActions, type MediaActionsSource } from "../../lib/mediaActions";
+import { useMediaActions } from "../../state/mediaActions";
+import { type MediaActionsSource } from "../../lib/mediaActionsSource";
 import { useAssetUrlState } from "../../state/assets";
 import {
   MARKDOWN_IMAGE_MAX_WIDTH,
@@ -95,7 +90,7 @@ export function ThreadMarkdownImageView(props: {
             {failed ? (
               <Text className="text-xs text-foreground-muted">Image unavailable</Text>
             ) : (
-              <ActivityIndicator />
+              <AppActivityIndicator />
             )}
           </Pressable>
         </MediaActionsMenu>

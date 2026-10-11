@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Maximize, Minus, Plus } from "lucide-react";
+import { observeResize } from "~/lib/observeResize";
 
 import { paneLayout, useBoardViewport, type BoardRect } from "./vendor/fabrication-viewport";
 
@@ -27,11 +28,10 @@ export function PrismGerberView({ svg, label }: { svg: string; label: string }) 
   useEffect(() => {
     const node = ref.current;
     if (!node) return;
-    const observer = new ResizeObserver(([entry]) => {
+    return observeResize(node, (entries) => {
+      const entry = entries.at(-1);
       if (entry) setSize({ width: entry.contentRect.width, height: entry.contentRect.height });
     });
-    observer.observe(node);
-    return () => observer.disconnect();
   }, []);
   const layout =
     board && size.width && size.height ? paneLayout(board, board, viewport.view, size) : null;

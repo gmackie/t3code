@@ -1,4 +1,4 @@
-/* eslint-disable t3code/namespace-node-imports */
+/* eslint-disable t3code/namespace-node-imports -- `Dirent` is a type-only named import from node:fs */
 // @effect-diagnostics nodeBuiltinImport:off globalDate:off
 import * as NodeCrypto from "node:crypto";
 import * as NodeFSP from "node:fs/promises";

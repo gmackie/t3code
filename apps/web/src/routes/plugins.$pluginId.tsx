@@ -216,7 +216,7 @@ function PluginWorkspaceRoute() {
             </div>
           </nav>
 
-          <main className="min-w-0 flex-1 overflow-auto p-4 md:p-6">
+          <main className="scrollbar-gutter-both min-w-0 flex-1 overflow-auto p-4 md:p-6">
             <div className="mx-auto grid max-w-5xl gap-4">
               <Card>
                 <CardHeader>

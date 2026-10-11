@@ -49,9 +49,10 @@ async function register(connection: ExpoPushConnection, token: string | null) {
           payload: { token },
         })
         .pipe(
-          Effect.catchTag("EnvironmentAuthInvalidError", (error) =>
-            token === null ? Effect.void : Effect.fail(error),
-          ),
+          Effect.catchTags({
+            EnvironmentAuthInvalidError: (error) =>
+              token === null ? Effect.void : Effect.fail(error),
+          }),
           Effect.timeout("15 seconds"),
         );
     }),

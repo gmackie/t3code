@@ -37,7 +37,7 @@ export function PluginQuickNav({ environmentId, projectId, threadId }: PluginQui
                 href={item.href}
                 className={cn(
                   "inline-flex max-w-40 items-center gap-1 rounded-md px-2 py-1 text-xs text-muted-foreground",
-                  "hover:bg-accent hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring",
+                  "hover:bg-accent hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
                 )}
                 aria-label={`Open ${item.displayName} ${item.title}`}
               />
