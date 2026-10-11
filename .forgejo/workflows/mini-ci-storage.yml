@@ -33,3 +33,21 @@ jobs:
         env:
           PYTHONDONTWRITEBYTECODE: "1"
         run: python3 scripts/mini-ci-storage.test.py
+
+  live-placement:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: gmacko-mini
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate SSD and export job paths
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+          T3CODE_MINI_CI_ROOT: ${{ vars.MINI_CI_STORAGE_ROOT || '/Volumes/FleetNativeFast-20261009/t3-ci' }}
+        run: python3 scripts/mini-ci-storage.py
+      - name: Verify actual workspace, temporary files, and package caches
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+          COREPACK_ENABLE_NETWORK: "0"
+          npm_config_manage_package_manager_versions: "false"
+        run: python3 scripts/mini-ci-storage-probe.py
