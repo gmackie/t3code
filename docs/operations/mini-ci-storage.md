@@ -16,3 +16,9 @@ host:
 Create that directory on the mounted SSD with the runner account, preserving any existing workspaces at their original locations. Keep the existing runner capacity, credentials, labels, timeout, and shutdown timeout. Restart only after the idle checks pass. The workflow guard exports SSD paths through `GITHUB_ENV`, so desktop packaging, iOS `mktemp`, CocoaPods, Corepack, npm and pnpm share the validated root without changing global user configuration. The build steps must not override `TMPDIR` with `/tmp`.
 
 Verify the next job's checked workspace and guard receipt both name the SSD, package cache and native temporary files stay below that root, and internal free space remains above the fleet startup threshold. Code publication alone does not verify this operational activation. If the root must change, drain the runner again, preserve the old workspace/cache contents, and change both `host.workdir_parent` and `MINI_CI_STORAGE_ROOT`. Rollback restores the preserved runner configuration while idle; no bulk directory migration or cleanup is required.
+
+## Verify placement without a build
+
+Dispatch `mini-ci-storage.yml` on the merged revision. Its five-minute Mini job checks out that revision under the configured runner workspace, exports the guarded paths, and verifies actual Python/Node temporary allocation plus npm/pnpm cache resolution. The installed tools run without network-enabled Corepack or project package-manager switching. The receipt is printed to the job log; the small temporary directory is removed automatically. This job installs no dependencies and starts no native builds. The Linux storage regression suite also runs on dispatch.
+
+A passing placement job verifies storage routing; the fleet's internal startup reserve and native acceptance remain separate requirements.
