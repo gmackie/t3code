@@ -4,6 +4,7 @@ import * as NodeFSP from "node:fs/promises";
 import * as NodePath from "node:path";
 import * as NodeURL from "node:url";
 import * as NodeModule from "node:module";
+import * as NodeTimersPromises from "node:timers/promises";
 
 import type { Plugin } from "vite-plus";
 
@@ -342,13 +343,31 @@ async function downloadSpdxLicense(
   licenseId: string,
 ): Promise<SpdxLicenseDetails> {
   const url = `https://raw.githubusercontent.com/spdx/license-list-data/${SPDX_LICENSE_LIST_REVISION}/json/details/${encodeURIComponent(licenseId)}.json`;
-  const response = await fetch(url);
-  if (!response.ok) {
-    throw new Error(
-      `Could not download SPDX license ${licenseId}: HTTP ${String(response.status)}.`,
-    );
+  let downloaded: unknown;
+  for (let attempt = 0; ; attempt++) {
+    let response: Response;
+    try {
+      response = await fetch(url, { signal: AbortSignal.timeout(30_000) });
+      if (response.ok) {
+        downloaded = await response.json();
+        break;
+      }
+    } catch (cause) {
+      if (attempt >= 2 || cause instanceof SyntaxError) {
+        throw new Error(`Could not download SPDX license ${licenseId} from ${url}.`, { cause });
+      }
+      await NodeTimersPromises.setTimeout(250 * 2 ** attempt);
+      continue;
+    }
+    await response.body?.cancel();
+    if (attempt >= 2 || !(response.status === 429 || response.status >= 500)) {
+      throw new Error(
+        `Could not download SPDX license ${licenseId}: HTTP ${String(response.status)}.`,
+      );
+    }
+    await NodeTimersPromises.setTimeout(250 * 2 ** attempt);
   }
-  const details = decodeSpdxLicenseDetails((await response.json()) as unknown, licenseId);
+  const details = decodeSpdxLicenseDetails(downloaded, licenseId);
   const cachePath = spdxLicenseCachePath(configDirectory, licenseId);
   await NodeFSP.mkdir(NodePath.dirname(cachePath), { recursive: true });
   await NodeFSP.writeFile(cachePath, `${JSON.stringify(details)}\n`, "utf8");

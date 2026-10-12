@@ -6,10 +6,11 @@ import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 import * as NodeURL from "node:url";
 
-import { afterEach, describe, expect, it } from "vite-plus/test";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 import {
   generateThirdPartyLicenseManifest,
+  syncThirdPartyLicenseNotices,
   THIRD_PARTY_LICENSES_FILE_NAME,
   thirdPartyLicensesPlugin,
 } from "./third-party-licenses.js";
@@ -76,6 +77,8 @@ async function createFixture(): Promise<{
 }
 
 afterEach(async () => {
+  vi.unstubAllGlobals();
+  vi.useRealTimers();
   await Promise.all(
     tempDirectories
       .splice(0)
@@ -84,6 +87,49 @@ afterEach(async () => {
 });
 
 describe("third-party license generation", () => {
+  it.each(["connection", "http"])(
+    "retries a temporary SPDX %s failure and caches the notice",
+    async (failure) => {
+      const fixture = await createFixture();
+      await writeJson(fixture.configFile, {
+        packageOverrides: [{ name: "demo-dependency", generatedNotice: { licenseId: "MIT" } }],
+      });
+      const fetchMock = vi.fn<typeof fetch>();
+      if (failure === "connection") fetchMock.mockRejectedValueOnce(new TypeError("fetch failed"));
+      else fetchMock.mockResolvedValueOnce(new Response("Unavailable", { status: 503 }));
+      fetchMock.mockResolvedValueOnce(
+        Response.json({ licenseId: "MIT", licenseText: "MIT notice" }),
+      );
+      vi.stubGlobal("fetch", fetchMock);
+      await syncThirdPartyLicenseNotices(fixture.configFile);
+      await syncThirdPartyLicenseNotices(fixture.configFile);
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    },
+  );
+
+  it.each([404, 503])(
+    "reports SPDX HTTP %s failures without caching missing notices",
+    async (status) => {
+      const fixture = await createFixture();
+      await writeJson(fixture.configFile, {
+        packageOverrides: [{ name: "demo-dependency", generatedNotice: { licenseId: "MIT" } }],
+      });
+      const fetchMock = vi
+        .fn<typeof fetch>()
+        .mockImplementation(async () => new Response("Failed", { status }));
+      vi.stubGlobal("fetch", fetchMock);
+      await expect(syncThirdPartyLicenseNotices(fixture.configFile)).rejects.toThrow(
+        `Could not download SPDX license MIT: HTTP ${status}`,
+      );
+      expect(fetchMock).toHaveBeenCalledTimes(status === 404 ? 1 : 3);
+      await expect(
+        NodeFSP.stat(
+          NodePath.join(fixture.root, ".generated/third-party-licenses/spdx/v3.28.0/MIT.json"),
+        ),
+      ).rejects.toMatchObject({ code: "ENOENT" });
+    },
+  );
+
   it("generates mobile notices without scripts workspace dependency links", async () => {
     const fixture = await createFixture();
     const generatorPath = NodePath.join(fixture.root, "scripts/lib/third-party-licenses.ts");
