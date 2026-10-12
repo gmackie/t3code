@@ -7,6 +7,8 @@ import { Argument, Command } from "effect/cli";
 import * as UnityHooks from "../game/UnityHooks.ts";
 import * as ProcessRunner from "../processRunner.ts";
 
+const encodeJsonValue = Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown));
+
 const decodeRequest = Schema.decodeUnknownEffect(Schema.fromJsonString(UnityHookRequest));
 
 export const unityCommand = Command.make("unity-hooks", {
@@ -19,7 +21,7 @@ export const unityCommand = Command.make("unity-hooks", {
     Effect.gen(function* () {
       const hooks = yield* UnityHooks.UnityHooks;
       const result = yield* hooks.execute(yield* decodeRequest(request));
-      yield* Console.log(JSON.stringify(result));
+      yield* Console.log(yield* encodeJsonValue(result));
     }).pipe(Effect.provide(UnityHooks.layer.pipe(Layer.provide(ProcessRunner.layer)))),
   ),
 );
@@ -34,7 +36,9 @@ export const unityJobsCommand = Command.make("unity-command", {
   Command.withHandler(({ request }) =>
     Effect.gen(function* () {
       const unity = yield* UnityHooks.UnityHooks;
-      yield* Console.log(JSON.stringify(yield* unity.command(yield* decodeCommand(request))));
+      yield* Console.log(
+        yield* encodeJsonValue(yield* unity.command(yield* decodeCommand(request))),
+      );
     }).pipe(Effect.provide(UnityHooks.layer.pipe(Layer.provide(ProcessRunner.layer)))),
   ),
 );

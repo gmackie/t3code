@@ -1,4 +1,4 @@
-import * as NodeCrypto from "node:crypto";
+import * as Crypto from "effect/Crypto";
 import {
   CommandId,
   MessageId,
@@ -35,6 +35,10 @@ interface Session {
   readonly catalog: GameCatalog;
   lease?: string;
 }
+const encodeJsonValue = Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown));
+
+const isUnityHookError = Schema.is(UnityHookError);
+
 export class GameSessions extends Context.Service<
   GameSessions,
   {
@@ -86,6 +90,7 @@ const invalid = () =>
     reason: "Unity returned incompatible game data.",
   });
 const make = Effect.gen(function* () {
+  const crypto = yield* Crypto.Crypto;
   const scope = yield* Effect.scope;
   const threads = yield* ThreadManagement.ThreadManagementService;
   const hooks = yield* UnityHooks.UnityHooks;
@@ -118,7 +123,7 @@ const make = Effect.gen(function* () {
               commandId: CommandId.make(id),
               messageId: MessageId.make(id),
               threadId,
-              text: `Unity watch condition matched. ${JSON.stringify({ watchId: watch.id, target: session.catalog.target, generation: session.catalog.generation, predicate: current.predicate, receipt })}`,
+              text: `Unity watch condition matched. ${yield* encodeJsonValue({ watchId: watch.id, target: session.catalog.target, generation: session.catalog.generation, predicate: current.predicate, receipt }).pipe(Effect.orDie)}`,
               notification: {
                 source: { kind: "monitor" },
                 outcome: "updated",
@@ -181,7 +186,9 @@ const make = Effect.gen(function* () {
         code: "viewer_limit",
         reason: "Too many open game viewers.",
       });
-    const token = NodeCrypto.randomBytes(32).toString("base64url");
+    const token = Buffer.from(yield* crypto.randomBytes(32).pipe(Effect.orDie)).toString(
+      "base64url",
+    );
     viewers.set(token, { ...input, expiresAt });
     return { token, expiresAt, canOperate: input.canOperate };
   });
@@ -219,11 +226,11 @@ const make = Effect.gen(function* () {
         .command(bridge, { action: "catalog", generation: bridge.generation })
         .pipe(
           Effect.flatMap(decodeCatalog),
-          Effect.mapError((error) => (error instanceof UnityHookError ? error : invalid())),
+          Effect.mapError((error) => (isUnityHookError(error) ? error : invalid())),
         );
       if (catalog.generation !== bridge.generation || catalog.target !== input.target.kind)
         return yield* invalid();
-      const sessionId = NodeCrypto.randomUUID();
+      const sessionId = yield* crypto.randomUUIDv4.pipe(Effect.orDie);
       sessions.set(sessionId, { viewer: token, bridge, catalog });
       return { sessionId, catalog };
     }
@@ -241,7 +248,7 @@ const make = Effect.gen(function* () {
     if (input.action === "report") {
       const state = yield* command({ action: "state", afterSequence: 0 }).pipe(
         Effect.flatMap(decodeState),
-        Effect.mapError((error) => (error instanceof UnityHookError ? error : invalid())),
+        Effect.mapError((error) => (isUnityHookError(error) ? error : invalid())),
       );
       const document = gameReport(session.catalog, state);
       const reference = yield* html
@@ -265,17 +272,21 @@ const make = Effect.gen(function* () {
     if (input.action === "state")
       return yield* command(input).pipe(
         Effect.flatMap(decodeState),
-        Effect.mapError((error) => (error instanceof UnityHookError ? error : invalid())),
+        Effect.mapError((error) => (isUnityHookError(error) ? error : invalid())),
       );
     if (input.action === "acquire") {
       const result = yield* command({
         action: "acquire",
-        owner: NodeCrypto.createHash("sha256").update(`${token}:${input.sessionId}`).digest("hex"),
+        owner: Buffer.from(
+          yield* crypto
+            .digest("SHA-256", new TextEncoder().encode(`${token}:${input.sessionId}`))
+            .pipe(Effect.orDie),
+        ).toString("hex"),
         role: caller.role,
         takeover: caller.role === "human" && input.takeover,
       }).pipe(
         Effect.flatMap(decodeLease),
-        Effect.mapError((error) => (error instanceof UnityHookError ? error : invalid())),
+        Effect.mapError((error) => (isUnityHookError(error) ? error : invalid())),
       );
       session.lease = result.lease;
       return result;
@@ -331,7 +342,7 @@ const make = Effect.gen(function* () {
     );
     const state = yield* request(token, { action: "state", sessionId: id, afterSequence: 0 }).pipe(
       Effect.flatMap(decodeState),
-      Effect.mapError((error) => (error instanceof UnityHookError ? error : invalid())),
+      Effect.mapError((error) => (isUnityHookError(error) ? error : invalid())),
     );
     const scale = Math.min(1, 1280 / Math.max(state.width, state.height));
     return {

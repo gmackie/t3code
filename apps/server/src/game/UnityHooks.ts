@@ -11,7 +11,7 @@ import {
   UnityHookSample,
   UnityHookWatch,
 } from "@t3tools/contracts";
-import * as NodeCrypto from "node:crypto";
+import * as Crypto from "effect/Crypto";
 import * as ServerConfig from "../config.ts";
 import * as Config from "effect/Config";
 import * as Context from "effect/Context";
@@ -23,6 +23,12 @@ import { resolveBaseDir } from "../os-jank.ts";
 import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
 import * as ProcessRunner from "../processRunner.ts";
+
+const decodeJson = Schema.decodeUnknownEffect(Schema.fromJsonString(Schema.Unknown));
+const encodeJsonValue = Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown));
+const decodeJsonSync = Schema.decodeUnknownSync(Schema.fromJsonString(Schema.Unknown));
+
+const isUnityHookError = Schema.is(UnityHookError);
 
 export class UnityHooks extends Context.Service<
   UnityHooks,
@@ -40,7 +46,7 @@ const record = (value: unknown): value is Record<string, unknown> =>
 
 /** Unwrap only CLI/Pipeline transport fields, never recurse through gameplay data. */
 function payload(output: string): unknown {
-  let value: unknown = JSON.parse(output);
+  let value = decodeJsonSync(output);
   for (let depth = 0; depth < 8; depth++) {
     if (!record(value)) break;
     if (value.ok === false || value.success === false) {
@@ -63,6 +69,8 @@ function payload(output: string): unknown {
   });
 }
 
+const encodeJson = (value: unknown) => encodeJsonValue(value).pipe(Effect.orDie);
+
 const decodeBridge = Schema.decodeUnknownEffect(UnityBridgeConnection);
 const decodeRequest = Schema.decodeUnknownEffect(UnityHookRequest);
 const decodeCommandRequest = Schema.decodeUnknownEffect(UnityCommandRequest);
@@ -70,6 +78,7 @@ const decodeCommandResult = Schema.decodeUnknownEffect(UnityCommandResult);
 const decodeReceipt = Schema.decodeUnknownEffect(Schema.fromJsonString(UnityCommandResult));
 
 const make = Effect.gen(function* () {
+  const crypto = yield* Crypto.Crypto;
   const runner = yield* ProcessRunner.ProcessRunner;
   const executable = yield* Config.String("T3CODE_UNITY_CLI").pipe(Config.withDefault("unity"));
   const fs = yield* FileSystem.FileSystem;
@@ -85,29 +94,40 @@ const make = Effect.gen(function* () {
         undefined,
         Option.isSome(stateDirName) ? { stateDirName: stateDirName.value } : {},
       )).stateDir;
-  const receiptPath = (canonical: string, target: UnityTarget, jobId: string) =>
-    path.join(
+  const receiptPath = Effect.fn("UnityHooks.receiptPath")(function* (
+    canonical: string,
+    target: UnityTarget,
+    jobId: string,
+  ) {
+    return path.join(
       stateDir,
       "unity-jobs",
-      NodeCrypto.createHash("sha256").update(`${target.kind}:${canonical}`).digest("hex"),
+      Buffer.from(
+        yield* crypto
+          .digest("SHA-256", new TextEncoder().encode(`${target.kind}:${canonical}`))
+          .pipe(Effect.orDie),
+      ).toString("hex"),
       `${jobId}.json`,
     );
+  });
   const recover = Effect.fn("UnityHooks.recover")(function* (
     canonical: string,
     request: UnityCommandRequest,
   ) {
     if (request.action !== "status") return undefined;
-    return yield* fs.readFileString(receiptPath(canonical, request.target, request.jobId)).pipe(
-      Effect.flatMap(decodeReceipt),
-      Effect.map((result) =>
-        result.action === "job" &&
-        result.jobId === request.jobId &&
-        ["completed", "failed", "canceled"].includes(result.state)
-          ? { ...result, recovered: true }
-          : undefined,
-      ),
-      Effect.catch(() => Effect.succeed(undefined)),
-    );
+    return yield* fs
+      .readFileString(yield* receiptPath(canonical, request.target, request.jobId))
+      .pipe(
+        Effect.flatMap(decodeReceipt),
+        Effect.map((result) =>
+          result.action === "job" &&
+          result.jobId === request.jobId &&
+          ["completed", "failed", "canceled"].includes(result.state)
+            ? { ...result, recovered: true }
+            : undefined,
+        ),
+        Effect.catch(() => Effect.succeed(undefined)),
+      );
   });
   const runCli = Effect.fn("UnityHooks.runCli")(function* (
     args: string[],
@@ -141,12 +161,8 @@ const make = Effect.gen(function* () {
             }),
         ),
       );
-    let value: unknown;
-    try {
-      value = JSON.parse(output.stdout);
-    } catch {
-      /* The transport diagnostic below owns incomplete JSON. */
-    }
+    // The transport diagnostic below owns incomplete JSON.
+    const value = yield* decodeJson(output.stdout).pipe(Effect.orElseSucceed(() => undefined));
     if (
       !jobId &&
       record(value) &&
@@ -265,10 +281,10 @@ const make = Effect.gen(function* () {
     const canonical = yield* resolveTarget(request.target);
     const args = ["command", connect ? "agent_game_connect" : `agent_vars_${request.action}`];
     if ("generation" in request) args.push("--generation", request.generation);
-    if ("handles" in request) args.push("--handles", JSON.stringify(request.handles));
+    if ("handles" in request) args.push("--handles", yield* encodeJson(request.handles));
     if ("handle" in request) args.push("--handle", request.handle);
-    if ("value" in request) args.push("--value", JSON.stringify(request.value));
-    if ("expected" in request) args.push("--expected", JSON.stringify(request.expected));
+    if ("value" in request) args.push("--value", yield* encodeJson(request.value));
+    if ("expected" in request) args.push("--expected", yield* encodeJson(request.expected));
     if (request.action === "watch")
       args.push(
         "--duration_ms",
@@ -277,7 +293,7 @@ const make = Effect.gen(function* () {
         String(request.intervalMs),
       );
     if (request.action === "watch" && request.predicate)
-      args.push("--predicate", JSON.stringify(request.predicate));
+      args.push("--predicate", yield* encodeJson(request.predicate));
     if ("id" in request) args.push("--id", request.id);
     if (request.action === "watch_read")
       args.push("--after_sequence", String(request.afterSequence));
@@ -313,7 +329,7 @@ const make = Effect.gen(function* () {
     const data = yield* Effect.try({
       try: () => payload(output.stdout),
       catch: (error) =>
-        error instanceof UnityHookError
+        isUnityHookError(error)
           ? error
           : new UnityHookError({
               code: "invalid_response",
@@ -447,7 +463,7 @@ const make = Effect.gen(function* () {
     if (
       request.action === "submit" &&
       (Object.keys(request.parameters).length > 64 ||
-        JSON.stringify(request.parameters).length > 131072)
+        (yield* encodeJson(request.parameters)).length > 131072)
     )
       return yield* new UnityHookError({
         code: "invalid_request",
@@ -526,13 +542,13 @@ const make = Effect.gen(function* () {
           "Unity returned a different job ID. The requested job's outcome is unknown; do not resubmit its mutation.",
       });
     if (result.action === "job" && ["completed", "failed", "canceled"].includes(result.state)) {
-      const file = receiptPath(canonical, request.target, result.jobId);
+      const file = yield* receiptPath(canonical, request.target, result.jobId);
       const directory = path.dirname(file);
-      const temporary = `${file}.${NodeCrypto.randomUUID()}.tmp`;
+      const temporary = `${file}.${yield* crypto.randomUUIDv4.pipe(Effect.orDie)}.tmp`;
       // Only persist observed terminal results; interrupted/queued work is never replayed.
       yield* Effect.gen(function* () {
         yield* fs.makeDirectory(directory, { recursive: true });
-        yield* fs.writeFileString(temporary, JSON.stringify(result), { mode: 0o600 });
+        yield* fs.writeFileString(temporary, yield* encodeJson(result), { mode: 0o600 });
         yield* fs.rename(temporary, file);
         const entries = yield* fs.readDirectory(directory);
         const receipts = yield* Effect.forEach(

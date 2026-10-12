@@ -1,3 +1,4 @@
+// @effect-diagnostics nodeBuiltinImport:off - Native HTTP server fixture tests the bridge transport.
 import { it } from "@effect/vitest";
 import { expect } from "vite-plus/test";
 import * as Effect from "effect/Effect";
@@ -21,6 +22,29 @@ const server = (handler: NodeHttp.RequestListener) =>
           }),
       ),
   );
+it.effect("preserves bridge HTTP failures and rejects malformed command responses", () =>
+  Effect.gen(function* () {
+    let status = 503;
+    const instance = yield* server((_request, response) => {
+      response.statusCode = status;
+      response.end("not JSON");
+    });
+    const address = instance.address();
+    if (!address || typeof address === "string") throw new Error("No port");
+    const transport = yield* GameTransport.GameTransport;
+    const bridge = {
+      generation: "g",
+      port: address.port,
+      token: "private-token",
+      protocol: 1 as const,
+    };
+    expect((yield* transport.frame(bridge).pipe(Effect.flip)).code).toBe("bridge_503");
+    status = 200;
+    const result = yield* transport.command(bridge, { action: "state" }).pipe(Effect.result);
+    expect(result).toMatchObject({ _tag: "Failure", failure: { code: "invalid_response" } });
+  }).pipe(Effect.provide(GameTransport.layer), Effect.scoped),
+);
+
 it.effect("authenticates bridge calls and decodes command failures", () =>
   Effect.gen(function* () {
     const instance = yield* server((req, res) => {
@@ -37,7 +61,14 @@ it.effect("authenticates bridge calls and decodes command failures", () =>
         { generation: "g", port: address.port, token: "private-token", protocol: 1 },
         { action: "state" },
       )
-      .pipe(Effect.flip);
+      .pipe(
+        Effect.match({
+          onFailure: (error) => error,
+          onSuccess: () => {
+            throw new Error("Expected operation to fail");
+          },
+        }),
+      );
     expect(failure.code).toBe("control_lost");
   }).pipe(Effect.provide(GameTransport.layer), Effect.scoped),
 );

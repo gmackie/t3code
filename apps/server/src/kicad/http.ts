@@ -1,5 +1,5 @@
 // @effect-diagnostics globalDate:off globalDateInEffect:off globalErrorInEffectCatch:off globalErrorInEffectFailure:off
-import * as NodeCrypto from "node:crypto";
+import * as Crypto from "effect/Crypto";
 import { kiCadLibraryCache } from "./KiCadLibrary.ts";
 import { kiCadBomCache } from "./KiCadBom.ts";
 import { kiCadModelCache } from "./KiCadModel.ts";
@@ -50,7 +50,10 @@ export const kicadViewerSessionRouteLayer = HttpRouter.add(
     if (!cwd) return HttpServerResponse.text("Missing cwd", { status: 400 });
     const fileSystem = yield* FileSystem.FileSystem;
     const canonical = yield* fileSystem.realPath(cwd);
-    const token = NodeCrypto.randomBytes(32).toString("base64url");
+    const crypto = yield* Crypto.Crypto;
+    const token = Buffer.from(yield* crypto.randomBytes(32).pipe(Effect.orDie)).toString(
+      "base64url",
+    );
     const expiresAt = Date.now() + 60 * 60_000;
     for (const [oldToken, session] of kicadViewerSessions) {
       if (session.expiresAt <= Date.now()) kicadViewerSessions.delete(oldToken);

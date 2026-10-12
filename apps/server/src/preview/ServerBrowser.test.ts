@@ -1403,7 +1403,14 @@ it.live("keeps wallet tabs human-operable while refusing ordinary agent automati
           operation: "evaluate",
           input: { expression: "sign()" },
         })
-        .pipe(Effect.flip);
+        .pipe(
+          Effect.match({
+            onFailure: (error) => error,
+            onSuccess: () => {
+              throw new Error("Expected operation to fail");
+            },
+          }),
+        );
       expect(denied).toMatchObject({
         _tag: "PreviewAutomationControlInterruptedError",
         reason: "agentMismatch",
@@ -1416,7 +1423,14 @@ it.live("keeps wallet tabs human-operable while refusing ordinary agent automati
           operation: "open",
           input: { url: "https://other.example" },
         })
-        .pipe(Effect.flip);
+        .pipe(
+          Effect.match({
+            onFailure: (error) => error,
+            onSuccess: () => {
+              throw new Error("Expected operation to fail");
+            },
+          }),
+        );
       expect(reopen).toMatchObject({
         _tag: "PreviewAutomationControlInterruptedError",
         reason: "agentMismatch",

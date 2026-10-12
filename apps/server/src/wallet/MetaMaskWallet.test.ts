@@ -1,3 +1,4 @@
+// @effect-diagnostics nodeBuiltinImport:off - Native fixtures exercise the Node/Playwright adapter boundary.
 import * as NodeFSP from "node:fs/promises";
 import * as NodeVM from "node:vm";
 import * as NodeOS from "node:os";

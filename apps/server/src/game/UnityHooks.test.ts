@@ -1,3 +1,4 @@
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import { it } from "@effect/vitest";
 import { expect } from "vite-plus/test";
 import * as Effect from "effect/Effect";
@@ -109,6 +110,7 @@ function layer(
   return UnityHooks.layer.pipe(
     Layer.provide(
       Layer.mergeAll(
+        NodeCrypto.layer,
         Layer.succeed(ProcessRunner.ProcessRunner, {
           run: (input) => {
             calls.push(input);

@@ -1,3 +1,4 @@
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import { it } from "@effect/vitest";
 import { expect } from "vite-plus/test";
 import {
@@ -44,6 +45,7 @@ function fixture(
   return GameSessions.layer.pipe(
     Layer.provide(
       Layer.mergeAll(
+        NodeCrypto.layer,
         Layer.mock(ThreadManagement.ThreadManagementService)(
           monitoring ? { dispatch: monitoring.dispatch } : {},
         ),
@@ -138,13 +140,29 @@ it.effect("requires this viewer's lease and releases it on close", () => {
     const id = yield* open(service, own.token);
     const bad = yield* service
       .request(own.token, { action: "stop_monitor", sessionId: id, lease: "other" })
-      .pipe(Effect.flip);
+      .pipe(
+        Effect.match({
+          onFailure: (error) => error,
+          onSuccess: () => {
+            throw new Error("Expected operation to fail");
+          },
+        }),
+      );
     expect(bad.code).toBe("control_lost");
     yield* service.request(own.token, { action: "acquire", sessionId: id, takeover: true });
     expect(calls.at(-1)?.owner).not.toBe(own.token);
     yield* service.request(own.token, { action: "close", sessionId: id });
     expect(calls.at(-1)?.action).toBe("release");
-    expect((yield* service.frame(own.token, id).pipe(Effect.flip)).code).toBe("session_missing");
+    expect(
+      (yield* service.frame(own.token, id).pipe(
+        Effect.match({
+          onFailure: (error) => error,
+          onSuccess: () => {
+            throw new Error("Expected operation to fail");
+          },
+        }),
+      )).code,
+    ).toBe("session_missing");
   }).pipe(Effect.provide(fixture(calls)));
 });
 it.effect("keeps agent sessions thread-bound and disallows human takeover semantics", () => {
@@ -158,7 +176,14 @@ it.effect("keeps agent sessions thread-bound and disallows human takeover semant
     expect(
       (yield* service
         .agentRequest(ThreadId.make("other"), { action: "state", sessionId, afterSequence: 0 })
-        .pipe(Effect.flip)).code,
+        .pipe(
+          Effect.match({
+            onFailure: (error) => error,
+            onSuccess: () => {
+              throw new Error("Expected operation to fail");
+            },
+          }),
+        )).code,
     ).toBe("session_missing");
   }).pipe(Effect.provide(fixture(calls)));
 });

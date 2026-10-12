@@ -18,6 +18,8 @@ import { authenticateRawRouteWithScope } from "../http.ts";
 import * as GameSessions from "./GameSessions.ts";
 import { gameViewerDocument } from "./viewer.ts";
 
+const isUnityHookError = Schema.is(UnityHookError);
+
 const decodeTicket = Schema.decodeUnknownEffect(GameViewerInput);
 const decodeRequest = Schema.decodeUnknownEffect(GameRequest);
 const errorResponse = (error: UnityHookError) =>
@@ -28,7 +30,7 @@ const errorResponse = (error: UnityHookError) =>
 const handleErrors = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
   effect.pipe(
     Effect.catch((error) => {
-      if (error instanceof UnityHookError) return errorResponse(error);
+      if (isUnityHookError(error)) return errorResponse(error);
       if (HttpServerRespondable.isRespondable(error))
         return HttpServerRespondable.toResponse(error);
       return HttpServerResponse.json(
