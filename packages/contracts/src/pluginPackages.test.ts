@@ -9,7 +9,9 @@ import {
 import { WS_METHODS, WsRpcGroup } from "./rpc.ts";
 
 const decodeStatus = Schema.decodeUnknownSync(PluginPackageStatusSnapshot);
-const decodeAction = Schema.decodeUnknownSync(PluginPackageActionInput);
+const decodeAction = Schema.decodeUnknownSync(PluginPackageActionInput, {
+  onExcessProperty: "error",
+});
 
 describe("plugin package contracts", () => {
   it("decodes environment package status", () => {

@@ -47,7 +47,7 @@ export type PluginPackageStatusSnapshot = typeof PluginPackageStatusSnapshot.Typ
 
 export const PluginPackageActionInput = Schema.Struct({
   id: PluginPackageId,
-}).annotate({ parseOptions: { onExcessProperty: "error" } });
+});
 export type PluginPackageActionInput = typeof PluginPackageActionInput.Type;
 
 export const PluginPackageOperation = Schema.Literals(["status", "enable", "disable", "reload"]);

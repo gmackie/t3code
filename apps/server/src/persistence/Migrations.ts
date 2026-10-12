@@ -222,7 +222,7 @@ export const reconcileMigrationLedger = Effect.fn("reconcileMigrationLedger")(fu
   const ledgerTables = yield* sql<{ readonly name: string }>`
     SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'effect_sql_migrations'
   `;
-  if (ledgerTables.length === 0) return;
+  if (ledgerTables.length === 0) return [];
   const rows = yield* sql<{
     readonly migration_id: number;
     readonly name: string;
@@ -236,7 +236,7 @@ export const reconcileMigrationLedger = Effect.fn("reconcileMigrationLedger")(fu
     if (manifestId === undefined) return !retiredLaneMigrations.has(row.name);
     return manifestId === row.migration_id && rows.findIndex((o) => o.name === row.name) === index;
   });
-  if (aligned) return;
+  if (aligned) return [];
 
   const foreignRows = rows.filter(
     (row) => !manifestIdByName.has(row.name) && !retiredLaneMigrations.has(row.name),
@@ -258,13 +258,13 @@ export const reconcileMigrationLedger = Effect.fn("reconcileMigrationLedger")(fu
     yield* Effect.logWarning(
       "Migration ledger has foreign rows on manifest slots; leaving it untouched",
     ).pipe(Effect.annotateLogs({ foreign: foreignRows.map((r) => `${r.migration_id}_${r.name}`) }));
-    return;
+    return [];
   }
 
   const dropped = rows
     .filter((row) => retiredLaneMigrations.has(row.name))
     .map((row) => `${row.migration_id}_${row.name}`);
-  const backfilled: Array<string> = [];
+  const backfilled: Array<readonly [number, string]> = [];
 
   yield* sql.withTransaction(
     Effect.gen(function* () {
@@ -293,7 +293,7 @@ export const reconcileMigrationLedger = Effect.fn("reconcileMigrationLedger")(fu
               }),
             ),
           );
-          backfilled.push(`${id}_${name}`);
+          backfilled.push([id, name]);
           yield* sql`
             INSERT INTO effect_sql_migrations (migration_id, name, created_at)
             VALUES (${id}, ${name}, CURRENT_TIMESTAMP)
@@ -303,8 +303,9 @@ export const reconcileMigrationLedger = Effect.fn("reconcileMigrationLedger")(fu
     }),
   );
   yield* Effect.log("Reconciled migration ledger").pipe(
-    Effect.annotateLogs({ dropped, backfilled }),
+    Effect.annotateLogs({ dropped, backfilled: backfilled.map(([id, name]) => `${id}_${name}`) }),
   );
+  return backfilled;
 });
 
 export interface RunMigrationsOptions {
@@ -325,12 +326,13 @@ export const runMigrations = Effect.fn("runMigrations")(function* ({
   toMigrationInclusive,
 }: RunMigrationsOptions = {}) {
   // GMACKO lanes renumbered their own migrations; align the ledger by name first.
-  yield* reconcileMigrationLedger();
+  const reconciledMigrations = yield* reconcileMigrationLedger();
   const previewMigrations =
     toMigrationInclusive === undefined || toMigrationInclusive >= 55
       ? yield* reconcileV2PreviewMigration()
       : [];
   const executedMigrations = [
+    ...reconciledMigrations,
     ...previewMigrations,
     ...(yield* run({ loader: makeMigrationLoader(toMigrationInclusive) })),
   ];
