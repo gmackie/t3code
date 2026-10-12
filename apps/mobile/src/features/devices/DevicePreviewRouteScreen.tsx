@@ -26,7 +26,7 @@ import type { ScreenHeaderMenuItem } from "../../components/ScreenHeader.types";
 import { deviceEnvironment, refreshDeviceHubAccess, useDeviceHubAccess } from "../../state/device";
 import { useEnvironmentQuery } from "../../state/query";
 import { useAtomCommand } from "../../state/use-atom-command";
-import { useAppearancePreferences } from "../settings/appearance/AppearancePreferencesProvider";
+import { useAppearancePreferences } from "../../state/appearance/AppearancePreferencesProvider";
 import { DeviceStreamWebView, type DeviceStreamRef } from "./DeviceStreamWebView";
 import {
   selectedThreadDevicePreview,

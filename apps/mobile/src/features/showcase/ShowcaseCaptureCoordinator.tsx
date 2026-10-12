@@ -10,7 +10,7 @@ import {
 import { AsyncResult } from "effect/reactivity";
 
 import { useConnectionController } from "../connection/useConnectionController";
-import { useAppearancePreferences } from "../settings/appearance/AppearancePreferencesProvider";
+import { useAppearancePreferences } from "../../state/appearance/AppearancePreferencesProvider";
 import type { MobileThemeId } from "../../lib/mobileTheme";
 import { useProjects, useThreadShells } from "../../state/entities";
 import { enqueueThreadOutboxMessage } from "../../state/thread-outbox";

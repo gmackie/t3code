@@ -11,7 +11,7 @@ import { AppText as Text } from "../../components/AppText";
 import { APP_BAR_HEIGHT } from "../../lib/layoutMetrics";
 import { themeColorWithAlpha } from "../../lib/mobileTheme";
 import { tryOpenExternalUrl } from "../../lib/openExternalUrl";
-import { useUniwindTheme } from "../../lib/useUniwindTheme";
+import { useUniwindTheme } from "../../state/appearance/useUniwindTheme";
 import { NATIVE_LIQUID_GLASS_SUPPORTED } from "../../native/native-glass";
 import type { GitActionProgress } from "../../state/use-vcs-action-state";
 

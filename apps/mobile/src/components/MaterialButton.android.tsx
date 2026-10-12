@@ -11,8 +11,8 @@ import {
 import { defaultMinSize, fillMaxWidth, size } from "@expo/ui/jetpack-compose/modifiers";
 import { View } from "react-native";
 
-import { useAppearancePreferences } from "../features/settings/appearance/AppearancePreferencesProvider";
-import { useScaledTextRole } from "../features/settings/appearance/useScaledTextRole";
+import { useAppearancePreferences } from "../state/appearance/AppearancePreferencesProvider";
+import { useScaledTextRole } from "../state/appearance/useScaledTextRole";
 import type { MaterialButtonProps } from "./MaterialButton";
 import { useAndroidControlSizing } from "./useAndroidControlSizing";
 

@@ -16,10 +16,10 @@ import {
 import { AppText as Text, AppTextInput as TextInput } from "../../components/AppText";
 import { MaterialFilesHeader } from "./MaterialFilesHeader";
 import { nativeHeaderScrollEdgeEffects } from "../../native/StackHeader";
-import { useUniwindTheme } from "../../lib/useUniwindTheme";
+import { useUniwindTheme } from "../../state/appearance/useUniwindTheme";
 import { useEnvironmentQuery } from "../../state/query";
 import { useEnvironmentPresentation } from "../../state/presentation";
-import { useAppearancePreferences } from "../settings/appearance/AppearancePreferencesProvider";
+import { useAppearancePreferences } from "../../state/appearance/AppearancePreferencesProvider";
 import { FileTreeBrowser } from "./FileTreeBrowser";
 import { useFileTreeEntries } from "./useFileTreeEntries";
 import { preloadWorkspaceFileContents } from "./preload-workspace-file";

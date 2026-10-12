@@ -20,8 +20,8 @@ import { useNavigation, type StaticScreenProps } from "@react-navigation/native"
 import { AppText as Text } from "../../components/AppText";
 import { LoadingStrip } from "../../components/LoadingStrip";
 import { NativeStackScreenOptions } from "../../native/StackHeader";
-import { useAppearancePreferences } from "../settings/appearance/AppearancePreferencesProvider";
-import { useUniwindTheme } from "../../lib/useUniwindTheme";
+import { useAppearancePreferences } from "../../state/appearance/AppearancePreferencesProvider";
+import { useUniwindTheme } from "../../state/appearance/useUniwindTheme";
 import { usePreparedConnection } from "../../state/session";
 
 type Props = StaticScreenProps<{

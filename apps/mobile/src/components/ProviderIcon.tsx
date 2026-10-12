@@ -4,7 +4,7 @@ import { View } from "react-native";
 import { providerInstanceInitials } from "@t3tools/client-runtime/state/provider-instance-display";
 import { useState } from "react";
 import { resolveOfficialAcpRegistryIconUrl } from "@t3tools/contracts";
-import { useAppearancePreferences } from "../features/settings/appearance/AppearancePreferencesProvider";
+import { useAppearancePreferences } from "../state/appearance/AppearancePreferencesProvider";
 import { AppText as Text } from "./AppText";
 import { getProviderClient } from "../lib/providerClients";
 

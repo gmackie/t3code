@@ -10,7 +10,7 @@ import Animated, {
 } from "react-native-reanimated";
 
 import type { RemoteClientConnectionState } from "../../lib/connection";
-import { useAppearancePreferences } from "../settings/appearance/AppearancePreferencesProvider";
+import { useAppearancePreferences } from "../../state/appearance/AppearancePreferencesProvider";
 import { themeColorWithAlpha, type MobileThemeVariables } from "../../lib/mobileTheme";
 
 export type ConnectionStatusDotState = RemoteClientConnectionState;

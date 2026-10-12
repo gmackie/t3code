@@ -17,7 +17,7 @@ import {
 } from "@t3tools/contracts";
 import { useState } from "react";
 
-import { useAppearancePreferences } from "../appearance/AppearancePreferencesProvider";
+import { useAppearancePreferences } from "../../../state/appearance/AppearancePreferencesProvider";
 import type { AutoSettleDaysFieldProps } from "./AutoSettleDaysField";
 
 const days = Array.from(

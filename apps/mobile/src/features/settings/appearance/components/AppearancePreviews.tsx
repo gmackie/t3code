@@ -6,7 +6,7 @@ import {
   resolveMobileCodeSurface,
 } from "../../../../lib/appearancePreferences";
 import { getMobileTerminalTheme } from "../../../terminal/terminalTheme";
-import { useAppearancePreferences } from "../AppearancePreferencesProvider";
+import { useAppearancePreferences } from "../../../../state/appearance/AppearancePreferencesProvider";
 
 const CODE_FONT_FAMILY = Platform.select({
   ios: "ui-monospace",

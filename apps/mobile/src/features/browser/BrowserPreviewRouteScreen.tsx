@@ -15,7 +15,7 @@ import { ControlPill } from "../../components/ControlPill";
 import { ScreenHeader } from "../../components/ScreenHeader";
 import { NativeHeaderToolbar } from "../../native/StackHeader";
 import { useThreadServerBrowserTabs } from "../../state/preview";
-import { useAppearancePreferences } from "../settings/appearance/AppearancePreferencesProvider";
+import { useAppearancePreferences } from "../../state/appearance/AppearancePreferencesProvider";
 import { BrowserTabMenu } from "./BrowserTabMenu";
 import { browserTabTitle, browserTabUrl, latestBrowserTab } from "./browserTabs";
 import {

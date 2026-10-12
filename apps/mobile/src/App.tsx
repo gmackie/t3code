@@ -18,12 +18,12 @@ import { IncomingShareProvider } from "./features/sharing/IncomingShareProvider"
 import {
   AppearancePreferencesProvider,
   useAppearancePreferences,
-} from "./features/settings/appearance/AppearancePreferencesProvider";
+} from "./state/appearance/AppearancePreferencesProvider";
 import { RootStack } from "./Stack";
 import { appAtomRegistry } from "./state/atom-registry";
 import { OverlayPortalHost } from "./components/OverlayPortal";
 import { shouldHandleAppLink } from "./lib/appLinking";
-import { useMobileNavigationTheme } from "./lib/useMobileNavigationTheme";
+import { useMobileNavigationTheme } from "./state/appearance/useMobileNavigationTheme";
 import { useUiRuntimeMemoryWarningGc } from "./lib/useUiRuntimeMemoryWarningGc";
 import { SubscriptionUsageCoordinator } from "./widgets/SubscriptionUsageCoordinator";
 import { VoiceInputProvider } from "./features/voice-input/VoiceInputProvider";

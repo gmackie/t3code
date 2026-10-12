@@ -7,7 +7,7 @@ import {
 } from "../../../../lib/appearancePreferences";
 import { SettingsSection } from "../../components/SettingsSection";
 import { SettingsSwitchRow } from "../../components/SettingsSwitchRow";
-import { useAppearancePreferences } from "../AppearancePreferencesProvider";
+import { useAppearancePreferences } from "../../../../state/appearance/AppearancePreferencesProvider";
 import {
   AppearancePreviewSeparator,
   TerminalAppearancePreview,

@@ -2,7 +2,7 @@ import { Host } from "@expo/ui/jetpack-compose";
 import { MaterialSegmentedButtons } from "./MaterialSegmentedButtons.android";
 import { View } from "react-native";
 
-import { useAppearancePreferences } from "../features/settings/appearance/AppearancePreferencesProvider";
+import { useAppearancePreferences } from "../state/appearance/AppearancePreferencesProvider";
 import type { SegmentedControlProps } from "./SegmentedControl.types";
 
 export function MaterialSegmentedControl<Value extends number | string>(

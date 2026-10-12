@@ -31,10 +31,10 @@ import { useState, type ReactNode } from "react";
 import { NavigationContainer, NavigationIndependentTree } from "@react-navigation/native";
 import { createV5StackNavigator as createNativeStackNavigator } from "../../native/createV5StackNavigator";
 import { ScrollView, useWindowDimensions, View } from "react-native";
-import { useMobileNavigationTheme } from "../../lib/useMobileNavigationTheme";
+import { useMobileNavigationTheme } from "../../state/appearance/useMobileNavigationTheme";
 import { NativeHeaderToolbar } from "../../native/StackHeader";
 import { NATIVE_LIQUID_GLASS_SUPPORTED } from "../../native/native-glass";
-import { useAppearancePreferences } from "../settings/appearance/AppearancePreferencesProvider";
+import { useAppearancePreferences } from "../../state/appearance/AppearancePreferencesProvider";
 
 const durationAmounts = Array.from({ length: 99 }, (_, index) => index + 1);
 const SnoozeStack = createNativeStackNavigator<{ CustomSnooze: undefined }>();

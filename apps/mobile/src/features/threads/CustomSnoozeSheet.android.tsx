@@ -30,8 +30,8 @@ import { useEffect, useState } from "react";
 import { AppState, useWindowDimensions } from "react-native";
 
 import { OverlayPortal } from "../../components/OverlayPortal";
-import { useAppearancePreferences } from "../settings/appearance/AppearancePreferencesProvider";
-import { useScaledTextRole } from "../settings/appearance/useScaledTextRole";
+import { useAppearancePreferences } from "../../state/appearance/AppearancePreferencesProvider";
+import { useScaledTextRole } from "../../state/appearance/useScaledTextRole";
 import type { CustomSnoozeSheet as SharedCustomSnoozeSheet } from "./CustomSnoozeSheet.shared";
 import {
   applySnoozePickerDate,

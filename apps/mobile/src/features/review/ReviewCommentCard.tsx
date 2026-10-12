@@ -3,8 +3,8 @@ import { getFiletypeFromFileName } from "@pierre/diffs/utils/getFiletypeFromFile
 import { ScrollView, StyleSheet, Text as NativeText, View, type ColorValue } from "react-native";
 import { AppText as Text } from "../../components/AppText";
 import { SymbolView } from "../../components/AppSymbol";
-import { useUniwindTheme } from "../../lib/useUniwindTheme";
-import { useAppearancePreferences } from "../settings/appearance/AppearancePreferencesProvider";
+import { useUniwindTheme } from "../../state/appearance/useUniwindTheme";
+import { useAppearancePreferences } from "../../state/appearance/AppearancePreferencesProvider";
 import { useAppearanceCodeSurface } from "../settings/appearance/useAppearanceCodeSurface";
 import { resolveNativeReviewDiffView } from "../diffs/nativeReviewDiffSurface";
 import {

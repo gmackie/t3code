@@ -6,7 +6,7 @@ import {
 } from "../../../lib/appearancePreferences";
 import { createNativeReviewDiffStyle } from "../../review/nativeReviewDiffAdapter";
 import { createNativeSourceStyle } from "../../files/nativeSourceFileAdapter";
-import { useAppearancePreferences } from "./AppearancePreferencesProvider";
+import { useAppearancePreferences } from "../../../state/appearance/AppearancePreferencesProvider";
 
 export function useAppearanceCodeSurface(): {
   readonly codeSurface: ResolvedMobileCodeSurface;

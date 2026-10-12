@@ -33,7 +33,7 @@ import { ComposerContextAttachment } from "./ComposerContextAttachment";
 import { AppText as Text } from "./AppText";
 import { SymbolView } from "./AppSymbol";
 import { ContextSheetSize } from "./ContextSheetSize";
-import { useAppearancePreferences } from "../features/settings/appearance/AppearancePreferencesProvider";
+import { useAppearancePreferences } from "../state/appearance/AppearancePreferencesProvider";
 import { getMobileTerminalTheme } from "../features/terminal/terminalTheme";
 
 function ContextField(props: { label: string; value: string | null | undefined; code?: boolean }) {

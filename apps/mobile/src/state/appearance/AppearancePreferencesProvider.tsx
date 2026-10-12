@@ -21,13 +21,13 @@ import {
   resolveAppearance,
   resolveAppearancePreferences,
   type ResolvedAppearance,
-} from "../../../lib/appearancePreferences";
-import { mobilePreferencesAtom, updateMobilePreferencesAtom } from "../../../state/preferences";
-import type { Preferences } from "../../../persistence/mobile-preferences";
-import { isSystemColorsAvailable, readSystemColorPalettes } from "../../../lib/materialYouPalette";
-import { materialYouPaletteToMobileThemeVariables } from "../../../lib/materialYouTheme";
-import { getMobileThemeRuntimeVariables } from "../../../lib/mobileThemeVariables";
-import type { MobileThemeVariables } from "../../../lib/mobileTheme";
+} from "../../lib/appearancePreferences";
+import { mobilePreferencesAtom, updateMobilePreferencesAtom } from "../preferences";
+import type { Preferences } from "../../persistence/mobile-preferences";
+import { isSystemColorsAvailable, readSystemColorPalettes } from "../../lib/materialYouPalette";
+import { materialYouPaletteToMobileThemeVariables } from "../../lib/materialYouTheme";
+import { getMobileThemeRuntimeVariables } from "../../lib/mobileThemeVariables";
+import type { MobileThemeVariables } from "../../lib/mobileTheme";
 import {
   createMobileThemePairPatch,
   createMobileThemeSelectionPatch,
@@ -37,12 +37,12 @@ import {
   type MobileThemeId,
   type MobileThemeIds,
   type MobileThemeMode,
-} from "../../../lib/mobileTheme";
+} from "../../lib/mobileTheme";
 import {
   createMobileThemeRuntimeOperations,
   getMobileUniwindThemeName,
   type MobileThemeRuntimeState,
-} from "../../../lib/mobileThemeRuntime";
+} from "../../lib/mobileThemeRuntime";
 
 interface AppearancePreferencesContextValue {
   /** Effective values with base-size derivation applied. Use this for rendering. */

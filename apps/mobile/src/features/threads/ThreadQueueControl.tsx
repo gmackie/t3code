@@ -20,7 +20,7 @@ import { SymbolView } from "../../components/AppSymbol";
 import { ControlPillMenu } from "../../components/ControlPill";
 import { MaterialScreenContent } from "../../components/MaterialScreenContent";
 import { scopedThreadKey } from "../../lib/scopedEntities";
-import { useUniwindTheme } from "../../lib/useUniwindTheme";
+import { useUniwindTheme } from "../../state/appearance/useUniwindTheme";
 import { NativeStackScreenOptions, nativeHeaderScrollEdgeEffects } from "../../native/StackHeader";
 import { useAssetUrl } from "../../state/assets";
 import { beginQueuedRunEdit, useQueuedRunEdit } from "../../state/queued-run-edit";

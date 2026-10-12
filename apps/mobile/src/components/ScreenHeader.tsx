@@ -10,7 +10,7 @@ import {
   createNativeMailSearchToolbarItem,
   NATIVE_MAIL_SEARCH_TOOLBAR_SUPPORTED,
 } from "../features/layout/native-mail-search-toolbar";
-import { useAppearancePreferences } from "../features/settings/appearance/AppearancePreferencesProvider";
+import { useAppearancePreferences } from "../state/appearance/AppearancePreferencesProvider";
 import type { ScreenHeaderMenuItem, ScreenHeaderProps } from "./ScreenHeader.types";
 import type { AppSymbolName } from "./AppSymbol";
 import { useNativeMailSearchToolbar } from "../native/use-native-mail-search-toolbar";

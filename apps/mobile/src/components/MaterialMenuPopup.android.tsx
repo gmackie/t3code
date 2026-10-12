@@ -12,7 +12,7 @@ import { View } from "react-native";
 import { resolveScaledTextRole } from "../lib/appearancePreferences";
 
 import { useAndroidControlSizing } from "./useAndroidControlSizing";
-import { useAppearancePreferences } from "../features/settings/appearance/AppearancePreferencesProvider";
+import { useAppearancePreferences } from "../state/appearance/AppearancePreferencesProvider";
 import type { MaterialMenuPopupProps } from "./MaterialMenuPopup";
 import { isAppSymbolName, SymbolView, type AppSymbolName } from "./AppSymbol";
 

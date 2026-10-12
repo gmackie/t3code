@@ -25,7 +25,7 @@ import {
   useReviewCommentTarget,
 } from "./reviewCommentSelection";
 import { useAppearanceCodeSurface } from "../settings/appearance/useAppearanceCodeSurface";
-import { useAppearancePreferences } from "../settings/appearance/AppearancePreferencesProvider";
+import { useAppearancePreferences } from "../../state/appearance/AppearancePreferencesProvider";
 import { changeTone, DiffTokenText, ReviewChangeBar } from "./reviewDiffRendering";
 import {
   highlightReviewSelectedLines,

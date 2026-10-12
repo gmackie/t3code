@@ -11,7 +11,7 @@ import {
 import { withUniwind } from "uniwind";
 
 import { cn } from "../lib/cn";
-import { useAppearancePreferences } from "../features/settings/appearance/AppearancePreferencesProvider";
+import { useAppearancePreferences } from "../state/appearance/AppearancePreferencesProvider";
 import { GlassBackdrop } from "./GlassBackdrop";
 
 // Explicit mappings keep the native glassEffectStyle enum out of style-array conversion.

@@ -7,7 +7,7 @@ import { useMemo } from "react";
 import { highlightCodeSnippet } from "../features/review/shikiReviewHighlighter";
 import { renderMermaidCodeBlock } from "../features/threads/MermaidCodeBlock";
 import { themeColorWithAlpha } from "../lib/mobileTheme";
-import { useUniwindTheme } from "../lib/useUniwindTheme";
+import { useUniwindTheme } from "../state/appearance/useUniwindTheme";
 
 type MobileSelectableMarkdownTextProps = Omit<SelectableMarkdownTextProps, "highlightCode">;
 

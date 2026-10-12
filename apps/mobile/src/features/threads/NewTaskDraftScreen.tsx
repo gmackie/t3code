@@ -25,7 +25,7 @@ import {
 } from "react-native-keyboard-controller";
 import Animated from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useUniwindTheme } from "../../lib/useUniwindTheme";
+import { useUniwindTheme } from "../../state/appearance/useUniwindTheme";
 import { useFontFamily } from "../../lib/useFontFamily";
 import {
   AuthOrchestrationOperateScope,
@@ -91,7 +91,7 @@ import {
   removePersistedComposerAttachmentFile,
   type DraftComposerFileAttachment,
 } from "../../lib/composerImages";
-import { useScaledTextRole } from "../settings/appearance/useScaledTextRole";
+import { useScaledTextRole } from "../../state/appearance/useScaledTextRole";
 import {
   clearComposerDraftContent,
   captureComposerDraftInsertion,

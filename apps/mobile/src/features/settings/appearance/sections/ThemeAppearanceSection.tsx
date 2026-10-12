@@ -17,7 +17,7 @@ import {
 } from "../../../../lib/mobileTheme";
 import { getMobileUniwindThemeName } from "../../../../lib/mobileThemeRuntime";
 import { cn } from "../../../../lib/cn";
-import { useAppearancePreferences } from "../AppearancePreferencesProvider";
+import { useAppearancePreferences } from "../../../../state/appearance/AppearancePreferencesProvider";
 
 const APPEARANCE_MODES: ReadonlyArray<{
   readonly id: MobileThemeMode;

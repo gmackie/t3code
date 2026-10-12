@@ -1,5 +1,5 @@
-import { useAppearancePreferences } from "../features/settings/appearance/AppearancePreferencesProvider";
-import type { MobileThemeVariables } from "./mobileTheme";
+import { useAppearancePreferences } from "./AppearancePreferencesProvider";
+import type { MobileThemeVariables } from "../../lib/mobileTheme";
 
 /**
  * Complete JS palette for native and third-party APIs that cannot consume a

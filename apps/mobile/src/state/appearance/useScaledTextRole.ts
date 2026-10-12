@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 
-import { resolveScaledTextRole } from "../../../lib/appearancePreferences";
-import { MOBILE_TYPOGRAPHY } from "../../../lib/typography";
+import { resolveScaledTextRole } from "../../lib/appearancePreferences";
+import { MOBILE_TYPOGRAPHY } from "../../lib/typography";
 import { useAppearancePreferences } from "./AppearancePreferencesProvider";
 
 export interface ScaledTextRole {

@@ -25,8 +25,8 @@ import type { ReviewHighlightedToken } from "../review/shikiReviewHighlighter";
 import { cn } from "../../lib/cn";
 import type { ResolvedMobileCodeSurface } from "../../lib/appearancePreferences";
 import { useAppearanceCodeSurface } from "../settings/appearance/useAppearanceCodeSurface";
-import { useAppearancePreferences } from "../settings/appearance/AppearancePreferencesProvider";
-import { useUniwindTheme } from "../../lib/useUniwindTheme";
+import { useAppearancePreferences } from "../../state/appearance/AppearancePreferencesProvider";
+import { useUniwindTheme } from "../../state/appearance/useUniwindTheme";
 import {
   buildNativeSourceTokens,
   NATIVE_SOURCE_CONTENT_WIDTH,

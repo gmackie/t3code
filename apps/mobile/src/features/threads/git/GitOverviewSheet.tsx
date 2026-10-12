@@ -22,7 +22,7 @@ import { Alert, Platform, Pressable, RefreshControl, ScrollView, View } from "re
 import { Screen, ScreenStack, ScreenStackHeaderConfig } from "react-native-screens";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { NativeSheetContent } from "../../../native/NativeSheetContent";
-import { useUniwindTheme } from "../../../lib/useUniwindTheme";
+import { useUniwindTheme } from "../../../state/appearance/useUniwindTheme";
 import {
   AndroidHeaderIconButton,
   AndroidSheetHeader,

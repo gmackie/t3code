@@ -24,10 +24,10 @@ import {
   contextChipPresentation,
 } from "@t3tools/mobile-markdown-text/markdown";
 import { resolveMarkdownFileIcon } from "@t3tools/mobile-markdown-text/links";
-import { useUniwindTheme } from "../lib/useUniwindTheme";
+import { useUniwindTheme } from "../state/appearance/useUniwindTheme";
 import { createNativeComposerTheme } from "../lib/nativeComposerTheme";
 import { useFontFamily } from "../lib/useFontFamily";
-import { useScaledTextRole } from "../features/settings/appearance/useScaledTextRole";
+import { useScaledTextRole } from "../state/appearance/useScaledTextRole";
 import {
   acknowledgeComposerNativeEvent,
   assumeComposerControlledState,

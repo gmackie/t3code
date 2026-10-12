@@ -16,12 +16,12 @@ import {
   resolveMarkdownFontSizes,
   resolveNativeMarkdownTypography,
 } from "../../lib/appearancePreferences";
-import { useUniwindTheme } from "../../lib/useUniwindTheme";
+import { useUniwindTheme } from "../../state/appearance/useUniwindTheme";
 import {
   ThreadMarkdownImage,
   ThreadMarkdownImageUnavailable,
 } from "../threads/ThreadMarkdownImage";
-import { useAppearancePreferences } from "../settings/appearance/AppearancePreferencesProvider";
+import { useAppearancePreferences } from "../../state/appearance/AppearancePreferencesProvider";
 import {
   hasNativeSelectableMarkdownText,
   SelectableMarkdownText,

@@ -7,7 +7,7 @@ import { Platform } from "react-native";
 import { getCompactBrandHeaderOptions } from "../../components/CompactBrandTitle";
 import { NATIVE_LIQUID_GLASS_SUPPORTED } from "../../native/native-glass";
 import { nativeHeaderScrollEdgeEffects } from "../../native/StackHeader";
-import { useMobileNavigationTheme } from "../../lib/useMobileNavigationTheme";
+import { useMobileNavigationTheme } from "../../state/appearance/useMobileNavigationTheme";
 
 const SCROLL_EDGE_EFFECTS = nativeHeaderScrollEdgeEffects(Platform.OS, Platform.Version);
 

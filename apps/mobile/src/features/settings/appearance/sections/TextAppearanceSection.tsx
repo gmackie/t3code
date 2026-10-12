@@ -4,7 +4,7 @@ import {
   MIN_BASE_FONT_SIZE,
 } from "../../../../lib/appearancePreferences";
 import { SettingsSection } from "../../components/SettingsSection";
-import { useAppearancePreferences } from "../AppearancePreferencesProvider";
+import { useAppearancePreferences } from "../../../../state/appearance/AppearancePreferencesProvider";
 import {
   AppearancePreviewSeparator,
   TextAppearancePreview,

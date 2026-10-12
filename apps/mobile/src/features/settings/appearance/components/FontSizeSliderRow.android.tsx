@@ -6,7 +6,7 @@ import { View } from "react-native";
 
 import { AppText as Text } from "../../../../components/AppText";
 import { SymbolView } from "../../../../components/AppSymbol";
-import { useAppearancePreferences } from "../AppearancePreferencesProvider";
+import { useAppearancePreferences } from "../../../../state/appearance/AppearancePreferencesProvider";
 import type { FontSizeSliderRow as SharedFontSizeSliderRow } from "./FontSizeSliderRow.shared";
 
 export function FontSizeSliderRow(props: ComponentProps<typeof SharedFontSizeSliderRow>) {

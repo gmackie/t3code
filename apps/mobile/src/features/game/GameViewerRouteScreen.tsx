@@ -23,7 +23,7 @@ import { NativeStackScreenOptions } from "../../native/StackHeader";
 import { usePreparedConnection } from "../../state/session";
 
 import { mobileHtmlRenderTheme } from "../../lib/htmlRenderTheme";
-import { useAppearancePreferences } from "../settings/appearance/AppearancePreferencesProvider";
+import { useAppearancePreferences } from "../../state/appearance/AppearancePreferencesProvider";
 
 type Props = StaticScreenProps<{
   readonly environmentId: string;

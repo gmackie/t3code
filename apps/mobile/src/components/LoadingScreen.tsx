@@ -1,7 +1,7 @@
 import { StatusBar, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AppActivityIndicator } from "./AppActivityIndicator";
-import { useAppearancePreferences } from "../features/settings/appearance/AppearancePreferencesProvider";
+import { useAppearancePreferences } from "../state/appearance/AppearancePreferencesProvider";
 
 import { AppText as Text } from "./AppText";
 import { BrandMark } from "./BrandMark";
