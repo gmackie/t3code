@@ -5,7 +5,7 @@ import { ReverseStoreError } from "@t3tools/contracts";
 import { runBoundedTool, type ToolResult } from "./ToolRunner.ts";
 import type { ReverseInvestigationStore } from "./InvestigationStore.ts";
 
-export type AnalysisKind = "ghidra" | "binwalk" | "gadgets";
+export type AnalysisKind = "ghidra" | "binwalk" | "gadgets" | "unblob";
 export interface GhidraFunction {
   address: string;
   name: string;
@@ -24,6 +24,7 @@ export interface AnalysisResult {
   toolVersion?: string;
   functions?: GhidraFunction[];
   gadgets?: CandidateGadget[];
+  extracted?: Array<{ path: string; bytes: number }>;
   truncated: boolean;
 }
 
@@ -85,6 +86,45 @@ export class ReverseAnalysisService {
       const r = await runChecked("binwalk", ["-l", outputPath, path], dir, 90_000);
       const data = await Fs.readFile(outputPath, "utf8").catch(() => r.stdout);
       return { kind: "binwalk", output: data.slice(0, 4_000_000), truncated: r.truncated || data.length > 4_000_000 };
+    }
+    if (input.kind === "unblob") {
+      // Extraction is intentionally separate from signature scanning.
+      // Each attempt writes to its own environment-owned analysis directory.
+      const extractionDir = await Fs.mkdtemp(Path.join(dir, "unblob-"));
+      const report = Path.join(extractionDir, "report.json");
+      const output = Path.join(extractionDir, "output");
+      const result = await runChecked("unblob", [
+        "--extract-dir", output, "--depth", "3", "--process-num", "1",
+        "--report", report, path,
+      ], dir, 120_000);
+      const extracted: Array<{ path: string; bytes: number }> = [];
+      let scannedBytes = 0, truncated = false;
+      const visit = async (folder: string, depth: number): Promise<void> => {
+        if (depth > 6 || truncated) { truncated = true; return; }
+        for (const entry of await Fs.readdir(folder, { withFileTypes: true }).catch(() => [])) {
+          if (extracted.length >= 500) { truncated = true; break; }
+          // Never follow symlinks created from untrusted firmware.
+          if (entry.isSymbolicLink()) continue;
+          const full = Path.join(folder, entry.name);
+          if (entry.isDirectory()) {
+            await visit(full, depth + 1);
+          } else if (entry.isFile()) {
+            const stat = await Fs.stat(full);
+            scannedBytes += stat.size;
+            if (scannedBytes > 1024 * 1024 * 1024) {
+              truncated = true;
+              break;
+            }
+            extracted.push({ path: Path.relative(output, full), bytes: stat.size });
+          }
+        }
+      };
+      await visit(output, 0);
+      return {
+        kind: "unblob", extracted,
+        output: `Extracted ${extracted.length} files; report stored under ${Path.basename(extractionDir)}.`,
+        truncated: truncated || result.truncated,
+      };
     }
     if (input.kind === "gadgets") {
       const args = ["--binary", path, "--depth", "6", "--nosys"];
