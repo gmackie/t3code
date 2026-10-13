@@ -31,6 +31,8 @@ vi.mock("@react-navigation/native", () => {
     useNavigation: () => navigation,
   };
 });
+vi.mock("../../native/useOpenPullRequest", () => ({ useOpenPullRequest: () => () => {} }));
+
 vi.mock("../../state/session", () => ({ useEnvironmentScope: () => true }));
 vi.mock("react-native", () => ({ Alert: { alert: () => {} }, Linking: {}, Platform: {} }));
 vi.mock("../layout/AdaptiveWorkspaceLayout", () => ({
@@ -45,7 +47,7 @@ vi.mock("../layout/native-mail-search-toolbar", () => ({
   NATIVE_MAIL_SEARCH_TOOLBAR_SUPPORTED: true,
   createNativeMailSearchToolbarItem: () => ({}),
 }));
-vi.mock("../settings/appearance/AppearancePreferencesProvider", () => ({
+vi.mock("../../state/appearance/AppearancePreferencesProvider", () => ({
   useAppearancePreferences: () => ({ themeVariables: {} }),
 }));
 

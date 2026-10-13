@@ -58,7 +58,8 @@ function Diagram({
   );
 }
 
-const MermaidCodeBlock = memo(function MermaidCodeBlock({
+/** Mermaid preview with the fenced source as its "Source" and failure fallback. */
+export const MermaidCodeBlock = memo(function MermaidCodeBlock({
   source,
   fallback,
 }: {
@@ -137,17 +138,6 @@ const MermaidCodeBlock = memo(function MermaidCodeBlock({
     </View>
   );
 });
-
-/** Shared by iOS and Android markdown, including nested blocks and file previews. */
-export function renderMermaidCodeBlock(
-  source: string,
-  language: string | undefined,
-  fallback: ReactNode,
-) {
-  return language?.trim().toLowerCase() === "mermaid" ? (
-    <MermaidCodeBlock key={source} source={source} fallback={fallback} />
-  ) : null;
-}
 
 const styles = StyleSheet.create({
   frame: { borderRadius: 10, overflow: "hidden", marginVertical: 4 },

@@ -9,7 +9,7 @@ const fixture = vi.hoisted(() => ({
   mounts: 0,
   unmounts: 0,
 }));
-vi.mock("../settings/appearance/AppearancePreferencesProvider", () => ({
+vi.mock("../../state/appearance/AppearancePreferencesProvider", () => ({
   useAppearancePreferences: () => ({
     themeId: "default",
     themeAppearance: "dark",
