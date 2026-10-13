@@ -355,6 +355,7 @@ function RightPanelEmptyState(props: {
   onAddDevice: () => void;
   onAddKiCad?: () => void;
   onAddGame?: () => void;
+  onAddReverse?: () => void;
   browserAvailable: boolean;
   terminalAvailable: boolean;
   diffAvailable: boolean;
@@ -363,6 +364,7 @@ function RightPanelEmptyState(props: {
   pullRequestsAvailable: boolean;
   deviceAvailable: boolean;
   kicadAvailable?: boolean;
+  reverseAvailable?: boolean;
 }) {
   // -1 means no highlight: it only appears on hover or arrow use.
   const [highlight, setHighlight] = useState(-1);
