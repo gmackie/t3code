@@ -66,44 +66,14 @@ export function isGmackoDesktopAppId(appId) {
  * }}
  */
 export function getDesktopRuntimeIdentity(input) {
-  if (input.isDevelopment) {
-    return {
-      appId: DEFAULT_APP_ID,
-      appUserModelId: DEFAULT_APP_ID,
-      baseDirName: DEFAULT_BASE_DIR_NAME,
-      displayName: "T3 Code (Dev)",
-      packageName: DEFAULT_PACKAGE_NAME,
-      stateDirName: DEV_STATE_DIR_NAME,
-      updaterCacheDirName: DEFAULT_UPDATER_CACHE_DIR_NAME,
-      userDataDirName: DEV_USER_DATA_DIR_NAME,
-    };
-  }
-
-  if (
-    isGmackoDesktopAppDisplayName(input.appDisplayName) ||
-    isGmackoDesktopPackageName(input.packageName) ||
-    isGmackoDesktopAppId(input.appId)
-  ) {
-    return {
-      appId: GMACKO_APP_ID,
-      appUserModelId: GMACKO_APP_ID,
-      baseDirName: GMACKO_BASE_DIR_NAME,
-      displayName: GMACKO_APP_DISPLAY_NAME,
-      packageName: GMACKO_PACKAGE_NAME,
-      stateDirName: GMACKO_STATE_DIR_NAME,
-      updaterCacheDirName: GMACKO_UPDATER_CACHE_DIR_NAME,
-      userDataDirName: GMACKO_USER_DATA_DIR_NAME,
-    };
-  }
-
   return {
-    appId: DEFAULT_APP_ID,
-    appUserModelId: DEFAULT_APP_ID,
-    baseDirName: DEFAULT_BASE_DIR_NAME,
-    displayName: DEFAULT_APP_DISPLAY_NAME,
-    packageName: DEFAULT_PACKAGE_NAME,
-    stateDirName: DEFAULT_STATE_DIR_NAME,
-    updaterCacheDirName: DEFAULT_UPDATER_CACHE_DIR_NAME,
-    userDataDirName: DEFAULT_USER_DATA_DIR_NAME,
+    appId: "com.t3tools.t3code.locked",
+    appUserModelId: "com.t3tools.t3code.locked",
+    baseDirName: ".t3-locked",
+    displayName: input.isDevelopment ? "T3 Code Locked (Dev)" : "T3 Code Locked",
+    packageName: "t3code-locked",
+    stateDirName: input.isDevelopment ? "userdata-dev" : "userdata",
+    updaterCacheDirName: "t3code-locked-updater",
+    userDataDirName: input.isDevelopment ? "t3code-locked-dev" : "t3code-locked",
   };
 }

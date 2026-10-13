@@ -2,7 +2,7 @@ import { bobOperationSchemas } from "@t3tools/contracts/bobContract";
 import {
   AuthOrchestrationOperateScope,
   AuthOrchestrationReadScope,
-  EnvironmentHttpApi,
+  LocalEnvironmentHttpApi,
   EnvironmentScopeRequiredError,
 } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
@@ -14,7 +14,7 @@ import { requireEnvironmentScope } from "../auth/http.ts";
 import * as ExecutionAdmission from "./ExecutionAdmission.ts";
 
 export const executionHttpApiLayer = HttpApiBuilder.group(
-  EnvironmentHttpApi,
+  LocalEnvironmentHttpApi,
   "execution",
   Effect.fnUntraced(function* (handlers) {
     const admission = yield* ExecutionAdmission.ExecutionAdmission;

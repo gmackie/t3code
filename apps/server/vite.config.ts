@@ -14,6 +14,30 @@ import { WeightedShardSequencer } from "./src/testUtils/weightedShardSequencer.t
 //
 // Inverted here — bundle everything except the packages that genuinely cannot be
 // inlined. See scripts/lib/cli-external-packages.ts for what earns an exemption.
+// The bundle used to inline only workspace packages, leaving every third-party
+// runtime dep external. External deps must exist on the real filesystem (the WSL
+// backend runs plain `wsl.exe -- node`, which cannot read inside an asar), so the
+// desktop build unpacked `**\/node_modules\/**` wholesale: 13,875 loose files to
+// support 20 native binaries. NSIS install time tracks file count, not bytes.
+//
+// Inverted here — bundle everything except the packages that genuinely cannot be
+// inlined. See scripts/lib/cli-external-packages.ts for what earns an exemption.
+// The bundle used to inline only workspace packages, leaving every third-party
+// runtime dep external. External deps must exist on the real filesystem (the WSL
+// backend runs plain `wsl.exe -- node`, which cannot read inside an asar), so the
+// desktop build unpacked `**\/node_modules\/**` wholesale: 13,875 loose files to
+// support 20 native binaries. NSIS install time tracks file count, not bytes.
+//
+// Inverted here — bundle everything except the packages that genuinely cannot be
+// inlined. See scripts/lib/cli-external-packages.ts for what earns an exemption.
+// The bundle used to inline only workspace packages, leaving every third-party
+// runtime dep external. External deps must exist on the real filesystem (the WSL
+// backend runs plain `wsl.exe -- node`, which cannot read inside an asar), so the
+// desktop build unpacked `**\/node_modules\/**` wholesale: 13,875 loose files to
+// support 20 native binaries. NSIS install time tracks file count, not bytes.
+//
+// Inverted here — bundle everything except the packages that genuinely cannot be
+// inlined. See scripts/lib/cli-external-packages.ts for what earns an exemption.
 import {
   isExternalCliDependency,
   shouldBundleCliDependency,
@@ -78,7 +102,7 @@ export default mergeConfig(
     pack: {
       // The executable embeds one entry; the history worker becomes a hidden
       // subcommand there instead of a sibling script.
-      entry: packExecutable ? ["src/bin.ts"] : ["src/bin.ts", "src/claude-history-worker.ts"],
+      entry: ["src/bin.ts"],
       outDir: packExecutable ? "dist-exe" : "dist",
       sourcemap: !packExecutable,
       clean: true,

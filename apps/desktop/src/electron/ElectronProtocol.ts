@@ -13,8 +13,8 @@ import * as Scope from "effect/Scope";
 import * as Electron from "electron";
 
 export const DESKTOP_HOST = "app";
-const DESKTOP_PRODUCTION_SCHEME = "t3code";
-const DESKTOP_DEVELOPMENT_SCHEME = "t3code-dev";
+const DESKTOP_PRODUCTION_SCHEME = "t3code-locked";
+const DESKTOP_DEVELOPMENT_SCHEME = "t3code-locked-dev";
 
 export function getDesktopScheme(isDevelopment: boolean): string {
   return isDevelopment ? DESKTOP_DEVELOPMENT_SCHEME : DESKTOP_PRODUCTION_SCHEME;
@@ -69,36 +69,29 @@ export class ElectronProtocol extends Context.Service<
 >()("@t3tools/desktop/electron/ElectronProtocol") {}
 
 export function makeDesktopContentSecurityPolicy(input: DesktopProtocolRegistrationInput): string {
-  const clerkOrigin = input.clerkFrontendApiHostname
-    ? `https://${input.clerkFrontendApiHostname}`
-    : undefined;
-  const scriptSources = [
+  const scriptSources = ["'self'", "'unsafe-inline'", "'wasm-unsafe-eval'"];
+  const localHttp = "http://127.0.0.1:* http://localhost:* http://[::1]:*";
+  const connectSources = [
     "'self'",
-    "'unsafe-inline'",
-    "'wasm-unsafe-eval'",
-    ...(clerkOrigin ? [clerkOrigin] : []),
-    "https://challenges.cloudflare.com",
+    "blob:",
+    localHttp,
+    "ws://127.0.0.1:*",
+    "ws://localhost:*",
+    "ws://[::1]:*",
   ];
-
-  // The renderer connects directly to user-configured environments in addition to
-  // the build-configured Clerk, relay, and OTLP endpoints. Those environment
-  // origins are not known when this response policy is created, so restrict
-  // connections by the network schemes the client supports instead of by host.
-  // GLTFLoader fetches embedded textures through blob URLs after parsing the model.
-  const connectSources = ["'self'", "blob:", "http:", "https:", "ws:", "wss:"];
 
   return [
     "default-src 'self'",
     `script-src ${scriptSources.join(" ")}`,
     `connect-src ${connectSources.join(" ")}`,
-    `img-src 'self' ${input.scheme}: blob: data: http: https:`,
-    `media-src 'self' ${input.scheme}: blob: http: https:`,
+    `img-src 'self' ${input.scheme}: blob: data: ${localHttp}`,
+    `media-src 'self' ${input.scheme}: blob: ${localHttp}`,
     "style-src 'self' 'unsafe-inline'",
     `font-src 'self' ${input.scheme}: data:`,
     "worker-src 'self' blob:",
     // Document viewers use local Blob URLs and signed assets from runtime environments.
     // HTML viewers retain their own sandbox; the renderer's script policy stays unchanged.
-    "frame-src 'self' blob: http: https:",
+    "frame-src 'self' blob: ${localHttp}",
     "form-action 'self'",
   ].join("; ");
 }

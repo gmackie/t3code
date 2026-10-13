@@ -27,13 +27,11 @@
  */
 export const CLI_RUNTIME_EXTERNAL_PREFIXES = [
   // Cursor ships computed Webpack imports and platform helper packages.
-  "@cursor/sdk",
   "node-pty",
   "ffi-rs",
   "@yuuang/",
   "@ff-labs/",
   "@napi-rs/keyring",
-  "@clerk/electron-passkeys",
   "node-gyp-build",
   "node-addon-api",
   // ws's optional accelerators. Nothing in this repo declares them, so they are
@@ -50,23 +48,8 @@ export const CLI_RUNTIME_EXTERNAL_PREFIXES = [
 
 // These are Cursor's disk-backed dependency closure. Match package boundaries
 // so "zod" does not also externalize unrelated packages such as zod-to-json-schema.
-const CURSOR_RUNTIME_DEPENDENCIES = [
-  "@bufbuild/protobuf",
-  "@connectrpc/connect",
-  "@connectrpc/connect-node",
-  "@connectrpc/connect-web",
-  "@statsig/js-client",
-  "@statsig/client-core",
-  "zod",
-  "undici",
-  "@fastify/busboy",
-] as const;
-
 export function isRuntimeExternalCliDependency(id: string): boolean {
-  return (
-    CLI_RUNTIME_EXTERNAL_PREFIXES.some((prefix) => id.startsWith(prefix)) ||
-    CURSOR_RUNTIME_DEPENDENCIES.some((name) => id === name || id.startsWith(`${name}/`))
-  );
+  return CLI_RUNTIME_EXTERNAL_PREFIXES.some((prefix) => id.startsWith(prefix));
 }
 
 /**

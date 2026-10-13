@@ -1,7 +1,7 @@
 import {
   AuthOrchestrationOperateScope,
   AuthOrchestrationReadScope,
-  EnvironmentHttpApi,
+  LocalEnvironmentHttpApi,
 } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as HttpApiBuilder from "effect/unstable/httpapi/HttpApiBuilder";
@@ -30,7 +30,7 @@ export const failProjectMutation = Effect.fn("environment.projects.failMutation"
 });
 
 export const projectHttpApiLayer = HttpApiBuilder.group(
-  EnvironmentHttpApi,
+  LocalEnvironmentHttpApi,
   "projects",
   Effect.fnUntraced(function* (handlers) {
     const projects = yield* ProjectService.ProjectService;

@@ -13,7 +13,7 @@ import * as Path from "effect/Path";
 
 import * as DesktopAppSettings from "../settings/DesktopAppSettings.ts";
 import * as DesktopConfig from "./DesktopConfig.ts";
-import { resolveLinuxDesktopEntryName } from "./DesktopEarlyElectronStartup.ts";
+
 import { resolveDesktopBaseDir, resolveDesktopStateDir } from "./DesktopStatePaths.ts";
 import { isGmackoDesktopVersion, isNightlyDesktopVersion } from "../updates/updateChannels.ts";
 import type { OtlpProtocol } from "@t3tools/shared/observability";
@@ -93,7 +93,7 @@ export class DesktopEnvironment extends Context.Service<
   }
 >()("@t3tools/desktop/app/DesktopEnvironment") {}
 
-const APP_BASE_NAME = "T3 Code";
+const APP_BASE_NAME = "T3 Code Locked";
 
 function resolveDesktopAppStageLabel(input: {
   readonly isDevelopment: boolean;
@@ -118,8 +118,7 @@ export function resolveDesktopAppBranding(input: {
   return {
     baseName: APP_BASE_NAME,
     stageLabel,
-    displayName:
-      stageLabel === "Gmacko" ? `${APP_BASE_NAME} (gmacko)` : `${APP_BASE_NAME} (${stageLabel})`,
+    displayName: input.isDevelopment ? "T3 Code Locked (Dev)" : "T3 Code Locked",
   };
 }
 
@@ -186,18 +185,13 @@ const make = Effect.fn("desktop.environment.make")(function* (
   });
   const displayName = branding.displayName;
   const isGmacko = !isDevelopment && isGmackoDesktopVersion(input.appVersion);
-  const baseDir =
-    Option.isNone(config.t3Home) && isGmacko
-      ? path.join(homeDirectory, ".t3-gmacko")
-      : defaultBaseDir;
-  const stateDir = isGmacko
-    ? path.join(baseDir, "userdata-gmacko")
-    : resolveDesktopStateDir({
-        baseDir,
-        isDevelopment,
-        joinPath: path.join,
-        t3Home: config.t3Home,
-      });
+  const baseDir = defaultBaseDir;
+  const stateDir = resolveDesktopStateDir({
+    baseDir,
+    isDevelopment,
+    joinPath: path.join,
+    t3Home: config.t3Home,
+  });
   const linuxApplicationsDir = path.join(
     Option.getOrElse(config.xdgDataHome, () => path.join(homeDirectory, ".local", "share")),
     "applications",
@@ -247,17 +241,9 @@ const make = Effect.fn("desktop.environment.make")(function* (
     otlpProtocol: config.otlpProtocol,
     branding,
     displayName,
-    appUserModelId: Option.getOrElse(config.appUserModelIdOverride, () =>
-      isDevelopment
-        ? "com.t3tools.t3code.dev"
-        : isGmacko
-          ? "com.gmacko.t3code"
-          : "com.t3tools.t3code",
-    ),
-    linuxDesktopEntryName: isGmacko
-      ? "t3code-gmacko.desktop"
-      : resolveLinuxDesktopEntryName(isDevelopment),
-    linuxWmClass: isDevelopment ? "t3code-dev" : isGmacko ? "t3code-gmacko" : "t3code",
+    appUserModelId: "com.t3tools.t3code.locked",
+    linuxDesktopEntryName: isDevelopment ? "t3code-locked-dev.desktop" : "t3code-locked.desktop",
+    linuxWmClass: isDevelopment ? "t3code-locked-dev" : "t3code-locked",
     linuxApplicationsDir,
     appImagePath: config.appImagePath,
     defaultDesktopSettings: DesktopAppSettings.resolveDefaultDesktopSettings(input.appVersion),

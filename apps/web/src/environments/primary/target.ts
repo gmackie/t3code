@@ -126,21 +126,6 @@ function normalizeBaseUrl(
   }).toString();
 }
 
-function swapBaseUrlProtocol(
-  rawValue: string,
-  nextProtocol: "http:" | "https:" | "ws:" | "wss:",
-  urlKind: PrimaryEnvironmentUrlKind,
-): string {
-  const url = parseTargetUrl({
-    rawValue,
-    baseUrl: window.location.origin,
-    source: "configured",
-    urlKind,
-  });
-  url.protocol = nextProtocol;
-  return url.toString();
-}
-
 function normalizeHostname(hostname: string): string {
   return hostname
     .trim()
@@ -190,38 +175,6 @@ function resolveHttpRequestBaseUrl(primaryTarget: PrimaryEnvironmentTarget): str
   }
 
   return currentUrl.origin;
-}
-
-function resolveConfiguredPrimaryTarget(): PrimaryEnvironmentTarget | null {
-  const configuredHttpBaseUrl = import.meta.env.VITE_HTTP_URL?.trim() || undefined;
-  const configuredWsBaseUrl = import.meta.env.VITE_WS_URL?.trim() || undefined;
-
-  if (!configuredHttpBaseUrl && !configuredWsBaseUrl) {
-    return null;
-  }
-
-  // Scheme checks run on the raw configured string, while the URL parser
-  // folds schemes to lowercase ("WSS://host" parses fine). Without the
-  // case folding an uppercase scheme would be classified as plaintext and
-  // swapped to http/ws, silently downgrading TLS.
-  const resolvedHttpBaseUrl =
-    configuredHttpBaseUrl ??
-    (configuredWsBaseUrl?.toLowerCase().startsWith("wss:")
-      ? swapBaseUrlProtocol(configuredWsBaseUrl, "https:", "websocket-base-url")
-      : swapBaseUrlProtocol(configuredWsBaseUrl!, "http:", "websocket-base-url"));
-  const resolvedWsBaseUrl =
-    configuredWsBaseUrl ??
-    (configuredHttpBaseUrl?.toLowerCase().startsWith("https:")
-      ? swapBaseUrlProtocol(configuredHttpBaseUrl, "wss:", "http-base-url")
-      : swapBaseUrlProtocol(configuredHttpBaseUrl!, "ws:", "http-base-url"));
-
-  return {
-    source: "configured",
-    target: {
-      httpBaseUrl: normalizeBaseUrl(resolvedHttpBaseUrl, "configured", "http-base-url"),
-      wsBaseUrl: normalizeBaseUrl(resolvedWsBaseUrl, "configured", "websocket-base-url"),
-    },
-  };
 }
 
 function resolveWindowOriginPrimaryTarget(): PrimaryEnvironmentTarget {
@@ -309,9 +262,16 @@ export function readPrimaryEnvironmentTarget(): PrimaryEnvironmentTarget | null 
   if (isLocalEnvironmentDisabled()) {
     return null;
   }
-  return (
-    resolveDesktopPrimaryTarget() ??
-    resolveConfiguredPrimaryTarget() ??
-    resolveWindowOriginPrimaryTarget()
-  );
+  const target = resolveDesktopPrimaryTarget() ?? resolveWindowOriginPrimaryTarget();
+  for (const rawValue of [target.target.httpBaseUrl, target.target.wsBaseUrl]) {
+    const url = new URL(rawValue);
+    if (!isLoopbackHostname(url.hostname)) {
+      throw new PrimaryEnvironmentUrlInvalidError({
+        source: target.source,
+        urlKind: "http-base-url",
+        cause: "Only a loopback server is allowed.",
+      });
+    }
+  }
+  return target;
 }

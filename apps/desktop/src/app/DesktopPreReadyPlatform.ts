@@ -52,6 +52,14 @@ export class DesktopPreReadyElectronOptions extends Context.Service<
 export const make = Effect.gen(function* () {
   const platform = yield* HostProcessPlatform;
   return yield* Effect.sync((): DesktopPreReadyElectronOptions["Service"] => {
+    Electron.app.setPath(
+      "userData",
+      NodePath.join(
+        Electron.app.getPath("appData"),
+        Electron.app.isPackaged ? "t3code-locked" : "t3code-locked-dev",
+      ),
+    );
+
     const linuxPasswordStoreCommandLine =
       platform === "linux"
         ? readCommandLineSwitchValue(Electron.app.commandLine, "password-store")

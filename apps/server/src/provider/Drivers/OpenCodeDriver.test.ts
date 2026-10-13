@@ -8,9 +8,9 @@ import { assert, it } from "@effect/vitest";
 import { ProviderInstanceId, type OpenCodeSettings } from "@t3tools/contracts";
 import { HostProcessPlatform } from "@t3tools/shared/hostProcess";
 import * as Effect from "effect/Effect";
-import * as Fiber from "effect/Fiber";
+
 import * as Layer from "effect/Layer";
-import * as TestClock from "effect/testing/TestClock";
+
 import { HttpClient } from "effect/unstable/http";
 import { ChildProcessSpawner } from "effect/unstable/process";
 
@@ -21,11 +21,7 @@ import * as ServerSettings from "../../serverSettings.ts";
 import * as ProviderEventLoggers from "../Layers/ProviderEventLoggers.ts";
 import * as ProviderMaintenance from "../providerMaintenance.ts";
 import * as OpenCodeRuntime from "../opencodeRuntime.ts";
-import {
-  OPENCODE_2_RESPONSES,
-  OPENCODE_2_WORKSPACE_RESPONSES,
-  replayOpenCodeServer,
-} from "../testFixtures/opencodeProbeResponses.ts";
+
 import { OpenCodeDriver, openCodeUpdateFor } from "./OpenCodeDriver.ts";
 
 const serverStarts: Array<string> = [];
@@ -63,7 +59,14 @@ const create = (config: Partial<OpenCodeSettings>, http: HttpClient.HttpClient) 
   OpenCodeDriver.create({
     instanceId: ProviderInstanceId.make("opencode-test"),
     displayName: undefined,
-    environment: [],
+    environment: [
+      {
+        name: "T3CODE_CLOUDFLARE_GATEWAY_URL",
+        value:
+          "https://gateway.ai.cloudflare.com/v1/0123456789abcdef0123456789abcdef/approved/compat",
+        sensitive: false,
+      },
+    ],
     enabled: true,
     config: { ...OpenCodeDriver.defaultConfig(), ...config },
   }).pipe(Effect.provideService(HttpClient.HttpClient, http));
@@ -71,7 +74,7 @@ const create = (config: Partial<OpenCodeSettings>, http: HttpClient.HttpClient) 
 const noHttp = HttpClient.make(() => Effect.die("A local binary must not be probed over HTTP"));
 
 it.layer(layer)("OpenCodeDriver runtime selection", (it) => {
-  it.effect("never starts a 1.x server for an OpenCode 2 instance", () =>
+  it.effect("rejects unapproved text generation models before starting a server", () =>
     Effect.gen(function* () {
       serverStarts.length = 0;
       const instance = yield* create({}, noHttp);
@@ -83,51 +86,17 @@ it.layer(layer)("OpenCodeDriver runtime selection", (it) => {
           modelSelection: { instanceId: instance.instanceId, model: "opencode/big-pickle" },
         }),
       );
-      assert.deepStrictEqual(serverStarts, ["start"]);
-    }).pipe(Effect.scoped),
-  );
-
-  it.effect("lists an OpenCode 2 workspace's own skills and commands from its server", () =>
-    Effect.gen(function* () {
-      serverStarts.length = 0;
-      const requested: Array<string> = [];
-      const server = replayOpenCodeServer(
-        { ...OPENCODE_2_RESPONSES, ...OPENCODE_2_WORKSPACE_RESPONSES },
-        "secret",
-        requested,
-      );
-      const instance = yield* create(
-        { serverUrl: "http://127.0.0.1:4096", serverPassword: "secret" },
-        server,
-      );
-
-      const workspace = yield* instance.snapshotForCwd!("/work");
-      assert.includeMembers(
-        workspace.skills.map((skill) => skill.name),
-        ["plum", "opencode"],
-      );
-      assert.deepStrictEqual(
-        workspace.slashCommands.map((command) => command.name),
-        ["compact", "init", "review", "bee"],
-      );
-      assert.include(requested, "/api/skill");
       assert.deepStrictEqual(serverStarts, []);
     }).pipe(Effect.scoped),
   );
 
-  it.effect("answers capability reads without waiting on an unreachable server", () =>
+  it.effect("rejects an external OpenCode server even on loopback", () =>
     Effect.gen(function* () {
-      const hang = HttpClient.make(() => Effect.never);
-      const instance = yield* create({ serverUrl: "http://127.0.0.1:9" }, hang);
-
-      // No probe has succeeded yet, and the server never answers: the 1.x default applies.
-      const capabilities = yield* instance.orchestrationAdapter
-        .getCapabilities()
-        .pipe(Effect.forkChild);
-      yield* Effect.yieldNow;
-      assert.isDefined(capabilities.pollUnsafe());
-      yield* Fiber.join(capabilities);
-    }).pipe(Effect.scoped, Effect.provide(TestClock.layer())),
+      const result = yield* create({ serverUrl: "http://127.0.0.1:4096" }, noHttp).pipe(
+        Effect.result,
+      );
+      assert.strictEqual(result._tag, "Failure");
+    }).pipe(Effect.scoped),
   );
 });
 
@@ -231,7 +200,14 @@ it.layer(updateLayer)("OpenCodeDriver updates", (it) => {
       const instance = yield* OpenCodeDriver.create({
         instanceId: ProviderInstanceId.make("opencode-disabled"),
         displayName: undefined,
-        environment: [],
+        environment: [
+          {
+            name: "T3CODE_CLOUDFLARE_GATEWAY_URL",
+            value:
+              "https://gateway.ai.cloudflare.com/v1/0123456789abcdef0123456789abcdef/approved/compat",
+            sensitive: false,
+          },
+        ],
         enabled: false,
         config: { ...OpenCodeDriver.defaultConfig(), binaryPath: "opencode" },
       }).pipe(Effect.provideService(HttpClient.HttpClient, noHttp));
@@ -243,7 +219,7 @@ it.layer(updateLayer)("OpenCodeDriver updates", (it) => {
   );
 
   it.effect.skipIf(HostProcessPlatform.defaultValue() === "win32")(
-    "offers no package update for an unknown version and follows a changed one on a fresh read",
+    "offers no updates regardless of the installed version",
     () =>
       Effect.gen(function* () {
         const root = NodeFS.realpathSync(
@@ -253,7 +229,14 @@ it.layer(updateLayer)("OpenCodeDriver updates", (it) => {
         const instance = yield* OpenCodeDriver.create({
           instanceId: ProviderInstanceId.make("opencode-update"),
           displayName: undefined,
-          environment: [],
+          environment: [
+            {
+              name: "T3CODE_CLOUDFLARE_GATEWAY_URL",
+              value:
+                "https://gateway.ai.cloudflare.com/v1/0123456789abcdef0123456789abcdef/approved/compat",
+              sensitive: false,
+            },
+          ],
           enabled: true,
           config: { ...OpenCodeDriver.defaultConfig(), binaryPath },
         }).pipe(Effect.provideService(HttpClient.HttpClient, noHttp));
@@ -266,13 +249,13 @@ it.layer(updateLayer)("OpenCodeDriver updates", (it) => {
 
         versionOutput.current = "1.18.32\n";
         const v1 = yield* instance.snapshot.resolveMaintenance({ fresh: true });
-        assert.strictEqual(v1.packageName, "opencode-ai");
+        assert.isNull(v1.packageName);
 
         // The same path now reports 2.x (reinstalled in place): a fresh read re-probes
         // and never offers 1.x's package for it.
         versionOutput.current = "opencode v2.0.18\n";
         const v2 = yield* instance.snapshot.resolveMaintenance({ fresh: true });
-        assert.strictEqual(v2.packageName, "@opencode/cli");
+        assert.isNull(v2.packageName);
         assert.isNull(v2.update);
       }).pipe(Effect.scoped),
   );

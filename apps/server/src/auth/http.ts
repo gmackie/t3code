@@ -1,7 +1,6 @@
 import {
   AuthAccessReadScope,
   AuthAccessWriteScope,
-  AuthStandardClientScopes,
   AuthOrchestrationOperateScope,
   AuthOrchestrationReadScope,
   AuthRelayReadScope,
@@ -10,7 +9,7 @@ import {
   AuthTerminalOperateScope,
   EnvironmentAuthInvalidError,
   type EnvironmentAuthInvalidReason,
-  EnvironmentHttpApi,
+  LocalEnvironmentHttpApi,
   EnvironmentInternalError,
   type EnvironmentInternalErrorReason,
   EnvironmentOperationForbiddenError,
@@ -228,7 +227,7 @@ export const environmentAuthenticatedAuthLayer = Layer.effect(
 );
 
 export const authHttpApiLayer = HttpApiBuilder.group(
-  EnvironmentHttpApi,
+  LocalEnvironmentHttpApi,
   "auth",
   Effect.fnUntraced(function* (handlers) {
     const serverAuth = yield* EnvironmentAuth.EnvironmentAuth;
@@ -402,20 +401,8 @@ export const authHttpApiLayer = HttpApiBuilder.group(
         Effect.fn("environment.auth.pairingCredential")(
           function* (args) {
             yield* annotateEnvironmentRequest(args.endpoint.name);
-            const session = yield* requireEnvironmentScope(AuthAccessWriteScope);
-            const delegatedScopes = args.payload.scopes ?? AuthStandardClientScopes;
-            if (
-              delegatedScopes.length === 0 ||
-              new Set<AuthEnvironmentScope>(delegatedScopes).size !== delegatedScopes.length
-            ) {
-              return yield* failEnvironmentInvalidRequest("invalid_scope");
-            }
-            for (const delegatedScope of delegatedScopes) {
-              if (!session.scopes.has(delegatedScope)) {
-                return yield* failEnvironmentScopeRequired(delegatedScope);
-              }
-            }
-            return yield* serverAuth.issuePairingCredential(args.payload);
+            yield* requireEnvironmentScope(AuthAccessWriteScope);
+            return yield* failEnvironmentInvalidRequest("invalid_scope");
           },
           Effect.catchIf(EnvironmentAuth.isServerAuthInternalError, (error) =>
             failEnvironmentInternal("pairing_credential_issuance_failed", error),

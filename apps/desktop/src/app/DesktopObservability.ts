@@ -624,7 +624,13 @@ const backendOutputLogFactoryLayer = Layer.effect(
 const telemetryLayer = Layer.unwrap(
   Effect.gen(function* () {
     const environment = yield* DesktopEnvironment.DesktopEnvironment;
-    const endpoints = yield* resolveOtlpEndpoints;
+    const endpoints: Effect.Success<typeof resolveOtlpEndpoints> = {
+      traces: undefined,
+      metrics: undefined,
+      logs: undefined,
+      warnings: [],
+      resourceAttributes: {},
+    };
     const resource = {
       serviceName: "t3code-desktop",
       attributes: {

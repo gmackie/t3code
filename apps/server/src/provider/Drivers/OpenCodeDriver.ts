@@ -1,3 +1,48 @@
+import { restrictTextGeneration } from "../lockedDownTextGeneration.ts";
+import { restrictOpenCodeAdapter } from "../lockedDownAdapter.ts";
+import { lockedDownOpenCodeEnvironment } from "../lockedDownOpenCode.ts";
+/**
+ * OpenCodeDriver — `ProviderDriver` for the OpenCode runtime.
+ *
+ * Mirrors the Codex / Claude drivers: a plain value whose `create()`
+ * bundles `snapshot` / `adapter` / `textGeneration` closures over the
+ * per-instance `OpenCodeSettings`.
+ *
+ * Two instances with different `serverUrl`s therefore talk to independent
+ * OpenCode servers; when no `serverUrl` is set, the adapter + text-generation
+ * shares spin up their own scoped child processes, and those child
+ * processes are released when the registry scope closes.
+ *
+ * @module provider/Drivers/OpenCodeDriver
+ */
+/**
+ * OpenCodeDriver — `ProviderDriver` for the OpenCode runtime.
+ *
+ * Mirrors the Codex / Claude drivers: a plain value whose `create()`
+ * bundles `snapshot` / `adapter` / `textGeneration` closures over the
+ * per-instance `OpenCodeSettings`.
+ *
+ * Two instances with different `serverUrl`s therefore talk to independent
+ * OpenCode servers; when no `serverUrl` is set, the adapter + text-generation
+ * shares spin up their own scoped child processes, and those child
+ * processes are released when the registry scope closes.
+ *
+ * @module provider/Drivers/OpenCodeDriver
+ */
+/**
+ * OpenCodeDriver — `ProviderDriver` for the OpenCode runtime.
+ *
+ * Mirrors the Codex / Claude drivers: a plain value whose `create()`
+ * bundles `snapshot` / `adapter` / `textGeneration` closures over the
+ * per-instance `OpenCodeSettings`.
+ *
+ * Two instances with different `serverUrl`s therefore talk to independent
+ * OpenCode servers; when no `serverUrl` is set, the adapter + text-generation
+ * shares spin up their own scoped child processes, and those child
+ * processes are released when the registry scope closes.
+ *
+ * @module provider/Drivers/OpenCodeDriver
+ */
 /**
  * OpenCodeDriver — `ProviderDriver` for the OpenCode runtime.
  *
@@ -34,7 +79,6 @@ import type { ProviderAdapterV2Shape } from "../../orchestration-v2/ProviderAdap
 import * as ServerSettings from "../../serverSettings.ts";
 import type { TextGeneration } from "../../textGeneration/TextGeneration.ts";
 import { ProviderDriverError } from "../Errors.ts";
-import { readOpenCodeGoUsageLimits } from "../Layers/openCodeUsageLimits.ts";
 import {
   checkOpenCodeProviderStatus,
   loadOpenCode2Workspace,
@@ -64,11 +108,9 @@ import { withInstanceIdentity } from "./instanceIdentity.ts";
 import { mergeProviderInstanceEnvironment } from "../ProviderInstanceEnvironment.ts";
 import {
   enrichProviderSnapshotWithVersionAdvisory,
-  makeCachedProviderMaintenanceResolution,
   makeManualOnlyProviderMaintenanceCapabilities,
   makePackageManagedProviderMaintenanceResolver,
   normalizeCommandPath,
-  resolveProviderMaintenanceCapabilitiesEffect,
 } from "../providerMaintenance.ts";
 import {
   haveProviderSnapshotSettingsChanged,
@@ -200,7 +242,15 @@ export const OpenCodeDriver: ProviderDriver<OpenCodeSettings, OpenCodeDriverEnv>
       const serverConfig = yield* ServerConfig.ServerConfig;
       const httpClient = yield* HttpClient.HttpClient;
       const serverSettings = yield* ServerSettings.ServerSettingsService;
-      const processEnv = mergeProviderInstanceEnvironment(environment);
+      const processEnv = yield* Effect.try({
+        try: () => lockedDownOpenCodeEnvironment(mergeProviderInstanceEnvironment(environment)),
+        catch: (cause) =>
+          new ProviderDriverError({
+            driver: DRIVER_KIND,
+            instanceId,
+            detail: cause instanceof Error ? cause.message : "Invalid Cloudflare configuration.",
+          }),
+      });
       const continuationIdentity = defaultProviderContinuationIdentity({
         driverKind: DRIVER_KIND,
         instanceId,
@@ -212,6 +262,12 @@ export const OpenCodeDriver: ProviderDriver<OpenCodeSettings, OpenCodeDriverEnv>
         accentColor,
         continuationGroupKey: continuationIdentity.continuationKey,
       });
+      if (config.serverUrl.trim())
+        return yield* new ProviderDriverError({
+          driver: DRIVER_KIND,
+          instanceId,
+          detail: "Remote OpenCode servers are disabled.",
+        });
       const effectiveConfig = { ...config, enabled } satisfies OpenCodeSettings;
       const runtimeProbe = yield* makeOpenCodeRuntimeProbe(
         probeOpenCodeRuntime(effectiveConfig, processEnv).pipe(
@@ -227,41 +283,21 @@ export const OpenCodeDriver: ProviderDriver<OpenCodeSettings, OpenCodeDriverEnv>
         provider: DRIVER_KIND,
         packageName: null,
       });
-      const maintenanceFor = (probed: typeof runtimeProbe.get) =>
-        probed.pipe(
-          Effect.map((result) => result.generation),
-          Effect.option,
-          Effect.flatMap((generation) =>
-            Option.isNone(generation)
-              ? Effect.succeed(noUpdate)
-              : resolveProviderMaintenanceCapabilitiesEffect(openCodeUpdateFor(generation.value), {
-                  binaryPath: effectiveConfig.binaryPath,
-                  env: processEnv,
-                }),
-          ),
-          Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
-          Effect.provideService(FileSystem.FileSystem, fileSystem),
-          Effect.provideService(Path.Path, pathService),
-        );
-      const cachedMaintenance = yield* makeCachedProviderMaintenanceResolution(
-        maintenanceFor(runtimeProbe.get),
-      );
-      // A fresh read (an update about to run, or a manual refresh) re-probes, so
-      // a binary replaced by the other major version gets its own package.
-      const resolveMaintenance = (options?: { readonly fresh?: boolean }) =>
-        !effectiveConfig.enabled
-          ? Effect.succeed(noUpdate)
-          : options?.fresh === true
-            ? runtimeProbe.refresh.pipe(
-                Effect.ignore,
-                Effect.andThen(cachedMaintenance({ fresh: true })),
-              )
-            : cachedMaintenance();
+      const resolveMaintenance = (_options?: { readonly fresh?: boolean }) =>
+        Effect.succeed(noUpdate);
       const openCodeV1Adapter = yield* OpenCodeAdapterV2.OpenCodeAdapterV2Driver.create({
         instanceId,
         displayName,
         accentColor,
-        environment,
+        environment: [
+          ...(environment ?? []),
+          ...[
+            "OPENCODE_CONFIG_CONTENT",
+            "OPENCODE_DISABLE_AUTOUPDATE",
+            "OPENCODE_DISABLE_MODELS_FETCH",
+            "OPENCODE_DISABLE_SHARE",
+          ].map((name) => ({ name, value: processEnv[name] ?? "", sensitive: true })),
+        ],
         enabled,
         config,
       }).pipe(
@@ -291,13 +327,25 @@ export const OpenCodeDriver: ProviderDriver<OpenCodeSettings, OpenCodeDriverEnv>
           ),
         ),
       );
-      const orchestrationAdapter = selectOpenCodeRuntimeAdapter({
-        probe: runtimeProbe,
-        v1: openCodeV1Adapter,
-        v2: yield* OpenCode2AdapterV2.make(instanceId).pipe(
-          Effect.provideService(OpenCode2Server.OpenCode2Server, openCode2Server),
-        ),
-      });
+      const allowedModels = new Set(
+        (
+          processEnv.T3CODE_CLOUDFLARE_MODELS ??
+          "workers-ai/@cf/meta/llama-3.3-70b-instruct-fp8-fast"
+        )
+          .split(",")
+          .map((model) => model.trim())
+          .map((model) => `cloudflare-locked/${model}`),
+      );
+      const orchestrationAdapter = restrictOpenCodeAdapter(
+        selectOpenCodeRuntimeAdapter({
+          probe: runtimeProbe,
+          v1: openCodeV1Adapter,
+          v2: yield* OpenCode2AdapterV2.make(instanceId).pipe(
+            Effect.provideService(OpenCode2Server.OpenCode2Server, openCode2Server),
+          ),
+        }),
+        allowedModels,
+      );
       const loadOpenCode2Models = yield* makeOpenCode2ModelLoader(
         openCode2Server.withConnection((connection) =>
           connection.client.model.list({ location: { directory: serverConfig.cwd } }).pipe(
@@ -357,33 +405,29 @@ export const OpenCodeDriver: ProviderDriver<OpenCodeSettings, OpenCodeDriverEnv>
           : {}),
         environment: processEnv,
       });
-      const textGeneration = selectOpenCodeRuntimeTextGeneration(
-        runtimeProbe,
-        yield* makeOpenCodeTextGeneration(effectiveConfig).pipe(
-          Effect.provideService(OpenCodeServerOwner.OpenCodeServerOwner, serverOwner),
+      const textGeneration = restrictTextGeneration(
+        selectOpenCodeRuntimeTextGeneration(
+          runtimeProbe,
+          yield* makeOpenCodeTextGeneration(effectiveConfig).pipe(
+            Effect.provideService(OpenCodeServerOwner.OpenCodeServerOwner, serverOwner),
+          ),
+          yield* OpenCode2TextGeneration.make().pipe(
+            Effect.provideService(OpenCode2Server.OpenCode2Server, openCode2Server),
+          ),
         ),
-        yield* OpenCode2TextGeneration.make().pipe(
-          Effect.provideService(OpenCode2Server.OpenCode2Server, openCode2Server),
-        ),
+        allowedModels,
       );
 
-      const checkProvider = Effect.all(
-        {
-          provider: checkOpenCodeProviderStatus(
-            effectiveConfig,
-            serverConfig.cwd,
-            runtimeProbe.refresh,
-            loadOpenCode2Models,
-          ),
-          usageLimits: readOpenCodeGoUsageLimits({
-            enabled: effectiveConfig.enabled,
-            serverUrl: effectiveConfig.serverUrl,
-            environment: processEnv,
-          }),
-        },
-        { concurrency: "unbounded" },
+      const checkProvider = checkOpenCodeProviderStatus(
+        effectiveConfig,
+        serverConfig.cwd,
+        runtimeProbe.refresh,
+        loadOpenCode2Models,
       ).pipe(
-        Effect.map(({ provider, usageLimits }) => ({ ...provider, usageLimits })),
+        Effect.map((provider) => ({
+          ...provider,
+          models: provider.models.filter((model) => allowedModels.has(model.slug)),
+        })),
         Effect.map(stampIdentity),
         Effect.provideService(FileSystem.FileSystem, fileSystem),
         Effect.provideService(Path.Path, pathService),

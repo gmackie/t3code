@@ -1,6 +1,6 @@
 import {
   AuthOrchestrationReadScope,
-  EnvironmentHttpApi,
+  LocalEnvironmentHttpApi,
   ThreadId,
   TurnItemId,
   type OrchestrationProjectShell,
@@ -64,7 +64,7 @@ function selectHistoryPageFromCursorOrError(
  * `afterSequence`.
  */
 export const orchestrationHttpApiLayer = HttpApiBuilder.group(
-  EnvironmentHttpApi,
+  LocalEnvironmentHttpApi,
   "orchestration",
   Effect.fnUntraced(function* (handlers) {
     const sql = yield* SqlClient.SqlClient;

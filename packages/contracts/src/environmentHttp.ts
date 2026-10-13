@@ -689,3 +689,12 @@ export class EnvironmentHttpApi extends HttpApi.make("environment")
   .add(EnvironmentPullRequestsHttpApi)
   .add(EnvironmentProjectsHttpApi)
   .add(EnvironmentConnectHttpApi) {}
+
+/** Desktop fork API: no relay health, linking, or credential-minting routes. */
+export class LocalEnvironmentHttpApi extends HttpApi.make("environment")
+  .add(EnvironmentExecutionHttpApi)
+  .add(EnvironmentMetadataHttpApi)
+  .add(EnvironmentAuthHttpApi)
+  .add(EnvironmentOrchestrationHttpApi)
+  .add(EnvironmentPullRequestsHttpApi)
+  .add(EnvironmentProjectsHttpApi) {}

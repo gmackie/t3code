@@ -10,8 +10,6 @@ import * as Layer from "effect/Layer";
 import * as References from "effect/References";
 import * as Tracer from "effect/Tracer";
 import * as OtlpExporter from "effect/unstable/observability/OtlpExporter";
-import * as OtlpMetrics from "effect/unstable/observability/OtlpMetrics";
-import * as OtlpTracer from "effect/unstable/observability/OtlpTracer";
 
 import * as ServerConfig from "../../config.ts";
 import * as ResourceAttribution from "../../resourceTelemetry/ResourceAttribution.ts";
@@ -52,15 +50,6 @@ export const ObservabilityLive = Layer.unwrap(
               durationMs: stats.durationMs,
             }),
         });
-        const delegate =
-          config.otlpTracesUrl === undefined
-            ? undefined
-            : yield* OtlpTracer.make({
-                url: config.otlpTracesUrl,
-                exportInterval: `${traces.exportIntervalMs} millis`,
-                headers: traces.headers,
-                resource,
-              });
 
         const tracer = yield* makeLocalFileTracer({
           filePath: config.serverTracePath,
@@ -68,7 +57,6 @@ export const ObservabilityLive = Layer.unwrap(
           maxFiles: config.traceMaxFiles,
           batchWindowMs: config.traceBatchWindowMs,
           sink,
-          ...(delegate ? { delegate } : {}),
         });
 
         return Layer.mergeAll(
@@ -78,15 +66,7 @@ export const ObservabilityLive = Layer.unwrap(
       }),
     ).pipe(Layer.provide(OtlpExporter.layerFlusher), Layer.provideMerge(serializationLayer));
 
-    const metricsLayer =
-      config.otlpMetricsUrl === undefined
-        ? Layer.empty
-        : OtlpMetrics.layer({
-            url: config.otlpMetricsUrl,
-            exportInterval: `${metrics.exportIntervalMs} millis`,
-            headers: metrics.headers,
-            resource,
-          }).pipe(Layer.provide(otlpSerializationLayer(metrics.protocol)));
+    const metricsLayer = Layer.empty;
 
     // Logged once the server's loggers are installed, so the warnings use them.
     const otelWarningsLayer = Layer.effectDiscard(

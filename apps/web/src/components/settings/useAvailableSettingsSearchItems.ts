@@ -59,7 +59,9 @@ export function useAvailableSettingsSearchItems(scopeSearch: SettingsScopeSearch
         }),
         hasThreadAutoSettlement:
           getThreadAutoSettlementSearchAvailability(environments).eligibleEnvironmentIds.length > 0,
-      }),
+      }).filter(
+        (item) => item.to !== "/settings/connections" && item.to !== "/settings/integrations",
+      ),
     [
       canManageLocalBackend,
       desktopWsl.data,
