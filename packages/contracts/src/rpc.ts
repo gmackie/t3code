@@ -36,6 +36,7 @@ import {
   PluginCommandNotFoundError,
 } from "./pluginCommands.ts";
 import * as Schema from "effect/Schema";
+import { ReverseListInput, ReverseListResult, ReverseImportInput, ReverseImportResult, ReverseLinkInput, ReverseInvestigation, ReverseStringsInput, ReverseStringsResult, ReverseStoreError } from "./reverse.ts";
 import * as Rpc from "effect/rpc/Rpc";
 import * as RpcGroup from "effect/rpc/RpcGroup";
 import * as RpcMiddleware from "effect/rpc/RpcMiddleware";
@@ -436,6 +437,12 @@ export const WS_METHODS = {
   projectsMutate: "projects.mutate",
   projectsEnsureScratch: "projects.ensureScratch",
   projectsCreateNew: "projects.createNew",
+
+  // Reverse engineering methods
+  reverseList: "reverse.list",
+  reverseImport: "reverse.import",
+  reverseLink: "reverse.link",
+  reverseStrings: "reverse.strings",
 
   // Shell methods
   shellOpenInEditor: "shell.openInEditor",
@@ -1462,6 +1469,27 @@ const WsSourceControlPublishRepositoryRpc = Rpc.make(WS_METHODS.sourceControlPub
   error: Schema.Union([SourceControlRepositoryError, EnvironmentAuthorizationError]),
 });
 
+const WsReverseListRpc = Rpc.make(WS_METHODS.reverseList, {
+  payload: ReverseListInput,
+  success: ReverseListResult,
+  error: Schema.Union([ReverseStoreError, EnvironmentAuthorizationError]),
+});
+const WsReverseImportRpc = Rpc.make(WS_METHODS.reverseImport, {
+  payload: ReverseImportInput,
+  success: ReverseImportResult,
+  error: Schema.Union([ReverseStoreError, EnvironmentAuthorizationError]),
+});
+const WsReverseLinkRpc = Rpc.make(WS_METHODS.reverseLink, {
+  payload: ReverseLinkInput,
+  success: ReverseInvestigation,
+  error: Schema.Union([ReverseStoreError, EnvironmentAuthorizationError]),
+});
+const WsReverseStringsRpc = Rpc.make(WS_METHODS.reverseStrings, {
+  payload: ReverseStringsInput,
+  success: ReverseStringsResult,
+  error: Schema.Union([ReverseStoreError, EnvironmentAuthorizationError]),
+});
+
 const WsProjectsSearchEntriesRpc = Rpc.make(WS_METHODS.projectsSearchEntries, {
   payload: ProjectSearchEntriesInput,
   success: ProjectSearchEntriesResult,
@@ -2136,6 +2164,10 @@ export class RpcScopeAuthorization extends RpcMiddleware.Service<RpcScopeAuthori
 ) {}
 
 export const WsRpcGroup = RpcGroup.make(
+  WsReverseListRpc,
+  WsReverseImportRpc,
+  WsReverseLinkRpc,
+  WsReverseStringsRpc,
   WsServerProbeRpc,
   WsServerGetConfigRpc,
   WsPluginCommandsListRpc,
