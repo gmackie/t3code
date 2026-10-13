@@ -13,13 +13,15 @@ export function WorkspaceModeSwitcher({ threadRef }: { threadRef: ScopedThreadRe
       aria-label="Workspace mode"
       className="electron-no-drag flex shrink-0 rounded-md border border-border p-0.5"
     >
-      {(["Code", "CAD", "Game"] as const).map((label) => {
+      {(["Code", "CAD", "Game", "Reverse"] as const).map((label) => {
         const selected =
           label === "CAD"
             ? kind === "kicad"
             : label === "Game"
               ? kind === "game"
-              : kind !== "kicad" && kind !== "game";
+              : label === "Reverse"
+                ? kind === "reverse"
+                : kind !== "kicad" && kind !== "game" && kind !== "reverse";
         return (
           <button
             key={label}
@@ -36,6 +38,7 @@ export function WorkspaceModeSwitcher({ threadRef }: { threadRef: ScopedThreadRe
               const store = useRightPanelStore.getState();
               if (label === "CAD") store.open(threadRef, "kicad");
               else if (label === "Game") store.open(threadRef, "game");
+              else if (label === "Reverse") store.open(threadRef, "reverse");
               else if (kind === "game") store.closeSurface(threadRef, "game");
               else store.returnToCode(threadRef);
             }}
