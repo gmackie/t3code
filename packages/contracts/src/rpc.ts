@@ -36,7 +36,7 @@ import {
   PluginCommandNotFoundError,
 } from "./pluginCommands.ts";
 import * as Schema from "effect/Schema";
-import { ReverseListInput, ReverseListResult, ReverseImportInput, ReverseImportResult, ReverseLinkInput, ReverseInvestigation, ReverseStringsInput, ReverseStringsResult, ReverseStoreError } from "./reverse.ts";
+import { ReverseListInput, ReverseListResult, ReverseImportInput, ReverseImportResult, ReverseLinkInput, ReverseInvestigation, ReverseStringsInput, ReverseStringsResult, ReverseAnalysisInput, ReverseAnalysisResult, ReverseEmulateInput, ReverseEmulateResult, ReverseStoreError } from "./reverse.ts";
 import * as Rpc from "effect/rpc/Rpc";
 import * as RpcGroup from "effect/rpc/RpcGroup";
 import * as RpcMiddleware from "effect/rpc/RpcMiddleware";
@@ -443,6 +443,8 @@ export const WS_METHODS = {
   reverseImport: "reverse.import",
   reverseLink: "reverse.link",
   reverseStrings: "reverse.strings",
+  reverseAnalyze: "reverse.analyze",
+  reverseEmulate: "reverse.emulate",
 
   // Shell methods
   shellOpenInEditor: "shell.openInEditor",
@@ -1490,6 +1492,17 @@ const WsReverseStringsRpc = Rpc.make(WS_METHODS.reverseStrings, {
   error: Schema.Union([ReverseStoreError, EnvironmentAuthorizationError]),
 });
 
+const WsReverseAnalyzeRpc = Rpc.make(WS_METHODS.reverseAnalyze, {
+  payload: ReverseAnalysisInput,
+  success: ReverseAnalysisResult,
+  error: Schema.Union([ReverseStoreError, EnvironmentAuthorizationError]),
+});
+const WsReverseEmulateRpc = Rpc.make(WS_METHODS.reverseEmulate, {
+  payload: ReverseEmulateInput,
+  success: ReverseEmulateResult,
+  error: Schema.Union([ReverseStoreError, EnvironmentAuthorizationError]),
+});
+
 const WsProjectsSearchEntriesRpc = Rpc.make(WS_METHODS.projectsSearchEntries, {
   payload: ProjectSearchEntriesInput,
   success: ProjectSearchEntriesResult,
@@ -2168,6 +2181,8 @@ export const WsRpcGroup = RpcGroup.make(
   WsReverseImportRpc,
   WsReverseLinkRpc,
   WsReverseStringsRpc,
+  WsReverseAnalyzeRpc,
+  WsReverseEmulateRpc,
   WsServerProbeRpc,
   WsServerGetConfigRpc,
   WsPluginCommandsListRpc,
