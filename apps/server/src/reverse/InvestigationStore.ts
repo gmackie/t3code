@@ -193,3 +193,13 @@ export class ReverseInvestigationStore {
     });
   }
 }
+
+/** One lock domain for all connections on this environment server. */
+const stores = new Map<string, ReverseInvestigationStore>();
+export function getReverseInvestigationStore(stateDir: string): ReverseInvestigationStore {
+  const existing = stores.get(stateDir);
+  if (existing) return existing;
+  const store = new ReverseInvestigationStore(stateDir);
+  stores.set(stateDir, store);
+  return store;
+}
