@@ -58,7 +58,7 @@ export function ReverseWorkspace({
   const analyze = useAtomCommand(reverseEnvironment.analyze, { reportFailure: false });
   const emulate = useAtomCommand(reverseEnvironment.emulate, { reportFailure: false });
 
-  async function runAnalysis(kind: "ghidra" | "binwalk" | "gadgets" | "unblob") {
+  async function runAnalysis(kind: "ghidra" | "binwalk" | "gadgets" | "unblob" | "rea") {
     if (!active || !projectId) return;
     setBusy(true); setError(null); setAnalysis(null);
     try {
@@ -170,7 +170,7 @@ export function ReverseWorkspace({
                   <div className="border-b border-border p-3">
                     <div className="mb-2 flex items-center gap-2 text-xs font-semibold"><Cpu className="size-3.5" /> Binary analysis</div>
                     <div className="flex flex-wrap gap-1.5">
-                      {(["ghidra", "binwalk", "unblob", "gadgets"] as const).map(kind => (
+                      {(["ghidra", "binwalk", "unblob", "gadgets", "rea"] as const).map(kind => (
                         <button key={kind} type="button" disabled={busy} onClick={() => void runAnalysis(kind)}
                           className="rounded border border-border px-2 py-1.5 text-xs capitalize hover:bg-accent disabled:opacity-50">
                           {kind === "gadgets" ? "ROP/JOP gadgets" : kind}
