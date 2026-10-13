@@ -102,3 +102,39 @@ export class ReverseStoreError extends Schema.TaggedError<ReverseStoreError>()(
     message: Schema.String,
   },
 ) {}
+
+/** Native tool invocation is explicit and bounded by the environment host. */
+export const ReverseAnalysisInput = Schema.Struct({
+  projectId: Schema.String,
+  investigationId: Schema.String,
+  kind: Schema.Literals(["ghidra", "binwalk", "gadgets"]),
+  rawArch: Schema.optional(Schema.Literals(["x86", "arm", "arm64", "mips", "riscv"])),
+  rawMode: Schema.optional(Schema.Literals(["32", "64", "arm", "thumb"])),
+});
+export const ReverseAnalysisResult = Schema.Struct({
+  kind: Schema.Literals(["ghidra", "binwalk", "gadgets"]),
+  output: Schema.String,
+  truncated: Schema.Boolean,
+  toolVersion: Schema.optional(Schema.String),
+  functions: Schema.optional(Schema.Array(Schema.Struct({
+    address: Schema.String,
+    name: Schema.String,
+    pseudocode: Schema.String,
+    instructions: Schema.Array(Schema.Struct({ address: Schema.String, text: Schema.String })),
+  }))),
+  gadgets: Schema.optional(Schema.Array(Schema.Struct({
+    address: Schema.String,
+    instructions: Schema.String,
+    kind: Schema.Literals(["rop", "jop", "cop", "other"]),
+  }))),
+});
+export const ReverseEmulateInput = Schema.Struct({
+  projectId: Schema.String,
+  investigationId: Schema.String,
+  machine: Schema.Literals(["lm3s6965evb", "mps2-an385"]),
+});
+export const ReverseEmulateResult = Schema.Struct({
+  source: Schema.Literal("qemu"),
+  outcome: Schema.Literals(["inconclusive", "error"]),
+  output: Schema.String,
+});
