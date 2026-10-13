@@ -40,3 +40,65 @@ export const ReverseInvestigation = Schema.Struct({
   ghidraSessionId: Schema.optional(Schema.String),
 });
 export type ReverseInvestigation = typeof ReverseInvestigation.Type;
+
+/** Workspace-local acquisition metadata; raw bytes are not transported over RPC. */
+export const ReverseFirmwareArtifact = Schema.Struct({
+  sha256: Schema.String,
+  sizeBytes: Schema.Number,
+  filename: Schema.String,
+  sourcePath: Schema.String,
+  importedAt: Schema.String,
+});
+export type ReverseFirmwareArtifact = typeof ReverseFirmwareArtifact.Type;
+
+export const ReverseListInput = Schema.Struct({ projectId: Schema.String });
+export const ReverseListResult = Schema.Struct({
+  investigations: Schema.Array(ReverseInvestigation),
+  artifacts: Schema.Array(ReverseFirmwareArtifact),
+});
+export const ReverseImportInput = Schema.Struct({
+  projectId: Schema.String,
+  relativePath: Schema.String.check(Schema.isMaxLength(4096)),
+});
+export const ReverseImportResult = Schema.Struct({
+  investigation: ReverseInvestigation,
+  artifact: ReverseFirmwareArtifact,
+});
+export const ReverseLinkInput = Schema.Struct({
+  projectId: Schema.String,
+  investigationId: Schema.String,
+  veritasProjectId: Schema.optional(Schema.String),
+  boardRevisionId: Schema.optional(Schema.String),
+});
+export const ReversePublishInput = Schema.Struct({
+  projectId: Schema.String,
+  investigationId: Schema.String,
+  boardRevisionId: Schema.optional(Schema.String),
+});
+export const ReversePublishResult = Schema.Struct({
+  artifactId: Schema.String,
+  sha256: Schema.String,
+});
+export const ReverseStringsInput = Schema.Struct({
+  projectId: Schema.String,
+  investigationId: Schema.String,
+  minLength: Schema.optional(Schema.Int.check(Schema.isBetween({ minimum: 4, maximum: 64 }))),
+});
+export const ReverseStringsResult = Schema.Struct({
+  strings: Schema.Array(Schema.Struct({
+    offset: Schema.Number,
+    value: Schema.String,
+  })),
+  truncated: Schema.Boolean,
+});
+
+export class ReverseStoreError extends Schema.TaggedError<ReverseStoreError>()(
+  "ReverseStoreError",
+  {
+    reason: Schema.Literals([
+      "not_found", "outside_workspace", "too_large", "invalid_file",
+      "unavailable", "operation_failed",
+    ]),
+    message: Schema.String,
+  },
+) {}
