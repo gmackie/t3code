@@ -1,59 +1,61 @@
-// @effect-diagnostics nodeBuiltinImport:off - native analyzers run only on the environment host.
-import { spawn } from "node:child_process";
-
-/** No shell invocation, bounded output and time, with cancellation on failure. */
-export interface ToolResult {
-  exitCode: number | null;
-  stdout: string;
-  stderr: string;
-  truncated: boolean;
+// @effect-diagnostics nodeBuiltinImport:off - native tools are an explicit host boundary.
+import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { isAbsolute } from "node:path";
+export interface ToolResult { exitCode: number | null; stdout: string; stderr: string; truncated: boolean; timedOut: boolean }
+export interface ToolInput { executable: string; args: readonly string[]; cwd: string; timeoutMs?: number; maxOutputBytes?: number; signal?: AbortSignal; sandbox?: boolean }
+/** Never give firmware parsers provider credentials, SSH sockets or NODE_OPTIONS. */
+export function toolEnvironment(cwd: string, source: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+  const result: NodeJS.ProcessEnv = { HOME: cwd, USERPROFILE: cwd, LANG: "C.UTF-8", LC_ALL: "C.UTF-8" };
+  for (const key of ["PATH", "SystemRoot", "WINDIR", "JAVA_HOME", "TMPDIR", "TEMP", "TMP"]) if (source[key]) result[key] = source[key];
+  return result;
 }
-
-export function runBoundedTool(input: {
-  executable: string;
-  args: readonly string[];
-  cwd: string;
-  timeoutMs?: number;
-  maxOutputBytes?: number;
-  signal?: AbortSignal;
-}): Promise<ToolResult> {
-  const timeoutMs = Math.max(100, Math.min(input.timeoutMs ?? 60_000, 180_000));
-  const outputCap = Math.max(1024, Math.min(input.maxOutputBytes ?? 4 * 1024 * 1024, 16 * 1024 * 1024));
+export function launchTool(input: ToolInput): { child: ChildProcessWithoutNullStreams; terminate: () => void } {
+  input.signal?.throwIfAborted();
+  let executable = input.executable, args = [...input.args];
+  if (input.sandbox) {
+    const configured = process.env.T3_REVERSE_SANDBOX_COMMAND;
+    if (!configured) throw new Error("sandbox_required: configure T3_REVERSE_SANDBOX_COMMAND as a JSON argv array for an isolated worker. No firmware tool was started.");
+    const wrapper: unknown = JSON.parse(configured);
+    if (!Array.isArray(wrapper) || !wrapper.length || wrapper.some(x => typeof x !== "string" || !x || x.includes("\0")) || !isAbsolute(wrapper[0])) throw new Error("Invalid isolation launcher: expected a JSON argv array starting with an absolute executable path.");
+    executable = wrapper[0]; args = [...wrapper.slice(1), input.executable, ...args];
+  }
+  const child = spawn(executable, args, { cwd: input.cwd, env: toolEnvironment(input.cwd), stdio: ["pipe", "pipe", "pipe"], shell: false, windowsHide: true, detached: process.platform !== "win32" });
+  const terminate = () => {
+    try { if (process.platform !== "win32" && child.pid) process.kill(-child.pid, "SIGKILL"); else child.kill("SIGKILL"); }
+    catch (error) { if ((error as NodeJS.ErrnoException).code !== "ESRCH") child.kill("SIGKILL"); }
+  };
+  return { child, terminate };
+}
+/** Output/time bounds are NOT a filesystem sandbox; sandbox:true requires isolation separately. */
+export function runBoundedTool(input: ToolInput): Promise<ToolResult> {
+  const timeoutMs = Math.max(20, Math.min(input.timeoutMs ?? 60_000, 300_000));
+  const cap = Math.max(128, Math.min(input.maxOutputBytes ?? 4 * 1024 * 1024, 16 * 1024 * 1024));
   return new Promise((resolve, reject) => {
-    const child = spawn(input.executable, [...input.args], {
-      cwd: input.cwd,
-      env: process.env,
-      stdio: ["ignore", "pipe", "pipe"],
-      shell: false,
-      windowsHide: true,
-    });
-    let stdout = "", stderr = "", total = 0, truncated = false, timedOut = false, finished = false;
-    const capture = (buffer: Buffer, stream: "stdout" | "stderr") => {
+    let launched: ReturnType<typeof launchTool>;
+    try { launched = launchTool(input); } catch (error) { reject(error); return; }
+    const { child, terminate } = launched; child.stdin.end();
+    const stdout: Buffer[] = [], stderr: Buffer[] = [];
+    let total = 0, truncated = false, timedOut = false, finished = false;
+    const capture = (bytes: Buffer, output: Buffer[]) => {
       if (finished) return;
-      const limit = Math.max(0, outputCap - total);
-      const text = buffer.subarray(0, limit).toString("utf8");
-      total += buffer.length;
-      if (stream === "stdout") stdout += text; else stderr += text;
-      if (buffer.length > limit) { truncated = true; child.kill("SIGKILL"); }
+      const count = Math.min(bytes.length, Math.max(0, cap - total));
+      if (count) output.push(Buffer.from(bytes.subarray(0, count)));
+      total += count;
+      if (count < bytes.length) { truncated = true; terminate(); }
     };
-    child.stdout?.on("data", (chunk: Buffer) => capture(chunk, "stdout"));
-    child.stderr?.on("data", (chunk: Buffer) => capture(chunk, "stderr"));
-    const timer = setTimeout(() => { timedOut = true; child.kill("SIGKILL"); }, timeoutMs);
-    const onAbort = () => child.kill("SIGKILL");
-    if (input.signal?.aborted) onAbort();
-    input.signal?.addEventListener("abort", onAbort, { once: true });
-    const cleanup = () => {
-      clearTimeout(timer);
-      input.signal?.removeEventListener("abort", onAbort);
-      finished = true;
-    };
-    child.once("error", (error) => { if (finished) return; cleanup(); reject(error); });
-    child.once("close", (code) => {
+    child.stdout.on("data", (bytes: Buffer) => capture(bytes, stdout));
+    child.stderr.on("data", (bytes: Buffer) => capture(bytes, stderr));
+    const timer = setTimeout(() => { timedOut = true; terminate(); }, timeoutMs);
+    const abort = () => terminate();
+    input.signal?.addEventListener("abort", abort, { once: true });
+    if (input.signal?.aborted) abort();
+    const cleanup = () => { finished = true; clearTimeout(timer); input.signal?.removeEventListener("abort", abort); };
+    child.once("error", error => { if (!finished) { cleanup(); reject(error); } });
+    child.once("close", code => {
       if (finished) return;
       cleanup();
-      if (timedOut) reject(new Error(`Tool exceeded ${timeoutMs} ms timeout`));
-      else if (input.signal?.aborted) reject(new Error("Tool execution was cancelled"));
-      else resolve({ exitCode: code, stdout, stderr, truncated });
+      if (input.signal?.aborted) { reject(input.signal.reason ?? new Error("Tool execution cancelled")); return; }
+      resolve({ exitCode: code, stdout: Buffer.concat(stdout).toString("utf8"), stderr: Buffer.concat(stderr).toString("utf8"), truncated, timedOut });
     });
   });
 }
