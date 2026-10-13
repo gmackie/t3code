@@ -21,7 +21,7 @@ afterEach(async () => {
 
 describe("reverse investigation persistence", () => {
   it("imports and hashes immutable bytes while remaining idempotent", async () => {
-    await Fs.writeFile(Path.join(root, "fixture.bin"), "hello WORLD\\x00serial=115200\\x00");
+    await Fs.writeFile(Path.join(root, "fixture.bin"), Buffer.from("hello WORLD" + String.fromCharCode(0) + "serial=115200" + String.fromCharCode(0)));
     const input = { projectId: "p1", environmentId: "env1", workspaceRoot: root, relativePath: "fixture.bin" };
     const first = await store.importFile(input);
     const again = await store.importFile(input);
