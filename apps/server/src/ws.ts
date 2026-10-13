@@ -20,6 +20,8 @@ import * as Stream from "effect/Stream";
 import { rpcInitialItems } from "./rpcInitialItems.ts";
 // @effect-diagnostics nodeBuiltinImport:off - plugin state paths are resolved at the server boundary.
 import * as NodePath from "node:path";
+import { getReverseInvestigationStore } from "./reverse/InvestigationStore.ts";
+import { ReverseStoreError } from "@t3tools/contracts";
 import { subscribeChatGptHandoff } from "./provider/CodexChatGptHandoff.ts";
 import { subscribeCodexAuthCallback } from "./provider/CodexAuthCallback.ts";
 import {
@@ -1299,6 +1301,7 @@ const layerWsRpc = (
       const providerInstallation = yield* makeProviderInstallation();
       const serverSelfUpdate = yield* ServerSelfUpdate.ServerSelfUpdate;
       const config = yield* ServerConfig.ServerConfig;
+      const reverseStore = getReverseInvestigationStore(config.stateDir);
       const pluginPackageManager = new PluginPackageManager(
         createLocalPluginPackageReader(config.stateDir),
       );
@@ -1849,6 +1852,73 @@ const layerWsRpc = (
       });
 
       const handlers = ServerWsRpcGroup.of({
+        [WS_METHODS.reverseList]: (input) =>
+          Effect.gen(function* () {
+            const project = yield* projectService.getById(input.projectId as ProjectId).pipe(
+              Effect.mapError((cause) => new ReverseStoreError({ reason: "operation_failed", message: String(cause) })),
+            );
+            if (Option.isNone(project)) return yield* Effect.fail(new ReverseStoreError({
+              reason: "not_found", message: "Project not found",
+            }));
+            return yield* Effect.tryPromise({
+              try: () => reverseStore.list(input.projectId),
+              catch: (cause) => new ReverseStoreError({ reason: "operation_failed", message: String(cause) }),
+            });
+          }),
+        [WS_METHODS.reverseImport]: (input) =>
+          Effect.gen(function* () {
+            const project = yield* projectService.getById(input.projectId as ProjectId).pipe(
+              Effect.mapError((cause) => new ReverseStoreError({ reason: "operation_failed", message: String(cause) })),
+            );
+            if (Option.isNone(project)) return yield* Effect.fail(new ReverseStoreError({
+              reason: "not_found", message: "Project not found",
+            }));
+            const environmentId = yield* serverEnvironment.getEnvironmentId;
+            return yield* Effect.tryPromise({
+              try: () => reverseStore.importFile({
+                projectId: input.projectId,
+                workspaceRoot: project.value.workspaceRoot,
+                relativePath: input.relativePath,
+                environmentId,
+              }),
+              catch: (cause) => cause instanceof ReverseStoreError
+                ? cause
+                : new ReverseStoreError({ reason: "operation_failed", message: String(cause) }),
+            });
+          }),
+        [WS_METHODS.reverseLink]: (input) =>
+          Effect.gen(function* () {
+            const project = yield* projectService.getById(input.projectId as ProjectId).pipe(
+              Effect.mapError((cause) => new ReverseStoreError({ reason: "operation_failed", message: String(cause) })),
+            );
+            if (Option.isNone(project)) return yield* Effect.fail(new ReverseStoreError({
+              reason: "not_found", message: "Project not found",
+            }));
+            return yield* Effect.tryPromise({
+              try: () => reverseStore.link(input.projectId, input.investigationId, {
+                ...(input.veritasProjectId === undefined ? {} : { veritasProjectId: input.veritasProjectId }),
+                ...(input.boardRevisionId === undefined ? {} : { boardRevisionId: input.boardRevisionId }),
+              }),
+              catch: (cause) => cause instanceof ReverseStoreError
+                ? cause
+                : new ReverseStoreError({ reason: "operation_failed", message: String(cause) }),
+            });
+          }),
+        [WS_METHODS.reverseStrings]: (input) =>
+          Effect.gen(function* () {
+            const project = yield* projectService.getById(input.projectId as ProjectId).pipe(
+              Effect.mapError((cause) => new ReverseStoreError({ reason: "operation_failed", message: String(cause) })),
+            );
+            if (Option.isNone(project)) return yield* Effect.fail(new ReverseStoreError({
+              reason: "not_found", message: "Project not found",
+            }));
+            return yield* Effect.tryPromise({
+              try: () => reverseStore.strings(input.projectId, input.investigationId, input.minLength),
+              catch: (cause) => cause instanceof ReverseStoreError
+                ? cause
+                : new ReverseStoreError({ reason: "operation_failed", message: String(cause) }),
+            });
+          }),
         [ORCHESTRATION_V2_WS_METHODS.dispatchCommand]: (command) =>
           Effect.annotateCurrentSpan({
             "orchestration_v2.command_id": command.commandId,
