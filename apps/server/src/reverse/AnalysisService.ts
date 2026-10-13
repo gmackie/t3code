@@ -5,7 +5,7 @@ import { ReverseStoreError } from "@t3tools/contracts";
 import { runBoundedTool, type ToolResult } from "./ToolRunner.ts";
 import type { ReverseInvestigationStore } from "./InvestigationStore.ts";
 
-export type AnalysisKind = "ghidra" | "binwalk" | "gadgets" | "unblob";
+export type AnalysisKind = "ghidra" | "binwalk" | "gadgets" | "unblob" | "rea";
 export interface GhidraFunction {
   address: string;
   name: string;
@@ -80,6 +80,16 @@ export class ReverseAnalysisService {
     const { artifact, path } = await this.store.getArtifact(input.projectId, input.investigationId);
     const dir = Path.join(this.stateDir, "reverse", "analysis", artifact.sha256);
     await Fs.mkdir(dir, { recursive: true });
+    if (input.kind === "rea") {
+      // REA must be preinstalled and configured explicitly by the operator.
+      // No npx auto-install or network fetch occurs inside an analysis request.
+      const result = await runChecked("rea", ["analyze", path, "--json"], dir, 120_000);
+      return {
+        kind: "rea",
+        output: result.stdout.slice(0, 4_000_000),
+        truncated: result.truncated,
+      };
+    }
     if (input.kind === "binwalk") {
       // Binwalk 3: -l creates a JSON scan log, without extraction or executing vendor images.
       const outputPath = Path.join(dir, "binwalk.json");
