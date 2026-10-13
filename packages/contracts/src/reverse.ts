@@ -107,7 +107,7 @@ export class ReverseStoreError extends Schema.TaggedError<ReverseStoreError>()(
 export const ReverseAnalysisInput = Schema.Struct({
   projectId: Schema.String,
   investigationId: Schema.String,
-  kind: Schema.Literals(["ghidra", "binwalk", "gadgets"]),
+  kind: Schema.Literals(["ghidra", "binwalk", "gadgets", "unblob"]),
   rawArch: Schema.optional(Schema.Literals(["x86", "arm", "arm64", "mips", "riscv"])),
   rawMode: Schema.optional(Schema.Literals(["32", "64", "arm", "thumb"])),
 });
@@ -122,6 +122,7 @@ export const ReverseAnalysisResult = Schema.Struct({
     pseudocode: Schema.String,
     instructions: Schema.Array(Schema.Struct({ address: Schema.String, text: Schema.String })),
   }))),
+  extracted: Schema.optional(Schema.Array(Schema.Struct({ path: Schema.String, bytes: Schema.Number }))),
   gadgets: Schema.optional(Schema.Array(Schema.Struct({
     address: Schema.String,
     instructions: Schema.String,
