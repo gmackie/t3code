@@ -1,4 +1,4 @@
-import type { ScopedThreadRef } from "@t3tools/contracts";
+import type { ScopedThreadRef, ReverseAnalysisResult, ReverseEmulateResult } from "@t3tools/contracts";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { Binary, Cpu, FileArchive, FolderSearch, Link2, Search, ShieldCheck } from "lucide-react";
 import { reverseEnvironment } from "~/state/reverse";
@@ -21,6 +21,9 @@ export function ReverseWorkspace({
   const [boardRevisionId, setBoardRevisionId] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [analysis, setAnalysis] = useState<ReverseAnalysisResult | null>(null);
+  const [emulation, setEmulation] = useState<ReverseEmulateResult | null>(null);
+  const [selectedFunction, setSelectedFunction] = useState<string | null>(null);
 
   const target = projectId
     ? { environmentId: threadRef.environmentId, input: { projectId } }
@@ -52,6 +55,30 @@ export function ReverseWorkspace({
 
   const importFile = useAtomCommand(reverseEnvironment.importFile, { reportFailure: false });
   const link = useAtomCommand(reverseEnvironment.link, { reportFailure: false });
+  const analyze = useAtomCommand(reverseEnvironment.analyze, { reportFailure: false });
+  const emulate = useAtomCommand(reverseEnvironment.emulate, { reportFailure: false });
+
+  async function runAnalysis(kind: "ghidra" | "binwalk" | "gadgets") {
+    if (!active || !projectId) return;
+    setBusy(true); setError(null); setAnalysis(null);
+    try {
+      const result = await analyze({ environmentId: threadRef.environmentId, input: { projectId, investigationId: active.id, kind } });
+      if (result._tag === "Failure") throw squashAtomCommandFailure(result);
+      setAnalysis(result.value); setSelectedFunction(null);
+    } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
+    finally { setBusy(false); }
+  }
+
+  async function runEmulation() {
+    if (!active || !projectId) return;
+    setBusy(true); setError(null); setEmulation(null);
+    try {
+      const result = await emulate({ environmentId: threadRef.environmentId, input: { projectId, investigationId: active.id, machine: "lm3s6965evb" } });
+      if (result._tag === "Failure") throw squashAtomCommandFailure(result);
+      setEmulation(result.value);
+    } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
+    finally { setBusy(false); }
+  }
 
   async function onImport(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -140,6 +167,63 @@ export function ReverseWorkspace({
             <div className="flex min-h-0 flex-col">
               {active ? (
                 <>
+                  <div className="border-b border-border p-3">
+                    <div className="mb-2 flex items-center gap-2 text-xs font-semibold"><Cpu className="size-3.5" /> Binary analysis</div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {(["ghidra", "binwalk", "gadgets"] as const).map(kind => (
+                        <button key={kind} type="button" disabled={busy} onClick={() => void runAnalysis(kind)}
+                          className="rounded border border-border px-2 py-1.5 text-xs capitalize hover:bg-accent disabled:opacity-50">
+                          {kind === "gadgets" ? "ROP/JOP gadgets" : kind}
+                        </button>
+                      ))}
+                      <button type="button" disabled={busy} onClick={() => void runEmulation()}
+                        className="rounded border border-border px-2 py-1.5 text-xs hover:bg-accent disabled:opacity-50">
+                        QEMU (LM3S6965EVB)
+                      </button>
+                    </div>
+                    <p className="mt-1 text-[11px] text-muted-foreground">Runs supported local tools on the owning T3 environment. QEMU results are simulation observations, not hardware validation.</p>
+                  </div>
+                  {(analysis || emulation) && (
+                    <div className="max-h-72 overflow-y-auto border-b border-border p-3">
+                      {analysis && <>
+                        <div className="text-xs font-semibold uppercase">{analysis.kind} results</div>
+                        <p className="mt-1 whitespace-pre-wrap break-all font-mono text-xs">{analysis.output.slice(0, 25000)}</p>
+                        {analysis.truncated && <p className="text-xs text-muted-foreground">Output truncated.</p>}
+                        {analysis.gadgets?.map((g, index) => (
+                          <div key={g.address + index} className="flex gap-2 border-b border-border/40 py-1 font-mono text-xs">
+                            <span className="shrink-0 text-muted-foreground">{g.address}</span>
+                            <span className="shrink-0 uppercase">{g.kind}</span>
+                            <span>{g.instructions}</span>
+                          </div>
+                        ))}
+                        {analysis.functions && (
+                          <div className="grid grid-cols-[minmax(6rem,35%)_minmax(0,1fr)] border border-border">
+                            <div className="max-h-48 overflow-y-auto border-r border-border">
+                              {analysis.functions.map(fn => (
+                                <button type="button" key={fn.address} onClick={()=>setSelectedFunction(fn.address)}
+                                  className="block w-full truncate border-b border-border/40 px-2 py-1 text-left font-mono text-xs hover:bg-accent">{fn.name} · {fn.address}</button>
+                              ))}
+                            </div>
+                            <div className="max-h-48 overflow-y-auto p-2">
+                              {analysis.functions.filter(fn=>fn.address === (selectedFunction ?? analysis.functions?.[0]?.address)).map(fn=>(
+                                <div key={fn.address}>
+                                  <h4 className="text-xs font-medium">{fn.name}</h4>
+                                  <pre className="overflow-x-auto whitespace-pre text-xs">{fn.pseudocode}</pre>
+                                  <details><summary className="cursor-pointer text-xs">Disassembly</summary>
+                                    <pre className="overflow-x-auto whitespace-pre text-xs">{fn.instructions.map(ins=>ins.address + "  " + ins.text).join("\n")}</pre>
+                                  </details>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </>}
+                      {emulation && (
+                        <div><div className="text-xs font-semibold">QEMU · {emulation.outcome}</div>
+                          <pre className="max-h-40 overflow-auto whitespace-pre-wrap text-xs">{emulation.output}</pre></div>
+                      )}
+                    </div>
+                  )}
                   <div className="border-b border-border p-3">
                     <div className="mb-2 flex items-center gap-2 text-xs font-medium"><Binary className="size-3.5" /> Binary strings</div>
                     <div className="flex gap-2">
