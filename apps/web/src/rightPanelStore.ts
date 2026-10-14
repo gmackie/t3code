@@ -48,7 +48,11 @@ export type RightPanelSurface =
   | { id: "browser:new"; kind: "preview"; resourceId: null }
   | { id: "device" | `device:${string}`; kind: "device"; target?: DeviceTabTarget; title?: string }
   | { id: "game"; kind: "game" }
-  | { id: "reverse"; kind: "reverse"; codePanel?: { isOpen: boolean; activeSurfaceId: string | null } }
+  | {
+      id: "reverse";
+      kind: "reverse";
+      codePanel?: { isOpen: boolean; activeSurfaceId: string | null };
+    }
   | { id: "kicad"; kind: "kicad"; codePanel?: { isOpen: boolean; activeSurfaceId: string | null } }
   | {
       id: `terminal:${string}`;
@@ -321,7 +325,8 @@ const upsertSurface = (
   const existing = current.surfaces.find((entry) => entry.id === surface.id);
   // Entering CAD or Reverse mode remembers Code so returnToCode can restore it.
   const nextSurface =
-    (surface.kind === "kicad" || surface.kind === "reverse") && current.activeSurfaceId !== surface.id
+    (surface.kind === "kicad" || surface.kind === "reverse") &&
+    current.activeSurfaceId !== surface.id
       ? {
           ...surface,
           codePanel: { isOpen: current.isOpen, activeSurfaceId: current.activeSurfaceId },
@@ -709,10 +714,12 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
       returnToCode: (ref) =>
         set((state) =>
           userAction(state, scopedThreadKey(ref), (current) => {
-            if (current.activeSurfaceId !== "kicad" && current.activeSurfaceId !== "reverse") return current;
+            if (current.activeSurfaceId !== "kicad" && current.activeSurfaceId !== "reverse")
+              return current;
             const modeId = current.activeSurfaceId;
             const mode = current.surfaces.find((surface) => surface.id === modeId);
-            const previous = mode?.kind === "kicad" || mode?.kind === "reverse" ? mode.codePanel : undefined;
+            const previous =
+              mode?.kind === "kicad" || mode?.kind === "reverse" ? mode.codePanel : undefined;
             const activeSurfaceId =
               current.surfaces.find(
                 (surface) => surface.id !== modeId && surface.id === previous?.activeSurfaceId,

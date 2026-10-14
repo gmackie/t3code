@@ -36,7 +36,9 @@ describe("rightPanelStore", () => {
     store.open(refA, "reverse");
     expect(selectActiveRightPanel(useRightPanelStore.getState().byThreadKey, refA)).toBe("reverse");
     store.returnToCode(refA);
-    expect(selectActiveRightPanelSurface(useRightPanelStore.getState().byThreadKey, refA)?.id).toBe("file:src/main.ts");
+    expect(selectActiveRightPanelSurface(useRightPanelStore.getState().byThreadKey, refA)?.id).toBe(
+      "file:src/main.ts",
+    );
   });
 
   it("records single and bulk tab closes, newest first", () => {

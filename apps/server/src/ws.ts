@@ -274,6 +274,7 @@ import {
 } from "./plugins/runtimeSupervisor.ts";
 
 const isProviderUploadFeedbackError = Schema.is(ProviderUploadFeedbackError);
+const isReverseStoreError = Schema.is(ReverseStoreError);
 
 const pluginRegistryEntry = (plugin: ReturnType<PluginLifecycle["snapshot"]>[number]) => ({
   pluginId: plugin.manifest.id,
@@ -1854,69 +1855,116 @@ const layerWsRpc = (
       const handlers = ServerWsRpcGroup.of({
         [WS_METHODS.reverseList]: (input) =>
           Effect.gen(function* () {
-            const project = yield* projectService.getById(input.projectId as ProjectId).pipe(
-              Effect.mapError((cause) => new ReverseStoreError({ reason: "operation_failed", message: String(cause) })),
-            );
-            if (Option.isNone(project)) return yield* Effect.fail(new ReverseStoreError({
-              reason: "not_found", message: "Project not found",
-            }));
+            const project = yield* projectService
+              .getById(input.projectId as ProjectId)
+              .pipe(
+                Effect.mapError(
+                  (cause) =>
+                    new ReverseStoreError({ reason: "operation_failed", message: String(cause) }),
+                ),
+              );
+            if (Option.isNone(project))
+              return yield* Effect.fail(
+                new ReverseStoreError({
+                  reason: "not_found",
+                  message: "Project not found",
+                }),
+              );
             return yield* Effect.tryPromise({
               try: () => reverseStore.list(input.projectId),
-              catch: (cause) => new ReverseStoreError({ reason: "operation_failed", message: String(cause) }),
+              catch: (cause) =>
+                new ReverseStoreError({ reason: "operation_failed", message: String(cause) }),
             });
           }),
         [WS_METHODS.reverseImport]: (input) =>
           Effect.gen(function* () {
-            const project = yield* projectService.getById(input.projectId as ProjectId).pipe(
-              Effect.mapError((cause) => new ReverseStoreError({ reason: "operation_failed", message: String(cause) })),
-            );
-            if (Option.isNone(project)) return yield* Effect.fail(new ReverseStoreError({
-              reason: "not_found", message: "Project not found",
-            }));
+            const project = yield* projectService
+              .getById(input.projectId as ProjectId)
+              .pipe(
+                Effect.mapError(
+                  (cause) =>
+                    new ReverseStoreError({ reason: "operation_failed", message: String(cause) }),
+                ),
+              );
+            if (Option.isNone(project))
+              return yield* Effect.fail(
+                new ReverseStoreError({
+                  reason: "not_found",
+                  message: "Project not found",
+                }),
+              );
             const environmentId = yield* serverEnvironment.getEnvironmentId;
             return yield* Effect.tryPromise({
-              try: () => reverseStore.importFile({
-                projectId: input.projectId,
-                workspaceRoot: project.value.workspaceRoot,
-                relativePath: input.relativePath,
-                environmentId,
-              }),
-              catch: (cause) => cause instanceof ReverseStoreError
-                ? cause
-                : new ReverseStoreError({ reason: "operation_failed", message: String(cause) }),
+              try: () =>
+                reverseStore.importFile({
+                  projectId: input.projectId,
+                  workspaceRoot: project.value.workspaceRoot,
+                  relativePath: input.relativePath,
+                  environmentId,
+                }),
+              catch: (cause) =>
+                isReverseStoreError(cause)
+                  ? cause
+                  : new ReverseStoreError({ reason: "operation_failed", message: String(cause) }),
             });
           }),
         [WS_METHODS.reverseLink]: (input) =>
           Effect.gen(function* () {
-            const project = yield* projectService.getById(input.projectId as ProjectId).pipe(
-              Effect.mapError((cause) => new ReverseStoreError({ reason: "operation_failed", message: String(cause) })),
-            );
-            if (Option.isNone(project)) return yield* Effect.fail(new ReverseStoreError({
-              reason: "not_found", message: "Project not found",
-            }));
+            const project = yield* projectService
+              .getById(input.projectId as ProjectId)
+              .pipe(
+                Effect.mapError(
+                  (cause) =>
+                    new ReverseStoreError({ reason: "operation_failed", message: String(cause) }),
+                ),
+              );
+            if (Option.isNone(project))
+              return yield* Effect.fail(
+                new ReverseStoreError({
+                  reason: "not_found",
+                  message: "Project not found",
+                }),
+              );
             return yield* Effect.tryPromise({
-              try: () => reverseStore.link(input.projectId, input.investigationId, {
-                ...(input.veritasProjectId === undefined ? {} : { veritasProjectId: input.veritasProjectId }),
-                ...(input.boardRevisionId === undefined ? {} : { boardRevisionId: input.boardRevisionId }),
-              }),
-              catch: (cause) => cause instanceof ReverseStoreError
-                ? cause
-                : new ReverseStoreError({ reason: "operation_failed", message: String(cause) }),
+              try: () =>
+                reverseStore.link(input.projectId, input.investigationId, {
+                  ...(input.veritasProjectId === undefined
+                    ? {}
+                    : { veritasProjectId: input.veritasProjectId }),
+                  ...(input.boardRevisionId === undefined
+                    ? {}
+                    : { boardRevisionId: input.boardRevisionId }),
+                }),
+              catch: (cause) =>
+                isReverseStoreError(cause)
+                  ? cause
+                  : new ReverseStoreError({ reason: "operation_failed", message: String(cause) }),
             });
           }),
         [WS_METHODS.reverseStrings]: (input) =>
           Effect.gen(function* () {
-            const project = yield* projectService.getById(input.projectId as ProjectId).pipe(
-              Effect.mapError((cause) => new ReverseStoreError({ reason: "operation_failed", message: String(cause) })),
-            );
-            if (Option.isNone(project)) return yield* Effect.fail(new ReverseStoreError({
-              reason: "not_found", message: "Project not found",
-            }));
+            const project = yield* projectService
+              .getById(input.projectId as ProjectId)
+              .pipe(
+                Effect.mapError(
+                  (cause) =>
+                    new ReverseStoreError({ reason: "operation_failed", message: String(cause) }),
+                ),
+              );
+            if (Option.isNone(project))
+              return yield* Effect.fail(
+                new ReverseStoreError({
+                  reason: "not_found",
+                  message: "Project not found",
+                }),
+              );
             return yield* Effect.tryPromise({
-              try: () => reverseStore.strings(input.projectId, input.investigationId, input.minLength),
-              catch: (cause) => cause instanceof ReverseStoreError
-                ? cause
-                : new ReverseStoreError({ reason: "operation_failed", message: String(cause) }),
+              try: () =>
+                reverseStore.strings(input.projectId, input.investigationId, input.minLength),
+              catch: (cause) =>
+                isReverseStoreError(cause)
+                  ? cause
+                  : new ReverseStoreError({ reason: "operation_failed", message: String(cause) }),
             });
           }),
         [ORCHESTRATION_V2_WS_METHODS.dispatchCommand]: (command) =>
