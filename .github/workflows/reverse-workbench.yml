@@ -2,11 +2,11 @@ name: Reverse workbench integration
 on:
   pull_request:
     paths:
-      - 'apps/server/src/reverse/**'
-      - 'apps/web/src/components/reverse/**'
-      - 'packages/contracts/src/reverse*'
-      - 'scripts/reverse-*'
-      - '.github/workflows/reverse-workbench.yml'
+      - "apps/server/src/reverse/**"
+      - "apps/web/src/components/reverse/**"
+      - "packages/contracts/src/reverse*"
+      - "scripts/reverse-*"
+      - ".github/workflows/reverse-workbench.yml"
   workflow_dispatch:
 permissions:
   contents: read
@@ -20,7 +20,9 @@ jobs:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v5
         with:
-          node-version: '24'
+          node-version: "24"
+          # The smoke scripts need no installed dependencies, and pnpm is absent here.
+          package-manager-cache: false
       - run: node --test scripts/reverse-runtime-smoke.ts
   ghidra-live:
     runs-on: ubuntu-latest
@@ -31,11 +33,13 @@ jobs:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v5
         with:
-          node-version: '24'
+          node-version: "24"
+          # The smoke scripts need no installed dependencies, and pnpm is absent here.
+          package-manager-cache: false
       - uses: actions/setup-java@v5
         with:
           distribution: temurin
-          java-version: '21'
+          java-version: "21"
       - name: Download and verify pinned Ghidra 12.1.4
         env:
           GH_TOKEN: ${{ github.token }}
