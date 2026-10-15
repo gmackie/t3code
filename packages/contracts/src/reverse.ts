@@ -1,5 +1,4 @@
 import * as Schema from "effect/Schema";
-
 const Id = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256));
 export const ReverseDigest = Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/));
 export const ReverseAddress = Schema.String.check(
@@ -9,8 +8,6 @@ export const ReverseAddress = Schema.String.check(
 const SafeOffset = Schema.Int.check(
   Schema.isBetween({ minimum: 0, maximum: Number.MAX_SAFE_INTEGER }),
 );
-
-/** A location identifies bytes, address space and decoder mode, not an address alone. */
 export const ReverseCodeLocation = Schema.Struct({
   artifactSha256: ReverseDigest,
   addressSpace: Id,
@@ -19,7 +16,6 @@ export const ReverseCodeLocation = Schema.Struct({
   mode: Schema.optional(Id),
 });
 export type ReverseCodeLocation = typeof ReverseCodeLocation.Type;
-
 export const ReverseEvidenceRef = Schema.Union([
   Schema.Struct({ kind: Schema.Literal("code"), location: ReverseCodeLocation }),
   Schema.Struct({
@@ -37,7 +33,6 @@ export const ReverseEvidenceRef = Schema.Union([
   }),
 ]);
 export type ReverseEvidenceRef = typeof ReverseEvidenceRef.Type;
-
 export const ReverseFinding = Schema.Struct({
   id: Id,
   artifactSha256: ReverseDigest,
@@ -58,7 +53,6 @@ export const ReverseFinding = Schema.Struct({
   evidence: Schema.Array(ReverseEvidenceRef),
 });
 export type ReverseFinding = typeof ReverseFinding.Type;
-
 export const ReverseInvestigation = Schema.Struct({
   id: Id,
   projectId: Id,
@@ -125,3 +119,110 @@ export class ReverseStoreError extends Schema.TaggedError<ReverseStoreError>()(
     message: Schema.String,
   },
 ) {}
+// Ghidra addresses are hexadecimal; code locations also accept decimal for Veritas.
+const ReverseHexAddress = Schema.String.check(
+  Schema.isPattern(/^0x[0-9a-fA-F]+$/),
+  Schema.isMaxLength(80),
+);
+export const ReverseGhidraOperation = Schema.Struct({
+  action: Schema.optional(
+    Schema.Literals(["list", "function", "rename", "comment", "save", "close"]),
+  ),
+  languageId: Schema.optional(Id),
+  imageBase: Schema.optional(ReverseHexAddress),
+  address: Schema.optional(ReverseHexAddress),
+  name: Schema.optional(Id),
+  expectedName: Schema.optional(Id),
+  comment: Schema.optional(Schema.String.check(Schema.isMaxLength(8192))),
+  cursor: Schema.optional(Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: 1000000 }))),
+});
+export type ReverseGhidraOperation = typeof ReverseGhidraOperation.Type;
+export const ReverseAnalysisKind = Schema.Literals([
+  "ghidra",
+  "binwalk",
+  "gadgets",
+  "unblob",
+  "rea",
+  "posture",
+]);
+export const ReverseAnalysisInput = Schema.Struct({
+  projectId: Id,
+  investigationId: Id,
+  kind: ReverseAnalysisKind,
+  rawArch: Schema.optional(Schema.Literals(["x86", "arm", "arm64", "mips", "riscv"])),
+  rawMode: Schema.optional(Schema.Literals(["32", "64", "arm", "thumb"])),
+  rawEndian: Schema.optional(Schema.Literals(["little", "big"])),
+  ghidra: Schema.optional(ReverseGhidraOperation),
+});
+export type ReverseAnalysisInput = typeof ReverseAnalysisInput.Type;
+export const ReverseGhidraFunction = Schema.Struct({
+  address: Schema.String,
+  name: Schema.String,
+  pseudocode: Schema.String,
+  instructions: Schema.Array(
+    Schema.Struct({
+      address: Schema.String,
+      text: Schema.String,
+      bytes: Schema.optional(Schema.String),
+    }),
+  ),
+  tokens: Schema.optional(
+    Schema.Array(
+      Schema.Struct({
+        text: Schema.String,
+        address: Schema.optional(Schema.String),
+        syntaxType: Schema.Int,
+      }),
+    ),
+  ),
+  callees: Schema.optional(
+    Schema.Array(Schema.Struct({ address: Schema.String, name: Schema.String })),
+  ),
+  xrefs: Schema.optional(
+    Schema.Array(Schema.Struct({ address: Schema.String, type: Schema.String })),
+  ),
+});
+export type ReverseGhidraFunction = typeof ReverseGhidraFunction.Type;
+export const ReverseAnalysisResult = Schema.Struct({
+  kind: ReverseAnalysisKind,
+  output: Schema.String,
+  truncated: Schema.Boolean,
+  toolVersion: Schema.optional(Schema.String),
+  receiptId: Schema.optional(Id),
+  nextCursor: Schema.optional(SafeOffset),
+  functions: Schema.optional(Schema.Array(ReverseGhidraFunction)),
+  extracted: Schema.optional(
+    Schema.Array(
+      Schema.Struct({
+        path: Schema.String,
+        bytes: SafeOffset,
+        sha256: Schema.optional(ReverseDigest),
+      }),
+    ),
+  ),
+  gadgets: Schema.optional(
+    Schema.Array(
+      Schema.Struct({
+        address: Schema.String,
+        instructions: Schema.String,
+        kind: Schema.Literals(["rop", "jop", "cop", "other"]),
+        classification: Schema.optional(Schema.Literal("syntactic")),
+        effects: Schema.optional(Schema.Literal("not-modeled")),
+      }),
+    ),
+  ),
+});
+export type ReverseAnalysisResult = typeof ReverseAnalysisResult.Type;
+export const ReverseEmulateInput = Schema.Struct({
+  projectId: Id,
+  investigationId: Id,
+  machine: Schema.Literals(["lm3s6965evb", "mps2-an385"]),
+});
+export const ReverseEmulateResult = Schema.Struct({
+  source: Schema.Literal("qemu"),
+  outcome: Schema.Literals(["inconclusive", "error"]),
+  output: Schema.String,
+  receiptId: Schema.optional(Id),
+  timedOut: Schema.optional(Schema.Boolean),
+});
+export type ReverseEmulateResult = typeof ReverseEmulateResult.Type;

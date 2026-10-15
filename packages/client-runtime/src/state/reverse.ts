@@ -21,6 +21,14 @@ export function createReverseEnvironmentAtoms<R, E>(
       label: "reverse:link",
       tag: WS_METHODS.reverseLink,
     }),
+    analyze: createEnvironmentRpcCommand(runtime, {
+      label: "reverse:analyze",
+      tag: WS_METHODS.reverseAnalyze,
+    }),
+    emulate: createEnvironmentRpcCommand(runtime, {
+      label: "reverse:emulate",
+      tag: WS_METHODS.reverseEmulate,
+    }),
     strings: createEnvironmentRpcQueryAtomFamily(runtime, {
       label: "reverse:strings",
       tag: WS_METHODS.reverseStrings,
