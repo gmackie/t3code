@@ -2,14 +2,23 @@
 import * as NodeStringDecoder from "node:string_decoder";
 import { launchTool, type ToolInput } from "./ToolRunner.ts";
 type Pending = {
+  method: string;
+  payload: string;
+  timeoutMs: number;
   resolve: (value: unknown) => void;
   reject: (error: Error) => void;
-  timer: ReturnType<typeof setTimeout>;
+  timer?: ReturnType<typeof setTimeout>;
 };
-/** Persistent framed protocol; ordinary Ghidra log lines never become RPC replies. */
+/**
+ * Persistent framed protocol; ordinary Ghidra log lines never become RPC replies.
+ * The bridge answers one request at a time, so requests are written one at a time
+ * and each timeout covers only that request's own work, not time spent queued.
+ */
 export class JsonLineProcess {
   private readonly launch: ReturnType<typeof launchTool>;
   private readonly pending = new Map<string, Pending>();
+  private readonly queue: string[] = [];
+  private inFlight: string | null = null;
   private readonly prefix: string;
   private nextId = 0;
   private buffer = "";
@@ -41,8 +50,10 @@ export class JsonLineProcess {
           if (!item) continue;
           this.pending.delete(message.id);
           clearTimeout(item.timer);
+          if (this.inFlight === message.id) this.inFlight = null;
           if (message.error) item.reject(new Error(String(message.error)));
           else item.resolve(message.result);
+          this.pump();
         } catch (error) {
           this.fail(error instanceof Error ? error : new Error(String(error)));
         }
@@ -68,26 +79,31 @@ export class JsonLineProcess {
       );
     if (this.pending.size >= 16) return Promise.reject(new Error("Bridge request queue is full"));
     const id = String(++this.nextId);
+    const payload = JSON.stringify({ id, method, params });
+    if (Buffer.byteLength(payload) > 65536)
+      return Promise.reject(new Error("Bridge request too large"));
     return new Promise((resolve, reject) => {
-      const timer = setTimeout(
-        () =>
-          this.fail(
-            new Error(
-              `Bridge ${method} timed out; mutation outcome may be unknown. No automatic retry.`,
-            ),
-          ),
-        timeoutMs,
-      );
-      this.pending.set(id, { resolve, reject, timer });
-      const payload = JSON.stringify({ id, method, params });
-      if (Buffer.byteLength(payload) > 65536) {
-        this.pending.delete(id);
-        clearTimeout(timer);
-        reject(new Error("Bridge request too large"));
-        return;
-      }
-      this.launch.child.stdin.write(payload + "\n");
+      this.pending.set(id, { method, payload, timeoutMs, resolve, reject });
+      this.queue.push(id);
+      this.pump();
     });
+  }
+  private pump(): void {
+    if (this.stopped || this.inFlight !== null) return;
+    const id = this.queue.shift();
+    const item = id === undefined ? undefined : this.pending.get(id);
+    if (id === undefined || !item) return;
+    this.inFlight = id;
+    item.timer = setTimeout(
+      () =>
+        this.fail(
+          new Error(
+            `Bridge ${item.method} timed out; mutation outcome may be unknown. No automatic retry.`,
+          ),
+        ),
+      item.timeoutMs,
+    );
+    this.launch.child.stdin.write(item.payload + "\n");
   }
   isClosed(): boolean {
     return this.stopped;
@@ -104,5 +120,6 @@ export class JsonLineProcess {
       item.reject(error);
     }
     this.pending.clear();
+    this.queue.length = 0;
   }
 }

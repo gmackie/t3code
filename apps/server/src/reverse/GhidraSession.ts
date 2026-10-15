@@ -38,6 +38,8 @@ export interface GhidraReply {
 }
 /** Each open program has one persistent JVM. Project/profile/version participate in identity. */
 export class GhidraSessionPool {
+  // Aborted on dispose so an import still running dies with the server.
+  private imports = new AbortController();
   private readonly sessions = new Map<
     string,
     { opening: Promise<JsonLineProcess>; idle: ReturnType<typeof setTimeout> }
@@ -79,7 +81,28 @@ export class GhidraSessionPool {
       .digest("hex");
     const cwd = NodePath.join(this.directory, key),
       executable = NodePath.join(install, "support", "analyzeHeadless");
+    const action = operation.action ?? "list";
+    if (
+      ["function", "rename", "comment"].includes(action) &&
+      !/^0x[0-9a-f]+$/i.test(operation.address ?? "")
+    )
+      throw new Error("A hexadecimal function address is required");
+    if (
+      action === "rename" &&
+      (!operation.name ||
+        !/^[A-Za-z_$][A-Za-z0-9_.$]{0,127}$/.test(operation.name) ||
+        !operation.expectedName)
+    )
+      throw new Error("Rename requires a valid name and expected current name");
+    if (
+      action === "comment" &&
+      (operation.comment === undefined || operation.comment.length > 8192)
+    )
+      throw new Error("Comment must be at most 8192 characters");
     let session = this.sessions.get(key);
+    // Closing a program that is not open must not import it first.
+    if (!session && action === "close")
+      return { functions: [], truncated: false, toolVersion: version };
     if (!session) {
       if (this.sessions.size >= 4)
         throw new Error("Four Ghidra programs are open. Close one before opening another.");
@@ -100,24 +123,6 @@ export class GhidraSessionPool {
         "Ghidra worker exited. Reopen analysis; interrupted edits are never replayed.",
       );
     }
-    const action = operation.action ?? "list";
-    if (
-      ["function", "rename", "comment"].includes(action) &&
-      !/^0x[0-9a-f]+$/i.test(operation.address ?? "")
-    )
-      throw new Error("A hexadecimal function address is required");
-    if (
-      action === "rename" &&
-      (!operation.name ||
-        !/^[A-Za-z_$][A-Za-z0-9_.$]{0,127}$/.test(operation.name) ||
-        !operation.expectedName)
-    )
-      throw new Error("Rename requires a valid name and expected current name");
-    if (
-      action === "comment" &&
-      (operation.comment === undefined || operation.comment.length > 8192)
-    )
-      throw new Error("Comment must be at most 8192 characters");
     const reply = await bridge.request(action, {
       address: operation.address,
       name: operation.name,
@@ -191,6 +196,7 @@ export class GhidraSessionPool {
         cwd,
         timeoutMs: 180000,
         sandbox: true,
+        signal: this.imports.signal,
       });
       if (result.exitCode !== 0 || result.timedOut || result.truncated)
         throw new Error(
@@ -233,6 +239,8 @@ export class GhidraSessionPool {
     );
   }
   dispose(): void {
+    this.imports.abort(new Error("Ghidra session pool disposed"));
+    this.imports = new AbortController();
     for (const key of [...this.sessions.keys()]) this.close(key);
   }
 }

@@ -67,6 +67,21 @@ NodeTest.test("timed-out mutations are not replayed", async () => {
   NodeAssert.equal(bridge.isClosed(), true);
   await NodeAssert.rejects(bridge.request("rename"), /closed/);
 });
+NodeTest.test("queued requests are timed from when they are sent", async () => {
+  // Like the Ghidra bridge, this worker answers one request at a time.
+  const code = `const q=[];let busy=false;const next=()=>{if(busy||!q.length)return;busy=true;const r=q.shift();setTimeout(()=>{process.stdout.write('@T3RE:'+JSON.stringify({id:r.id,result:r.method})+'\\n');busy=false;next()},40)};require('readline').createInterface({input:process.stdin}).on('line',line=>{q.push(JSON.parse(line));next()});`;
+  const bridge = new JsonLineProcess({ executable: process.execPath, args: ["-e", code], cwd });
+  try {
+    await bridge.request("warm", {}, 5000);
+    const replies = await Promise.all(
+      ["a", "b", "c"].map((method) => bridge.request(method, {}, 60)),
+    );
+    NodeAssert.deepEqual(replies, ["a", "b", "c"]);
+    NodeAssert.equal(bridge.isClosed(), false);
+  } finally {
+    bridge.close();
+  }
+});
 NodeTest.test("gadget classification includes MIPS delay slots", () => {
   const rows = parseGadgets(
     "0x100 : pop {r4, pc}\n0x200 : jr $ra ; nop\n0x300 : blr x8\n0x400 : jmp rax\n0x100 : pop {r4, pc}",
