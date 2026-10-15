@@ -14,6 +14,16 @@ import {
   type ReverseDeleteInput,
   type ReverseToolchainResult,
   type ReverseCapture,
+  type ReverseSerialChunk,
+  type ReverseSerialObserveInput,
+  type ReverseSerialOpenInput,
+  type ReverseSerialPortsInput,
+  type ReverseSerialPortsResult,
+  type ReverseSerialRecentInput,
+  type ReverseSerialRecentResult,
+  type ReverseSerialSession,
+  type ReverseSerialSessionInput,
+  type ReverseSerialWriteInput,
   type ReverseCaptureDecodeInput,
   type ReverseCaptureDecodeResult,
   type ReverseCaptureDeleteInput,
@@ -53,7 +63,10 @@ import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as Queue from "effect/Queue";
 import * as Schema from "effect/Schema";
+import * as Stream from "effect/Stream";
+import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as ServerConfig from "../config.ts";
 import * as ServerEnvironment from "../environment/ServerEnvironment.ts";
 import * as ProjectService from "../project/ProjectService.ts";
@@ -61,6 +74,7 @@ import { ReverseAnalysisService } from "./AnalysisService.ts";
 import { ghidraSessions } from "./GhidraSession.ts";
 import { getReverseInvestigationStore } from "./InvestigationStore.ts";
 import { inspectToolchain } from "./Toolchain.ts";
+import { SerialConsole } from "./SerialConsole.ts";
 import { captureWindow, decodeI2c, decodeSpi, decodeUart } from "./CaptureDecode.ts";
 import { VeritasEvidenceClient } from "./VeritasEvidenceClient.ts";
 import { WorkbenchService } from "./WorkbenchService.ts";
@@ -80,6 +94,25 @@ export class ReverseWorkbench extends Context.Service<
       input: typeof ReverseLinkInput.Type,
     ) => Effect.Effect<ReverseInvestigation, ReverseStoreError>;
     readonly toolchain: Effect.Effect<ReverseToolchainResult, ReverseStoreError>;
+    readonly serialPorts: (
+      input: typeof ReverseSerialPortsInput.Type,
+    ) => Effect.Effect<typeof ReverseSerialPortsResult.Type, ReverseStoreError>;
+    readonly openSerial: (
+      input: typeof ReverseSerialOpenInput.Type,
+    ) => Effect.Effect<ReverseSerialSession, ReverseStoreError>;
+    readonly writeSerial: (
+      input: typeof ReverseSerialWriteInput.Type,
+    ) => Effect.Effect<void, ReverseStoreError>;
+    readonly closeSerial: (
+      input: typeof ReverseSerialSessionInput.Type,
+    ) => Effect.Effect<void, ReverseStoreError>;
+    readonly serialRecent: (
+      input: typeof ReverseSerialRecentInput.Type,
+    ) => Effect.Effect<typeof ReverseSerialRecentResult.Type, ReverseStoreError>;
+    /** Buffered output after `afterSeq`, then live output until the session closes. */
+    readonly serialOutput: (
+      input: typeof ReverseSerialObserveInput.Type,
+    ) => Stream.Stream<ReverseSerialChunk, ReverseStoreError>;
     readonly importCapture: (
       input: typeof ReverseCaptureImportInput.Type,
     ) => Effect.Effect<ReverseCapture, ReverseStoreError>;
@@ -191,10 +224,12 @@ const make = Effect.gen(function* () {
     veritasUrl && veritasToken ? { url: veritasUrl, token: veritasToken } : null,
   );
   const workbench = new WorkbenchService(store, veritas);
+  const serial = new SerialConsole(config.stateDir, yield* HostProcess.Platform);
   // Ghidra JVMs and in-flight imports end with the server.
   yield* Effect.addFinalizer(() =>
     Effect.promise(() => workbench.close()).pipe(
       Effect.ensuring(Effect.sync(() => ghidraSessions(config.stateDir).dispose())),
+      Effect.ensuring(Effect.sync(() => serial.dispose())),
     ),
   );
 
@@ -292,6 +327,62 @@ const make = Effect.gen(function* () {
         }),
       ),
     toolchain: attempt(() => inspectToolchain()),
+    serialPorts: (input) =>
+      inProject(input.projectId, async () => ({
+        ports: await serial.ports(),
+        sessions: serial.list(input.projectId),
+      })),
+    openSerial: (input) =>
+      Effect.gen(function* () {
+        yield* requireProject(input.projectId);
+        // Sessions whose project was deleted would otherwise hold their ports until a restart.
+        for (const owner of serial.owners()) {
+          const live = yield* projects
+            .getById(owner as ProjectId)
+            .pipe(Effect.orElseSucceed(() => Option.some(null)));
+          if (Option.isNone(live)) serial.closeProject(owner);
+        }
+        return yield* attempt(() => serial.open(input.projectId, input.port, input.baud));
+      }),
+    writeSerial: (input) =>
+      inProject(input.projectId, () =>
+        serial.write(input.projectId, input.sessionId, Buffer.from(input.data, "base64")),
+      ),
+    // No project check: a session must stay closable after its project is deleted.
+    closeSerial: (input) => attempt(async () => serial.closeFor(input.projectId, input.sessionId)),
+    serialRecent: (input) =>
+      inProject(input.projectId, async () =>
+        serial.recent(input.projectId, input.sessionId, input.maxBytes ?? 8192),
+      ),
+    serialOutput: (input) =>
+      Stream.callback<ReverseSerialChunk, ReverseStoreError>((queue) =>
+        requireProject(input.projectId).pipe(
+          Effect.andThen(
+            Effect.acquireRelease(
+              Effect.try({
+                try: () =>
+                  serial.observe(
+                    input.projectId,
+                    input.sessionId,
+                    input.afterSeq ?? 0,
+                    (chunk) => Queue.offerUnsafe(queue, chunk),
+                    // The session closed: the stream ends instead of waiting forever.
+                    () => Queue.endUnsafe(queue),
+                  ),
+                catch: (cause) =>
+                  isReverseStoreError(cause)
+                    ? cause
+                    : new ReverseStoreError({
+                        reason: "operation_failed",
+                        message: "The serial session could not be observed.",
+                      }),
+              }),
+              (stop) => Effect.sync(stop),
+            ),
+          ),
+          Effect.catch((error) => Queue.fail(queue, error)),
+        ),
+      ),
     importCapture: (input) =>
       Effect.gen(function* () {
         const project = yield* requireProject(input.projectId);

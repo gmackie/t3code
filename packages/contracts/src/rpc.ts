@@ -63,6 +63,16 @@ import {
   ReverseCaptureDecodeResult,
   ReverseCaptureDeleteInput,
   ReverseCaptureImportInput,
+  ReverseSerialChunk,
+  ReverseSerialObserveInput,
+  ReverseSerialOpenInput,
+  ReverseSerialPortsInput,
+  ReverseSerialPortsResult,
+  ReverseSerialRecentInput,
+  ReverseSerialRecentResult,
+  ReverseSerialSession,
+  ReverseSerialSessionInput,
+  ReverseSerialWriteInput,
   ReverseCaptureViewInput,
   ReverseCaptureViewResult,
   ReverseDiffResult,
@@ -489,6 +499,12 @@ export const WS_METHODS = {
   reverseCaptureView: "reverse.captureView",
   reverseCaptureDecode: "reverse.captureDecode",
   reverseCaptureDelete: "reverse.captureDelete",
+  reverseSerialPorts: "reverse.serialPorts",
+  reverseSerialOpen: "reverse.serialOpen",
+  reverseSerialWrite: "reverse.serialWrite",
+  reverseSerialClose: "reverse.serialClose",
+  reverseSerialRecent: "reverse.serialRecent",
+  reverseSerialObserve: "reverse.serialObserve",
   reverseFindingUpdate: "reverse.findingUpdate",
 
   // Shell methods
@@ -1560,6 +1576,41 @@ const WsReverseToolchainRpc = Rpc.make(WS_METHODS.reverseToolchain, {
   error: Schema.Union([ReverseStoreError, EnvironmentAuthorizationError]),
 });
 
+const WsReverseSerialPortsRpc = Rpc.make(WS_METHODS.reverseSerialPorts, {
+  payload: ReverseSerialPortsInput,
+  success: ReverseSerialPortsResult,
+  error: Schema.Union([ReverseStoreError, EnvironmentAuthorizationError]),
+});
+
+const WsReverseSerialOpenRpc = Rpc.make(WS_METHODS.reverseSerialOpen, {
+  payload: ReverseSerialOpenInput,
+  success: ReverseSerialSession,
+  error: Schema.Union([ReverseStoreError, EnvironmentAuthorizationError]),
+});
+
+const WsReverseSerialWriteRpc = Rpc.make(WS_METHODS.reverseSerialWrite, {
+  payload: ReverseSerialWriteInput,
+  error: Schema.Union([ReverseStoreError, EnvironmentAuthorizationError]),
+});
+
+const WsReverseSerialCloseRpc = Rpc.make(WS_METHODS.reverseSerialClose, {
+  payload: ReverseSerialSessionInput,
+  error: Schema.Union([ReverseStoreError, EnvironmentAuthorizationError]),
+});
+
+const WsReverseSerialRecentRpc = Rpc.make(WS_METHODS.reverseSerialRecent, {
+  payload: ReverseSerialRecentInput,
+  success: ReverseSerialRecentResult,
+  error: Schema.Union([ReverseStoreError, EnvironmentAuthorizationError]),
+});
+
+const WsReverseSerialObserveRpc = Rpc.make(WS_METHODS.reverseSerialObserve, {
+  payload: ReverseSerialObserveInput,
+  success: ReverseSerialChunk,
+  error: Schema.Union([ReverseStoreError, EnvironmentAuthorizationError]),
+  stream: true,
+});
+
 const WsReverseCaptureImportRpc = Rpc.make(WS_METHODS.reverseCaptureImport, {
   payload: ReverseCaptureImportInput,
   success: ReverseCapture,
@@ -2306,6 +2357,12 @@ export const WsRpcGroup = RpcGroup.make(
   WsReverseDiffRpc,
   WsReverseFindingPublishRpc,
   WsReverseCaptureImportRpc,
+  WsReverseSerialPortsRpc,
+  WsReverseSerialOpenRpc,
+  WsReverseSerialWriteRpc,
+  WsReverseSerialCloseRpc,
+  WsReverseSerialRecentRpc,
+  WsReverseSerialObserveRpc,
   WsReverseCaptureViewRpc,
   WsReverseCaptureDecodeRpc,
   WsReverseCaptureDeleteRpc,

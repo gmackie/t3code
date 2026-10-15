@@ -152,6 +152,49 @@ export const ReverseCapture = Schema.Struct({
   skipped: Schema.Array(Schema.String),
 });
 export type ReverseCapture = typeof ReverseCapture.Type;
+export const ReverseSerialBaud = Schema.Literals([
+  1200, 2400, 4800, 9600, 19200, 38400, 57600, 115200, 230400, 460800, 921600,
+]);
+export const ReverseSerialSession = Schema.Struct({
+  id: Id,
+  port: Schema.String.check(Schema.isMaxLength(256)),
+  baud: Schema.Number,
+  openedAt: Id,
+});
+export type ReverseSerialSession = typeof ReverseSerialSession.Type;
+export const ReverseSerialPortsInput = Schema.Struct({ projectId: Id });
+export const ReverseSerialPortsResult = Schema.Struct({
+  ports: Schema.Array(Schema.String),
+  sessions: Schema.Array(ReverseSerialSession),
+});
+export const ReverseSerialOpenInput = Schema.Struct({
+  projectId: Id,
+  port: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256)),
+  baud: ReverseSerialBaud,
+});
+export const ReverseSerialSessionInput = Schema.Struct({ projectId: Id, sessionId: Id });
+export const ReverseSerialWriteInput = Schema.Struct({
+  projectId: Id,
+  sessionId: Id,
+  // Base64, so binary bytes can be sent as well as text.
+  data: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(8192)),
+});
+export const ReverseSerialObserveInput = Schema.Struct({
+  projectId: Id,
+  sessionId: Id,
+  afterSeq: Schema.optional(Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))),
+});
+export const ReverseSerialChunk = Schema.Struct({ seq: Schema.Int, data: Schema.String });
+export type ReverseSerialChunk = typeof ReverseSerialChunk.Type;
+export const ReverseSerialRecentInput = Schema.Struct({
+  projectId: Id,
+  sessionId: Id,
+  maxBytes: Schema.optional(Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 65536 }))),
+});
+export const ReverseSerialRecentResult = Schema.Struct({
+  text: Schema.String,
+  lastSeq: Schema.Int,
+});
 export const ReverseListInput = Schema.Struct({ projectId: Id });
 export const ReverseListResult = Schema.Struct({
   investigations: Schema.Array(ReverseInvestigation),

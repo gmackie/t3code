@@ -1867,6 +1867,12 @@ const layerWsRpc = (
         [WS_METHODS.reverseCaptureView]: (input) => reverseWorkbench.viewCapture(input),
         [WS_METHODS.reverseCaptureDecode]: (input) => reverseWorkbench.decodeCapture(input),
         [WS_METHODS.reverseCaptureDelete]: (input) => reverseWorkbench.removeCapture(input),
+        [WS_METHODS.reverseSerialPorts]: (input) => reverseWorkbench.serialPorts(input),
+        [WS_METHODS.reverseSerialOpen]: (input) => reverseWorkbench.openSerial(input),
+        [WS_METHODS.reverseSerialWrite]: (input) => reverseWorkbench.writeSerial(input),
+        [WS_METHODS.reverseSerialClose]: (input) => reverseWorkbench.closeSerial(input),
+        [WS_METHODS.reverseSerialRecent]: (input) => reverseWorkbench.serialRecent(input),
+        [WS_METHODS.reverseSerialObserve]: (input) => reverseWorkbench.serialOutput(input),
         [WS_METHODS.reverseFindingCreate]: (input) =>
           reverseWorkbench.createFinding(input, "human"),
         [WS_METHODS.reverseFindingUpdate]: (input) =>
