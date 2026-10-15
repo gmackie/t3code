@@ -40,6 +40,7 @@ export const layer = McpToolAccess.toLayer(ReverseToolkit, {
   t3_reverse_strings: McpToolAccess.reads(call((workbench) => workbench.strings)),
   t3_reverse_import: McpToolAccess.writes(call((workbench) => workbench.importFile)),
   t3_reverse_diff: McpToolAccess.writes(call((workbench) => workbench.diff)),
+  t3_veritas_re_query: McpToolAccess.reads(call((workbench) => workbench.veritasQuery)),
   t3_reverse_import_extracted: McpToolAccess.writes(call((workbench) => workbench.importExtracted)),
   t3_reverse_link: McpToolAccess.writes(call((workbench) => workbench.link)),
   t3_reverse_analyze: McpToolAccess.writes(call((workbench) => workbench.analyze)),

@@ -65,6 +65,41 @@ export const ReverseFindingRecord = Schema.Struct({
   veritasFindingId: Schema.optional(Id),
 });
 export const ReverseFindingPublishInput = Schema.Struct({ projectId: Id, findingId: Id });
+/** Read-only Veritas RE procedures agents may call through T3 with the environment's token. */
+export const VeritasReReadProcedure = Schema.Literals([
+  "reBoards.list",
+  "reBoards.get",
+  "reBoards.listSignals",
+  "reBoards.listProbeMaps",
+  "reCaptures.list",
+  "reCaptures.get",
+  "reAnalysis.overviewSignals",
+  "reAnalysis.decodeUart",
+  "reAnalysis.decodeI2c",
+  "reAnalysis.decodeSpi",
+  "reAnalysis.decodeCan",
+  "reAnalysis.decodePulse",
+  "reAnalysis.pulsePresets",
+  "reAnalysis.decodeFraming",
+  "reAnalysis.analyzeTiming",
+  "reAnalysis.searchUartParams",
+  "reAnalysis.searchSpiParams",
+  "reAnalysis.summarizeI2c",
+  "reAnalysis.compareCaptures",
+  "reHypotheses.list",
+  "reHypotheses.get",
+  "reAnnotations.list",
+  "reProtocols.list",
+  "reFirmware.list",
+  "reFirmware.get",
+  "reFirmware.listFindings",
+  "reFirmware.listExperiments",
+]);
+export const VeritasReQueryInput = Schema.Struct({
+  procedure: VeritasReReadProcedure,
+  input: Schema.optional(Schema.Record(Schema.String, Schema.Unknown)),
+});
+export const VeritasReQueryResult = Schema.Struct({ result: Schema.Unknown });
 export type ReverseFindingRecord = typeof ReverseFindingRecord.Type;
 export const ReverseFindingCreateInput = Schema.Struct({
   projectId: Id,

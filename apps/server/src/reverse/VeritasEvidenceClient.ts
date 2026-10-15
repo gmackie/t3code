@@ -61,8 +61,21 @@ export class VeritasEvidenceClient {
     return this.connection !== null;
   }
 
+  private mutate(procedure: string, input: unknown) {
+    return this.call("POST", procedure, input);
+  }
+
+  /** Runs a read-only query; tRPC takes query input in the URL. */
+  query(procedure: string, input: unknown) {
+    return this.call("GET", procedure, input);
+  }
+
   /** Calls one procedure and returns its `json` result, or throws Veritas's own explanation. */
-  private async mutate(procedure: string, input: unknown): Promise<Record<string, unknown>> {
+  private async call(
+    method: "GET" | "POST",
+    procedure: string,
+    input: unknown,
+  ): Promise<Record<string, unknown>> {
     if (!this.connection)
       throw new ReverseStoreError({
         reason: "unavailable",
@@ -81,15 +94,16 @@ export class VeritasEvidenceClient {
     if (base.protocol !== "https:" && !["localhost", "127.0.0.1", "[::1]"].includes(base.hostname))
       throw veritasError("Veritas requires HTTPS unless it runs on this machine.");
     const endpoint = new URL(`${base.toString().replace(/\/$/, "")}/api/trpc/${procedure}`);
+    if (method === "GET") endpoint.searchParams.set("input", JSON.stringify({ json: input }));
     const response = await this.fetcher(endpoint, {
-      method: "POST",
+      method,
       redirect: "error",
       signal: AbortSignal.timeout(30_000),
       headers: {
         authorization: `Bearer ${this.connection.token}`,
         "content-type": "application/json",
       },
-      body: JSON.stringify({ json: input }),
+      ...(method === "POST" ? { body: JSON.stringify({ json: input }) } : {}),
     });
     const payload: Record<string, unknown> = await readBounded(response).catch((cause: unknown) => {
       if (response.ok) throw cause;

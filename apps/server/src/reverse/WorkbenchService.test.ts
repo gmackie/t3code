@@ -235,4 +235,23 @@ describe("Reverse workbench service", () => {
       }),
     ).rejects.toMatchObject({ message: expect.stringContaining("source is vendor, not imported") });
   });
+  it("reads Veritas data with a GET query that carries its input in the URL", async () => {
+    const seen: Array<{ method: string | undefined; url: string; body: unknown }> = [];
+    const client = new VeritasEvidenceClient(
+      { url: "https://veritas.example", token: "secret" },
+      async (url, init) => {
+        seen.push({ method: init?.method, url: String(url), body: init?.body });
+        return Response.json({ result: { data: { json: { frames: [] } } } });
+      },
+    );
+    expect(
+      await client.query("reAnalysis.decodeUart", { captureId: "c1", channel: 0, baud: 115200 }),
+    ).toEqual({ frames: [] });
+    const request = new URL(seen[0]!.url);
+    expect(seen[0]).toMatchObject({ method: "GET", body: undefined });
+    expect(request.pathname).toBe("/api/trpc/reAnalysis.decodeUart");
+    expect(JSON.parse(request.searchParams.get("input")!)).toEqual({
+      json: { captureId: "c1", channel: 0, baud: 115200 },
+    });
+  });
 });

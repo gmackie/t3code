@@ -16,6 +16,8 @@ import {
   ReverseFindingCreateInput,
   ReverseImportExtractedInput,
   ReverseDiffInput,
+  VeritasReQueryInput,
+  VeritasReQueryResult,
   ReverseDiffResult,
   ReverseFindingRecord,
   ReverseFindingUpdateInput,
@@ -114,6 +116,17 @@ const ReverseDiffTool = Tool.make("t3_reverse_diff", {
   success: ReverseDiffResult,
 }).annotate(Tool.Destructive, false);
 
+const VeritasReQueryTool = Tool.make("t3_veritas_re_query", {
+  ...shared,
+  description:
+    "Read hardware reverse-engineering data from the Veritas server this environment is connected to, with the environment's credentials: boards, revisions, signals and probe maps (reBoards.*), logic-analyzer captures (reCaptures.*), protocol decoding and timing analysis of a capture (reAnalysis.decodeUart, decodeI2c, decodeSpi, decodeCan, decodePulse, decodeFraming, analyzeTiming, searchUartParams, searchSpiParams, summarizeI2c, compareCaptures, overviewSignals, pulsePresets), hypotheses, annotations, custom protocols, and registered firmware with its findings and experiments (reFirmware.*). Pass the procedure's input object as `input`, for example { captureId, channel, baud } for decodeUart. Read-only; nothing is changed in Veritas.",
+  parameters: VeritasReQueryInput,
+  success: VeritasReQueryResult,
+})
+  .annotate(Tool.Readonly, true)
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.OpenWorld, true);
+
 const ReverseFindingCreateTool = Tool.make("t3_reverse_finding_create", {
   ...shared,
   description:
@@ -134,6 +147,7 @@ export const ReverseToolkit = Toolkit.make(
   ReverseToolchainTool,
   ReverseImportExtractedTool,
   ReverseDiffTool,
+  VeritasReQueryTool,
   ReverseFindingCreateTool,
   ReverseFindingUpdateTool,
   ReverseListTool,

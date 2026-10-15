@@ -41,4 +41,6 @@ Under **Veritas linkage**, record the Veritas project and board revision the fir
 
 ## Agents
 
+When Veritas is configured, agents can also read its hardware data through T3: boards and signals, logic-analyzer captures, protocol decoders and timing analysis, hypotheses, and registered firmware. They cannot change anything in Veritas this way.
+
 Agents in the thread can check the toolchain, list investigations, read strings, import, link, analyze and emulate through T3's tools. Publishing to Veritas and deleting investigations stay with you.
