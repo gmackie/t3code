@@ -27,6 +27,12 @@ Enter a path relative to the project and choose **Import firmware**. The file is
 
 Two analyses run at once per environment and a few more wait; beyond that, try again when one finishes. Each analysis keeps a receipt for a week.
 
+## Talk to a board over serial
+
+Use **Serial** to open a console on a USB-serial adapter plugged into the environment's host (macOS and Linux). Choose a port and a standard baud rate; the port is set to 8 data bits, no parity, one stop bit. Output streams into the panel, and the console keeps the latest 64 KiB. A transcript of each session, up to 16 MiB, is saved on the environment. Type in the send box and choose a line ending; each send is at most 4 KiB. Unplugging the adapter closes the session.
+
+Opening a port and sending to it need terminal permission, like a shell. Agents can list ports and read the output of a console you opened, but cannot open ports or send.
+
 ## Look at captures
 
 Use **Captures** to open logic-analyzer recordings from the project: VCD files (`.vcd`), sigrok and PulseView sessions (`.sr`), and Saleae Logic 2 exports. For Saleae, use **File → Export Raw Data** in Logic 2 and import the CSV, a single `digital_N.bin`, or a zip of the exported `.bin` files. T3 does not read `.sal` sessions directly, because Saleae does not document that format and changes it between versions.
@@ -51,4 +57,4 @@ Under **Veritas linkage**, record the Veritas project and board revision the fir
 
 When Veritas is configured, agents can also read its hardware data through T3: boards and signals, logic-analyzer captures, protocol decoders and timing analysis, hypotheses, and registered firmware. They cannot change anything in Veritas this way.
 
-Agents in the thread can check the toolchain, list investigations, read strings, import, link, analyze, emulate, and import, view and decode captures through T3's tools. Publishing to Veritas and deleting investigations stay with you.
+Agents in the thread can check the toolchain, list investigations, read strings, import, link, analyze, emulate, import, view and decode captures, and read serial consoles you opened through T3's tools. Publishing to Veritas and deleting investigations stay with you.

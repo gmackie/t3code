@@ -22,6 +22,10 @@ import {
   ReverseCaptureImportInput,
   ReverseCaptureViewInput,
   ReverseCaptureViewResult,
+  ReverseSerialPortsInput,
+  ReverseSerialPortsResult,
+  ReverseSerialRecentInput,
+  ReverseSerialRecentResult,
   VeritasReQueryInput,
   VeritasReQueryResult,
   ReverseDiffResult,
@@ -161,6 +165,26 @@ const ReverseCaptureDecodeTool = Tool.make("t3_reverse_capture_decode", {
   .annotate(Tool.Readonly, true)
   .annotate(Tool.Destructive, false);
 
+const ReverseSerialPortsTool = Tool.make("t3_reverse_serial_ports", {
+  ...shared,
+  description:
+    "List serial ports on this environment's host and the serial sessions a person has open in this project. Agents can read open sessions but not open ports or send to them.",
+  parameters: ReverseSerialPortsInput,
+  success: ReverseSerialPortsResult,
+})
+  .annotate(Tool.Readonly, true)
+  .annotate(Tool.Destructive, false);
+
+const ReverseSerialReadTool = Tool.make("t3_reverse_serial_read", {
+  ...shared,
+  description:
+    "Read the most recent output (as UTF-8 text) of a serial session a person opened in the Reverse workspace, up to maxBytes (default 8192). lastSeq identifies the newest chunk returned.",
+  parameters: ReverseSerialRecentInput,
+  success: ReverseSerialRecentResult,
+})
+  .annotate(Tool.Readonly, true)
+  .annotate(Tool.Destructive, false);
+
 const ReverseFindingCreateTool = Tool.make("t3_reverse_finding_create", {
   ...shared,
   description:
@@ -184,6 +208,8 @@ export const ReverseToolkit = Toolkit.make(
   ReverseCaptureImportTool,
   ReverseCaptureViewTool,
   ReverseCaptureDecodeTool,
+  ReverseSerialPortsTool,
+  ReverseSerialReadTool,
   VeritasReQueryTool,
   ReverseFindingCreateTool,
   ReverseFindingUpdateTool,

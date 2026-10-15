@@ -76,6 +76,13 @@ export const RPC_REQUIRED_SCOPES = {
   [WS_METHODS.reverseCaptureView]: AuthOrchestrationReadScope,
   [WS_METHODS.reverseCaptureDecode]: AuthOrchestrationReadScope,
   [WS_METHODS.reverseCaptureDelete]: AuthOrchestrationOperateScope,
+  // Serial consoles drive physical devices, so they take the terminal scopes like a shell.
+  [WS_METHODS.reverseSerialPorts]: AuthTerminalReadScope,
+  [WS_METHODS.reverseSerialOpen]: AuthTerminalOperateScope,
+  [WS_METHODS.reverseSerialWrite]: AuthTerminalOperateScope,
+  [WS_METHODS.reverseSerialClose]: AuthTerminalOperateScope,
+  [WS_METHODS.reverseSerialRecent]: AuthTerminalReadScope,
+  [WS_METHODS.reverseSerialObserve]: AuthTerminalReadScope,
   [WS_METHODS.reverseFindingUpdate]: AuthOrchestrationOperateScope,
   [WS_METHODS.reverseToolchain]: AuthOrchestrationReadScope,
   [WS_METHODS.serverProbe]: AuthOrchestrationReadScope,

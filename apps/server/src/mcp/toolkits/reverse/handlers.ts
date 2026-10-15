@@ -43,6 +43,9 @@ export const layer = McpToolAccess.toLayer(ReverseToolkit, {
   t3_reverse_capture_import: McpToolAccess.writes(call((workbench) => workbench.importCapture)),
   t3_reverse_capture_view: McpToolAccess.reads(call((workbench) => workbench.viewCapture)),
   t3_reverse_capture_decode: McpToolAccess.reads(call((workbench) => workbench.decodeCapture)),
+  // Live device output: agents in T3 threads only. Opening and writing are not exposed.
+  t3_reverse_serial_ports: McpToolAccess.readsAsCaller(call((workbench) => workbench.serialPorts)),
+  t3_reverse_serial_read: McpToolAccess.readsAsCaller(call((workbench) => workbench.serialRecent)),
   // Organization-wide Veritas data on the environment's token: agents in T3 threads only, not
   // every approved outside client.
   t3_veritas_re_query: McpToolAccess.readsAsCaller(call((workbench) => workbench.veritasQuery)),

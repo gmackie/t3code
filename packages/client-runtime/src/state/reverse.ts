@@ -1,7 +1,16 @@
 import type { Atom } from "effect/reactivity";
 import type { EnvironmentRegistry } from "../connection/registry.ts";
 import { WS_METHODS } from "@t3tools/contracts";
-import { createEnvironmentRpcCommand, createEnvironmentRpcQueryAtomFamily } from "./runtime.ts";
+import {
+  createEnvironmentRpcCommand,
+  createEnvironmentRpcQueryAtomFamily,
+  createEnvironmentSubscriptionAtomFamily,
+} from "./runtime.ts";
+import * as Stream from "effect/Stream";
+import { subscribe, type EnvironmentRpcInput } from "../rpc/client.ts";
+import { appendSerialChunk, EMPTY_SERIAL_OUTPUT } from "./serialOutput.ts";
+
+export type { SerialOutputState } from "./serialOutput.ts";
 
 /** All operations run on the connected environment, not on the browser device. */
 export function createReverseEnvironmentAtoms<R, E>(
@@ -29,6 +38,32 @@ export function createReverseEnvironmentAtoms<R, E>(
     publish: createEnvironmentRpcCommand(runtime, {
       label: "reverse:publish",
       tag: WS_METHODS.reversePublish,
+    }),
+    serialPorts: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "reverse:serial-ports",
+      tag: WS_METHODS.reverseSerialPorts,
+      staleTimeMs: 2_000,
+    }),
+    openSerial: createEnvironmentRpcCommand(runtime, {
+      label: "reverse:serial-open",
+      tag: WS_METHODS.reverseSerialOpen,
+    }),
+    writeSerial: createEnvironmentRpcCommand(runtime, {
+      label: "reverse:serial-write",
+      tag: WS_METHODS.reverseSerialWrite,
+    }),
+    closeSerial: createEnvironmentRpcCommand(runtime, {
+      label: "reverse:serial-close",
+      tag: WS_METHODS.reverseSerialClose,
+    }),
+    serialOutput: createEnvironmentSubscriptionAtomFamily(runtime, {
+      label: "reverse:serial-observe",
+      subscribe: (input: EnvironmentRpcInput<typeof WS_METHODS.reverseSerialObserve>) =>
+        Stream.suspend(() =>
+          subscribe(WS_METHODS.reverseSerialObserve, input).pipe(
+            Stream.scan(() => EMPTY_SERIAL_OUTPUT, appendSerialChunk),
+          ),
+        ),
     }),
     importCapture: createEnvironmentRpcCommand(runtime, {
       label: "reverse:capture-import",

@@ -15,6 +15,7 @@ import {
 } from "~/components/ui/select";
 import { AnalysisPanel } from "./AnalysisPanel";
 import { CapturesPanel } from "./CapturesPanel";
+import { SerialPanel } from "./SerialPanel";
 import { DiffPanel } from "./DiffPanel";
 import { FindingsPanel, type FindingSeed } from "./FindingsPanel";
 
@@ -483,6 +484,7 @@ function ProjectWorkspace({
               </div>
             </>
           )}
+          <SerialPanel threadRef={threadRef} projectId={projectId} />
           <CapturesPanel
             threadRef={threadRef}
             projectId={projectId}
