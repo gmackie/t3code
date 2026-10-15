@@ -5,6 +5,7 @@ import * as Orchestrator from "./orchestration-v2/Orchestrator.ts";
 import * as DateTime from "effect/DateTime";
 import * as Duration from "effect/Duration";
 import * as Base64 from "effect/encoding/Base64";
+import * as Config from "effect/Config";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as FileSystem from "effect/FileSystem";
@@ -22,6 +23,7 @@ import { rpcInitialItems } from "./rpcInitialItems.ts";
 import * as NodePath from "node:path";
 import { getReverseInvestigationStore } from "./reverse/InvestigationStore.ts";
 import { ReverseAnalysisService } from "./reverse/AnalysisService.ts";
+import { VeritasEvidenceClient } from "./reverse/VeritasEvidenceClient.ts";
 import { ReverseStoreError } from "@t3tools/contracts";
 import { subscribeChatGptHandoff } from "./provider/CodexChatGptHandoff.ts";
 import { subscribeCodexAuthCallback } from "./provider/CodexAuthCallback.ts";
@@ -1305,6 +1307,11 @@ const layerWsRpc = (
       const config = yield* ServerConfig.ServerConfig;
       const reverseStore = getReverseInvestigationStore(config.stateDir);
       const reverseAnalysis = new ReverseAnalysisService(config.stateDir, reverseStore);
+      const veritasUrl = yield* Config.String("VERITAS_URL").pipe(Config.withDefault(""));
+      const veritasToken = yield* Config.String("VERITAS_API_TOKEN").pipe(Config.withDefault(""));
+      const veritasEvidence = new VeritasEvidenceClient(
+        veritasUrl && veritasToken ? { url: veritasUrl, token: veritasToken } : null,
+      );
       const pluginPackageManager = new PluginPackageManager(
         createLocalPluginPackageReader(config.stateDir),
       );
@@ -1855,6 +1862,47 @@ const layerWsRpc = (
       });
 
       const handlers = ServerWsRpcGroup.of({
+        [WS_METHODS.reversePublish]: (input) =>
+          Effect.gen(function* () {
+            const project = yield* projectService
+              .getById(input.projectId as ProjectId)
+              .pipe(
+                Effect.mapError(
+                  (cause) =>
+                    new ReverseStoreError({ reason: "operation_failed", message: String(cause) }),
+                ),
+              );
+            if (Option.isNone(project))
+              return yield* Effect.fail(
+                new ReverseStoreError({
+                  reason: "not_found",
+                  message: "Project not found",
+                }),
+              );
+            if (!veritasEvidence.configured)
+              return yield* new ReverseStoreError({
+                reason: "unavailable",
+                message: "Set VERITAS_URL and VERITAS_API_TOKEN on this T3 environment.",
+              });
+            return yield* Effect.tryPromise({
+              try: async () => {
+                const { artifact } = await reverseStore.getArtifact(
+                  input.projectId,
+                  input.investigationId,
+                );
+                const registered = await veritasEvidence.register(
+                  artifact,
+                  input.boardRevisionId,
+                  input.source,
+                );
+                return { artifactId: registered.id, sha256: registered.sha256 };
+              },
+              catch: (cause) =>
+                isReverseStoreError(cause)
+                  ? cause
+                  : new ReverseStoreError({ reason: "operation_failed", message: String(cause) }),
+            });
+          }),
         [WS_METHODS.reverseAnalyze]: (input) =>
           Effect.gen(function* () {
             const project = yield* projectService

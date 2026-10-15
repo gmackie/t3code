@@ -244,6 +244,7 @@ const RPC_AGGREGATES = {
   [WS_METHODS.reverseStrings]: "reverse",
   [WS_METHODS.reverseAnalyze]: "reverse",
   [WS_METHODS.reverseEmulate]: "reverse",
+  [WS_METHODS.reversePublish]: "reverse",
 } as const satisfies Readonly<Record<WsRpcMethod, string>>;
 
 const RPC_SPAN_PREFIX = "ws.rpc";

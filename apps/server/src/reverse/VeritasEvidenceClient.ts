@@ -1,4 +1,4 @@
-import type { ReverseFirmwareArtifact } from "@t3tools/contracts";
+import type { ReverseFirmwareArtifact, ReversePublishInput } from "@t3tools/contracts";
 
 export interface VeritasEvidenceConnection {
   readonly url: string;
@@ -24,6 +24,7 @@ export class VeritasEvidenceClient {
   async register(
     artifact: ReverseFirmwareArtifact,
     boardRevisionId?: string,
+    source: (typeof ReversePublishInput.Type)["source"] = "imported",
   ): Promise<{ id: string; sha256: string }> {
     if (!this.connection)
       throw new Error("Configure VERITAS_URL and VERITAS_API_TOKEN on the environment server.");
@@ -36,6 +37,9 @@ export class VeritasEvidenceClient {
       base.hash
     )
       throw new Error("Invalid Veritas server URL.");
+    // The bearer token only travels in cleartext to this machine.
+    if (base.protocol !== "https:" && !["localhost", "127.0.0.1", "[::1]"].includes(base.hostname))
+      throw new Error("Veritas requires HTTPS unless it runs on this machine.");
     const endpoint = new URL(`${base.toString().replace(/\/$/, "")}/api/trpc/reFirmware.register`);
     const response = await this.fetcher(endpoint, {
       method: "POST",
@@ -50,7 +54,7 @@ export class VeritasEvidenceClient {
           identity: {
             sha256: artifact.sha256,
             sizeBytes: String(artifact.sizeBytes),
-            source: "imported",
+            source,
           },
           ...(boardRevisionId ? { boardRevisionId } : {}),
         },
