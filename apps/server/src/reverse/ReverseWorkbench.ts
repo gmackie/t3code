@@ -16,6 +16,7 @@ import {
   type ReverseFindingCreateInput,
   type ReverseImportExtractedInput,
   type ReverseDiffInput,
+  type ReverseFindingPublishInput,
   type ReverseDiffResult,
   type ReverseFindingRecord,
   type ReverseFindingUpdateInput,
@@ -69,6 +70,10 @@ export class ReverseWorkbench extends Context.Service<
       input: typeof ReverseLinkInput.Type,
     ) => Effect.Effect<ReverseInvestigation, ReverseStoreError>;
     readonly toolchain: Effect.Effect<ReverseToolchainResult, ReverseStoreError>;
+    /** Publishing leaves this environment, so only people do it; it is not an agent tool. */
+    readonly publishFinding: (
+      input: typeof ReverseFindingPublishInput.Type,
+    ) => Effect.Effect<ReverseFindingRecord, ReverseStoreError>;
     readonly diff: (
       input: typeof ReverseDiffInput.Type,
     ) => Effect.Effect<ReverseDiffResult, ReverseStoreError>;
@@ -263,6 +268,13 @@ const make = Effect.gen(function* () {
         }),
       ),
     toolchain: attempt(() => inspectToolchain()),
+    publishFinding: (input) =>
+      workbench.veritasConfigured
+        ? inProject(input.projectId, async () => {
+            await workbench.publishFinding(input.projectId, input.findingId);
+            return store.finding(input.projectId, input.findingId);
+          })
+        : Effect.fail(veritasUnavailable()),
     diff: (input) =>
       inProject(input.projectId, () =>
         analysis.diff(input.projectId, input.leftInvestigationId, input.rightInvestigationId),

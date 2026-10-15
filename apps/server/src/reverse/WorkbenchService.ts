@@ -1,6 +1,10 @@
 // @effect-diagnostics nodeBuiltinImport:off
 import * as NodeFSP from "node:fs/promises";
-import type { ReverseFirmwareArtifact, ReverseFirmwareSource } from "@t3tools/contracts";
+import {
+  type ReverseFirmwareArtifact,
+  type ReverseFirmwareSource,
+  ReverseStoreError,
+} from "@t3tools/contracts";
 import type {
   ReverseWorkbenchRequest,
   ReverseWorkbenchReply,
@@ -95,7 +99,49 @@ export class WorkbenchService {
     const linked = (await this.store.list(projectId)).investigations.find(
       (item) => item.id === investigationId,
     );
-    return this.veritas.register(artifact, linked?.boardRevisionId, source);
+    const registered = await this.veritas.register(artifact, undefined, source);
+    await this.store.markRegistered(projectId, investigationId, registered.id);
+    // The saved linkage is the authority, so registering again also moves or clears it.
+    await this.veritas.linkBoardRevision(artifact.sha256, linked?.boardRevisionId ?? null);
+    return registered;
+  }
+
+  /**
+   * Publishes a finding as a Veritas candidate. The firmware must be registered first, and each
+   * QEMU run the finding cites is recorded before the finding so its evidence resolves.
+   */
+  async publishFinding(projectId: string, findingId: string): Promise<{ id: string }> {
+    const finding = await this.store.finding(projectId, findingId);
+    if (finding.veritasFindingId) return { id: finding.veritasFindingId };
+    const investigation = (await this.store.list(projectId)).investigations.find(
+      (item) => item.id === finding.investigationId,
+    );
+    if (!investigation?.veritasArtifactId)
+      throw new ReverseStoreError({
+        reason: "unavailable",
+        message: "Register this firmware in Veritas before publishing its findings.",
+      });
+    for (const ref of finding.evidence) {
+      if (ref.kind !== "execution") continue;
+      const outcome = await this.store.emulationOutcome(
+        projectId,
+        ref.runId,
+        finding.artifactSha256,
+      );
+      if (outcome === null)
+        throw new ReverseStoreError({
+          reason: "not_found",
+          message: `QEMU run ${ref.runId} is no longer recorded on this environment.`,
+        });
+      await this.veritas.recordEmulation({
+        artifactSha256: finding.artifactSha256,
+        runId: ref.runId,
+        outcome,
+      });
+    }
+    const published = await this.veritas.createFinding(finding);
+    await this.store.markFindingPublished(projectId, findingId, published.id);
+    return published;
   }
   get veritasConfigured(): boolean {
     return this.veritas.configured;

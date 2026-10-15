@@ -59,6 +59,7 @@ export function FindingsPanel({
   artifactSha256,
   findings,
   seed,
+  registered,
   onChanged,
 }: {
   threadRef: ScopedThreadRef;
@@ -67,8 +68,11 @@ export function FindingsPanel({
   artifactSha256: string;
   findings: ReadonlyArray<ReverseFindingRecord>;
   seed: FindingSeed | null;
+  /** Whether this firmware is registered in Veritas, which publishing a finding requires. */
+  registered: boolean;
   onChanged: () => void;
 }) {
+  const publish = useAtomCommand(reverseEnvironment.publishFinding, { reportFailure: false });
   const create = useAtomCommand(reverseEnvironment.createFinding, { reportFailure: false });
   const update = useAtomCommand(reverseEnvironment.updateFinding, { reportFailure: false });
   const [title, setTitle] = useState(""),
@@ -137,6 +141,14 @@ export function FindingsPanel({
         setAddress("");
       }
     });
+  const publishFinding = (findingId: string) =>
+    submit(async () => {
+      const response = await publish({
+        environmentId: threadRef.environmentId,
+        input: { projectId, findingId },
+      });
+      if (response._tag === "Failure") throw squashAtomCommandFailure(response);
+    });
   const move = (findingId: string, status: Status) =>
     submit(async () => {
       const response = await update({
@@ -174,7 +186,23 @@ export function FindingsPanel({
                     : `capture ${ref.captureId}${ref.signal ? ` · ${ref.signal}` : ""}`}
               </p>
             ))}
+            {finding.veritasFindingId && (
+              <p className="text-muted-foreground">
+                In Veritas as {finding.veritasFindingId}; people review and confirm it there.
+              </p>
+            )}
             <div className="mt-1 flex flex-wrap gap-1">
+              {!finding.veritasFindingId && (
+                <Button
+                  size="xs"
+                  variant="outline"
+                  disabled={busy || !registered}
+                  title={registered ? undefined : "Register this firmware in Veritas first"}
+                  onClick={() => void publishFinding(finding.id)}
+                >
+                  Publish to Veritas
+                </Button>
+              )}
               {NEXT[finding.status].map((next) => (
                 <Button
                   key={next.status}

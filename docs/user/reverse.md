@@ -29,7 +29,7 @@ Two analyses run at once per environment and a few more wait; beyond that, try a
 
 ## Record findings
 
-Use **Findings** to keep track of what you suspect: a title, a kind (memory corruption, attack surface, boot chain, crypto, protocol, gadget or other), and optionally the code address it concerns. **Record finding** in a Ghidra function view starts one for that function. New findings are candidates. Mark them **Probable**, **Confirm** or **Reject**, **Supersede** a confirmed one, and **Reopen** any closed finding. Through T3's tools, agents can record findings with evidence and reject or supersede open ones, but only a person can mark a finding probable or confirmed or change a decision a person made. An agent that can run commands on the environment's host is not limited this way.
+Use **Findings** to keep track of what you suspect: a title, a kind (memory corruption, attack surface, boot chain, crypto, protocol, gadget or other), and optionally the code address it concerns. **Record finding** in a Ghidra function view starts one for that function. New findings are candidates. Mark them **Probable**, **Confirm** or **Reject**, **Supersede** a confirmed one, and **Reopen** any closed finding. After the firmware is registered in Veritas, **Publish to Veritas** sends a finding there as a candidate, with its evidence; QEMU runs it cites are recorded in Veritas first. People review and confirm published findings in Veritas. Through T3's tools, agents can record findings with evidence and reject or supersede open ones, but only a person can mark a finding probable or confirmed or change a decision a person made. An agent that can run commands on the environment's host is not limited this way.
 
 **Delete investigation** removes it from the project. The firmware copy is removed once no project uses it.
 
@@ -37,7 +37,7 @@ Use **Findings** to keep track of what you suspect: a title, a kind (memory corr
 
 Under **Veritas linkage**, record the Veritas project and board revision the firmware belongs to. Empty a field and save to clear it. Linking changes nothing in Veritas.
 
-**Register in Veritas** publishes the firmware's digest, size, provenance and saved board revision to the Veritas server configured on this environment (`VERITAS_URL` and `VERITAS_API_TOKEN`). Save the board revision before registering. The bytes never leave the environment.
+**Register in Veritas** publishes the firmware's digest, size, provenance and saved board revision; registering again after changing or clearing the board revision updates it in Veritas to the Veritas server configured on this environment (`VERITAS_URL` and `VERITAS_API_TOKEN`). Save the board revision before registering. The bytes never leave the environment.
 
 ## Agents
 

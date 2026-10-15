@@ -188,6 +188,8 @@ function ProjectWorkspace({
       if (!alive.current) return;
       if (response._tag === "Failure") throw squashAtomCommandFailure(response);
       setPublished({ investigationId: active.id, artifactId: response.value.artifactId });
+      // Registration is recorded on the investigation, which enables publishing findings.
+      list.refresh();
     } catch (cause) {
       if (alive.current) setError(String(cause));
     } finally {
@@ -369,6 +371,7 @@ function ProjectWorkspace({
                   (finding) => finding.investigationId === active.id,
                 )}
                 seed={findingSeed}
+                registered={Boolean(active.veritasArtifactId)}
                 onChanged={() => list.refresh()}
               />
               <details

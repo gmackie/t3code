@@ -61,7 +61,10 @@ export const ReverseFindingRecord = Schema.Struct({
   updatedAt: Id,
   // Who made the last status change, so a reversal is never mistaken for the author's own.
   statusChangedBy: Schema.optional(Schema.Literals(["human", "agent"])),
+  // Set once published; Veritas then owns its review.
+  veritasFindingId: Schema.optional(Id),
 });
+export const ReverseFindingPublishInput = Schema.Struct({ projectId: Id, findingId: Id });
 export type ReverseFindingRecord = typeof ReverseFindingRecord.Type;
 export const ReverseFindingCreateInput = Schema.Struct({
   projectId: Id,
@@ -86,6 +89,8 @@ export const ReverseInvestigation = Schema.Struct({
   ghidraSessionId: Schema.optional(Id),
   // Set when this firmware was extracted from another investigation's.
   parentInvestigationId: Schema.optional(Id),
+  // Set once this firmware is registered in Veritas; findings can be published after that.
+  veritasArtifactId: Schema.optional(Id),
   // How Ghidra loads raw images of this firmware; remembered from the last analysis that set it.
   ghidraProfile: Schema.optional(
     Schema.Struct({ languageId: Schema.optional(Id), imageBase: Schema.optional(Id) }),
