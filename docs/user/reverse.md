@@ -29,7 +29,7 @@ Two analyses run at once per environment and a few more wait; beyond that, try a
 
 ## Talk to a board over serial
 
-Use **Serial** to open a console on a USB-serial adapter plugged into the environment's host (macOS and Linux). Choose a port and a standard baud rate; the port is set to 8 data bits, no parity, one stop bit. Output streams into the panel, and the console keeps the latest 64 KiB. A transcript of each session, up to 16 MiB, is saved on the environment. Type in the send box and choose a line ending; each send is at most 4 KiB. Unplugging the adapter closes the session.
+Use **Serial** to open a console on a USB-serial adapter plugged into the environment's host (macOS and Linux). Choose a port and a standard baud rate; the port is set to 8 data bits, no parity, one stop bit, with no flow control. Opening a port doesn't toggle its control lines, so boards that reset on DTR stay running. Output streams into the panel, and the console keeps the latest 64 KiB. A transcript of each session, up to 16 MiB, is saved on the environment. Type in the send box and choose a line ending; each send is at most 4 KiB, and a send the board doesn't accept within 10 seconds fails. Unplugging the adapter closes the session.
 
 Opening a port and sending to it need terminal permission, like a shell. Agents can list ports and read the output of a console you opened, but cannot open ports or send.
 

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import type { ScopedThreadRef } from "@t3tools/contracts";
 import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
 import { reverseEnvironment } from "~/state/reverse";
@@ -55,11 +55,11 @@ function SerialSessionView({
     [error, setError] = useState<string | null>(null);
   const log = useRef<HTMLPreElement | null>(null);
   const text = output.data?.text ?? "";
-  // Follow new output while the reader is already at the bottom.
-  useEffect(() => {
+  // Follow new output while the reader stays at the bottom; scrolling up pauses it.
+  const stickToBottom = useRef(true);
+  useLayoutEffect(() => {
     const element = log.current;
-    if (text && element && element.scrollHeight - element.scrollTop - element.clientHeight < 40)
-      element.scrollTop = element.scrollHeight;
+    if (text && element && stickToBottom.current) element.scrollTop = element.scrollHeight;
   }, [text]);
 
   async function run(action: () => Promise<void>) {
@@ -109,6 +109,11 @@ function SerialSessionView({
       <pre
         ref={log}
         aria-label={`Serial output of ${label}`}
+        onScroll={(event) => {
+          const element = event.currentTarget;
+          stickToBottom.current =
+            element.scrollHeight - element.scrollTop - element.clientHeight < 40;
+        }}
         className="max-h-64 min-h-24 overflow-auto whitespace-pre-wrap break-all border border-border p-2 font-mono"
       >
         {text || (output.error ? "" : "Waiting for output…")}

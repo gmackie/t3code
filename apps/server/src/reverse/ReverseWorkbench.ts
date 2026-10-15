@@ -333,13 +333,23 @@ const make = Effect.gen(function* () {
         sessions: serial.list(input.projectId),
       })),
     openSerial: (input) =>
-      inProject(input.projectId, () => serial.open(input.projectId, input.port, input.baud)),
+      Effect.gen(function* () {
+        yield* requireProject(input.projectId);
+        // Sessions whose project was deleted would otherwise hold their ports until a restart.
+        for (const owner of serial.owners()) {
+          const live = yield* projects
+            .getById(owner as ProjectId)
+            .pipe(Effect.orElseSucceed(() => Option.some(null)));
+          if (Option.isNone(live)) serial.closeProject(owner);
+        }
+        return yield* attempt(() => serial.open(input.projectId, input.port, input.baud));
+      }),
     writeSerial: (input) =>
       inProject(input.projectId, () =>
         serial.write(input.projectId, input.sessionId, Buffer.from(input.data, "base64")),
       ),
-    closeSerial: (input) =>
-      inProject(input.projectId, async () => serial.closeFor(input.projectId, input.sessionId)),
+    // No project check: a session must stay closable after its project is deleted.
+    closeSerial: (input) => attempt(async () => serial.closeFor(input.projectId, input.sessionId)),
     serialRecent: (input) =>
       inProject(input.projectId, async () =>
         serial.recent(input.projectId, input.sessionId, input.maxBytes ?? 8192),
@@ -351,8 +361,13 @@ const make = Effect.gen(function* () {
             Effect.acquireRelease(
               Effect.try({
                 try: () =>
-                  serial.observe(input.projectId, input.sessionId, input.afterSeq ?? 0, (chunk) =>
-                    Queue.offerUnsafe(queue, chunk),
+                  serial.observe(
+                    input.projectId,
+                    input.sessionId,
+                    input.afterSeq ?? 0,
+                    (chunk) => Queue.offerUnsafe(queue, chunk),
+                    // The session closed: the stream ends instead of waiting forever.
+                    () => Queue.endUnsafe(queue),
                   ),
                 catch: (cause) =>
                   isReverseStoreError(cause)

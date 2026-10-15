@@ -32,20 +32,40 @@ describe("serial console", () => {
     }
   });
 
-  it("replays buffered output after a sequence number, then follows live output", () => {
+  it("replays missed output as one chunk, follows live output, and ends with the session", () => {
     const output = new SerialOutput();
     output.push(Buffer.from("boot "));
     output.push(Buffer.from("ok\n"));
-    const seen: string[] = [];
-    const stop = output.observe(1, (chunk) =>
-      seen.push(Buffer.from(chunk.data, "base64").toString()),
-    );
     output.push(Buffer.from("> "));
-    stop();
+    const seen: Array<[number, string]> = [];
+    let ended = false;
+    const stop = output.observe(
+      1,
+      (chunk) => seen.push([chunk.seq, Buffer.from(chunk.data, "base64").toString()]),
+      () => {
+        ended = true;
+      },
+    );
+    output.push(Buffer.from("x"));
+    output.end();
     output.push(Buffer.from("ignored"));
-    expect(seen).toEqual(["ok\n", "> "]);
-    expect(output.recent(6).toString()).toBe("ignored".slice(-6));
-    expect(output.lastSeq).toBe(4);
+    stop();
+    expect(seen).toEqual([
+      [3, "ok\n> "],
+      [4, "x"],
+    ]);
+    expect(ended).toBe(true);
+    expect(output.recent(3).toString()).toBe("> x");
+    // A late observer still gets what was buffered, then the end.
+    let lateEnded = false;
+    output.observe(
+      3,
+      () => undefined,
+      () => {
+        lateEnded = true;
+      },
+    );
+    expect(lateEnded).toBe(true);
   });
 
   it("refuses devices that are not listed serial ports", async () => {
@@ -58,6 +78,14 @@ describe("serial console", () => {
     ).rejects.toMatchObject({
       reason: "unavailable",
     });
-    expect(() => serial.observe("p", "missing", 0, () => undefined)).toThrow("not open");
+    expect(() =>
+      serial.observe(
+        "p",
+        "missing",
+        0,
+        () => undefined,
+        () => undefined,
+      ),
+    ).toThrow("not open");
   });
 });

@@ -9,7 +9,6 @@ export interface SerialOutputState {
 export const EMPTY_SERIAL_OUTPUT: SerialOutputState = { text: "", lastSeq: 0 };
 // The console keeps the tail; the full transcript stays on the environment.
 const MAX_TEXT = 64 * 1024;
-const decoder = new TextDecoder("utf-8", { fatal: false });
 
 function decodeBase64(data: string): Uint8Array {
   const binary = atob(data);
@@ -18,8 +17,12 @@ function decodeBase64(data: string): Uint8Array {
   return bytes;
 }
 
-/** Appends one chunk, ignoring any already seen after a reconnect replays the buffer. */
+/**
+ * Appends one chunk, ignoring any already seen after a reconnect replays the buffer. Each
+ * subscription brings its own decoder, since one may hold half of a multi-byte character.
+ */
 export function appendSerialChunk(
+  decoder: TextDecoder,
   state: SerialOutputState,
   chunk: ReverseSerialChunk,
 ): SerialOutputState {

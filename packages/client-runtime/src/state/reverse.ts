@@ -59,11 +59,15 @@ export function createReverseEnvironmentAtoms<R, E>(
     serialOutput: createEnvironmentSubscriptionAtomFamily(runtime, {
       label: "reverse:serial-observe",
       subscribe: (input: EnvironmentRpcInput<typeof WS_METHODS.reverseSerialObserve>) =>
-        Stream.suspend(() =>
-          subscribe(WS_METHODS.reverseSerialObserve, input).pipe(
-            Stream.scan(() => EMPTY_SERIAL_OUTPUT, appendSerialChunk),
-          ),
-        ),
+        Stream.suspend(() => {
+          const decoder = new TextDecoder("utf-8", { fatal: false });
+          return subscribe(WS_METHODS.reverseSerialObserve, input).pipe(
+            Stream.scan(
+              () => EMPTY_SERIAL_OUTPUT,
+              (state, chunk) => appendSerialChunk(decoder, state, chunk),
+            ),
+          );
+        }),
     }),
     importCapture: createEnvironmentRpcCommand(runtime, {
       label: "reverse:capture-import",
