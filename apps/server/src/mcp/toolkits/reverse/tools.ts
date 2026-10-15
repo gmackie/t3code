@@ -15,6 +15,8 @@ import {
   ReverseToolchainResult,
   ReverseFindingCreateInput,
   ReverseImportExtractedInput,
+  ReverseDiffInput,
+  ReverseDiffResult,
   ReverseFindingRecord,
   ReverseFindingUpdateInput,
 } from "@t3tools/contracts";
@@ -104,6 +106,14 @@ const ReverseImportExtractedTool = Tool.make("t3_reverse_import_extracted", {
   success: ReverseImportResult,
 }).annotate(Tool.Destructive, false);
 
+const ReverseDiffTool = Tool.make("t3_reverse_diff", {
+  ...shared,
+  description:
+    "Compare the functions of two investigations in the same project, such as two firmware versions, through their Ghidra programs. Reports counts of identical, relocated, changed, added and removed functions and lists the ones that differ. Matching uses names Ghidra did not invent, then unique instruction shapes.",
+  parameters: ReverseDiffInput,
+  success: ReverseDiffResult,
+}).annotate(Tool.Destructive, false);
+
 const ReverseFindingCreateTool = Tool.make("t3_reverse_finding_create", {
   ...shared,
   description:
@@ -123,6 +133,7 @@ const ReverseFindingUpdateTool = Tool.make("t3_reverse_finding_update", {
 export const ReverseToolkit = Toolkit.make(
   ReverseToolchainTool,
   ReverseImportExtractedTool,
+  ReverseDiffTool,
   ReverseFindingCreateTool,
   ReverseFindingUpdateTool,
   ReverseListTool,

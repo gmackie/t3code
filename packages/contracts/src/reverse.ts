@@ -118,6 +118,32 @@ export const ReverseLinkInput = Schema.Struct({
   boardRevisionId: Schema.optional(Schema.NullOr(Id)),
 });
 export const ReverseDeleteInput = Schema.Struct({ projectId: Id, investigationId: Id });
+export const ReverseDiffInput = Schema.Struct({
+  projectId: Id,
+  leftInvestigationId: Id,
+  rightInvestigationId: Id,
+});
+const DiffSide = Schema.Struct({ name: Schema.String, address: Schema.String });
+/**
+ * Function-level comparison of two builds. Relocated functions kept their instructions but moved
+ * or changed bytes such as addresses; changed functions run different instructions.
+ */
+export const ReverseDiffResult = Schema.Struct({
+  identical: Schema.Int,
+  relocated: Schema.Int,
+  changed: Schema.Int,
+  added: Schema.Int,
+  removed: Schema.Int,
+  truncated: Schema.Boolean,
+  functions: Schema.Array(
+    Schema.Struct({
+      status: Schema.Literals(["changed", "relocated", "added", "removed"]),
+      left: Schema.optional(DiffSide),
+      right: Schema.optional(DiffSide),
+    }),
+  ),
+});
+export type ReverseDiffResult = typeof ReverseDiffResult.Type;
 /** Opens one file an extraction produced as its own investigation, linked to its parent. */
 export const ReverseImportExtractedInput = Schema.Struct({
   projectId: Id,

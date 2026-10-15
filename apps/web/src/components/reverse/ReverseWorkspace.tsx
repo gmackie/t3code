@@ -14,6 +14,7 @@ import {
   SelectValue,
 } from "~/components/ui/select";
 import { AnalysisPanel } from "./AnalysisPanel";
+import { DiffPanel } from "./DiffPanel";
 import { FindingsPanel, type FindingSeed } from "./FindingsPanel";
 
 const FIRMWARE_SOURCES = [
@@ -337,6 +338,20 @@ function ProjectWorkspace({
                 onRecordFinding={(draft) =>
                   setFindingSeed({ ...draft, nonce: (findingSeed?.nonce ?? 0) + 1 })
                 }
+              />
+              <DiffPanel
+                key={`diff:${active.id}`}
+                threadRef={threadRef}
+                projectId={projectId}
+                investigationId={active.id}
+                others={investigations
+                  .filter((item) => item.id !== active.id)
+                  .map((item) => ({
+                    id: item.id,
+                    label:
+                      artifacts.find((a) => a.sha256 === item.artifactSha256)?.filename ??
+                      item.artifactSha256.slice(0, 12),
+                  }))}
               />
               <FindingsPanel
                 key={`findings:${active.id}`}

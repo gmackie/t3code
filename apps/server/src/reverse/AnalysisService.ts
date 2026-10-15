@@ -2,7 +2,12 @@
 import * as NodeFSP from "node:fs/promises";
 import * as NodePath from "node:path";
 import * as NodeCrypto from "node:crypto";
-import { type ReverseFirmwareArtifact, ReverseStoreError } from "@t3tools/contracts";
+import {
+  type ReverseDiffResult,
+  type ReverseFirmwareArtifact,
+  ReverseStoreError,
+} from "@t3tools/contracts";
+import { diffFingerprints } from "./FirmwareDiff.ts";
 import * as Schema from "effect/Schema";
 import { runBoundedTool, type ToolResult } from "./ToolRunner.ts";
 import type { ReverseInvestigationStore } from "./InvestigationStore.ts";
@@ -188,6 +193,24 @@ export class ReverseAnalysisService {
         message: "That extraction is not available for this investigation. Run Unblob again.",
       });
     return NodePath.join(dir, "extracted");
+  }
+  /** Compares two investigations' functions through their Ghidra programs. */
+  diff(projectId: string, leftId: string, rightId: string): Promise<ReverseDiffResult> {
+    return this.slots.use(async () => {
+      const fingerprints = async (investigationId: string) => {
+        const { artifact, path } = await this.store.getArtifact(projectId, investigationId);
+        return ghidraSessions(this.stateDir).execute(projectId, path, artifact.sha256, {
+          action: "fingerprints",
+        });
+      };
+      const left = await fingerprints(leftId);
+      const right = await fingerprints(rightId);
+      return diffFingerprints(
+        left.fingerprints ?? [],
+        right.fingerprints ?? [],
+        left.truncated || right.truncated,
+      );
+    });
   }
   async run(input: AnalysisInput): Promise<AnalysisResult> {
     const { artifact, path } = await this.store.getArtifact(input.projectId, input.investigationId);

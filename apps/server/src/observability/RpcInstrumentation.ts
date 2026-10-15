@@ -249,6 +249,7 @@ const RPC_AGGREGATES = {
   [WS_METHODS.reverseToolchain]: "reverse",
   [WS_METHODS.reverseFindingCreate]: "reverse",
   [WS_METHODS.reverseImportExtracted]: "reverse",
+  [WS_METHODS.reverseDiff]: "reverse",
   [WS_METHODS.reverseFindingUpdate]: "reverse",
 } as const satisfies Readonly<Record<WsRpcMethod, string>>;
 

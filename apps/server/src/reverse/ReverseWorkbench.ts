@@ -15,6 +15,8 @@ import {
   type ReverseToolchainResult,
   type ReverseFindingCreateInput,
   type ReverseImportExtractedInput,
+  type ReverseDiffInput,
+  type ReverseDiffResult,
   type ReverseFindingRecord,
   type ReverseFindingUpdateInput,
   type ReverseEmulateInput,
@@ -67,6 +69,9 @@ export class ReverseWorkbench extends Context.Service<
       input: typeof ReverseLinkInput.Type,
     ) => Effect.Effect<ReverseInvestigation, ReverseStoreError>;
     readonly toolchain: Effect.Effect<ReverseToolchainResult, ReverseStoreError>;
+    readonly diff: (
+      input: typeof ReverseDiffInput.Type,
+    ) => Effect.Effect<ReverseDiffResult, ReverseStoreError>;
     readonly importExtracted: (
       input: typeof ReverseImportExtractedInput.Type,
     ) => Effect.Effect<typeof ReverseImportResult.Type, ReverseStoreError>;
@@ -258,6 +263,10 @@ const make = Effect.gen(function* () {
         }),
       ),
     toolchain: attempt(() => inspectToolchain()),
+    diff: (input) =>
+      inProject(input.projectId, () =>
+        analysis.diff(input.projectId, input.leftInvestigationId, input.rightInvestigationId),
+      ),
     importExtracted: (input) =>
       Effect.gen(function* () {
         yield* requireProject(input.projectId);
