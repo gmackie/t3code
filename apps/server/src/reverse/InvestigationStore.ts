@@ -31,6 +31,7 @@ const decode = Schema.decodeUnknownSync(
         boardRevisionId: Schema.optional(Schema.String),
         artifactSha256: Schema.String,
         ghidraSessionId: Schema.optional(Schema.String),
+        parentInvestigationId: Schema.optional(Schema.String),
       }),
     ),
     artifacts: Schema.Array(
@@ -40,6 +41,7 @@ const decode = Schema.decodeUnknownSync(
         filename: Schema.String,
         sourcePath: Schema.String,
         importedAt: Schema.String,
+        parentSha256: Schema.optional(Schema.String),
       }),
     ),
     // Records written before findings existed have none.
@@ -155,6 +157,8 @@ export class ReverseInvestigationStore {
     workspaceRoot: string;
     relativePath: string;
     environmentId: string;
+    /** For firmware extracted from another investigation: its parent and a readable origin. */
+    origin?: { parentInvestigationId: string; parentSha256: string; label: string };
   }): Promise<{ investigation: ReverseInvestigation; artifact: ReverseFirmwareArtifact }> {
     const { projectId, relativePath } = input;
     if (
@@ -214,8 +218,9 @@ export class ReverseInvestigationStore {
         sha256,
         sizeBytes: copiedBytes,
         filename: NodePath.basename(relativePath),
-        sourcePath: relativePath,
+        sourcePath: input.origin?.label ?? relativePath,
         importedAt: DateTime.formatIso(DateTime.nowUnsafe()),
+        ...(input.origin ? { parentSha256: input.origin.parentSha256 } : {}),
       };
       await NodeFSP.rename(stagingPath, artifactPath(this.stateDir, sha256));
       return await this.locked(projectId, async () => {
@@ -226,6 +231,7 @@ export class ReverseInvestigationStore {
           projectId,
           environmentId: input.environmentId,
           artifactSha256: sha256,
+          ...(input.origin ? { parentInvestigationId: input.origin.parentInvestigationId } : {}),
         };
         if (!prior) {
           record.investigations.push(investigation);

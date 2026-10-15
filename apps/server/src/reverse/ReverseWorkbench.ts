@@ -14,6 +14,7 @@ import {
   type ReverseDeleteInput,
   type ReverseToolchainResult,
   type ReverseFindingCreateInput,
+  type ReverseImportExtractedInput,
   type ReverseFindingRecord,
   type ReverseFindingUpdateInput,
   type ReverseEmulateInput,
@@ -66,6 +67,9 @@ export class ReverseWorkbench extends Context.Service<
       input: typeof ReverseLinkInput.Type,
     ) => Effect.Effect<ReverseInvestigation, ReverseStoreError>;
     readonly toolchain: Effect.Effect<ReverseToolchainResult, ReverseStoreError>;
+    readonly importExtracted: (
+      input: typeof ReverseImportExtractedInput.Type,
+    ) => Effect.Effect<typeof ReverseImportResult.Type, ReverseStoreError>;
     /** The author comes from the transport: people in the workspace, agents through MCP. */
     readonly createFinding: (
       input: typeof ReverseFindingCreateInput.Type,
@@ -254,6 +258,31 @@ const make = Effect.gen(function* () {
         }),
       ),
     toolchain: attempt(() => inspectToolchain()),
+    importExtracted: (input) =>
+      Effect.gen(function* () {
+        yield* requireProject(input.projectId);
+        const environmentId = yield* serverEnvironment.getEnvironmentId;
+        return yield* attempt(async () => {
+          const parent = await store.getArtifact(input.projectId, input.investigationId);
+          const root = await analysis.extractedRoot(
+            input.projectId,
+            input.receiptId,
+            parent.artifact.sha256,
+          );
+          // Same containment and size checks as a workspace import, rooted at the extraction.
+          return store.importFile({
+            projectId: input.projectId,
+            workspaceRoot: root,
+            relativePath: input.path,
+            environmentId,
+            origin: {
+              parentInvestigationId: input.investigationId,
+              parentSha256: parent.artifact.sha256,
+              label: `${parent.artifact.filename} → ${input.path}`,
+            },
+          });
+        });
+      }),
     createFinding: (input, author) =>
       inProject(input.projectId, () => store.createFinding({ ...input, authorKind: author })),
     updateFinding: (input, actor) =>

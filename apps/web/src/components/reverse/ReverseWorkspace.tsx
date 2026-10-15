@@ -77,6 +77,9 @@ function ProjectWorkspace({
   const investigations = list.data?.investigations ?? [],
     artifacts = list.data?.artifacts ?? [];
   const active = investigations.find((item) => item.id === selected) ?? investigations[0];
+  const parent = active?.parentInvestigationId
+    ? investigations.find((item) => item.id === active.parentInvestigationId)
+    : undefined;
   const editing = draft !== null && draft.id === active?.id ? draft : null;
   const veritas = editing?.veritas ?? active?.veritasProjectId ?? "";
   const board = editing?.board ?? active?.boardRevisionId ?? "";
@@ -280,9 +283,18 @@ function ProjectWorkspace({
           {active && (
             <>
               <div className="flex items-center gap-2 border-b border-border p-3">
-                <p className="min-w-0 flex-1 break-all font-mono text-xs">
-                  SHA-256 {active.artifactSha256}
-                </p>
+                <div className="min-w-0 flex-1 text-xs">
+                  <p className="break-all font-mono">SHA-256 {active.artifactSha256}</p>
+                  {parent && (
+                    <p className="text-muted-foreground">
+                      Extracted from{" "}
+                      <Button size="xs" variant="link" onClick={() => setSelected(parent.id)}>
+                        {artifacts.find((a) => a.sha256 === parent.artifactSha256)?.filename ??
+                          parent.artifactSha256.slice(0, 12)}
+                      </Button>
+                    </p>
+                  )}
+                </div>
                 {confirmDelete === active.id ? (
                   <>
                     <Button
@@ -318,6 +330,10 @@ function ProjectWorkspace({
                 threadRef={threadRef}
                 projectId={projectId}
                 investigationId={active.id}
+                onOpenInvestigation={(id) => {
+                  setSelected(id);
+                  list.refresh();
+                }}
                 onRecordFinding={(draft) =>
                   setFindingSeed({ ...draft, nonce: (findingSeed?.nonce ?? 0) + 1 })
                 }
@@ -395,26 +411,32 @@ function ProjectWorkspace({
               <div className="space-y-2 p-3">
                 <h3 className="text-xs font-medium">Veritas registration</h3>
                 <div className="flex items-center gap-2">
-                  <Select
-                    value={source}
-                    disabled={busy}
-                    onValueChange={(value) => {
-                      if (value !== null) setSource(value);
-                    }}
-                  >
-                    <SelectTrigger size="xs" className="w-40" aria-label="Firmware source">
-                      <SelectValue>
-                        {FIRMWARE_SOURCES.find((option) => option.value === source)?.label}
-                      </SelectValue>
-                    </SelectTrigger>
-                    <SelectPopup>
-                      {FIRMWARE_SOURCES.map((option) => (
-                        <SelectItem key={option.value} value={option.value}>
-                          {option.label}
-                        </SelectItem>
-                      ))}
-                    </SelectPopup>
-                  </Select>
+                  {parent ? (
+                    <p className="text-xs text-muted-foreground">
+                      Registered as extracted from its parent; register the parent first.
+                    </p>
+                  ) : (
+                    <Select
+                      value={source}
+                      disabled={busy}
+                      onValueChange={(value) => {
+                        if (value !== null) setSource(value);
+                      }}
+                    >
+                      <SelectTrigger size="xs" className="w-40" aria-label="Firmware source">
+                        <SelectValue>
+                          {FIRMWARE_SOURCES.find((option) => option.value === source)?.label}
+                        </SelectValue>
+                      </SelectTrigger>
+                      <SelectPopup>
+                        {FIRMWARE_SOURCES.map((option) => (
+                          <SelectItem key={option.value} value={option.value}>
+                            {option.label}
+                          </SelectItem>
+                        ))}
+                      </SelectPopup>
+                    </Select>
+                  )}
                   <Button
                     size="sm"
                     variant="outline"

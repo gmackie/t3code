@@ -21,7 +21,7 @@ Enter a path relative to the project and choose **Import firmware**. The file is
 - **Strings and file offsets** lists printable strings when you open it. Values longer than 512 characters are shortened.
 - **Ghidra** keeps a program open between requests. List functions, open one to read its pseudocode, instructions, callers and callees, then rename or comment and save. Up to four programs stay open per environment, two per project; an idle one closes after ten minutes, and a busy one is never closed under you.
 - **Gadgets** finds ROP/JOP/COP candidates. For a raw image without headers, pick the matching raw profile (Thumb, Arm, Arm64 or MIPS). Candidates are syntactic; they make no reachability or exploitability claim.
-- **Binwalk** and **Unblob** look inside images. Extraction stops at 512 MiB or 5,000 files.
+- **Binwalk** and **Unblob** look inside images. Extraction stops at 512 MiB or 5,000 files. **Open** next to an extracted file makes it its own investigation, linked to the image it came from; a child is registered in Veritas as extracted from its parent, so register the parent first.
 - **QEMU** boots the image for a few seconds on a supported Cortex-M machine with no network and shows its serial output. A QEMU run is an observation, never physical evidence.
 
 Two analyses run at once per environment and a few more wait; beyond that, try again when one finishes. Each analysis keeps a receipt for a week.

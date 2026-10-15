@@ -116,5 +116,21 @@ describe("Reverse workbench service", () => {
     expect(bodies).toEqual([
       { json: { identity: { sha256: artifact.sha256, sizeBytes: "1", source: "flash-read" } } },
     ]);
+
+    // Extracted firmware is registered against its parent, whatever source was chosen.
+    await new VeritasEvidenceClient(
+      { url: "https://veritas.example", token: "secret" },
+      fetcher,
+    ).register({ ...artifact, parentSha256: "c".repeat(64) }, undefined, "vendor");
+    expect(bodies[1]).toEqual({
+      json: {
+        identity: {
+          sha256: artifact.sha256,
+          sizeBytes: "1",
+          source: "extracted",
+          parentSha256: "c".repeat(64),
+        },
+      },
+    });
   });
 });

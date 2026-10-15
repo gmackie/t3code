@@ -167,6 +167,28 @@ export class ReverseAnalysisService {
     this.stateDir = stateDir;
     this.store = store;
   }
+  /**
+   * The folder an extraction wrote, if that receipt came from this firmware. Files in it can be
+   * imported as their own investigations until the receipt is pruned.
+   */
+  async extractedRoot(
+    projectId: string,
+    receiptId: string,
+    artifactSha256: string,
+  ): Promise<string> {
+    const owner = NodeCrypto.createHash("sha256").update(projectId).digest("hex");
+    const dir = NodePath.join(this.stateDir, "reverse", "analysis", owner, receiptId);
+    const receipt = await NodeFSP.readFile(NodePath.join(dir, "receipt.json"), "utf8").catch(
+      () => null,
+    );
+    const source = receipt === null ? null : (JSON.parse(receipt) as { artifactSha256?: unknown });
+    if (source?.artifactSha256 !== artifactSha256)
+      throw new ReverseStoreError({
+        reason: "not_found",
+        message: "That extraction is not available for this investigation. Run Unblob again.",
+      });
+    return NodePath.join(dir, "extracted");
+  }
   async run(input: AnalysisInput): Promise<AnalysisResult> {
     const { artifact, path } = await this.store.getArtifact(input.projectId, input.investigationId);
     // Browsing a Ghidra program is a read; only edits leave a receipt.

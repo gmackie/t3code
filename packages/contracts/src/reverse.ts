@@ -82,6 +82,8 @@ export const ReverseInvestigation = Schema.Struct({
   boardRevisionId: Schema.optional(Id),
   artifactSha256: ReverseDigest,
   ghidraSessionId: Schema.optional(Id),
+  // Set when this firmware was extracted from another investigation's.
+  parentInvestigationId: Schema.optional(Id),
 });
 export type ReverseInvestigation = typeof ReverseInvestigation.Type;
 export const ReverseFirmwareArtifact = Schema.Struct({
@@ -90,6 +92,7 @@ export const ReverseFirmwareArtifact = Schema.Struct({
   filename: Id,
   sourcePath: Schema.String.check(Schema.isMaxLength(4096)),
   importedAt: Id,
+  parentSha256: Schema.optional(ReverseDigest),
 });
 export type ReverseFirmwareArtifact = typeof ReverseFirmwareArtifact.Type;
 export const ReverseListInput = Schema.Struct({ projectId: Id });
@@ -115,6 +118,13 @@ export const ReverseLinkInput = Schema.Struct({
   boardRevisionId: Schema.optional(Schema.NullOr(Id)),
 });
 export const ReverseDeleteInput = Schema.Struct({ projectId: Id, investigationId: Id });
+/** Opens one file an extraction produced as its own investigation, linked to its parent. */
+export const ReverseImportExtractedInput = Schema.Struct({
+  projectId: Id,
+  investigationId: Id,
+  receiptId: Schema.String.check(Schema.isPattern(/^[0-9a-f-]{36}$/)),
+  path: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(4096)),
+});
 export const ReverseToolchainInput = Schema.Struct({});
 /** What the environment can run; nothing is executed to find out. */
 export const ReverseToolchainResult = Schema.Struct({
@@ -132,7 +142,7 @@ export const ReverseToolchainResult = Schema.Struct({
   ),
 });
 export type ReverseToolchainResult = typeof ReverseToolchainResult.Type;
-/** Provenance sent to Veritas. "extracted" needs a registered parent, which T3 does not send yet. */
+/** Provenance chosen for an import. Extracted firmware is registered as "extracted" with its parent. */
 export const ReverseFirmwareSource = Schema.Literals(["imported", "vendor", "flash-read", "build"]);
 export type ReverseFirmwareSource = typeof ReverseFirmwareSource.Type;
 export const ReversePublishInput = Schema.Struct({

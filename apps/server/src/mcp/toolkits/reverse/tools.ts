@@ -14,6 +14,7 @@ import {
   ReverseStringsResult,
   ReverseToolchainResult,
   ReverseFindingCreateInput,
+  ReverseImportExtractedInput,
   ReverseFindingRecord,
   ReverseFindingUpdateInput,
 } from "@t3tools/contracts";
@@ -95,6 +96,14 @@ const ReverseToolchainTool = Tool.make("t3_reverse_toolchain", {
   .annotate(Tool.Readonly, true)
   .annotate(Tool.Destructive, false);
 
+const ReverseImportExtractedTool = Tool.make("t3_reverse_import_extracted", {
+  ...shared,
+  description:
+    "Open one file from an Unblob extraction (receiptId and path from a t3_reverse_analyze unblob result) as its own investigation, linked to the parent firmware. Use it to analyze an ELF or filesystem found inside a vendor image.",
+  parameters: ReverseImportExtractedInput,
+  success: ReverseImportResult,
+}).annotate(Tool.Destructive, false);
+
 const ReverseFindingCreateTool = Tool.make("t3_reverse_finding_create", {
   ...shared,
   description:
@@ -113,6 +122,7 @@ const ReverseFindingUpdateTool = Tool.make("t3_reverse_finding_update", {
 
 export const ReverseToolkit = Toolkit.make(
   ReverseToolchainTool,
+  ReverseImportExtractedTool,
   ReverseFindingCreateTool,
   ReverseFindingUpdateTool,
   ReverseListTool,

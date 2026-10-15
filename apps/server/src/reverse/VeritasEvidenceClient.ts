@@ -51,11 +51,15 @@ export class VeritasEvidenceClient {
       },
       body: JSON.stringify({
         json: {
-          identity: {
-            sha256: artifact.sha256,
-            sizeBytes: String(artifact.sizeBytes),
-            source,
-          },
+          // Extracted firmware is registered against its parent, which Veritas must know first.
+          identity: artifact.parentSha256
+            ? {
+                sha256: artifact.sha256,
+                sizeBytes: String(artifact.sizeBytes),
+                source: "extracted",
+                parentSha256: artifact.parentSha256,
+              }
+            : { sha256: artifact.sha256, sizeBytes: String(artifact.sizeBytes), source },
           ...(boardRevisionId ? { boardRevisionId } : {}),
         },
       }),

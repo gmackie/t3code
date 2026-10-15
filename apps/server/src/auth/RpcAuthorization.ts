@@ -69,6 +69,7 @@ export const RPC_REQUIRED_SCOPES = {
   [WS_METHODS.reversePublish]: AuthOrchestrationOperateScope,
   [WS_METHODS.reverseDelete]: AuthOrchestrationOperateScope,
   [WS_METHODS.reverseFindingCreate]: AuthOrchestrationOperateScope,
+  [WS_METHODS.reverseImportExtracted]: AuthOrchestrationOperateScope,
   [WS_METHODS.reverseFindingUpdate]: AuthOrchestrationOperateScope,
   [WS_METHODS.reverseToolchain]: AuthOrchestrationReadScope,
   [WS_METHODS.serverProbe]: AuthOrchestrationReadScope,
