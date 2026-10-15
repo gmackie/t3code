@@ -93,7 +93,7 @@ export const ReverseLinkInput = Schema.Struct({
 export const ReversePublishInput = Schema.Struct({
   projectId: Id,
   investigationId: Id,
-  boardRevisionId: Schema.optional(Id),
+  source: Schema.Literals(["imported", "vendor", "flash-read", "build"]),
 });
 export const ReversePublishResult = Schema.Struct({ artifactId: Id, sha256: ReverseDigest });
 export const ReverseStringsInput = Schema.Struct({

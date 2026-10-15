@@ -6,7 +6,22 @@ import { useEnvironmentQuery } from "~/state/query";
 import { useAtomCommand } from "~/state/use-atom-command";
 import { Button } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
+import {
+  Select,
+  SelectItem,
+  SelectPopup,
+  SelectTrigger,
+  SelectValue,
+} from "~/components/ui/select";
 import { AnalysisPanel } from "./AnalysisPanel";
+
+const FIRMWARE_SOURCES = [
+  { value: "imported", label: "Imported file" },
+  { value: "vendor", label: "Vendor image" },
+  { value: "flash-read", label: "Flash acquisition" },
+  { value: "build", label: "Build output" },
+] as const;
+type FirmwareSource = (typeof FIRMWARE_SOURCES)[number]["value"];
 
 export function ReverseWorkspace({
   threadRef,
@@ -39,6 +54,10 @@ function ProjectWorkspace({
     [board, setBoard] = useState("");
   const [busy, setBusy] = useState(false),
     [error, setError] = useState<string | null>(null);
+  const [source, setSource] = useState<FirmwareSource>("imported"),
+    [published, setPublished] = useState<{ investigationId: string; artifactId: string } | null>(
+      null,
+    );
   const alive = useRef(true);
   useEffect(() => {
     alive.current = true;
@@ -61,6 +80,7 @@ function ProjectWorkspace({
   );
   const importFile = useAtomCommand(reverseEnvironment.importFile, { reportFailure: false });
   const link = useAtomCommand(reverseEnvironment.link, { reportFailure: false });
+  const publish = useAtomCommand(reverseEnvironment.publish, { reportFailure: false });
   async function importFirmware() {
     if (busy || !path.trim()) return;
     setBusy(true);
@@ -98,6 +118,28 @@ function ProjectWorkspace({
       if (!alive.current) return;
       if (response._tag === "Failure") throw squashAtomCommandFailure(response);
       list.refresh();
+    } catch (cause) {
+      if (alive.current) setError(String(cause));
+    } finally {
+      if (alive.current) setBusy(false);
+    }
+  }
+  async function publishFirmware() {
+    if (!active || busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const response = await publish({
+        environmentId: threadRef.environmentId,
+        input: {
+          projectId,
+          investigationId: active.id,
+          source,
+        },
+      });
+      if (!alive.current) return;
+      if (response._tag === "Failure") throw squashAtomCommandFailure(response);
+      setPublished({ investigationId: active.id, artifactId: response.value.artifactId });
     } catch (cause) {
       if (alive.current) setError(String(cause));
     } finally {
@@ -234,6 +276,48 @@ function ProjectWorkspace({
                   Linking identifiers does not publish firmware or qualify hardware.
                 </p>
               </form>
+              <div className="space-y-2 p-3">
+                <h3 className="text-xs font-medium">Veritas registration</h3>
+                <div className="flex items-center gap-2">
+                  <Select
+                    value={source}
+                    disabled={busy}
+                    onValueChange={(value) => {
+                      if (value !== null) setSource(value);
+                    }}
+                  >
+                    <SelectTrigger size="xs" className="w-40" aria-label="Firmware source">
+                      <SelectValue>
+                        {FIRMWARE_SOURCES.find((option) => option.value === source)?.label}
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectPopup>
+                      {FIRMWARE_SOURCES.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectPopup>
+                  </Select>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={busy}
+                    onClick={() => void publishFirmware()}
+                  >
+                    Register in Veritas
+                  </Button>
+                </div>
+                {published?.investigationId === active.id && (
+                  <p role="status" className="text-xs text-muted-foreground">
+                    Registered artifact {published.artifactId}
+                  </p>
+                )}
+                <p className="text-xs text-muted-foreground">
+                  Publishes the digest, size, provenance and saved board revision; firmware bytes
+                  stay on this environment.
+                </p>
+              </div>
             </>
           )}
         </div>

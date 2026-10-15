@@ -85,4 +85,36 @@ describe("Reverse workbench service", () => {
       }),
     ).rejects.toThrow("mismatched");
   });
+  it("keeps the token off cleartext remote hosts and sends the chosen provenance", async () => {
+    const artifact = {
+      sha256: "a".repeat(64),
+      sizeBytes: 1,
+      filename: "a.bin",
+      sourcePath: "a.bin",
+      importedAt: "2026-10-13",
+    };
+    const bodies: unknown[] = [];
+    const fetcher: typeof fetch = async (_url, init) => {
+      bodies.push(JSON.parse(String(init?.body)));
+      return Response.json({
+        result: {
+          data: { json: { artifact: { id: "a1", sha256: artifact.sha256, sizeBytes: "1" } } },
+        },
+      });
+    };
+    await expect(
+      new VeritasEvidenceClient(
+        { url: "http://veritas.example", token: "secret" },
+        fetcher,
+      ).register(artifact),
+    ).rejects.toThrow("HTTPS");
+    expect(bodies).toEqual([]);
+    await new VeritasEvidenceClient(
+      { url: "http://127.0.0.1:3000", token: "secret" },
+      fetcher,
+    ).register(artifact, undefined, "flash-read");
+    expect(bodies).toEqual([
+      { json: { identity: { sha256: artifact.sha256, sizeBytes: "1", source: "flash-read" } } },
+    ]);
+  });
 });
