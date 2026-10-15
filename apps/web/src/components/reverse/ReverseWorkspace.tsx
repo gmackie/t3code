@@ -126,7 +126,6 @@ function ProjectWorkspace({
   }
   async function publishFirmware() {
     if (!active || busy) return;
-    const boardRevisionId = board.trim() || active.boardRevisionId;
     setBusy(true);
     setError(null);
     try {
@@ -136,7 +135,6 @@ function ProjectWorkspace({
           projectId,
           investigationId: active.id,
           source,
-          ...(boardRevisionId ? { boardRevisionId } : {}),
         },
       });
       if (!alive.current) return;
@@ -316,8 +314,8 @@ function ProjectWorkspace({
                   </p>
                 )}
                 <p className="text-xs text-muted-foreground">
-                  Only the artifact digest, size and provenance are published; firmware bytes stay
-                  on this environment.
+                  Publishes the digest, size, provenance and saved board revision; firmware bytes
+                  stay on this environment.
                 </p>
               </div>
             </>

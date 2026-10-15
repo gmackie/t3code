@@ -1890,9 +1890,13 @@ const layerWsRpc = (
                   input.projectId,
                   input.investigationId,
                 );
+                // The board revision comes from the saved linkage, never from the request.
+                const linked = (await reverseStore.list(input.projectId)).investigations.find(
+                  (item) => item.id === input.investigationId,
+                );
                 const registered = await veritasEvidence.register(
                   artifact,
-                  input.boardRevisionId,
+                  linked?.boardRevisionId,
                   input.source,
                 );
                 return { artifactId: registered.id, sha256: registered.sha256 };
