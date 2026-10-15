@@ -166,6 +166,12 @@ export class WorkbenchService {
         reason: "unavailable",
         message: "Register this firmware in Veritas before publishing its findings.",
       });
+    if (finding.evidence.some((ref) => ref.kind === "capture"))
+      throw new ReverseStoreError({
+        reason: "invalid_file",
+        message:
+          "This finding cites a capture kept on this environment, which Veritas cannot resolve. Remove that evidence to publish it.",
+      });
     for (const ref of finding.evidence) {
       if (ref.kind !== "execution") continue;
       const outcome = await this.store.emulationOutcome(

@@ -50,6 +50,15 @@ export type FindingSeed = {
   readonly investigationId: string;
   readonly title: string;
   readonly address: string;
+  /** A capture window to cite alongside or instead of a code address. */
+  readonly capture?: CaptureCitation;
+};
+export type CaptureCitation = {
+  readonly captureId: string;
+  readonly label: string;
+  readonly signal: string;
+  readonly startNs: number;
+  readonly endNs: number;
 };
 
 export function FindingsPanel({
@@ -77,7 +86,8 @@ export function FindingsPanel({
   const update = useAtomCommand(reverseEnvironment.updateFinding, { reportFailure: false });
   const [title, setTitle] = useState(""),
     [kind, setKind] = useState<Kind>("memory-corruption"),
-    [address, setAddress] = useState("");
+    [address, setAddress] = useState(""),
+    [capture, setCapture] = useState<CaptureCitation | null>(null);
   const [busy, setBusy] = useState(false),
     [error, setError] = useState<string | null>(null);
   const alive = useRef(true);
@@ -94,6 +104,7 @@ export function FindingsPanel({
     setAppliedSeed(seed.nonce);
     setTitle(seed.title);
     setAddress(seed.address);
+    setCapture(seed.capture ?? null);
   }
 
   const addressValid = address === "" || /^0x[0-9a-f]+$/i.test(address.trim());
@@ -119,26 +130,40 @@ export function FindingsPanel({
           investigationId,
           title: title.trim(),
           kind,
-          evidence: address.trim()
-            ? [
-                {
-                  kind: "code",
-                  // Ghidra's default address space; the architecture is not tracked per finding yet.
-                  location: {
-                    artifactSha256,
-                    addressSpace: "ram",
-                    address: address.trim(),
-                    architecture: "unspecified",
+          evidence: [
+            ...(address.trim()
+              ? [
+                  {
+                    kind: "code" as const,
+                    // Ghidra's default address space; the architecture is not tracked per finding yet.
+                    location: {
+                      artifactSha256,
+                      addressSpace: "ram",
+                      address: address.trim(),
+                      architecture: "unspecified",
+                    },
                   },
-                },
-              ]
-            : [],
+                ]
+              : []),
+            ...(capture
+              ? [
+                  {
+                    kind: "capture" as const,
+                    captureId: capture.captureId,
+                    signal: capture.signal,
+                    startNs: Math.round(capture.startNs),
+                    endNs: Math.round(capture.endNs),
+                  },
+                ]
+              : []),
+          ],
         },
       });
       if (response._tag === "Failure") throw squashAtomCommandFailure(response);
       if (alive.current) {
         setTitle("");
         setAddress("");
+        setCapture(null);
       }
     });
   const publishFinding = (findingId: string) =>
@@ -259,6 +284,14 @@ export function FindingsPanel({
             onChange={(event) => setAddress(event.target.value)}
           />
         </div>
+        {capture && (
+          <p className="text-muted-foreground">
+            Cites {capture.label} · {capture.signal} ·{" "}
+            <Button size="xs" variant="link" onClick={() => setCapture(null)}>
+              remove
+            </Button>
+          </p>
+        )}
         <Button
           type="submit"
           size="sm"

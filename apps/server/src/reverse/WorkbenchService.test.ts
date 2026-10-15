@@ -193,9 +193,28 @@ describe("Reverse workbench service", () => {
       await expect(service.publishFinding("p", finding.id)).rejects.toMatchObject({
         reason: "unavailable",
       });
+      // A finding citing a capture kept on this environment cannot be resolved by Veritas.
+      await NodeFSP.writeFile(
+        NodePath.join(workspace, "bus.vcd"),
+        "$timescale 1 ns $end\n$var wire 1 ! d0 $end\n$enddefinitions $end\n#0\n0!\n#5\n",
+      );
+      const capture = await store.importCapture({
+        projectId: "p",
+        workspaceRoot: workspace,
+        relativePath: "bus.vcd",
+      });
+      const cited = await store.createFinding({
+        projectId: "p",
+        investigationId: investigation.id,
+        title: "Cites a local capture",
+        kind: "protocol",
+        authorKind: "human",
+        evidence: [{ kind: "capture", captureId: capture.id, signal: "d0", startNs: 0, endNs: 5 }],
+      });
       await service.publish("p", investigation.id);
       expect(await service.publishFinding("p", finding.id)).toEqual({ id: "vf1" });
       expect(await service.publishFinding("p", finding.id)).toEqual({ id: "vf1" });
+      await expect(service.publishFinding("p", cited.id)).rejects.toThrow("Veritas cannot resolve");
       expect(procedures).toEqual([
         "reFirmware.register",
         "reFirmware.recordExperiment",

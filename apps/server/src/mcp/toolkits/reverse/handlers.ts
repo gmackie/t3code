@@ -40,6 +40,9 @@ export const layer = McpToolAccess.toLayer(ReverseToolkit, {
   t3_reverse_strings: McpToolAccess.reads(call((workbench) => workbench.strings)),
   t3_reverse_import: McpToolAccess.writes(call((workbench) => workbench.importFile)),
   t3_reverse_diff: McpToolAccess.writes(call((workbench) => workbench.diff)),
+  t3_reverse_capture_import: McpToolAccess.writes(call((workbench) => workbench.importCapture)),
+  t3_reverse_capture_view: McpToolAccess.reads(call((workbench) => workbench.viewCapture)),
+  t3_reverse_capture_decode: McpToolAccess.reads(call((workbench) => workbench.decodeCapture)),
   // Organization-wide Veritas data on the environment's token: agents in T3 threads only, not
   // every approved outside client.
   t3_veritas_re_query: McpToolAccess.readsAsCaller(call((workbench) => workbench.veritasQuery)),

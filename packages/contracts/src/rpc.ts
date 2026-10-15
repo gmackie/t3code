@@ -58,6 +58,13 @@ import {
   ReverseImportExtractedInput,
   ReverseDiffInput,
   ReverseFindingPublishInput,
+  ReverseCapture,
+  ReverseCaptureDecodeInput,
+  ReverseCaptureDecodeResult,
+  ReverseCaptureDeleteInput,
+  ReverseCaptureImportInput,
+  ReverseCaptureViewInput,
+  ReverseCaptureViewResult,
   ReverseDiffResult,
   ReverseFindingUpdateInput,
   ReverseFindingRecord,
@@ -478,6 +485,10 @@ export const WS_METHODS = {
   reverseImportExtracted: "reverse.importExtracted",
   reverseDiff: "reverse.diff",
   reverseFindingPublish: "reverse.findingPublish",
+  reverseCaptureImport: "reverse.captureImport",
+  reverseCaptureView: "reverse.captureView",
+  reverseCaptureDecode: "reverse.captureDecode",
+  reverseCaptureDelete: "reverse.captureDelete",
   reverseFindingUpdate: "reverse.findingUpdate",
 
   // Shell methods
@@ -1549,6 +1560,29 @@ const WsReverseToolchainRpc = Rpc.make(WS_METHODS.reverseToolchain, {
   error: Schema.Union([ReverseStoreError, EnvironmentAuthorizationError]),
 });
 
+const WsReverseCaptureImportRpc = Rpc.make(WS_METHODS.reverseCaptureImport, {
+  payload: ReverseCaptureImportInput,
+  success: ReverseCapture,
+  error: Schema.Union([ReverseStoreError, EnvironmentAuthorizationError]),
+});
+
+const WsReverseCaptureViewRpc = Rpc.make(WS_METHODS.reverseCaptureView, {
+  payload: ReverseCaptureViewInput,
+  success: ReverseCaptureViewResult,
+  error: Schema.Union([ReverseStoreError, EnvironmentAuthorizationError]),
+});
+
+const WsReverseCaptureDecodeRpc = Rpc.make(WS_METHODS.reverseCaptureDecode, {
+  payload: ReverseCaptureDecodeInput,
+  success: ReverseCaptureDecodeResult,
+  error: Schema.Union([ReverseStoreError, EnvironmentAuthorizationError]),
+});
+
+const WsReverseCaptureDeleteRpc = Rpc.make(WS_METHODS.reverseCaptureDelete, {
+  payload: ReverseCaptureDeleteInput,
+  error: Schema.Union([ReverseStoreError, EnvironmentAuthorizationError]),
+});
+
 const WsReverseFindingPublishRpc = Rpc.make(WS_METHODS.reverseFindingPublish, {
   payload: ReverseFindingPublishInput,
   success: ReverseFindingRecord,
@@ -2271,6 +2305,10 @@ export const WsRpcGroup = RpcGroup.make(
   WsReverseImportExtractedRpc,
   WsReverseDiffRpc,
   WsReverseFindingPublishRpc,
+  WsReverseCaptureImportRpc,
+  WsReverseCaptureViewRpc,
+  WsReverseCaptureDecodeRpc,
+  WsReverseCaptureDeleteRpc,
   WsReverseFindingUpdateRpc,
   WsServerProbeRpc,
   WsServerGetConfigRpc,

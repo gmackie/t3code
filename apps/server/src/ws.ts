@@ -1863,6 +1863,10 @@ const layerWsRpc = (
         [WS_METHODS.reverseImportExtracted]: (input) => reverseWorkbench.importExtracted(input),
         [WS_METHODS.reverseDiff]: (input) => reverseWorkbench.diff(input),
         [WS_METHODS.reverseFindingPublish]: (input) => reverseWorkbench.publishFinding(input),
+        [WS_METHODS.reverseCaptureImport]: (input) => reverseWorkbench.importCapture(input),
+        [WS_METHODS.reverseCaptureView]: (input) => reverseWorkbench.viewCapture(input),
+        [WS_METHODS.reverseCaptureDecode]: (input) => reverseWorkbench.decodeCapture(input),
+        [WS_METHODS.reverseCaptureDelete]: (input) => reverseWorkbench.removeCapture(input),
         [WS_METHODS.reverseFindingCreate]: (input) =>
           reverseWorkbench.createFinding(input, "human"),
         [WS_METHODS.reverseFindingUpdate]: (input) =>

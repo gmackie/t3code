@@ -13,6 +13,13 @@ import {
   type ReverseAnalysisResult,
   type ReverseDeleteInput,
   type ReverseToolchainResult,
+  type ReverseCapture,
+  type ReverseCaptureDecodeInput,
+  type ReverseCaptureDecodeResult,
+  type ReverseCaptureDeleteInput,
+  type ReverseCaptureImportInput,
+  type ReverseCaptureViewInput,
+  type ReverseCaptureViewResult,
   type ReverseFindingCreateInput,
   type ReverseImportExtractedInput,
   type ReverseDiffInput,
@@ -54,6 +61,7 @@ import { ReverseAnalysisService } from "./AnalysisService.ts";
 import { ghidraSessions } from "./GhidraSession.ts";
 import { getReverseInvestigationStore } from "./InvestigationStore.ts";
 import { inspectToolchain } from "./Toolchain.ts";
+import { captureWindow, decodeI2c, decodeSpi, decodeUart } from "./CaptureDecode.ts";
 import { VeritasEvidenceClient } from "./VeritasEvidenceClient.ts";
 import { WorkbenchService } from "./WorkbenchService.ts";
 
@@ -72,6 +80,18 @@ export class ReverseWorkbench extends Context.Service<
       input: typeof ReverseLinkInput.Type,
     ) => Effect.Effect<ReverseInvestigation, ReverseStoreError>;
     readonly toolchain: Effect.Effect<ReverseToolchainResult, ReverseStoreError>;
+    readonly importCapture: (
+      input: typeof ReverseCaptureImportInput.Type,
+    ) => Effect.Effect<ReverseCapture, ReverseStoreError>;
+    readonly viewCapture: (
+      input: typeof ReverseCaptureViewInput.Type,
+    ) => Effect.Effect<ReverseCaptureViewResult, ReverseStoreError>;
+    readonly decodeCapture: (
+      input: typeof ReverseCaptureDecodeInput.Type,
+    ) => Effect.Effect<ReverseCaptureDecodeResult, ReverseStoreError>;
+    readonly removeCapture: (
+      input: typeof ReverseCaptureDeleteInput.Type,
+    ) => Effect.Effect<void, ReverseStoreError>;
     /** Publishing leaves this environment, so only people do it; it is not an agent tool. */
     /** A read-only Veritas RE query on the environment's token, for agents and future views. */
     readonly veritasQuery: (
@@ -272,6 +292,57 @@ const make = Effect.gen(function* () {
         }),
       ),
     toolchain: attempt(() => inspectToolchain()),
+    importCapture: (input) =>
+      Effect.gen(function* () {
+        const project = yield* requireProject(input.projectId);
+        return yield* attempt(() =>
+          store.importCapture({
+            projectId: input.projectId,
+            workspaceRoot: project.workspaceRoot,
+            relativePath: input.relativePath,
+          }),
+        );
+      }),
+    viewCapture: (input) =>
+      inProject(input.projectId, async () => {
+        if (input.endNs <= input.startNs)
+          throw new ReverseStoreError({
+            reason: "invalid_file",
+            message: "The window must end after it starts.",
+          });
+        const capture = await store.capture(input.projectId, input.captureId);
+        return captureWindow(capture, input.startNs, input.endNs, input.maxPoints, input.channels);
+      }),
+    decodeCapture: (input) =>
+      inProject(input.projectId, async () => {
+        const capture = await store.capture(input.projectId, input.captureId);
+        const limit = input.limit ?? 1000;
+        // One extra event says whether the range had more than the limit.
+        const range = {
+          fromNs: input.startNs ?? 0,
+          toNs: input.endNs ?? Infinity,
+          limit: limit + 1,
+        };
+        const decoder = input.decoder;
+        let events;
+        try {
+          events =
+            decoder.protocol === "uart"
+              ? decodeUart(capture, decoder.signal, decoder, range)
+              : decoder.protocol === "spi"
+                ? decodeSpi(capture, decoder, range)
+                : decodeI2c(capture, decoder, range);
+        } catch (cause) {
+          // Decoder errors describe the request, such as a channel name that does not exist.
+          throw new ReverseStoreError({
+            reason: "invalid_file",
+            message: cause instanceof Error ? cause.message : "The decoder could not run.",
+          });
+        }
+        return { events: events.slice(0, limit), truncated: events.length > limit };
+      }),
+    removeCapture: (input) =>
+      inProject(input.projectId, () => store.removeCapture(input.projectId, input.captureId)),
     veritasQuery: (input) =>
       veritas.configured
         ? attempt(async () => ({ result: await veritas.query(input.procedure, input.input ?? {}) }))

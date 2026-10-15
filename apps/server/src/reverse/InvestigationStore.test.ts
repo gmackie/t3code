@@ -164,6 +164,50 @@ describe("reverse investigation persistence", () => {
     expect((await store.list("legacy")).findings).toEqual([]);
   });
 
+  it("imports captures, lets findings cite them, and deletes them", async () => {
+    await NodeFSP.writeFile(
+      NodePath.join(root, "uart.vcd"),
+      "$timescale 1 us $end\n$var wire 1 ! tx $end\n$enddefinitions $end\n#0\n1!\n#4\n0!\n#10\n",
+    );
+    await NodeFSP.writeFile(NodePath.join(root, "fw.bin"), "firmware");
+    await NodeFSP.writeFile(NodePath.join(root, "session.sal"), "not readable");
+    const base = { projectId: "p1", workspaceRoot: root };
+    const capture = await store.importCapture({ ...base, relativePath: "uart.vcd" });
+    expect(capture).toMatchObject({ format: "vcd", channels: ["tx"], durationNs: 10_000 });
+    expect(await store.importCapture({ ...base, relativePath: "uart.vcd" })).toEqual(capture);
+    await expect(
+      store.importCapture({ ...base, relativePath: "session.sal" }),
+    ).rejects.toMatchObject({
+      reason: "invalid_file",
+    });
+    expect((await store.list("p1")).captures).toHaveLength(1);
+    expect(Array.from((await store.capture("p1", capture.id)).channels[0]!.edges)).toEqual([4000]);
+
+    const { investigation } = await store.importFile({
+      ...base,
+      environmentId: "env1",
+      relativePath: "fw.bin",
+    });
+    const cite = (captureId: string) =>
+      store.createFinding({
+        projectId: "p1",
+        investigationId: investigation.id,
+        title: "Boot banner leaks build id",
+        kind: "protocol",
+        authorKind: "human",
+        evidence: [{ kind: "capture", captureId, signal: "tx", startNs: 0, endNs: 10_000 }],
+      });
+    await expect(cite("missing")).rejects.toThrow("capture in this project");
+    expect((await cite(capture.id)).evidence[0]).toMatchObject({
+      kind: "capture",
+      captureId: capture.id,
+    });
+
+    await store.removeCapture("p1", capture.id);
+    expect((await store.list("p1")).captures).toEqual([]);
+    await expect(store.capture("p1", capture.id)).rejects.toMatchObject({ reason: "not_found" });
+  });
+
   it("rejects paths escaping the workspace, including symlink traversal", async () => {
     await NodeFSP.writeFile(NodePath.join(directory, "outside.bin"), "secret");
     await NodeFSP.symlink(NodePath.join(directory, "outside.bin"), NodePath.join(root, "link.bin"));
