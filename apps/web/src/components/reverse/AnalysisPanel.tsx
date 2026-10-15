@@ -14,6 +14,9 @@ import { Button } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
 
 /** Mounted with an investigation key: responses can never migrate to another firmware tab. */
+// Rows rendered per function; the bridge may return more for very large functions.
+const MAX_INSTRUCTION_ROWS = 1000;
+
 export function AnalysisPanel({
   threadRef,
   projectId,
@@ -36,6 +39,7 @@ export function AnalysisPanel({
   }, []);
   const [busy, setBusy] = useState(false),
     [error, setError] = useState<string | null>(null);
+  const [tokensOpen, setTokensOpen] = useState(false);
   const [result, setResult] = useState<ReverseAnalysisResult | null>(null),
     [emulation, setEmulation] = useState<ReverseEmulateResult | null>(null);
   const [functions, setFunctions] = useState<readonly ReverseGhidraFunction[]>([]),
@@ -280,28 +284,39 @@ export function AnalysisPanel({
                   <pre className="max-h-96 overflow-auto border border-border p-2 text-xs">
                     {selected.pseudocode}
                   </pre>
-                  <details className="mt-2">
+                  <details
+                    className="mt-2"
+                    onToggle={(event) => setTokensOpen(event.currentTarget.open)}
+                  >
                     <summary className="cursor-pointer text-xs">Address-linked tokens</summary>
                     <div className="max-h-32 overflow-auto font-mono text-xs">
-                      {selected.tokens?.map((token, i) =>
-                        token.address ? (
-                          <Button
-                            key={i}
-                            size="micro"
-                            variant="ghost"
-                            title={token.address}
-                            onClick={() => setHighlight(token.address!)}
-                          >
-                            {token.text}
-                          </Button>
-                        ) : (
-                          <span key={i}>{token.text}</span>
-                        ),
-                      )}
+                      {/* Thousands of token buttons; mount them only while the section is open. */}
+                      {tokensOpen &&
+                        selected.tokens?.map((token, i) =>
+                          token.address ? (
+                            <Button
+                              key={i}
+                              size="micro"
+                              variant="ghost"
+                              title={token.address}
+                              onClick={() => setHighlight(token.address!)}
+                            >
+                              {token.text}
+                            </Button>
+                          ) : (
+                            <span key={i}>{token.text}</span>
+                          ),
+                        )}
                     </div>
                   </details>
+                  {selected.instructions.length > MAX_INSTRUCTION_ROWS && (
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      Showing the first {MAX_INSTRUCTION_ROWS} of {selected.instructions.length}{" "}
+                      instructions.
+                    </p>
+                  )}
                   <div className="mt-2 max-h-64 overflow-auto border border-border font-mono text-xs">
-                    {selected.instructions.map((ins) => (
+                    {selected.instructions.slice(0, MAX_INSTRUCTION_ROWS).map((ins) => (
                       <div
                         key={ins.address}
                         className={highlight === ins.address ? "bg-accent px-2 py-1" : "px-2 py-1"}

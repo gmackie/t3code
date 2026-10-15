@@ -44,6 +44,39 @@ const decode = Schema.decodeUnknownSync(
 const MAX_IMPORT_BYTES = 512 * 1024 * 1024;
 const MAX_STRING_BYTES = 32 * 1024 * 1024;
 const MAX_STRING_RESULTS = 2_000;
+const MAX_STRING_VALUE = 512;
+type StringScan = { strings: Array<{ offset: number; value: string }>; truncated: boolean };
+const STRING_SCAN_CACHE = 16;
+async function scanStrings(path: string, minLength: number): Promise<StringScan> {
+  const strings: Array<{ offset: number; value: string }> = [];
+  let offset = 0,
+    start = -1,
+    value = "",
+    truncated = false;
+  for await (const chunk of NodeFS.createReadStream(path, { highWaterMark: 65536 })) {
+    const bytes = chunk as Buffer;
+    for (let i = 0; i < bytes.length; i++) {
+      if (offset >= MAX_STRING_BYTES || strings.length >= MAX_STRING_RESULTS) {
+        truncated = true;
+        break;
+      }
+      const byte = bytes[i]!;
+      const printable = byte >= 32 && byte <= 126;
+      if (printable) {
+        if (start < 0) start = offset;
+        if (value.length < MAX_STRING_VALUE) value += String.fromCharCode(byte);
+      } else {
+        if (value.length >= minLength && start >= 0) strings.push({ offset: start, value });
+        start = -1;
+        value = "";
+      }
+      offset++;
+    }
+    if (truncated) break;
+  }
+  if (!truncated && value.length >= minLength && start >= 0) strings.push({ offset: start, value });
+  return { strings, truncated };
+}
 const storagePath = (stateDir: string, projectId: string) =>
   NodePath.join(
     stateDir,
@@ -198,40 +231,22 @@ export class ReverseInvestigationStore {
     });
   }
 
-  async strings(projectId: string, investigationId: string, minLength = 4) {
+  // Artifacts are immutable, so scans are shared per digest and minimum length.
+  private readonly stringScans = new Map<string, Promise<StringScan>>();
+  async strings(projectId: string, investigationId: string, minLength = 4): Promise<StringScan> {
     const record = await readProject(this.stateDir, projectId);
     const investigation = record.investigations.find((x) => x.id === investigationId);
     if (!investigation) throw err("not_found", "Investigation not found in this project.");
-    const path = artifactPath(this.stateDir, investigation.artifactSha256);
-    const strings: Array<{ offset: number; value: string }> = [];
-    let offset = 0,
-      start = -1,
-      value = "",
-      truncated = false;
-    for await (const chunk of NodeFS.createReadStream(path, { highWaterMark: 65536 })) {
-      const bytes = chunk as Buffer;
-      for (let i = 0; i < bytes.length; i++) {
-        if (offset >= MAX_STRING_BYTES || strings.length >= MAX_STRING_RESULTS) {
-          truncated = true;
-          break;
-        }
-        const byte = bytes[i]!;
-        const printable = byte >= 32 && byte <= 126;
-        if (printable) {
-          if (start < 0) start = offset;
-          if (value.length < 4096) value += String.fromCharCode(byte);
-        } else {
-          if (value.length >= minLength && start >= 0) strings.push({ offset: start, value });
-          start = -1;
-          value = "";
-        }
-        offset++;
-      }
-      if (truncated) break;
-    }
-    if (!truncated && value.length >= minLength && start >= 0)
-      strings.push({ offset: start, value });
-    return { strings, truncated };
+    const key = `${investigation.artifactSha256}:${minLength}`;
+    const cached = this.stringScans.get(key);
+    if (cached) return cached;
+    const oldest = this.stringScans.keys().next();
+    if (this.stringScans.size >= STRING_SCAN_CACHE && !oldest.done)
+      this.stringScans.delete(oldest.value);
+    const scan = scanStrings(artifactPath(this.stateDir, investigation.artifactSha256), minLength);
+    this.stringScans.set(key, scan);
+    scan.catch(() => this.stringScans.delete(key));
+    return scan;
   }
 
   getArtifact(

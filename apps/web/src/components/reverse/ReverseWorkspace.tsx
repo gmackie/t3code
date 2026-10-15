@@ -70,8 +70,10 @@ function ProjectWorkspace({
   const investigations = list.data?.investigations ?? [],
     artifacts = list.data?.artifacts ?? [];
   const active = investigations.find((item) => item.id === selected) ?? investigations[0];
+  // Strings can be megabytes; fetch them only while their section is open.
+  const [stringsOpen, setStringsOpen] = useState(false);
   const strings = useEnvironmentQuery(
-    active
+    active && stringsOpen
       ? reverseEnvironment.strings({
           environmentId: threadRef.environmentId,
           input: { projectId, investigationId: active.id, minLength: 4 },
@@ -221,7 +223,10 @@ function ProjectWorkspace({
                 projectId={projectId}
                 investigationId={active.id}
               />
-              <details className="border-b border-border p-3">
+              <details
+                className="border-b border-border p-3"
+                onToggle={(event) => setStringsOpen(event.currentTarget.open)}
+              >
                 <summary className="cursor-pointer text-xs font-medium">
                   Strings and file offsets
                 </summary>

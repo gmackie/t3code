@@ -46,6 +46,21 @@ describe("reverse investigation persistence", () => {
     ).toContain("serial=115200");
   });
 
+  it("bounds each extracted string and keeps its file offset", async () => {
+    await NodeFSP.writeFile(
+      NodePath.join(root, "long.bin"),
+      Buffer.concat([Buffer.from([0, 0]), Buffer.from("A".repeat(2000)), Buffer.from([0])]),
+    );
+    const { investigation } = await store.importFile({
+      projectId: "p1",
+      environmentId: "env1",
+      workspaceRoot: root,
+      relativePath: "long.bin",
+    });
+    const { strings } = await store.strings("p1", investigation.id);
+    expect(strings).toEqual([{ offset: 2, value: "A".repeat(512) }]);
+  });
+
   it("rejects paths escaping the workspace, including symlink traversal", async () => {
     await NodeFSP.writeFile(NodePath.join(directory, "outside.bin"), "secret");
     await NodeFSP.symlink(NodePath.join(directory, "outside.bin"), NodePath.join(root, "link.bin"));
