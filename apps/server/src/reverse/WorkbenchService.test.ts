@@ -52,14 +52,13 @@ describe("Reverse workbench service", () => {
       expect((await service.execute({ ...scope, operation: "publish" })).data).toMatchObject({
         id: "registered",
       });
-      // Registration, then the saved board linkage (none) is synced.
+      // Nothing is linked here, so registration leaves any Veritas link alone.
       expect(calls).toEqual([
         {
           json: {
             identity: { sha256: imported.artifact.sha256, sizeBytes: "4", source: "imported" },
           },
         },
-        { json: { sha256: imported.artifact.sha256, boardRevisionId: null } },
       ]);
       await expect(
         service.execute({ ...scope, operation: "scan", engine: "gadgets" }),
@@ -199,7 +198,6 @@ describe("Reverse workbench service", () => {
       expect(await service.publishFinding("p", finding.id)).toEqual({ id: "vf1" });
       expect(procedures).toEqual([
         "reFirmware.register",
-        "reFirmware.linkBoardRevision",
         "reFirmware.recordExperiment",
         "reFirmware.createFinding",
       ]);
@@ -244,14 +242,65 @@ describe("Reverse workbench service", () => {
         return Response.json({ result: { data: { json: { frames: [] } } } });
       },
     );
-    expect(
-      await client.query("reAnalysis.decodeUart", { captureId: "c1", channel: 0, baud: 115200 }),
-    ).toEqual({ frames: [] });
+    expect(await client.query("reBoards.get", { boardId: "b1" })).toEqual({ frames: [] });
     const request = new URL(seen[0]!.url);
     expect(seen[0]).toMatchObject({ method: "GET", body: undefined });
-    expect(request.pathname).toBe("/api/trpc/reAnalysis.decodeUart");
-    expect(JSON.parse(request.searchParams.get("input")!)).toEqual({
-      json: { captureId: "c1", channel: 0, baud: 115200 },
-    });
+    expect(request.pathname).toBe("/api/trpc/reBoards.get");
+    expect(JSON.parse(request.searchParams.get("input")!)).toEqual({ json: { boardId: "b1" } });
+  });
+  it("changes a shared Veritas board link only when the user changed theirs", async () => {
+    const root = await NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "t3-board-"));
+    try {
+      const workspace = NodePath.join(root, "workspace");
+      await NodeFSP.mkdir(workspace);
+      await NodeFSP.writeFile(NodePath.join(workspace, "fw.bin"), "board firmware");
+      const store = new ReverseInvestigationStore(NodePath.join(root, "state"));
+      const { investigation, artifact } = await store.importFile({
+        projectId: "p",
+        environmentId: "e",
+        workspaceRoot: workspace,
+        relativePath: "fw.bin",
+      });
+      const calls: Array<{ procedure: string; body: unknown }> = [];
+      const client = new VeritasEvidenceClient(
+        { url: "https://veritas.example", token: "secret" },
+        async (url, init) => {
+          const procedure = String(url).split("/").pop()!;
+          calls.push({ procedure, body: JSON.parse(String(init?.body)).json });
+          return Response.json({
+            result: {
+              data: {
+                json: {
+                  artifact: {
+                    id: "va1",
+                    sha256: artifact.sha256,
+                    sizeBytes: String(artifact.sizeBytes),
+                  },
+                },
+              },
+            },
+          });
+        },
+      );
+      const service = new WorkbenchService(store, client);
+
+      await store.link("p", investigation.id, { boardRevisionId: "br1" });
+      await service.publish("p", investigation.id);
+      await service.publish("p", investigation.id);
+      await store.link("p", investigation.id, { boardRevisionId: null });
+      await service.publish("p", investigation.id);
+
+      expect(calls.map((call) => call.procedure)).toEqual([
+        "reFirmware.register",
+        "reFirmware.register",
+        "reFirmware.register",
+        "reFirmware.linkBoardRevision",
+      ]);
+      // The saved board fills an empty link; clearing it here clears it there.
+      expect(calls[0]!.body).toMatchObject({ boardRevisionId: "br1" });
+      expect(calls[3]!.body).toEqual({ sha256: artifact.sha256, boardRevisionId: null });
+    } finally {
+      await NodeFSP.rm(root, { recursive: true, force: true });
+    }
   });
 });

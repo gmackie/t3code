@@ -65,7 +65,10 @@ export const ReverseFindingRecord = Schema.Struct({
   veritasFindingId: Schema.optional(Id),
 });
 export const ReverseFindingPublishInput = Schema.Struct({ projectId: Id, findingId: Id });
-/** Read-only Veritas RE procedures agents may call through T3 with the environment's token. */
+/**
+ * Read-only Veritas RE queries agents may call through T3 with the environment's token. Veritas's
+ * decoders are mutations over raw transition data, so they are not proxied here.
+ */
 export const VeritasReReadProcedure = Schema.Literals([
   "reBoards.list",
   "reBoards.get",
@@ -73,19 +76,7 @@ export const VeritasReReadProcedure = Schema.Literals([
   "reBoards.listProbeMaps",
   "reCaptures.list",
   "reCaptures.get",
-  "reAnalysis.overviewSignals",
-  "reAnalysis.decodeUart",
-  "reAnalysis.decodeI2c",
-  "reAnalysis.decodeSpi",
-  "reAnalysis.decodeCan",
-  "reAnalysis.decodePulse",
   "reAnalysis.pulsePresets",
-  "reAnalysis.decodeFraming",
-  "reAnalysis.analyzeTiming",
-  "reAnalysis.searchUartParams",
-  "reAnalysis.searchSpiParams",
-  "reAnalysis.summarizeI2c",
-  "reAnalysis.compareCaptures",
   "reHypotheses.list",
   "reHypotheses.get",
   "reAnnotations.list",
@@ -126,6 +117,8 @@ export const ReverseInvestigation = Schema.Struct({
   parentInvestigationId: Schema.optional(Id),
   // Set once this firmware is registered in Veritas; findings can be published after that.
   veritasArtifactId: Schema.optional(Id),
+  // The board revision last synced to Veritas (null: synced as none); unset until then.
+  veritasBoardRevisionId: Schema.optional(Schema.NullOr(Id)),
   // How Ghidra loads raw images of this firmware; remembered from the last analysis that set it.
   ghidraProfile: Schema.optional(
     Schema.Struct({ languageId: Schema.optional(Id), imageBase: Schema.optional(Id) }),

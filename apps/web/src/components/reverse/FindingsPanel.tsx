@@ -192,17 +192,19 @@ export function FindingsPanel({
               </p>
             )}
             <div className="mt-1 flex flex-wrap gap-1">
-              {!finding.veritasFindingId && (
-                <Button
-                  size="xs"
-                  variant="outline"
-                  disabled={busy || !registered}
-                  title={registered ? undefined : "Register this firmware in Veritas first"}
-                  onClick={() => void publishFinding(finding.id)}
-                >
-                  Publish to Veritas
-                </Button>
-              )}
+              {!finding.veritasFindingId &&
+                finding.status !== "rejected" &&
+                finding.status !== "superseded" && (
+                  <Button
+                    size="xs"
+                    variant="outline"
+                    disabled={busy || !registered}
+                    title={registered ? undefined : "Register this firmware in Veritas first"}
+                    onClick={() => void publishFinding(finding.id)}
+                  >
+                    Publish to Veritas
+                  </Button>
+                )}
               {NEXT[finding.status].map((next) => (
                 <Button
                   key={next.status}

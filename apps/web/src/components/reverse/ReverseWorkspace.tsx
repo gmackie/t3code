@@ -188,11 +188,11 @@ function ProjectWorkspace({
       if (!alive.current) return;
       if (response._tag === "Failure") throw squashAtomCommandFailure(response);
       setPublished({ investigationId: active.id, artifactId: response.value.artifactId });
-      // Registration is recorded on the investigation, which enables publishing findings.
-      list.refresh();
     } catch (cause) {
       if (alive.current) setError(String(cause));
     } finally {
+      // Registration is recorded even when a later step fails, and it enables publishing findings.
+      list.refresh();
       if (alive.current) setBusy(false);
     }
   }

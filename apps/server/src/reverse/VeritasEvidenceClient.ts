@@ -17,11 +17,13 @@ const record = (value: unknown): Record<string, unknown> =>
   value !== null && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : {};
-const MAX_RESPONSE_BYTES = 256 * 1024;
+// Acknowledgements are small; read queries can list a whole organization's records.
+const MAX_MUTATION_RESPONSE_BYTES = 256 * 1024;
+const MAX_QUERY_RESPONSE_BYTES = 4 * 1024 * 1024;
 
-async function readBounded(response: Response): Promise<Record<string, unknown>> {
+async function readBounded(response: Response, maxBytes: number): Promise<Record<string, unknown>> {
   const declared = Number(response.headers.get("content-length"));
-  if (declared > MAX_RESPONSE_BYTES) throw veritasError("Oversized Veritas response.");
+  if (declared > maxBytes) throw veritasError("Oversized Veritas response.");
   const reader = response.body?.getReader();
   if (!reader) throw veritasError("Empty Veritas response.");
   const chunks: Uint8Array[] = [];
@@ -31,7 +33,7 @@ async function readBounded(response: Response): Promise<Record<string, unknown>>
       const chunk = await reader.read();
       if (chunk.done) break;
       size += chunk.value.byteLength;
-      if (size > MAX_RESPONSE_BYTES) throw veritasError("Oversized Veritas response.");
+      if (size > maxBytes) throw veritasError("Oversized Veritas response.");
       chunks.push(chunk.value);
     }
   } finally {
@@ -105,15 +107,20 @@ export class VeritasEvidenceClient {
       },
       ...(method === "POST" ? { body: JSON.stringify({ json: input }) } : {}),
     });
-    const payload: Record<string, unknown> = await readBounded(response).catch((cause: unknown) => {
+    const payload: Record<string, unknown> = await readBounded(
+      response,
+      method === "GET" ? MAX_QUERY_RESPONSE_BYTES : MAX_MUTATION_RESPONSE_BYTES,
+    ).catch((cause: unknown) => {
       if (response.ok) throw cause;
       return {};
     });
     if (!response.ok || payload.error) {
-      // tRPC errors carry a message Veritas wrote for the caller, such as which field conflicts.
+      // Client errors carry a message Veritas wrote for the caller, such as which field conflicts.
+      // Server errors can carry query text, so those stay generic.
       const message = record(record(payload.error).json).message;
+      const forCaller = response.status >= 400 && response.status < 500;
       throw veritasError(
-        typeof message === "string" && message.length <= 2000
+        forCaller && typeof message === "string" && message.length <= 2000
           ? `Veritas: ${message}`
           : `Veritas rejected ${procedure} (${response.status}). No automatic retry was attempted.`,
       );
@@ -181,6 +188,8 @@ export class VeritasEvidenceClient {
       status: "candidate",
       authorKind: finding.authorKind,
       evidence: finding.evidence,
+      // Lets Veritas return the existing finding when a timed-out publish is retried.
+      externalId: finding.id,
     });
     const id = record(data.finding).id;
     if (typeof id !== "string") throw veritasError("Veritas returned no finding id.");

@@ -33,6 +33,7 @@ const decode = Schema.decodeUnknownSync(
         ghidraSessionId: Schema.optional(Schema.String),
         parentInvestigationId: Schema.optional(Schema.String),
         veritasArtifactId: Schema.optional(Schema.String),
+        veritasBoardRevisionId: Schema.optional(Schema.NullOr(Schema.String)),
         ghidraProfile: Schema.optional(
           Schema.Struct({
             languageId: Schema.optional(Schema.String),
@@ -308,7 +309,8 @@ export class ReverseInvestigationStore {
         // A QEMU run must be one this environment recorded for this firmware.
         if (
           ref.kind === "execution" &&
-          !(await this.emulationRecorded(input.projectId, ref.runId, digest))
+          (ref.source !== "qemu" ||
+            !(await this.emulationRecorded(input.projectId, ref.runId, digest)))
         )
           throw err("invalid_file", "Execution evidence must name a QEMU run of this firmware.");
         const cited =
@@ -363,13 +365,22 @@ export class ReverseInvestigationStore {
       : "inconclusive";
   }
 
-  /** Records that this investigation's firmware is registered in Veritas. */
-  markRegistered(projectId: string, investigationId: string, veritasArtifactId: string) {
+  /** Records that this firmware is registered in Veritas and which board revision was synced. */
+  markRegistered(
+    projectId: string,
+    investigationId: string,
+    veritasArtifactId: string,
+    veritasBoardRevisionId: string | null,
+  ) {
     return this.locked(projectId, async () => {
       const record = await readProject(this.stateDir, projectId);
       const index = record.investigations.findIndex((x) => x.id === investigationId);
       if (index < 0) return;
-      record.investigations[index] = { ...record.investigations[index]!, veritasArtifactId };
+      record.investigations[index] = {
+        ...record.investigations[index]!,
+        veritasArtifactId,
+        veritasBoardRevisionId,
+      };
       await saveProject(this.stateDir, projectId, record);
     });
   }

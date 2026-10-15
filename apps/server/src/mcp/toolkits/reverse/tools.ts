@@ -119,7 +119,7 @@ const ReverseDiffTool = Tool.make("t3_reverse_diff", {
 const VeritasReQueryTool = Tool.make("t3_veritas_re_query", {
   ...shared,
   description:
-    "Read hardware reverse-engineering data from the Veritas server this environment is connected to, with the environment's credentials: boards, revisions, signals and probe maps (reBoards.*), logic-analyzer captures (reCaptures.*), protocol decoding and timing analysis of a capture (reAnalysis.decodeUart, decodeI2c, decodeSpi, decodeCan, decodePulse, decodeFraming, analyzeTiming, searchUartParams, searchSpiParams, summarizeI2c, compareCaptures, overviewSignals, pulsePresets), hypotheses, annotations, custom protocols, and registered firmware with its findings and experiments (reFirmware.*). Pass the procedure's input object as `input`, for example { captureId, channel, baud } for decodeUart. Read-only; nothing is changed in Veritas.",
+    "Read hardware reverse-engineering data from the Veritas server this environment is connected to, with the environment's credentials: boards, revisions, signals and probe maps (reBoards.*), logic-analyzer captures (reCaptures.list and get), pulse decoder presets (reAnalysis.pulsePresets), hypotheses, annotations, custom protocols, and registered firmware with its findings and experiments (reFirmware.*). Pass the procedure's input object as `input`, for example { boardId } for reBoards.get or { sha256 } for reFirmware.listFindings. Read-only; nothing is changed in Veritas.",
   parameters: VeritasReQueryInput,
   success: VeritasReQueryResult,
 })
