@@ -59,7 +59,7 @@ export class ReverseWorkbench extends Context.Service<
     ) => Effect.Effect<typeof ReverseImportResult.Type, ReverseStoreError>;
     readonly link: (
       input: typeof ReverseLinkInput.Type,
-    ) => Effect.Effect<typeof ReverseInvestigation.Type, ReverseStoreError>;
+    ) => Effect.Effect<ReverseInvestigation, ReverseStoreError>;
     readonly remove: (
       input: typeof ReverseDeleteInput.Type,
     ) => Effect.Effect<void, ReverseStoreError>;
@@ -67,15 +67,15 @@ export class ReverseWorkbench extends Context.Service<
       input: typeof ReverseStringsInput.Type,
     ) => Effect.Effect<typeof ReverseStringsResult.Type, ReverseStoreError>;
     readonly analyze: (
-      input: typeof ReverseAnalysisInput.Type,
-    ) => Effect.Effect<typeof ReverseAnalysisResult.Type, ReverseStoreError>;
+      input: ReverseAnalysisInput,
+    ) => Effect.Effect<ReverseAnalysisResult, ReverseStoreError>;
     readonly emulate: (
       input: typeof ReverseEmulateInput.Type,
-    ) => Effect.Effect<typeof ReverseEmulateResult.Type, ReverseStoreError>;
+    ) => Effect.Effect<ReverseEmulateResult, ReverseStoreError>;
     readonly publish: (
       input: typeof ReversePublishInput.Type,
     ) => Effect.Effect<typeof ReversePublishResult.Type, ReverseStoreError>;
-    /** The workbench protocol served over HTTP; extension operations report unavailable. */
+    /** The workbench protocol served over HTTP; hardware lab operations report unavailable. */
     readonly execute: (
       request: ReverseWorkbenchRequest,
     ) => Effect.Effect<ReverseWorkbenchReply, ReverseStoreError>;
@@ -105,6 +105,19 @@ const attempt = <A>(run: () => Promise<A>) =>
       isReverseStoreError(cause) ? cause : new UnexpectedReverseFailure({ cause }),
   }).pipe(Effect.catchTags({ UnexpectedReverseFailure: (failure) => unexpected(failure.cause) }));
 
+const GHIDRA_ACTIONS = {
+  open: "list",
+  functions: "list",
+  decompile: "function",
+  disassemble: "function",
+  references: "function",
+  graph: "function",
+  rename: "rename",
+  comment: "comment",
+  save: "save",
+  close: "close",
+} as const;
+
 const make = Effect.gen(function* () {
   const config = yield* ServerConfig.ServerConfig;
   const projects = yield* ProjectService.ProjectService;
@@ -125,6 +138,58 @@ const make = Effect.gen(function* () {
       Effect.ensuring(Effect.sync(() => ghidraSessions(config.stateDir).dispose())),
     ),
   );
+
+  // The HTTP protocol names the same analyzers the RPCs use; translate and reply in its envelope.
+  const executeWorkbench = async (
+    request: ReverseWorkbenchRequest,
+  ): Promise<ReverseWorkbenchReply> => {
+    const scope = { projectId: request.projectId, investigationId: request.investigationId };
+    const reply = async (data: unknown): Promise<ReverseWorkbenchReply> => ({
+      protocolVersion: 1,
+      operation: request.operation,
+      artifactSha256: (await store.getArtifact(scope.projectId, scope.investigationId)).artifact
+        .sha256,
+      data,
+    });
+    switch (request.operation) {
+      case "scan":
+        if (request.engine === "strings")
+          return reply(
+            await store.strings(scope.projectId, scope.investigationId, request.minLength),
+          );
+        return reply(
+          await analysis.run({
+            ...scope,
+            kind: request.engine,
+            // x86_64 is x86 in 64-bit mode for the gadget search.
+            rawArch: request.architecture === "x86_64" ? "x86" : request.architecture,
+            rawMode: request.architecture === "x86_64" ? "64" : request.mode,
+            rawEndian: request.endian,
+          }),
+        );
+      case "analysis":
+        return reply(
+          await analysis.run({
+            ...scope,
+            kind: "ghidra",
+            ghidra: {
+              action: GHIDRA_ACTIONS[request.action],
+              address: request.address,
+              languageId: request.language,
+              imageBase: request.imageBase,
+              name: request.name,
+              expectedName: request.expectedName,
+              comment: request.comment,
+              cursor: request.offset,
+            },
+          }),
+        );
+      case "emulate":
+        return reply(await analysis.emulate({ ...scope, machine: request.machine }));
+      default:
+        return workbench.execute(request);
+    }
+  };
 
   const requireProject = (projectId: string) =>
     projects.getById(projectId as ProjectId).pipe(
@@ -188,7 +253,7 @@ const make = Effect.gen(function* () {
               message: "Set VERITAS_URL and VERITAS_API_TOKEN on this T3 environment.",
             }),
           ),
-    execute: (request) => inProject(request.projectId, () => workbench.execute(request)),
+    execute: (request) => inProject(request.projectId, () => executeWorkbench(request)),
   });
 });
 

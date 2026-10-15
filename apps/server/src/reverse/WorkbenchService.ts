@@ -39,7 +39,15 @@ export class WorkbenchService {
     if (request.operation === "status") {
       data = {
         veritasConfigured: this.veritas.configured,
-        operations: ["status", "bytes", "publish", ...this.extensions.flatMap((x) => x.operations)],
+        operations: [
+          "status",
+          "bytes",
+          "publish",
+          "scan",
+          "analysis",
+          "emulate",
+          ...this.extensions.flatMap((x) => x.operations),
+        ],
         extensions: this.extensions.map((x) => x.status()),
       };
     } else if (request.operation === "bytes") {

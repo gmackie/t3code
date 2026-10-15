@@ -28,14 +28,7 @@ describe("reverse operation boundary", () => {
       reverseOperationMutates(decode({ ...scope, operation: "analysis", action: "open" })),
     ).toBe(true);
     expect(
-      reverseOperationMutates(
-        decode({
-          ...scope,
-          operation: "emulator",
-          action: "start",
-          profile: "cortex-m3-lm3s6965evb",
-        }),
-      ),
+      reverseOperationMutates(decode({ ...scope, operation: "emulate", machine: "lm3s6965evb" })),
     ).toBe(true);
     expect(reverseOperationMutates(decode({ ...scope, operation: "lab", action: "arm" }))).toBe(
       true,

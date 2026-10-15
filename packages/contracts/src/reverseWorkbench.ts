@@ -6,6 +6,10 @@ const Address = Schema.String.check(
   Schema.isPattern(/^(?:0x[0-9a-fA-F]+|[0-9]+)$/),
   Schema.isMaxLength(80),
 );
+const HexAddress = Schema.String.check(
+  Schema.isPattern(/^0x[0-9a-fA-F]+$/),
+  Schema.isMaxLength(80),
+);
 const scope = { projectId: Id, investigationId: Id };
 const count = (maximum: number) => Schema.Int.check(Schema.isBetween({ minimum: 1, maximum }));
 
@@ -27,9 +31,8 @@ export const ReverseWorkbenchRequest = Schema.Union([
     ...scope,
     operation: Schema.Literal("scan"),
     engine: Schema.Literals(["strings", "posture", "gadgets", "binwalk", "unblob", "rea"]),
-    minLength: Schema.optional(count(128)),
-    encoding: Schema.optional(Schema.Literals(["ascii", "utf16le", "utf16be"])),
-    depth: Schema.optional(count(20)),
+    minLength: Schema.optional(Schema.Int.check(Schema.isBetween({ minimum: 4, maximum: 64 }))),
+    // Raw-image layout for gadget search; ignored by the other engines.
     architecture: Schema.optional(
       Schema.Literals(["x86", "x86_64", "arm", "arm64", "mips", "riscv"]),
     ),
@@ -39,6 +42,8 @@ export const ReverseWorkbenchRequest = Schema.Union([
   Schema.Struct({
     ...scope,
     operation: Schema.Literal("analysis"),
+    // The persistent Ghidra session. Disassembly, references and the call graph are all
+    // part of the function view.
     action: Schema.Literals([
       "open",
       "functions",
@@ -51,24 +56,18 @@ export const ReverseWorkbenchRequest = Schema.Union([
       "save",
       "close",
     ]),
-    address: Schema.optional(Address),
+    address: Schema.optional(HexAddress),
     language: Schema.optional(Id),
-    compiler: Schema.optional(Id),
-    imageBase: Schema.optional(Address),
-    name: Schema.optional(Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(200))),
-    comment: Schema.optional(Schema.String.check(Schema.isMaxLength(16000))),
-    offset: Schema.optional(Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: 10000000 }))),
-    limit: Schema.optional(count(500)),
+    imageBase: Schema.optional(HexAddress),
+    name: Schema.optional(Id),
+    expectedName: Schema.optional(Id),
+    comment: Schema.optional(Schema.String.check(Schema.isMaxLength(8192))),
+    offset: Schema.optional(Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: 1000000 }))),
   }),
-  Schema.Struct({ ...scope, operation: Schema.Literals(["job", "cancel"]), jobId: Id }),
   Schema.Struct({
     ...scope,
-    operation: Schema.Literal("emulator"),
-    action: Schema.Literals(["start", "status", "stop"]),
-    profile: Schema.optional(
-      Schema.Literals(["cortex-m3-lm3s6965evb", "linux-arm", "linux-aarch64", "linux-mipsel"]),
-    ),
-    sessionId: Schema.optional(Id),
+    operation: Schema.Literal("emulate"),
+    machine: Schema.Literals(["lm3s6965evb", "mps2-an385"]),
   }),
   Schema.Struct({
     ...scope,
@@ -128,8 +127,6 @@ export function reverseOperationMutates(request: ReverseWorkbenchRequest): boole
   return !(
     request.operation === "status" ||
     request.operation === "bytes" ||
-    request.operation === "job" ||
-    (request.operation === "lab" && (request.action === "catalog" || request.action === "poll")) ||
-    (request.operation === "emulator" && request.action === "status")
+    (request.operation === "lab" && (request.action === "catalog" || request.action === "poll"))
   );
 }

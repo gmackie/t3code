@@ -15,7 +15,7 @@ The Reverse workspace runs in the existing T3 environment server and Electron/we
 
 - **Ghidra JVMs live as long as the service.** The pool is disposed with the server, which also aborts an import in flight. The WebSocket layer is rebuilt per connection, so it must reuse the server's captured instance. A per-connection instance would start a second pool, and a disconnect would kill shared sessions.
 - **The board revision comes from saved linkage.** Veritas registration uses the board revision saved by `reverse.link`, never one supplied with the publish request, because every caller shares the environment's Veritas token.
-- **HTTP-only operations have no backends yet.** `scan`, `analysis`, `emulator`, `lab` and `job` exist only in the HTTP protocol and report unavailable. The WebSocket `reverse.analyze` and `reverse.emulate` RPCs are the implemented analyzers. Their vocabularies differ, so connecting the two is a contract decision.
+- **The HTTP protocol has its own vocabulary over the same analyzers.** `scan`, `analysis` and `emulate` are translated in the service onto the analyzers the RPCs use. Ghidra disassembly, references and the call graph come from the function view. Only `lab` has no backend; it waits for station arbitration in Veritas.
 
 ## Analysis paths
 

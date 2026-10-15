@@ -4,7 +4,12 @@ import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import * as NodeHttpPlatform from "@effect/platform-node/NodeHttpPlatform";
-import { AuthOrchestrationReadScope, AuthSessionId, type Project } from "@t3tools/contracts";
+import {
+  AuthOrchestrationOperateScope,
+  AuthOrchestrationReadScope,
+  AuthSessionId,
+  type Project,
+} from "@t3tools/contracts";
 import * as ConfigProvider from "effect/ConfigProvider";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -16,6 +21,7 @@ import { ServerConfig } from "../config.ts";
 import * as ServerEnvironment from "../environment/ServerEnvironment.ts";
 import * as ProjectService from "../project/ProjectService.ts";
 import * as ReverseWorkbench from "./ReverseWorkbench.ts";
+import { getReverseInvestigationStore } from "./InvestigationStore.ts";
 import { reverseWorkbenchRouteLayer } from "./http.ts";
 
 const url = "http://localhost/api/reverse/workbench";
@@ -27,12 +33,15 @@ describe("Reverse workbench HTTP route", () => {
     const routes = reverseWorkbenchRouteLayer.pipe(
       Layer.provideMerge(
         Layer.mock(EnvironmentAuth)({
-          authenticateHttpRequest: () =>
+          // Requests carrying x-test-operate act with operate scope.
+          authenticateHttpRequest: (request) =>
             Effect.succeed({
               sessionId: AuthSessionId.make("test-session"),
               subject: "test",
               method: "bearer-access-token",
-              scopes: [AuthOrchestrationReadScope],
+              scopes: request.headers["x-test-operate"]
+                ? [AuthOrchestrationReadScope, AuthOrchestrationOperateScope]
+                : [AuthOrchestrationReadScope],
             }),
         }),
       ),
@@ -82,6 +91,56 @@ describe("Reverse workbench HTTP route", () => {
       );
       expect(missing.status).toBe(404);
       expect(await missing.json()).toMatchObject({ reason: "not_found" });
+
+      // Workbench scans run the same analyzers as the RPCs.
+      await NodeFSP.writeFile(NodePath.join(root, "fw.bin"), "\0\0boot=quiet\0");
+      const stateDir = await Effect.runPromise(
+        Effect.gen(function* () {
+          return (yield* ServerConfig).stateDir;
+        }).pipe(
+          Effect.provide(
+            ServerConfig.layerTest(root, NodePath.join(root, "state")).pipe(
+              Layer.provide(NodeServices.layer),
+            ),
+          ),
+        ),
+      );
+      const { investigation } = await getReverseInvestigationStore(stateDir).importFile({
+        projectId: "live",
+        environmentId: "env",
+        workspaceRoot: root,
+        relativePath: "fw.bin",
+      });
+      const scanned = await handler(
+        new Request(url, {
+          method: "POST",
+          headers,
+          body: JSON.stringify({
+            projectId: "live",
+            investigationId: investigation.id,
+            operation: "scan",
+            engine: "strings",
+          }),
+        }),
+      );
+      expect(scanned.status).toBe(403);
+      const operated = await handler(
+        new Request(url, {
+          method: "POST",
+          headers: { ...headers, "x-test-operate": "1" },
+          body: JSON.stringify({
+            projectId: "live",
+            investigationId: investigation.id,
+            operation: "scan",
+            engine: "strings",
+          }),
+        }),
+      );
+      expect(operated.status).toBe(200);
+      expect(await operated.json()).toMatchObject({
+        operation: "scan",
+        data: { strings: [{ offset: 2, value: "boot=quiet" }], truncated: false },
+      });
     } finally {
       await dispose();
       await NodeFSP.rm(root, { recursive: true, force: true });
