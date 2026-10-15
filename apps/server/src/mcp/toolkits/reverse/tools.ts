@@ -12,6 +12,7 @@ import {
   ReverseListResult,
   ReverseStringsInput,
   ReverseStringsResult,
+  ReverseToolchainResult,
 } from "@t3tools/contracts";
 import { Tool, Toolkit } from "effect/ai";
 
@@ -82,7 +83,17 @@ const ReverseEmulateTool = Tool.make("t3_reverse_emulate", {
   success: ReverseEmulateResult,
 }).annotate(Tool.Destructive, false);
 
+const ReverseToolchainTool = Tool.make("t3_reverse_toolchain", {
+  ...shared,
+  description:
+    "Report which native reverse-engineering tools this environment can run (sandbox launcher, Ghidra, Java, binwalk, unblob, ROPgadget, rea, QEMU), which analyses each enables, and how to install what is missing. Nothing is executed to find out.",
+  success: ReverseToolchainResult,
+})
+  .annotate(Tool.Readonly, true)
+  .annotate(Tool.Destructive, false);
+
 export const ReverseToolkit = Toolkit.make(
+  ReverseToolchainTool,
   ReverseListTool,
   ReverseStringsTool,
   ReverseImportTool,

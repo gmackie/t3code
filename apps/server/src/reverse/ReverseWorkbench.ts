@@ -12,6 +12,7 @@ import {
   type ReverseAnalysisInput,
   type ReverseAnalysisResult,
   type ReverseDeleteInput,
+  type ReverseToolchainResult,
   type ReverseEmulateInput,
   type ReverseEmulateResult,
   type ReverseImportInput,
@@ -43,6 +44,7 @@ import * as ProjectService from "../project/ProjectService.ts";
 import { ReverseAnalysisService } from "./AnalysisService.ts";
 import { ghidraSessions } from "./GhidraSession.ts";
 import { getReverseInvestigationStore } from "./InvestigationStore.ts";
+import { inspectToolchain } from "./Toolchain.ts";
 import { VeritasEvidenceClient } from "./VeritasEvidenceClient.ts";
 import { WorkbenchService } from "./WorkbenchService.ts";
 
@@ -60,6 +62,7 @@ export class ReverseWorkbench extends Context.Service<
     readonly link: (
       input: typeof ReverseLinkInput.Type,
     ) => Effect.Effect<ReverseInvestigation, ReverseStoreError>;
+    readonly toolchain: Effect.Effect<ReverseToolchainResult, ReverseStoreError>;
     readonly remove: (
       input: typeof ReverseDeleteInput.Type,
     ) => Effect.Effect<void, ReverseStoreError>;
@@ -238,6 +241,7 @@ const make = Effect.gen(function* () {
           boardRevisionId: input.boardRevisionId,
         }),
       ),
+    toolchain: attempt(() => inspectToolchain()),
     remove: (input) =>
       inProject(input.projectId, () => store.remove(input.projectId, input.investigationId)),
     strings: (input) =>

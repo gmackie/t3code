@@ -92,6 +92,23 @@ export const ReverseLinkInput = Schema.Struct({
   boardRevisionId: Schema.optional(Schema.NullOr(Id)),
 });
 export const ReverseDeleteInput = Schema.Struct({ projectId: Id, investigationId: Id });
+export const ReverseToolchainInput = Schema.Struct({});
+/** What the environment can run; nothing is executed to find out. */
+export const ReverseToolchainResult = Schema.Struct({
+  tools: Schema.Array(
+    Schema.Struct({
+      id: Schema.String,
+      label: Schema.String,
+      status: Schema.Literals(["ready", "missing", "misconfigured"]),
+      detail: Schema.String,
+      hint: Schema.String,
+      requiredFor: Schema.Array(
+        Schema.Literals(["ghidra", "gadgets", "binwalk", "unblob", "rea", "emulate"]),
+      ),
+    }),
+  ),
+});
+export type ReverseToolchainResult = typeof ReverseToolchainResult.Type;
 /** Provenance sent to Veritas. "extracted" needs a registered parent, which T3 does not send yet. */
 export const ReverseFirmwareSource = Schema.Literals(["imported", "vendor", "flash-read", "build"]);
 export type ReverseFirmwareSource = typeof ReverseFirmwareSource.Type;

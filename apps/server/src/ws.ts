@@ -1859,6 +1859,7 @@ const layerWsRpc = (
         [WS_METHODS.reverseLink]: (input) => reverseWorkbench.link(input),
         [WS_METHODS.reverseStrings]: (input) => reverseWorkbench.strings(input),
         [WS_METHODS.reverseDelete]: (input) => reverseWorkbench.remove(input),
+        [WS_METHODS.reverseToolchain]: () => reverseWorkbench.toolchain,
         [ORCHESTRATION_V2_WS_METHODS.dispatchCommand]: (command) =>
           Effect.annotateCurrentSpan({
             "orchestration_v2.command_id": command.commandId,

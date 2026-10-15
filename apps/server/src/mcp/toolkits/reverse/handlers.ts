@@ -28,6 +28,7 @@ const call =
     );
 
 export const layer = McpToolAccess.toLayer(ReverseToolkit, {
+  t3_reverse_toolchain: McpToolAccess.reads(call((workbench) => () => workbench.toolchain)),
   t3_reverse_list: McpToolAccess.reads(call((workbench) => workbench.list)),
   t3_reverse_strings: McpToolAccess.reads(call((workbench) => workbench.strings)),
   t3_reverse_import: McpToolAccess.writes(call((workbench) => workbench.importFile)),

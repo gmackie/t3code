@@ -68,6 +68,10 @@ function ProjectWorkspace({
   }, []);
   const target = { environmentId: threadRef.environmentId, input: { projectId } };
   const list = useEnvironmentQuery(reverseEnvironment.list(target));
+  const toolchain = useEnvironmentQuery(
+    reverseEnvironment.toolchain({ environmentId: threadRef.environmentId, input: {} }),
+  );
+  const toolsNeedingSetup = (toolchain.data?.tools ?? []).filter((tool) => tool.status !== "ready");
   const investigations = list.data?.investigations ?? [],
     artifacts = list.data?.artifacts ?? [];
   const active = investigations.find((item) => item.id === selected) ?? investigations[0];
@@ -191,6 +195,31 @@ function ProjectWorkspace({
       <header className="border-b border-border p-3">
         <h2 className="text-sm font-semibold">Reverse Workbench</h2>
         <p className="text-xs text-muted-foreground">Firmware · code · hardware · evidence</p>
+        {toolchain.data && (
+          <details className="mt-2 text-xs">
+            <summary className="cursor-pointer text-muted-foreground">
+              {toolsNeedingSetup.length
+                ? `Toolchain: ${toolsNeedingSetup.length} of ${toolchain.data.tools.length} tools need setup`
+                : "Toolchain: everything is ready"}
+            </summary>
+            <ul className="mt-2 space-y-2">
+              {toolchain.data.tools.map((tool) => (
+                <li key={tool.id}>
+                  <span className="font-medium">{tool.label}</span>{" "}
+                  <span className={tool.status === "ready" ? "text-success" : "text-warning"}>
+                    {tool.status}
+                  </span>
+                  <span className="text-muted-foreground">
+                    {" "}
+                    · needed for {tool.requiredFor.join(", ")}
+                  </span>
+                  <p className="break-all text-muted-foreground">{tool.detail}</p>
+                  {tool.status !== "ready" && <p>{tool.hint}</p>}
+                </li>
+              ))}
+            </ul>
+          </details>
+        )}
       </header>
       <form
         className="flex gap-2 border-b border-border p-3"

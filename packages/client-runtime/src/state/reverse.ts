@@ -13,6 +13,11 @@ export function createReverseEnvironmentAtoms<R, E>(
       tag: WS_METHODS.reverseList,
       staleTimeMs: 1_000,
     }),
+    toolchain: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "reverse:toolchain",
+      tag: WS_METHODS.reverseToolchain,
+      staleTimeMs: 30_000,
+    }),
     importFile: createEnvironmentRpcCommand(runtime, {
       label: "reverse:import",
       tag: WS_METHODS.reverseImport,
