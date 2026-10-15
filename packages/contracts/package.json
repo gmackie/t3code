@@ -2,19 +2,41 @@
   "name": "@t3tools/contracts",
   "version": "0.0.45",
   "private": true,
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "type": "module",
   "exports": {
-    ".": { "types": "./src/index.ts", "import": "./src/index.ts" },
-    "./settings": { "types": "./src/settings.ts", "import": "./src/settings.ts" },
-    "./relay": { "types": "./src/relay.ts", "import": "./src/relay.ts" },
-    "./relayTransport": { "types": "./src/relayTransport.ts", "import": "./src/relayTransport.ts" },
-    "./reverseWorkbench": { "types": "./src/reverseWorkbench.ts", "import": "./src/reverseWorkbench.ts" }
+    ".": {
+      "types": "./src/index.ts",
+      "import": "./src/index.ts"
+    },
+    "./settings": {
+      "types": "./src/settings.ts",
+      "import": "./src/settings.ts"
+    },
+    "./relay": {
+      "types": "./src/relay.ts",
+      "import": "./src/relay.ts"
+    },
+    "./relayTransport": {
+      "types": "./src/relayTransport.ts",
+      "import": "./src/relayTransport.ts"
+    },
+    "./reverseWorkbench": {
+      "types": "./src/reverseWorkbench.ts",
+      "import": "./src/reverseWorkbench.ts"
+    }
   },
   "scripts": {
     "typecheck": "tsc-rs --noEmit",
     "test": "vp test run --config ../../vite.config.ts --dir ."
   },
-  "dependencies": { "effect": "catalog:" },
-  "devDependencies": { "@effect/vitest": "catalog:", "vite-plus": "catalog:" }
+  "dependencies": {
+    "effect": "catalog:"
+  },
+  "devDependencies": {
+    "@effect/vitest": "catalog:",
+    "vite-plus": "catalog:"
+  }
 }

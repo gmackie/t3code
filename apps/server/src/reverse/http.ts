@@ -26,7 +26,7 @@ export function makeReverseWorkbenchRouteLayer(makeExtensions: (stateDir: string
       if (!request.headers["content-type"]?.toLowerCase().startsWith("application/json")) return HttpServerResponse.text("JSON content type required", { status: 415 });
       const body = yield* request.text;
       if (new TextEncoder().encode(body).byteLength > 65536) return HttpServerResponse.text("Request exceeds 64 KiB", { status: 413 });
-      const input = yield* Effect.try(() => JSON.parse(body)).pipe(Effect.flatMap(Schema.decodeUnknownEffect(ReverseWorkbenchRequest, { onExcessProperty: "error" })));
+      const input = yield* Schema.decodeUnknownEffect(Schema.fromJsonString(ReverseWorkbenchRequest), { onExcessProperty: "error" })(body);
       if (reverseOperationMutates(input)) yield* authenticateRawRouteWithScope(AuthOrchestrationOperateScope);
       if (input.operation === "lab" && reverseOperationMutates(input)) yield* authenticateRawRouteWithScope(AuthTerminalOperateScope);
       const result = yield* Effect.tryPromise(() => service.execute(input));

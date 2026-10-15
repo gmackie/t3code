@@ -15,7 +15,14 @@ export interface WorkbenchExtension {
 
 /** Every path is resolved by project membership; callers never supply host paths to tool adapters. */
 export class WorkbenchService {
-  constructor(private readonly store: ReverseInvestigationStore, private readonly veritas: VeritasEvidenceClient, private readonly extensions: readonly WorkbenchExtension[] = []) {}
+  private readonly store: ReverseInvestigationStore;
+  private readonly veritas: VeritasEvidenceClient;
+  private readonly extensions: readonly WorkbenchExtension[];
+  constructor(store: ReverseInvestigationStore, veritas: VeritasEvidenceClient, extensions: readonly WorkbenchExtension[] = []) {
+    this.store = store;
+    this.veritas = veritas;
+    this.extensions = extensions;
+  }
   async execute(request: ReverseWorkbenchRequest): Promise<ReverseWorkbenchReply> {
     const source = await this.store.getArtifact(request.projectId, request.investigationId);
     let data: unknown;

@@ -5,7 +5,12 @@ const record = (value: unknown): Record<string, unknown> => value !== null && ty
 
 /** Environment-owned credentials never cross the renderer boundary. Registration is digest-idempotent. */
 export class VeritasEvidenceClient {
-  constructor(private readonly connection: VeritasEvidenceConnection | null, private readonly fetcher: typeof fetch = fetch) {}
+  private readonly connection: VeritasEvidenceConnection | null;
+  private readonly fetcher: typeof fetch;
+  constructor(connection: VeritasEvidenceConnection | null, fetcher: typeof fetch = fetch) {
+    this.connection = connection;
+    this.fetcher = fetcher;
+  }
   get configured(): boolean { return this.connection !== null; }
 
   async register(artifact: ReverseFirmwareArtifact, boardRevisionId?: string): Promise<{ id: string; sha256: string }> {
