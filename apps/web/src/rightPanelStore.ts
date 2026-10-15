@@ -335,7 +335,7 @@ const upsertSurface = (
           ...surface,
           codePanel:
             active?.kind === "kicad" || active?.kind === "reverse"
-              ? active.codePanel
+              ? (active.codePanel ?? { isOpen: current.isOpen, activeSurfaceId: null })
               : { isOpen: current.isOpen, activeSurfaceId: current.activeSurfaceId },
         }
       : (existing ?? surface);
