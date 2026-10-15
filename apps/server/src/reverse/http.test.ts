@@ -1,0 +1,66 @@
+// @effect-diagnostics nodeBuiltinImport:off
+import * as NodeFSP from "node:fs/promises";
+import * as NodeOS from "node:os";
+import * as NodePath from "node:path";
+import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as NodeHttpPlatform from "@effect/platform-node/NodeHttpPlatform";
+import { AuthOrchestrationReadScope, AuthSessionId } from "@t3tools/contracts";
+import * as ConfigProvider from "effect/ConfigProvider";
+import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
+import { HttpRouter } from "effect/http";
+import { describe, expect, it } from "vite-plus/test";
+import { EnvironmentAuth } from "../auth/EnvironmentAuth.ts";
+import { ServerConfig } from "../config.ts";
+import * as ProjectService from "../project/ProjectService.ts";
+import { reverseWorkbenchRouteLayer } from "./http.ts";
+
+const url = "http://localhost/api/reverse/workbench";
+const status = JSON.stringify({ projectId: "gone", investigationId: "i1", operation: "status" });
+
+describe("Reverse workbench HTTP route", () => {
+  it("refuses oversized declared bodies and deleted projects", async () => {
+    const root = await NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "t3-reverse-http-"));
+    const routes = reverseWorkbenchRouteLayer.pipe(
+      Layer.provideMerge(
+        Layer.mock(EnvironmentAuth)({
+          authenticateHttpRequest: () =>
+            Effect.succeed({
+              sessionId: AuthSessionId.make("test-session"),
+              subject: "test",
+              method: "bearer-access-token",
+              scopes: [AuthOrchestrationReadScope],
+            }),
+        }),
+      ),
+      Layer.provide(
+        Layer.mock(ProjectService.ProjectService)({
+          getById: () => Effect.succeed(Option.none()),
+        }),
+      ),
+      Layer.provide(ServerConfig.layerTest(root, NodePath.join(root, "state"))),
+      Layer.provide(ConfigProvider.layer(ConfigProvider.fromEnv({ env: {} }))),
+      Layer.provideMerge(NodeHttpPlatform.layer),
+      Layer.provideMerge(NodeServices.layer),
+    );
+    const { handler, dispose } = HttpRouter.toWebHandler(routes, { disableLogger: true });
+    const headers = { "content-type": "application/json" };
+    try {
+      const declared = await handler(
+        new Request(url, {
+          method: "POST",
+          headers: { ...headers, "content-length": "65537" },
+          body: "x".repeat(65537),
+        }),
+      );
+      expect(declared.status).toBe(413);
+
+      const deleted = await handler(new Request(url, { method: "POST", headers, body: status }));
+      expect(deleted.status).toBe(404);
+    } finally {
+      await dispose();
+      await NodeFSP.rm(root, { recursive: true, force: true });
+    }
+  });
+});
