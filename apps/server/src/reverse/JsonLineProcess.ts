@@ -22,6 +22,8 @@ export class JsonLineProcess {
   private readonly prefix: string;
   private nextId = 0;
   private buffer = "";
+  // Bytes buffered without a newline, tracked as chunks arrive rather than re-measured.
+  private bufferedBytes = 0;
   private stopped = false;
   private diagnostic = "";
   constructor(input: ToolInput, prefix = "@T3RE:") {
@@ -30,7 +32,8 @@ export class JsonLineProcess {
     const decoder = new NodeStringDecoder.StringDecoder("utf8");
     this.launch.child.stdout.on("data", (chunk: Buffer) => {
       this.buffer += decoder.write(chunk);
-      if (Buffer.byteLength(this.buffer) > 8 * 1024 * 1024) {
+      this.bufferedBytes += chunk.byteLength;
+      if (this.bufferedBytes > 8 * 1024 * 1024) {
         this.fail(new Error("Bridge response exceeded limit"));
         return;
       }
@@ -38,6 +41,7 @@ export class JsonLineProcess {
       while ((newline = this.buffer.indexOf("\n")) >= 0) {
         const line = this.buffer.slice(0, newline).replace(/\r$/, "");
         this.buffer = this.buffer.slice(newline + 1);
+        this.bufferedBytes = Buffer.byteLength(this.buffer);
         if (!line.startsWith(this.prefix)) {
           this.diagnostic = (this.diagnostic + line + "\n").slice(-8192);
           continue;

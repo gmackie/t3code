@@ -53,6 +53,29 @@ export const ReverseFinding = Schema.Struct({
   evidence: Schema.Array(ReverseEvidenceRef),
 });
 export type ReverseFinding = typeof ReverseFinding.Type;
+/** A finding as T3 keeps it: tied to one investigation, with when it was recorded and last changed. */
+export const ReverseFindingRecord = Schema.Struct({
+  ...ReverseFinding.fields,
+  investigationId: Id,
+  createdAt: Id,
+  updatedAt: Id,
+  // Who made the last status change, so a reversal is never mistaken for the author's own.
+  statusChangedBy: Schema.optional(Schema.Literals(["human", "agent"])),
+});
+export type ReverseFindingRecord = typeof ReverseFindingRecord.Type;
+export const ReverseFindingCreateInput = Schema.Struct({
+  projectId: Id,
+  investigationId: Id,
+  title: ReverseFinding.fields.title,
+  kind: ReverseFinding.fields.kind,
+  evidence: Schema.Array(ReverseEvidenceRef).check(Schema.isMaxLength(100)),
+});
+/** Agents may only demote; confirming is a human decision. */
+export const ReverseFindingUpdateInput = Schema.Struct({
+  projectId: Id,
+  findingId: Id,
+  status: ReverseFinding.fields.status,
+});
 export const ReverseInvestigation = Schema.Struct({
   id: Id,
   projectId: Id,
@@ -61,6 +84,12 @@ export const ReverseInvestigation = Schema.Struct({
   boardRevisionId: Schema.optional(Id),
   artifactSha256: ReverseDigest,
   ghidraSessionId: Schema.optional(Id),
+  // Set when this firmware was extracted from another investigation's.
+  parentInvestigationId: Schema.optional(Id),
+  // How Ghidra loads raw images of this firmware; remembered from the last analysis that set it.
+  ghidraProfile: Schema.optional(
+    Schema.Struct({ languageId: Schema.optional(Id), imageBase: Schema.optional(Id) }),
+  ),
 });
 export type ReverseInvestigation = typeof ReverseInvestigation.Type;
 export const ReverseFirmwareArtifact = Schema.Struct({
@@ -69,12 +98,15 @@ export const ReverseFirmwareArtifact = Schema.Struct({
   filename: Id,
   sourcePath: Schema.String.check(Schema.isMaxLength(4096)),
   importedAt: Id,
+  parentSha256: Schema.optional(ReverseDigest),
 });
 export type ReverseFirmwareArtifact = typeof ReverseFirmwareArtifact.Type;
 export const ReverseListInput = Schema.Struct({ projectId: Id });
 export const ReverseListResult = Schema.Struct({
   investigations: Schema.Array(ReverseInvestigation),
   artifacts: Schema.Array(ReverseFirmwareArtifact),
+  // Optional so clients still read servers that predate findings.
+  findings: Schema.optional(Schema.Array(ReverseFindingRecord)),
 });
 export const ReverseImportInput = Schema.Struct({
   projectId: Id,
@@ -92,7 +124,57 @@ export const ReverseLinkInput = Schema.Struct({
   boardRevisionId: Schema.optional(Schema.NullOr(Id)),
 });
 export const ReverseDeleteInput = Schema.Struct({ projectId: Id, investigationId: Id });
-/** Provenance sent to Veritas. "extracted" needs a registered parent, which T3 does not send yet. */
+export const ReverseDiffInput = Schema.Struct({
+  projectId: Id,
+  leftInvestigationId: Id,
+  rightInvestigationId: Id,
+});
+const DiffSide = Schema.Struct({ name: Schema.String, address: Schema.String });
+/**
+ * Function-level comparison of two builds. Relocated functions kept their instructions but moved
+ * or changed bytes such as addresses; changed functions run different instructions.
+ */
+export const ReverseDiffResult = Schema.Struct({
+  identical: Schema.Int,
+  relocated: Schema.Int,
+  changed: Schema.Int,
+  added: Schema.Int,
+  removed: Schema.Int,
+  truncated: Schema.Boolean,
+  functions: Schema.Array(
+    Schema.Struct({
+      status: Schema.Literals(["changed", "relocated", "added", "removed"]),
+      left: Schema.optional(DiffSide),
+      right: Schema.optional(DiffSide),
+    }),
+  ),
+});
+export type ReverseDiffResult = typeof ReverseDiffResult.Type;
+/** Opens one file an extraction produced as its own investigation, linked to its parent. */
+export const ReverseImportExtractedInput = Schema.Struct({
+  projectId: Id,
+  investigationId: Id,
+  receiptId: Schema.String.check(Schema.isPattern(/^[0-9a-f-]{36}$/)),
+  path: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(4096)),
+});
+export const ReverseToolchainInput = Schema.Struct({});
+/** What the environment can run; nothing is executed to find out. */
+export const ReverseToolchainResult = Schema.Struct({
+  tools: Schema.Array(
+    Schema.Struct({
+      id: Schema.String,
+      label: Schema.String,
+      status: Schema.Literals(["ready", "missing", "misconfigured"]),
+      detail: Schema.String,
+      hint: Schema.String,
+      requiredFor: Schema.Array(
+        Schema.Literals(["ghidra", "gadgets", "binwalk", "unblob", "rea", "emulate"]),
+      ),
+    }),
+  ),
+});
+export type ReverseToolchainResult = typeof ReverseToolchainResult.Type;
+/** Provenance chosen for an import. Extracted firmware is registered as "extracted" with its parent. */
 export const ReverseFirmwareSource = Schema.Literals(["imported", "vendor", "flash-read", "build"]);
 export type ReverseFirmwareSource = typeof ReverseFirmwareSource.Type;
 export const ReversePublishInput = Schema.Struct({

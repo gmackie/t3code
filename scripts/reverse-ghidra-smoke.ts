@@ -39,6 +39,10 @@ try {
   });
   NodeAssert.ok(detail.functions[0]?.pseudocode.includes("fixture_fn"));
   NodeAssert.ok(detail.functions[0]?.instructions.length);
+  const prints = await pool.execute("test-project", binary, digest, { action: "fingerprints" });
+  const print = prints.fingerprints?.find((row) => row.name === "fixture_fn");
+  NodeAssert.ok(print && print.instructions > 0, "Ghidra fingerprinted the fixture function");
+  NodeAssert.match(print.shape, /^[0-9a-f]{16}$/);
   const renamed = await pool.execute("test-project", binary, digest, {
     action: "rename",
     address: fn.address,
@@ -63,7 +67,7 @@ try {
   });
   NodeAssert.equal(reopened.functions[0]?.name, "reviewed_fixture");
   console.log(
-    "PASS: real Ghidra import, persistent decompilation, rename conflict and save/reopen",
+    "PASS: real Ghidra import, persistent decompilation, fingerprints, rename conflict and save/reopen",
   );
 } finally {
   pool.dispose();

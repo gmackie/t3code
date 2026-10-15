@@ -12,6 +12,13 @@ import {
   type ReverseAnalysisInput,
   type ReverseAnalysisResult,
   type ReverseDeleteInput,
+  type ReverseToolchainResult,
+  type ReverseFindingCreateInput,
+  type ReverseImportExtractedInput,
+  type ReverseDiffInput,
+  type ReverseDiffResult,
+  type ReverseFindingRecord,
+  type ReverseFindingUpdateInput,
   type ReverseEmulateInput,
   type ReverseEmulateResult,
   type ReverseImportInput,
@@ -43,6 +50,7 @@ import * as ProjectService from "../project/ProjectService.ts";
 import { ReverseAnalysisService } from "./AnalysisService.ts";
 import { ghidraSessions } from "./GhidraSession.ts";
 import { getReverseInvestigationStore } from "./InvestigationStore.ts";
+import { inspectToolchain } from "./Toolchain.ts";
 import { VeritasEvidenceClient } from "./VeritasEvidenceClient.ts";
 import { WorkbenchService } from "./WorkbenchService.ts";
 
@@ -60,6 +68,22 @@ export class ReverseWorkbench extends Context.Service<
     readonly link: (
       input: typeof ReverseLinkInput.Type,
     ) => Effect.Effect<ReverseInvestigation, ReverseStoreError>;
+    readonly toolchain: Effect.Effect<ReverseToolchainResult, ReverseStoreError>;
+    readonly diff: (
+      input: typeof ReverseDiffInput.Type,
+    ) => Effect.Effect<ReverseDiffResult, ReverseStoreError>;
+    readonly importExtracted: (
+      input: typeof ReverseImportExtractedInput.Type,
+    ) => Effect.Effect<typeof ReverseImportResult.Type, ReverseStoreError>;
+    /** The author comes from the transport: people in the workspace, agents through MCP. */
+    readonly createFinding: (
+      input: typeof ReverseFindingCreateInput.Type,
+      author: "human" | "agent",
+    ) => Effect.Effect<ReverseFindingRecord, ReverseStoreError>;
+    readonly updateFinding: (
+      input: typeof ReverseFindingUpdateInput.Type,
+      actor: "human" | "agent",
+    ) => Effect.Effect<ReverseFindingRecord, ReverseStoreError>;
     readonly remove: (
       input: typeof ReverseDeleteInput.Type,
     ) => Effect.Effect<void, ReverseStoreError>;
@@ -238,13 +262,55 @@ const make = Effect.gen(function* () {
           boardRevisionId: input.boardRevisionId,
         }),
       ),
+    toolchain: attempt(() => inspectToolchain()),
+    diff: (input) =>
+      inProject(input.projectId, () =>
+        analysis.diff(input.projectId, input.leftInvestigationId, input.rightInvestigationId),
+      ),
+    importExtracted: (input) =>
+      Effect.gen(function* () {
+        yield* requireProject(input.projectId);
+        const environmentId = yield* serverEnvironment.getEnvironmentId;
+        return yield* attempt(async () => {
+          const parent = await store.getArtifact(input.projectId, input.investigationId);
+          const root = await analysis.extractedRoot(
+            input.projectId,
+            input.receiptId,
+            parent.artifact.sha256,
+          );
+          // Same containment and size checks as a workspace import, rooted at the extraction.
+          return store.importFile({
+            projectId: input.projectId,
+            workspaceRoot: root,
+            relativePath: input.path,
+            environmentId,
+            origin: {
+              parentInvestigationId: input.investigationId,
+              parentSha256: parent.artifact.sha256,
+              label: `${parent.artifact.filename} → ${input.path}`,
+            },
+          });
+        });
+      }),
+    createFinding: (input, author) =>
+      inProject(input.projectId, () => store.createFinding({ ...input, authorKind: author })),
+    updateFinding: (input, actor) =>
+      inProject(input.projectId, () => store.updateFinding({ ...input, actor })),
     remove: (input) =>
       inProject(input.projectId, () => store.remove(input.projectId, input.investigationId)),
     strings: (input) =>
       inProject(input.projectId, () =>
         store.strings(input.projectId, input.investigationId, input.minLength),
       ),
-    analyze: (input) => inProject(input.projectId, () => analysis.run(input)),
+    analyze: (input) =>
+      inProject(input.projectId, async () => {
+        const result = await analysis.run(input);
+        // A raw image's load settings are part of the investigation once they work.
+        const profile = input.kind === "ghidra" ? input.ghidra : undefined;
+        if (profile?.languageId || profile?.imageBase)
+          await store.rememberGhidraProfile(input.projectId, input.investigationId, profile);
+        return result;
+      }),
     emulate: (input) => inProject(input.projectId, () => analysis.emulate(input)),
     publish: (input) =>
       workbench.veritasConfigured

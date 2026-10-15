@@ -13,6 +13,11 @@ export function createReverseEnvironmentAtoms<R, E>(
       tag: WS_METHODS.reverseList,
       staleTimeMs: 1_000,
     }),
+    toolchain: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "reverse:toolchain",
+      tag: WS_METHODS.reverseToolchain,
+      staleTimeMs: 30_000,
+    }),
     importFile: createEnvironmentRpcCommand(runtime, {
       label: "reverse:import",
       tag: WS_METHODS.reverseImport,
@@ -24,6 +29,22 @@ export function createReverseEnvironmentAtoms<R, E>(
     publish: createEnvironmentRpcCommand(runtime, {
       label: "reverse:publish",
       tag: WS_METHODS.reversePublish,
+    }),
+    diff: createEnvironmentRpcCommand(runtime, {
+      label: "reverse:diff",
+      tag: WS_METHODS.reverseDiff,
+    }),
+    importExtracted: createEnvironmentRpcCommand(runtime, {
+      label: "reverse:import-extracted",
+      tag: WS_METHODS.reverseImportExtracted,
+    }),
+    createFinding: createEnvironmentRpcCommand(runtime, {
+      label: "reverse:finding-create",
+      tag: WS_METHODS.reverseFindingCreate,
+    }),
+    updateFinding: createEnvironmentRpcCommand(runtime, {
+      label: "reverse:finding-update",
+      tag: WS_METHODS.reverseFindingUpdate,
     }),
     remove: createEnvironmentRpcCommand(runtime, {
       label: "reverse:delete",

@@ -9,7 +9,16 @@ export interface GhidraProfile {
   imageBase?: string | undefined;
 }
 export interface GhidraOperation extends GhidraProfile {
-  action?: "list" | "function" | "rename" | "comment" | "save" | "close" | undefined;
+  // "fingerprints" is internal: firmware diffing asks for it, clients cannot.
+  action?:
+    | "list"
+    | "function"
+    | "rename"
+    | "comment"
+    | "save"
+    | "close"
+    | "fingerprints"
+    | undefined;
   address?: string | undefined;
   name?: string | undefined;
   expectedName?: string | undefined;
@@ -30,11 +39,19 @@ export interface GhidraFunction {
   callees?: { address: string; name: string }[];
   xrefs?: { address: string; type: string }[];
 }
+export interface GhidraFingerprint {
+  address: string;
+  name: string;
+  instructions: number;
+  shape: string;
+  bytes: string;
+}
 export interface GhidraReply {
   functions: GhidraFunction[];
   truncated: boolean;
   toolVersion: string;
   nextCursor?: number;
+  fingerprints?: GhidraFingerprint[];
 }
 /** Each open program has one persistent JVM. Project/profile/version participate in identity. */
 const MAX_SESSIONS = 4;
@@ -157,14 +174,19 @@ export class GhidraSessionPool {
         "Ghidra worker exited. Reopen analysis; interrupted edits are never replayed.",
       );
     }
-    const reply = await bridge.request(action, {
-      address: operation.address,
-      name: operation.name,
-      expectedName: operation.expectedName,
-      comment: operation.comment,
-      cursor: operation.cursor ?? 0,
-      limit: 128,
-    });
+    const reply = await bridge.request(
+      action,
+      {
+        address: operation.address,
+        name: operation.name,
+        expectedName: operation.expectedName,
+        comment: operation.comment,
+        cursor: operation.cursor ?? 0,
+        limit: 128,
+      },
+      // Fingerprinting walks every instruction in the program.
+      action === "fingerprints" ? 180_000 : undefined,
+    );
     if (action === "close") this.close(key);
     if (!reply || typeof reply !== "object") throw new Error("Invalid Ghidra response");
     const value = reply as Partial<GhidraReply>;

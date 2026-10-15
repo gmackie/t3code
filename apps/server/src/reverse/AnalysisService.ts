@@ -2,7 +2,12 @@
 import * as NodeFSP from "node:fs/promises";
 import * as NodePath from "node:path";
 import * as NodeCrypto from "node:crypto";
-import { type ReverseFirmwareArtifact, ReverseStoreError } from "@t3tools/contracts";
+import {
+  type ReverseDiffResult,
+  type ReverseFirmwareArtifact,
+  ReverseStoreError,
+} from "@t3tools/contracts";
+import { diffFingerprints } from "./FirmwareDiff.ts";
 import * as Schema from "effect/Schema";
 import { runBoundedTool, type ToolResult } from "./ToolRunner.ts";
 import type { ReverseInvestigationStore } from "./InvestigationStore.ts";
@@ -166,6 +171,52 @@ export class ReverseAnalysisService {
   constructor(stateDir: string, store: ReverseInvestigationStore) {
     this.stateDir = stateDir;
     this.store = store;
+  }
+  /**
+   * The folder an extraction wrote, if that receipt came from this firmware. Files in it can be
+   * imported as their own investigations until the receipt is pruned.
+   */
+  async extractedRoot(
+    projectId: string,
+    receiptId: string,
+    artifactSha256: string,
+  ): Promise<string> {
+    const owner = NodeCrypto.createHash("sha256").update(projectId).digest("hex");
+    const dir = NodePath.join(this.stateDir, "reverse", "analysis", owner, receiptId);
+    const receipt = await NodeFSP.readFile(NodePath.join(dir, "receipt.json"), "utf8").catch(
+      () => null,
+    );
+    const source = receipt === null ? null : (JSON.parse(receipt) as { artifactSha256?: unknown });
+    if (source?.artifactSha256 !== artifactSha256)
+      throw new ReverseStoreError({
+        reason: "not_found",
+        message: "That extraction is not available for this investigation. Run Unblob again.",
+      });
+    return NodePath.join(dir, "extracted");
+  }
+  /** Compares two investigations' functions through their Ghidra programs. */
+  diff(projectId: string, leftId: string, rightId: string): Promise<ReverseDiffResult> {
+    return this.slots.use(async () => {
+      const fingerprints = async (investigationId: string) => {
+        const { artifact, path } = await this.store.getArtifact(projectId, investigationId);
+        // Open the same program the user browses, including a raw image's load settings.
+        const profile = (await this.store.list(projectId)).investigations.find(
+          (item) => item.id === investigationId,
+        )?.ghidraProfile;
+        return ghidraSessions(this.stateDir).execute(projectId, path, artifact.sha256, {
+          action: "fingerprints",
+          languageId: profile?.languageId,
+          imageBase: profile?.imageBase,
+        });
+      };
+      const left = await fingerprints(leftId);
+      const right = await fingerprints(rightId);
+      return diffFingerprints(
+        left.fingerprints ?? [],
+        right.fingerprints ?? [],
+        left.truncated || right.truncated,
+      );
+    });
   }
   async run(input: AnalysisInput): Promise<AnalysisResult> {
     const { artifact, path } = await this.store.getArtifact(input.projectId, input.investigationId);

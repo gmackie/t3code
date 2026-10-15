@@ -4,6 +4,7 @@ import * as NodeFS from "node:fs";
 import * as NodeFSP from "node:fs/promises";
 import * as NodePath from "node:path";
 import {
+  ReverseFindingRecord,
   ReverseStoreError,
   type ReverseFirmwareArtifact,
   type ReverseInvestigation,
@@ -14,9 +15,11 @@ import * as Schema from "effect/Schema";
 type ProjectRecord = {
   investigations: ReverseInvestigation[];
   artifacts: ReverseFirmwareArtifact[];
+  findings: ReverseFindingRecord[];
 };
+type FindingStatus = ReverseFindingRecord["status"];
 
-const empty = (): ProjectRecord => ({ investigations: [], artifacts: [] });
+const empty = (): ProjectRecord => ({ investigations: [], artifacts: [], findings: [] });
 const decode = Schema.decodeUnknownSync(
   Schema.Struct({
     investigations: Schema.Array(
@@ -28,6 +31,13 @@ const decode = Schema.decodeUnknownSync(
         boardRevisionId: Schema.optional(Schema.String),
         artifactSha256: Schema.String,
         ghidraSessionId: Schema.optional(Schema.String),
+        parentInvestigationId: Schema.optional(Schema.String),
+        ghidraProfile: Schema.optional(
+          Schema.Struct({
+            languageId: Schema.optional(Schema.String),
+            imageBase: Schema.optional(Schema.String),
+          }),
+        ),
       }),
     ),
     artifacts: Schema.Array(
@@ -37,8 +47,11 @@ const decode = Schema.decodeUnknownSync(
         filename: Schema.String,
         sourcePath: Schema.String,
         importedAt: Schema.String,
+        parentSha256: Schema.optional(Schema.String),
       }),
     ),
+    // Records written before findings existed have none.
+    findings: Schema.optional(Schema.Array(ReverseFindingRecord)),
   }),
 );
 const MAX_IMPORT_BYTES = 512 * 1024 * 1024;
@@ -93,7 +106,8 @@ const err = (reason: ReverseStoreError["reason"], message: string) =>
 async function readProject(stateDir: string, projectId: string): Promise<ProjectRecord> {
   try {
     const value = JSON.parse(await NodeFSP.readFile(storagePath(stateDir, projectId), "utf8"));
-    return decode(value) as ProjectRecord;
+    const record = decode(value);
+    return { ...record, findings: [...(record.findings ?? [])] } as ProjectRecord;
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return empty();
     throw error;
@@ -149,6 +163,8 @@ export class ReverseInvestigationStore {
     workspaceRoot: string;
     relativePath: string;
     environmentId: string;
+    /** For firmware extracted from another investigation: its parent and a readable origin. */
+    origin?: { parentInvestigationId: string; parentSha256: string; label: string };
   }): Promise<{ investigation: ReverseInvestigation; artifact: ReverseFirmwareArtifact }> {
     const { projectId, relativePath } = input;
     if (
@@ -208,8 +224,9 @@ export class ReverseInvestigationStore {
         sha256,
         sizeBytes: copiedBytes,
         filename: NodePath.basename(relativePath),
-        sourcePath: relativePath,
+        sourcePath: input.origin?.label ?? relativePath,
         importedAt: DateTime.formatIso(DateTime.nowUnsafe()),
+        ...(input.origin ? { parentSha256: input.origin.parentSha256 } : {}),
       };
       await NodeFSP.rename(stagingPath, artifactPath(this.stateDir, sha256));
       return await this.locked(projectId, async () => {
@@ -220,6 +237,7 @@ export class ReverseInvestigationStore {
           projectId,
           environmentId: input.environmentId,
           artifactSha256: sha256,
+          ...(input.origin ? { parentInvestigationId: input.origin.parentInvestigationId } : {}),
         };
         if (!prior) {
           record.investigations.push(investigation);
@@ -266,6 +284,127 @@ export class ReverseInvestigationStore {
     });
   }
 
+  /**
+   * Records a candidate finding. Evidence about code or a run must concern this investigation's
+   * firmware, so a finding cannot quietly cite another artifact.
+   */
+  createFinding(input: {
+    projectId: string;
+    investigationId: string;
+    title: string;
+    kind: ReverseFindingRecord["kind"];
+    evidence: ReverseFindingRecord["evidence"];
+    authorKind: "human" | "agent";
+  }): Promise<ReverseFindingRecord> {
+    return this.locked(input.projectId, async () => {
+      const record = await readProject(this.stateDir, input.projectId);
+      const investigation = record.investigations.find((x) => x.id === input.investigationId);
+      if (!investigation) throw err("not_found", "Investigation not found in this project.");
+      const digest = investigation.artifactSha256;
+      if (input.authorKind === "agent" && input.evidence.length === 0)
+        throw err("invalid_file", "Agent findings must cite evidence a person can check.");
+      for (const ref of input.evidence) {
+        // A QEMU run must be one this environment recorded for this firmware.
+        if (
+          ref.kind === "execution" &&
+          !(await this.emulationRecorded(input.projectId, ref.runId, digest))
+        )
+          throw err("invalid_file", "Execution evidence must name a QEMU run of this firmware.");
+        const cited =
+          ref.kind === "code"
+            ? ref.location.artifactSha256
+            : ref.kind === "execution"
+              ? ref.artifactSha256
+              : digest;
+        if (cited !== digest)
+          throw err("invalid_file", "Evidence must refer to this investigation's firmware.");
+      }
+      const now = DateTime.formatIso(DateTime.nowUnsafe());
+      const finding: ReverseFindingRecord = {
+        id: NodeCrypto.randomUUID(),
+        investigationId: investigation.id,
+        artifactSha256: digest,
+        title: input.title,
+        kind: input.kind,
+        status: "candidate",
+        authorKind: input.authorKind,
+        evidence: input.evidence,
+        createdAt: now,
+        updatedAt: now,
+      };
+      record.findings.push(finding);
+      await saveProject(this.stateDir, input.projectId, record);
+      return finding;
+    });
+  }
+
+  private async emulationRecorded(projectId: string, runId: string, digest: string) {
+    if (!/^[0-9a-f-]{36}$/.test(runId)) return false;
+    const owner = NodeCrypto.createHash("sha256").update(projectId).digest("hex");
+    const receipt = await NodeFSP.readFile(
+      NodePath.join(this.stateDir, "reverse", "emulation", owner, runId, "receipt.json"),
+      "utf8",
+    ).catch(() => null);
+    return (
+      receipt !== null &&
+      (JSON.parse(receipt) as { artifactSha256?: unknown }).artifactSha256 === digest
+    );
+  }
+
+  /** Humans set any status; agents may only reject or supersede, never promote. */
+  updateFinding(input: {
+    projectId: string;
+    findingId: string;
+    status: FindingStatus;
+    actor: "human" | "agent";
+  }): Promise<ReverseFindingRecord> {
+    return this.locked(input.projectId, async () => {
+      if (input.actor === "agent" && input.status !== "rejected" && input.status !== "superseded")
+        throw err(
+          "invalid_file",
+          "Agents can reject or supersede findings; promoting or confirming one is up to a person.",
+        );
+      const record = await readProject(this.stateDir, input.projectId);
+      const index = record.findings.findIndex((x) => x.id === input.findingId);
+      if (index < 0) throw err("not_found", "Finding not found in this project.");
+      const current = record.findings[index]!;
+      // Agents may close open hypotheses, never overturn a decision a person made.
+      if (
+        input.actor === "agent" &&
+        (current.statusChangedBy === "human" || current.status === "confirmed")
+      )
+        throw err("invalid_file", "A person decided this finding; only a person can change it.");
+      const next: ReverseFindingRecord = {
+        ...current,
+        status: input.status,
+        statusChangedBy: input.actor,
+        updatedAt: DateTime.formatIso(DateTime.nowUnsafe()),
+      };
+      record.findings[index] = next;
+      await saveProject(this.stateDir, input.projectId, record);
+      return next;
+    });
+  }
+
+  /** Remembers how Ghidra loaded this firmware, so other views open the same program. */
+  rememberGhidraProfile(
+    projectId: string,
+    investigationId: string,
+    profile: { languageId?: string | undefined; imageBase?: string | undefined },
+  ): Promise<void> {
+    return this.locked(projectId, async () => {
+      const record = await readProject(this.stateDir, projectId);
+      const index = record.investigations.findIndex((x) => x.id === investigationId);
+      if (index < 0) return;
+      const ghidraProfile = {
+        ...(profile.languageId ? { languageId: profile.languageId } : {}),
+        ...(profile.imageBase ? { imageBase: profile.imageBase } : {}),
+      };
+      record.investigations[index] = { ...record.investigations[index]!, ghidraProfile };
+      await saveProject(this.stateDir, projectId, record);
+    });
+  }
+
   /** Removes an investigation; its firmware bytes go once no project references them. */
   async remove(projectId: string, investigationId: string): Promise<void> {
     await this.locked(projectId, async () => {
@@ -273,6 +412,7 @@ export class ReverseInvestigationStore {
       const investigation = record.investigations.find((x) => x.id === investigationId);
       if (!investigation) throw err("not_found", "Investigation not found in this project.");
       record.investigations = record.investigations.filter((x) => x.id !== investigationId);
+      record.findings = record.findings.filter((x) => x.investigationId !== investigationId);
       record.artifacts = record.artifacts.filter(
         (artifact) =>
           artifact.sha256 !== investigation.artifactSha256 ||

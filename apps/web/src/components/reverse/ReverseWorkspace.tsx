@@ -14,6 +14,8 @@ import {
   SelectValue,
 } from "~/components/ui/select";
 import { AnalysisPanel } from "./AnalysisPanel";
+import { DiffPanel } from "./DiffPanel";
+import { FindingsPanel, type FindingSeed } from "./FindingsPanel";
 
 const FIRMWARE_SOURCES = [
   { value: "imported", label: "Imported file" },
@@ -53,6 +55,7 @@ function ProjectWorkspace({
   // Unsaved linkage edits for one investigation; otherwise the form shows what is saved.
   const [draft, setDraft] = useState<{ id: string; veritas?: string; board?: string } | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  const [findingSeed, setFindingSeed] = useState<FindingSeed | null>(null);
   const [busy, setBusy] = useState(false),
     [error, setError] = useState<string | null>(null);
   const [source, setSource] = useState<FirmwareSource>("imported"),
@@ -68,9 +71,17 @@ function ProjectWorkspace({
   }, []);
   const target = { environmentId: threadRef.environmentId, input: { projectId } };
   const list = useEnvironmentQuery(reverseEnvironment.list(target));
+  const toolchain = useEnvironmentQuery(
+    reverseEnvironment.toolchain({ environmentId: threadRef.environmentId, input: {} }),
+  );
+  const toolsNeedingSetup = (toolchain.data?.tools ?? []).filter((tool) => tool.status !== "ready");
   const investigations = list.data?.investigations ?? [],
     artifacts = list.data?.artifacts ?? [];
   const active = investigations.find((item) => item.id === selected) ?? investigations[0];
+  const activeArtifact = artifacts.find((item) => item.sha256 === active?.artifactSha256);
+  const parent = active?.parentInvestigationId
+    ? investigations.find((item) => item.id === active.parentInvestigationId)
+    : undefined;
   const editing = draft !== null && draft.id === active?.id ? draft : null;
   const veritas = editing?.veritas ?? active?.veritasProjectId ?? "";
   const board = editing?.board ?? active?.boardRevisionId ?? "";
@@ -191,6 +202,31 @@ function ProjectWorkspace({
       <header className="border-b border-border p-3">
         <h2 className="text-sm font-semibold">Reverse Workbench</h2>
         <p className="text-xs text-muted-foreground">Firmware · code · hardware · evidence</p>
+        {toolchain.data && (
+          <details className="mt-2 text-xs">
+            <summary className="cursor-pointer text-muted-foreground">
+              {toolsNeedingSetup.length
+                ? `Toolchain: ${toolsNeedingSetup.length} of ${toolchain.data.tools.length} tools need setup`
+                : "Toolchain: everything is ready"}
+            </summary>
+            <ul className="mt-2 space-y-2">
+              {toolchain.data.tools.map((tool) => (
+                <li key={tool.id}>
+                  <span className="font-medium">{tool.label}</span>{" "}
+                  <span className={tool.status === "ready" ? "text-success" : "text-warning"}>
+                    {tool.status}
+                  </span>
+                  <span className="text-muted-foreground">
+                    {" "}
+                    · needed for {tool.requiredFor.join(", ")}
+                  </span>
+                  <p className="break-all text-muted-foreground">{tool.detail}</p>
+                  {tool.status !== "ready" && <p>{tool.hint}</p>}
+                </li>
+              ))}
+            </ul>
+          </details>
+        )}
       </header>
       <form
         className="flex gap-2 border-b border-border p-3"
@@ -249,9 +285,18 @@ function ProjectWorkspace({
           {active && (
             <>
               <div className="flex items-center gap-2 border-b border-border p-3">
-                <p className="min-w-0 flex-1 break-all font-mono text-xs">
-                  SHA-256 {active.artifactSha256}
-                </p>
+                <div className="min-w-0 flex-1 text-xs">
+                  <p className="break-all font-mono">SHA-256 {active.artifactSha256}</p>
+                  {parent && (
+                    <p className="text-muted-foreground">
+                      Extracted from{" "}
+                      <Button size="xs" variant="link" onClick={() => setSelected(parent.id)}>
+                        {artifacts.find((a) => a.sha256 === parent.artifactSha256)?.filename ??
+                          parent.artifactSha256.slice(0, 12)}
+                      </Button>
+                    </p>
+                  )}
+                </div>
                 {confirmDelete === active.id ? (
                   <>
                     <Button
@@ -287,6 +332,44 @@ function ProjectWorkspace({
                 threadRef={threadRef}
                 projectId={projectId}
                 investigationId={active.id}
+                ghidraProfile={active.ghidraProfile}
+                onOpenInvestigation={(id) => {
+                  setSelected(id);
+                  list.refresh();
+                }}
+                onRecordFinding={(draft) =>
+                  setFindingSeed({
+                    ...draft,
+                    investigationId: active.id,
+                    nonce: (findingSeed?.nonce ?? 0) + 1,
+                  })
+                }
+              />
+              <DiffPanel
+                key={`diff:${active.id}`}
+                threadRef={threadRef}
+                projectId={projectId}
+                investigationId={active.id}
+                others={investigations
+                  .filter((item) => item.id !== active.id)
+                  .map((item) => ({
+                    id: item.id,
+                    label:
+                      artifacts.find((a) => a.sha256 === item.artifactSha256)?.filename ??
+                      item.artifactSha256.slice(0, 12),
+                  }))}
+              />
+              <FindingsPanel
+                key={`findings:${active.id}`}
+                threadRef={threadRef}
+                projectId={projectId}
+                investigationId={active.id}
+                artifactSha256={active.artifactSha256}
+                findings={(list.data?.findings ?? []).filter(
+                  (finding) => finding.investigationId === active.id,
+                )}
+                seed={findingSeed}
+                onChanged={() => list.refresh()}
               />
               <details
                 className="border-b border-border p-3"
@@ -349,26 +432,32 @@ function ProjectWorkspace({
               <div className="space-y-2 p-3">
                 <h3 className="text-xs font-medium">Veritas registration</h3>
                 <div className="flex items-center gap-2">
-                  <Select
-                    value={source}
-                    disabled={busy}
-                    onValueChange={(value) => {
-                      if (value !== null) setSource(value);
-                    }}
-                  >
-                    <SelectTrigger size="xs" className="w-40" aria-label="Firmware source">
-                      <SelectValue>
-                        {FIRMWARE_SOURCES.find((option) => option.value === source)?.label}
-                      </SelectValue>
-                    </SelectTrigger>
-                    <SelectPopup>
-                      {FIRMWARE_SOURCES.map((option) => (
-                        <SelectItem key={option.value} value={option.value}>
-                          {option.label}
-                        </SelectItem>
-                      ))}
-                    </SelectPopup>
-                  </Select>
+                  {activeArtifact?.parentSha256 ? (
+                    <p className="text-xs text-muted-foreground">
+                      Registered as extracted from its parent; register the parent first.
+                    </p>
+                  ) : (
+                    <Select
+                      value={source}
+                      disabled={busy}
+                      onValueChange={(value) => {
+                        if (value !== null) setSource(value);
+                      }}
+                    >
+                      <SelectTrigger size="xs" className="w-40" aria-label="Firmware source">
+                        <SelectValue>
+                          {FIRMWARE_SOURCES.find((option) => option.value === source)?.label}
+                        </SelectValue>
+                      </SelectTrigger>
+                      <SelectPopup>
+                        {FIRMWARE_SOURCES.map((option) => (
+                          <SelectItem key={option.value} value={option.value}>
+                            {option.label}
+                          </SelectItem>
+                        ))}
+                      </SelectPopup>
+                    </Select>
+                  )}
                   <Button
                     size="sm"
                     variant="outline"

@@ -11,7 +11,8 @@ import java.io.*;
 import java.nio.charset.StandardCharsets;
 
 public class ReverseBridge extends GhidraScript {
-    private final Gson gson = new Gson();
+    // No HTML escaping: replies are read by the server, and escapes inflate C++ names sixfold.
+    private final Gson gson = new GsonBuilder().disableHtmlEscaping().create();
     private DecompInterface decompiler;
     private boolean closing = false;
     public void run() throws Exception {
@@ -48,6 +49,13 @@ public class ReverseBridge extends GhidraScript {
         return currentProgram.getAddressFactory().getDefaultAddressSpace().getAddress(Long.parseUnsignedLong(raw.substring(2), 16));
     }
     private String hex(Address a) { return "0x" + Long.toUnsignedString(a.getOffset(), 16); }
+    private String digest(java.security.MessageDigest d) {
+        StringBuilder out = new StringBuilder();
+        // 64 bits is plenty to tell functions apart and keeps 20,000 rows well under the line cap.
+        byte[] hash = d.digest();
+        for (int i = 0; i < 8; i++) out.append(String.format("%02x", hash[i]));
+        return out.toString();
+    }
     private JsonObject identity(Function f) {
         JsonObject value = new JsonObject(); value.addProperty("address", hex(f.getEntryPoint())); value.addProperty("name", f.getName());
         value.addProperty("pseudocode", ""); value.add("instructions", new JsonArray()); return value;
@@ -57,6 +65,30 @@ public class ReverseBridge extends GhidraScript {
         if (method.equals("ping")) return result;
         if (method.equals("close")) { currentProgram.save("T3 Reverse close", monitor); closing = true; return result; }
         if (method.equals("save")) { currentProgram.save("T3 Reverse save", monitor); return result; }
+        if (method.equals("fingerprints")) {
+            // Address-independent shape (mnemonic sequence) plus exact bytes, for diffing builds.
+            JsonArray rows = new JsonArray();
+            FunctionIterator iterator = currentProgram.getFunctionManager().getFunctions(true);
+            while (iterator.hasNext() && rows.size() < 20000) {
+                Function f = iterator.next();
+                if (f.isExternal() || f.isThunk()) continue;
+                java.security.MessageDigest shape = java.security.MessageDigest.getInstance("SHA-256");
+                java.security.MessageDigest bytes = java.security.MessageDigest.getInstance("SHA-256");
+                int count = 0;
+                InstructionIterator instructions = currentProgram.getListing().getInstructions(f.getBody(), true);
+                while (instructions.hasNext()) {
+                    Instruction ins = instructions.next();
+                    shape.update(ins.getMnemonicString().getBytes(StandardCharsets.UTF_8)); shape.update((byte) 0);
+                    bytes.update(ins.getBytes()); count++;
+                }
+                JsonObject row = new JsonObject();
+                row.addProperty("address", hex(f.getEntryPoint())); row.addProperty("name", f.getName());
+                row.addProperty("instructions", count);
+                row.addProperty("shape", digest(shape)); row.addProperty("bytes", digest(bytes));
+                rows.add(row);
+            }
+            result.add("fingerprints", rows); result.addProperty("truncated", iterator.hasNext()); return result;
+        }
         if (method.equals("list")) {
             int cursor = Math.max(0, p.has("cursor") ? p.get("cursor").getAsInt() : 0);
             if (cursor > 1000000) throw new IllegalArgumentException("Cursor exceeds limit");

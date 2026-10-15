@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type {
+  ReverseInvestigation,
   ScopedThreadRef,
   ReverseAnalysisInput,
   ReverseAnalysisResult,
@@ -21,11 +22,41 @@ export function AnalysisPanel({
   threadRef,
   projectId,
   investigationId,
+  onRecordFinding,
+  onOpenInvestigation,
+  ghidraProfile,
 }: {
   threadRef: ScopedThreadRef;
   projectId: string;
   investigationId: string;
+  /** Starts a finding about the given function in the findings panel. */
+  onRecordFinding: (draft: { title: string; address: string }) => void;
+  /** Shows an investigation this panel just created, such as one opened from an extraction. */
+  onOpenInvestigation: (investigationId: string) => void;
+  /** Load settings saved from an earlier analysis of this firmware. */
+  ghidraProfile: ReverseInvestigation["ghidraProfile"];
 }) {
+  const importExtracted = useAtomCommand(reverseEnvironment.importExtracted, {
+    reportFailure: false,
+  });
+  async function openExtracted(receiptId: string, path: string) {
+    if (busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const response = await importExtracted({
+        environmentId: threadRef.environmentId,
+        input: { projectId, investigationId, receiptId, path },
+      });
+      if (!alive.current) return;
+      if (response._tag === "Failure") throw squashAtomCommandFailure(response);
+      onOpenInvestigation(response.value.investigation.id);
+    } catch (cause) {
+      if (alive.current) setError(String(cause));
+    } finally {
+      if (alive.current) setBusy(false);
+    }
+  }
   const analyze = useAtomCommand(reverseEnvironment.analyze, { reportFailure: false });
   const emulate = useAtomCommand(reverseEnvironment.emulate, { reportFailure: false });
   const alive = useRef(true),
@@ -46,8 +77,8 @@ export function AnalysisPanel({
     [selected, setSelected] = useState<ReverseGhidraFunction | null>(null);
   const [cursor, setCursor] = useState<number | undefined>(),
     [filter, setFilter] = useState("");
-  const [languageId, setLanguageId] = useState(""),
-    [imageBase, setImageBase] = useState(""),
+  const [languageId, setLanguageId] = useState(ghidraProfile?.languageId ?? ""),
+    [imageBase, setImageBase] = useState(ghidraProfile?.imageBase ?? ""),
     [rawProfile, setRawProfile] = useState("");
   const [address, setAddress] = useState(""),
     [newName, setNewName] = useState(""),
@@ -204,8 +235,23 @@ export function AnalysisPanel({
             {result.output.slice(0, 40000)}
           </pre>
           {result.extracted?.map((file) => (
-            <div key={file.path} className="border-b border-border font-mono text-xs">
-              {file.path} · {file.bytes} bytes · {file.sha256?.slice(0, 16)}
+            <div
+              key={file.path}
+              className="flex items-center gap-2 border-b border-border font-mono text-xs"
+            >
+              <span className="min-w-0 flex-1 break-all">
+                {file.path} · {file.bytes} bytes · {file.sha256?.slice(0, 16)}
+              </span>
+              {result.receiptId && (
+                <Button
+                  size="xs"
+                  variant="ghost"
+                  disabled={busy}
+                  onClick={() => void openExtracted(result.receiptId!, file.path)}
+                >
+                  Open
+                </Button>
+              )}
             </div>
           ))}
           {result.gadgets?.map((g, i) => (
@@ -279,6 +325,15 @@ export function AnalysisPanel({
                       }
                     >
                       Apply rename
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() =>
+                        onRecordFinding({ title: `${selected.name}: `, address: selected.address })
+                      }
+                    >
+                      Record finding
                     </Button>
                   </div>
                   <pre className="max-h-96 overflow-auto border border-border p-2 text-xs">

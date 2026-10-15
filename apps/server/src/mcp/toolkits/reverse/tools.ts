@@ -12,6 +12,13 @@ import {
   ReverseListResult,
   ReverseStringsInput,
   ReverseStringsResult,
+  ReverseToolchainResult,
+  ReverseFindingCreateInput,
+  ReverseImportExtractedInput,
+  ReverseDiffInput,
+  ReverseDiffResult,
+  ReverseFindingRecord,
+  ReverseFindingUpdateInput,
 } from "@t3tools/contracts";
 import { Tool, Toolkit } from "effect/ai";
 
@@ -82,7 +89,53 @@ const ReverseEmulateTool = Tool.make("t3_reverse_emulate", {
   success: ReverseEmulateResult,
 }).annotate(Tool.Destructive, false);
 
+const ReverseToolchainTool = Tool.make("t3_reverse_toolchain", {
+  ...shared,
+  description:
+    "Report which native reverse-engineering tools this environment can run (sandbox launcher, Ghidra, Java, binwalk, unblob, ROPgadget, rea, QEMU), which analyses each enables, and how to install what is missing. Nothing is executed to find out.",
+  success: ReverseToolchainResult,
+})
+  .annotate(Tool.Readonly, true)
+  .annotate(Tool.Destructive, false);
+
+const ReverseImportExtractedTool = Tool.make("t3_reverse_import_extracted", {
+  ...shared,
+  description:
+    "Open one file from an Unblob extraction (receiptId and path from a t3_reverse_analyze unblob result) as its own investigation, linked to the parent firmware. Use it to analyze an ELF or filesystem found inside a vendor image.",
+  parameters: ReverseImportExtractedInput,
+  success: ReverseImportResult,
+}).annotate(Tool.Destructive, false);
+
+const ReverseDiffTool = Tool.make("t3_reverse_diff", {
+  ...shared,
+  description:
+    "Compare the functions of two investigations in the same project, such as two firmware versions, through their Ghidra programs. Reports counts of identical, relocated, changed, added and removed functions and lists the ones that differ. Matching uses names Ghidra did not invent, then unique instruction shapes.",
+  parameters: ReverseDiffInput,
+  success: ReverseDiffResult,
+}).annotate(Tool.Destructive, false);
+
+const ReverseFindingCreateTool = Tool.make("t3_reverse_finding_create", {
+  ...shared,
+  description:
+    "Record a candidate finding on an investigation (gadget, memory-corruption, attack-surface, boot-chain, crypto, protocol, other) with evidence: code locations in this firmware, capture windows, or QEMU runs. Findings are hypotheses for a person to review; they start as candidates and are recorded as agent-authored.",
+  parameters: ReverseFindingCreateInput,
+  success: ReverseFindingRecord,
+}).annotate(Tool.Destructive, false);
+
+const ReverseFindingUpdateTool = Tool.make("t3_reverse_finding_update", {
+  ...shared,
+  description:
+    "Reject or supersede a finding, for example when new evidence contradicts it. Agents cannot mark a finding probable or confirmed; a person does that in the workspace.",
+  parameters: ReverseFindingUpdateInput,
+  success: ReverseFindingRecord,
+}).annotate(Tool.Destructive, false);
+
 export const ReverseToolkit = Toolkit.make(
+  ReverseToolchainTool,
+  ReverseImportExtractedTool,
+  ReverseDiffTool,
+  ReverseFindingCreateTool,
+  ReverseFindingUpdateTool,
   ReverseListTool,
   ReverseStringsTool,
   ReverseImportTool,
