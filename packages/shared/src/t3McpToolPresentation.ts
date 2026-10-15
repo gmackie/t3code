@@ -49,6 +49,8 @@ export type T3McpToolSummaryAction =
   | "project-update"
   | "project-delete"
   | "project-clone"
+  | "reverse-read"
+  | "reverse-run"
   | "environment-read"
   | "environment-update"
   | "attachment-prepare"
@@ -321,6 +323,15 @@ const T3_MCP_TOOLS: Readonly<Record<string, T3McpToolDefinition>> = {
   t3_project_update: tool(["Update", "Updating", "Updated", "a project"], "project-update"),
   t3_project_delete: tool(["Delete", "Deleting", "Deleted", "a project"], "project-delete"),
   t3_project_clone: tool(["Clone", "Cloning", "Cloned", "a repository"], "project-clone"),
+  t3_reverse_list: tool(["List", "Listing", "Listed", "firmware investigations"], "reverse-read"),
+  t3_reverse_strings: tool(["Read", "Reading", "Read", "firmware strings"], "reverse-read"),
+  t3_reverse_import: tool(["Import", "Importing", "Imported", "firmware"], "reverse-run"),
+  t3_reverse_link: tool(
+    ["Link", "Linking", "Linked", "an investigation to Veritas"],
+    "reverse-run",
+  ),
+  t3_reverse_analyze: tool(["Analyze", "Analyzing", "Analyzed", "firmware"], "reverse-run"),
+  t3_reverse_emulate: tool(["Emulate", "Emulating", "Emulated", "firmware in QEMU"], "reverse-run"),
   t3_attachment_prepare_upload: tool(
     ["Prepare", "Preparing", "Prepared", "an attachment upload"],
     "attachment-prepare",

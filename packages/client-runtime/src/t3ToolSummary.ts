@@ -437,6 +437,12 @@ export function summarizeT3ToolCalls(
     case "html-render":
       label = phrase("Rendered", "render", quantity(selected.length, "HTML page"));
       break;
+    case "reverse-read":
+      label = phrase("Inspected", "inspect", `firmware investigations ${times}`);
+      break;
+    case "reverse-run":
+      label = phrase("Ran", "run", quantity(selected.length, "firmware operation"));
+      break;
     case "capabilities":
       label = phrase("Checked", "check", `orchestration capabilities ${times}`);
       break;

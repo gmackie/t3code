@@ -99,7 +99,7 @@ public class ReverseBridge extends GhidraScript {
         JsonArray tokens = new JsonArray(); collectTokens(decompiled.getCCodeMarkup(), tokens); value.add("tokens", tokens);
         JsonArray instructions = value.getAsJsonArray("instructions");
         InstructionIterator iterator = currentProgram.getListing().getInstructions(function.getBody(), true);
-        while (iterator.hasNext() && instructions.size() < 4096) {
+        while (iterator.hasNext() && instructions.size() < 2048) {
             Instruction instruction = iterator.next(); JsonObject row = new JsonObject();
             row.addProperty("address", hex(instruction.getAddress())); row.addProperty("text", instruction.toString());
             StringBuilder bytes = new StringBuilder(); for (byte b : instruction.getBytes()) bytes.append(String.format("%02x", b & 255));
@@ -116,15 +116,15 @@ public class ReverseBridge extends GhidraScript {
             Reference ref = refs.next(); JsonObject row = new JsonObject(); row.addProperty("address", hex(ref.getFromAddress())); row.addProperty("type", ref.getReferenceType().toString()); references.add(row);
         }
         value.add("xrefs", references); result.getAsJsonArray("functions").add(value);
-        result.addProperty("truncated", iterator.hasNext() || tokens.size() >= 20000 || refs.hasNext() || calls.size() >= 512); return result;
+        result.addProperty("truncated", iterator.hasNext() || tokens.size() >= 5000 || refs.hasNext() || calls.size() >= 512); return result;
     }
     private void collectTokens(ClangNode node, JsonArray output) {
-        if (node == null || output.size() >= 20000) return;
+        if (node == null || output.size() >= 5000) return;
         if (node instanceof ClangToken) {
             ClangToken token = (ClangToken) node; JsonObject value = new JsonObject();
             value.addProperty("text", token.getText()); value.addProperty("syntaxType", token.getSyntaxType());
             if (token.getMinAddress() != null) value.addProperty("address", hex(token.getMinAddress())); output.add(value);
         }
-        for (int i = 0; i < node.numChildren() && output.size() < 20000; i++) collectTokens(node.Child(i), output);
+        for (int i = 0; i < node.numChildren() && output.size() < 5000; i++) collectTokens(node.Child(i), output);
     }
 }

@@ -13,7 +13,8 @@ import * as Random from "effect/Random";
 import * as Semaphore from "effect/Semaphore";
 import * as StorageCleanup from "./storageCleanup.ts";
 import * as PullRequestSyncReactor from "./orchestration-v2/PullRequestSyncReactor.ts";
-import { kicadVeritasRouteLayer } from "./kicad/veritasHttp.ts";
+import { veritasIntegrationRouteLayer } from "./veritas/http.ts";
+import * as ReverseWorkbench from "./reverse/ReverseWorkbench.ts";
 import {
   kicadProjectRouteLayer,
   kicadViewerSessionRouteLayer,
@@ -741,7 +742,7 @@ const layerMakeRoutes = Layer.mergeAll(
     Ws.layer,
     kicadProjectRouteLayer,
     kicadViewerSessionRouteLayer,
-    kicadVeritasRouteLayer,
+    veritasIntegrationRouteLayer,
     kicadModelRouteLayer,
     kicadGerberRouteLayer,
   ),
@@ -767,6 +768,8 @@ const layerMakeRoutes = Layer.mergeAll(
       Layer.provide(GameHtmlRender.layer),
     ),
   ),
+  // The firmware workbench HTTP route and the reverse RPCs share one service and Ghidra pool.
+  Layer.provide(ReverseWorkbench.layer),
   // Both transports consume the same service instance, so caches single-flight across clients
   // and mutations observed on WebSocket invalidate patches subsequently read over HTTP. Provided
   // after the guide service so it reaches that too.

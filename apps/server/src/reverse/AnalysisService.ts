@@ -1,8 +1,8 @@
-// @effect-diagnostics nodeBuiltinImport:off globalDate:off - analysis subprocesses are environment-owned promise code.
+// @effect-diagnostics nodeBuiltinImport:off globalDate:off globalTimers:off - analysis subprocesses are environment-owned promise code.
 import * as NodeFSP from "node:fs/promises";
 import * as NodePath from "node:path";
 import * as NodeCrypto from "node:crypto";
-import { ReverseStoreError } from "@t3tools/contracts";
+import { type ReverseFirmwareArtifact, ReverseStoreError } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
 import { runBoundedTool, type ToolResult } from "./ToolRunner.ts";
 import type { ReverseInvestigationStore } from "./InvestigationStore.ts";
@@ -52,9 +52,16 @@ async function checked(
   cwd: string,
   timeoutMs = 90000,
   // Listing tools may stop at the output cap; their partial output is still usable.
-  options: { allowTruncated?: boolean } = {},
+  options: { allowTruncated?: boolean; signal?: AbortSignal } = {},
 ): Promise<ToolResult> {
-  const result = await runBoundedTool({ executable: tool, args, cwd, timeoutMs, sandbox: true });
+  const result = await runBoundedTool({
+    executable: tool,
+    args,
+    cwd,
+    timeoutMs,
+    sandbox: true,
+    ...(options.signal ? { signal: options.signal } : {}),
+  });
   const cut = result.truncated && options.allowTruncated === true;
   if (result.timedOut || (result.truncated && !cut) || (!cut && result.exitCode !== 0))
     throw failure(
@@ -62,10 +69,100 @@ async function checked(
     );
   return result;
 }
+/** Native tools are heavy; a few run at once and a short queue waits behind them. */
+export class ToolSlots {
+  private running = 0;
+  private readonly waiting: Array<() => void> = [];
+  private readonly size: number;
+  private readonly queue: number;
+  constructor(size: number, queue: number) {
+    this.size = size;
+    this.queue = queue;
+  }
+  async use<A>(run: () => Promise<A>): Promise<A> {
+    if (this.running < this.size) this.running++;
+    else if (this.waiting.length >= this.queue)
+      throw new ReverseStoreError({
+        reason: "unavailable",
+        message: "Analysis workers are busy. Try again when a running analysis finishes.",
+      });
+    // A finishing run hands its slot straight to the next waiter, so the count never dips.
+    else await new Promise<void>((resolve) => this.waiting.push(resolve));
+    try {
+      return await run();
+    } finally {
+      const next = this.waiting.shift();
+      if (next) next();
+      else this.running--;
+    }
+  }
+}
+
+const EXTRACTION_BYTES = 512 * 1024 * 1024;
+const EXTRACTION_FILES = 5000;
+/** Stops an extraction as soon as its output passes the budget, not after it exits. */
+function guardExtraction(folder: string, controller: AbortController): () => void {
+  let checking = false;
+  const measure = async () => {
+    let bytes = 0,
+      files = 0;
+    const walk = async (dir: string): Promise<void> => {
+      for (const item of await NodeFSP.readdir(dir, { withFileTypes: true }).catch(() => [])) {
+        if (bytes > EXTRACTION_BYTES || files > EXTRACTION_FILES) return;
+        const full = NodePath.join(dir, item.name);
+        if (item.isDirectory()) await walk(full);
+        else {
+          files++;
+          bytes += (await NodeFSP.lstat(full).catch(() => null))?.size ?? 0;
+        }
+      }
+    };
+    await walk(folder);
+    if (bytes > EXTRACTION_BYTES || files > EXTRACTION_FILES)
+      controller.abort(failure("Extraction exceeded its 512 MiB / 5000 file budget."));
+  };
+  const timer = setInterval(() => {
+    if (checking) return;
+    checking = true;
+    void measure().finally(() => (checking = false));
+  }, 1000);
+  return () => clearInterval(timer);
+}
+
+const RECEIPTS_KEPT = 200;
+const RECEIPT_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
+/**
+ * Removes finished receipts older than a week, and the oldest beyond a cap. A run still in
+ * progress has no receipt.json or failure.json yet, so it is never touched.
+ */
+async function pruneReceipts(folder: string): Promise<void> {
+  const entries = await NodeFSP.readdir(folder, { withFileTypes: true }).catch(() => []);
+  const finished = (
+    await Promise.all(
+      entries
+        .filter((entry) => entry.isDirectory())
+        .map(async (entry) => {
+          const full = NodePath.join(folder, entry.name);
+          for (const record of ["receipt.json", "failure.json"]) {
+            const stat = await NodeFSP.stat(NodePath.join(full, record)).catch(() => null);
+            if (stat) return { full, mtime: stat.mtimeMs };
+          }
+          return null;
+        }),
+    )
+  ).filter((entry) => entry !== null);
+  finished.sort((a, b) => b.mtime - a.mtime);
+  const now = performance.timeOrigin + performance.now();
+  for (const [index, { full, mtime }] of finished.entries())
+    if (index >= RECEIPTS_KEPT || now - mtime > RECEIPT_RETENTION_MS)
+      await NodeFSP.rm(full, { recursive: true, force: true }).catch(() => undefined);
+}
+
 /** Tool completion is not validation. Receipts retain versions, parameters and immutable identity. */
 export class ReverseAnalysisService {
   private readonly stateDir: string;
   private readonly store: ReverseInvestigationStore;
+  private readonly slots = new ToolSlots(2, 8);
   constructor(stateDir: string, store: ReverseInvestigationStore) {
     this.stateDir = stateDir;
     this.store = store;
@@ -86,6 +183,13 @@ export class ReverseAnalysisService {
         output: `${response.functions.length} functions from the persistent Ghidra session.`,
       };
     }
+    return this.slots.use(() => this.runRecorded(input, artifact, path));
+  }
+  private async runRecorded(
+    input: AnalysisInput,
+    artifact: ReverseFirmwareArtifact,
+    path: string,
+  ): Promise<AnalysisResult> {
     const receiptId = NodeCrypto.randomUUID(),
       owner = NodeCrypto.createHash("sha256").update(input.projectId).digest("hex");
     const dir = NodePath.join(this.stateDir, "reverse", "analysis", owner, receiptId);
@@ -160,6 +264,8 @@ export class ReverseAnalysisService {
         result = { kind: "rea", output: run.stdout, truncated: false };
       } else if (input.kind === "unblob") {
         const output = NodePath.join(dir, "extracted");
+        const budget = new AbortController();
+        const stopGuard = guardExtraction(output, budget);
         await checked(
           "unblob",
           [
@@ -175,7 +281,8 @@ export class ReverseAnalysisService {
           ],
           dir,
           120000,
-        );
+          { signal: budget.signal },
+        ).finally(stopGuard);
         const extracted: { path: string; bytes: number; sha256: string }[] = [];
         let total = 0;
         const visit = async (folder: string, depth: number): Promise<void> => {
@@ -246,6 +353,7 @@ export class ReverseAnalysisService {
         }),
         { flag: "wx", mode: 0o600 },
       );
+      void pruneReceipts(NodePath.dirname(dir));
       return result;
     } catch (error) {
       // A failed run keeps only its failure record, never partial extraction output.
@@ -267,7 +375,14 @@ export class ReverseAnalysisService {
       throw isReverseStoreError(error) ? error : failure(String(error));
     }
   }
-  async emulate(input: {
+  emulate(input: {
+    projectId: string;
+    investigationId: string;
+    machine: "lm3s6965evb" | "mps2-an385";
+  }) {
+    return this.slots.use(() => this.emulateRecorded(input));
+  }
+  private async emulateRecorded(input: {
     projectId: string;
     investigationId: string;
     machine: "lm3s6965evb" | "mps2-an385";
@@ -276,7 +391,14 @@ export class ReverseAnalysisService {
       throw failure("Unsupported QEMU machine");
     const { artifact, path } = await this.store.getArtifact(input.projectId, input.investigationId);
     const receiptId = NodeCrypto.randomUUID(),
-      dir = NodePath.join(this.stateDir, "reverse", "emulation", receiptId);
+      // Per project, so one project's runs never prune another's receipts.
+      dir = NodePath.join(
+        this.stateDir,
+        "reverse",
+        "emulation",
+        NodeCrypto.createHash("sha256").update(input.projectId).digest("hex"),
+        receiptId,
+      );
     await NodeFSP.mkdir(dir, { recursive: true, mode: 0o700 });
     const run = await runBoundedTool({
       executable: "qemu-system-arm",
@@ -318,6 +440,7 @@ export class ReverseAnalysisService {
       }),
       { flag: "wx", mode: 0o600 },
     );
+    void pruneReceipts(NodePath.dirname(dir));
     return result;
   }
 }

@@ -1,4 +1,4 @@
-import type { ReverseFirmwareArtifact, ReversePublishInput } from "@t3tools/contracts";
+import type { ReverseFirmwareArtifact, ReverseFirmwareSource } from "@t3tools/contracts";
 
 export interface VeritasEvidenceConnection {
   readonly url: string;
@@ -24,7 +24,7 @@ export class VeritasEvidenceClient {
   async register(
     artifact: ReverseFirmwareArtifact,
     boardRevisionId?: string,
-    source: (typeof ReversePublishInput.Type)["source"] = "imported",
+    source: ReverseFirmwareSource = "imported",
   ): Promise<{ id: string; sha256: string }> {
     if (!this.connection)
       throw new Error("Configure VERITAS_URL and VERITAS_API_TOKEN on the environment server.");

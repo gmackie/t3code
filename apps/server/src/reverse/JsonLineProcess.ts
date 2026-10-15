@@ -105,6 +105,10 @@ export class JsonLineProcess {
     );
     this.launch.child.stdin.write(item.payload + "\n");
   }
+  /** True while a request is queued or awaiting its reply. */
+  isBusy(): boolean {
+    return this.pending.size > 0;
+  }
   isClosed(): boolean {
     return this.stopped;
   }

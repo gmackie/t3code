@@ -25,6 +25,10 @@ export function createReverseEnvironmentAtoms<R, E>(
       label: "reverse:publish",
       tag: WS_METHODS.reversePublish,
     }),
+    remove: createEnvironmentRpcCommand(runtime, {
+      label: "reverse:delete",
+      tag: WS_METHODS.reverseDelete,
+    }),
     analyze: createEnvironmentRpcCommand(runtime, {
       label: "reverse:analyze",
       tag: WS_METHODS.reverseAnalyze,

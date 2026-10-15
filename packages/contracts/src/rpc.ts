@@ -51,6 +51,7 @@ import {
   ReverseEmulateResult,
   ReversePublishInput,
   ReversePublishResult,
+  ReverseDeleteInput,
   ReverseStoreError,
 } from "./reverse.ts";
 import * as Rpc from "effect/rpc/Rpc";
@@ -462,6 +463,7 @@ export const WS_METHODS = {
   reverseAnalyze: "reverse.analyze",
   reverseEmulate: "reverse.emulate",
   reversePublish: "reverse.publish",
+  reverseDelete: "reverse.delete",
 
   // Shell methods
   shellOpenInEditor: "shell.openInEditor",
@@ -1526,6 +1528,11 @@ const WsReversePublishRpc = Rpc.make(WS_METHODS.reversePublish, {
   error: Schema.Union([ReverseStoreError, EnvironmentAuthorizationError]),
 });
 
+const WsReverseDeleteRpc = Rpc.make(WS_METHODS.reverseDelete, {
+  payload: ReverseDeleteInput,
+  error: Schema.Union([ReverseStoreError, EnvironmentAuthorizationError]),
+});
+
 const WsProjectsSearchEntriesRpc = Rpc.make(WS_METHODS.projectsSearchEntries, {
   payload: ProjectSearchEntriesInput,
   success: ProjectSearchEntriesResult,
@@ -2207,6 +2214,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsReverseAnalyzeRpc,
   WsReverseEmulateRpc,
   WsReversePublishRpc,
+  WsReverseDeleteRpc,
   WsServerProbeRpc,
   WsServerGetConfigRpc,
   WsPluginCommandsListRpc,
