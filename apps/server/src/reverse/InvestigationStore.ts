@@ -163,25 +163,48 @@ export class ReverseInvestigationStore {
     const real = await NodeFSP.realpath(target);
     if (!real.startsWith(root + NodePath.sep))
       throw err("outside_workspace", "Firmware file resolves outside the project workspace.");
-    const stat = await NodeFSP.stat(real);
-    if (!stat.isFile()) throw err("invalid_file", "Firmware input must be a regular file.");
-    if (stat.size > MAX_IMPORT_BYTES)
-      throw err("too_large", "Firmware input exceeds the 512 MiB import limit.");
-
     const artifactsDir = NodePath.join(this.stateDir, "reverse", "artifacts");
     await NodeFSP.mkdir(artifactsDir, { recursive: true });
     const stagingPath = NodePath.join(artifactsDir, `.${NodeCrypto.randomUUID()}.tmp`);
+    // Copy from one open handle, checked to be the contained file, so swapping a path
+    // component for a symlink after the check cannot redirect the copy.
+    const source = await NodeFSP.open(
+      real,
+      NodeFS.constants.O_RDONLY | NodeFS.constants.O_NOFOLLOW,
+    ).catch(() => {
+      throw err("invalid_file", "Firmware input must be a regular file.");
+    });
     try {
-      await NodeFSP.copyFile(real, stagingPath);
-      const copied = await NodeFSP.stat(stagingPath);
-      if (copied.size > MAX_IMPORT_BYTES)
-        throw err("too_large", "Firmware input exceeded import size limit.");
+      const opened = await source.stat();
+      if (!opened.isFile()) throw err("invalid_file", "Firmware input must be a regular file.");
+      if (opened.size > MAX_IMPORT_BYTES)
+        throw err("too_large", "Firmware input exceeds the 512 MiB import limit.");
+      const current = await NodeFSP.realpath(target);
+      const named = await NodeFSP.stat(current);
+      if (current !== real || named.dev !== opened.dev || named.ino !== opened.ino)
+        throw err("outside_workspace", "Firmware file changed while it was being imported.");
       const hash = NodeCrypto.createHash("sha256");
-      for await (const chunk of NodeFS.createReadStream(stagingPath)) hash.update(chunk);
+      const staging = await NodeFSP.open(stagingPath, "wx", 0o600);
+      let copiedBytes = 0;
+      try {
+        const buffer = Buffer.alloc(1024 * 1024);
+        for (;;) {
+          const { bytesRead } = await source.read(buffer, 0, buffer.length, copiedBytes);
+          if (bytesRead === 0) break;
+          copiedBytes += bytesRead;
+          if (copiedBytes > MAX_IMPORT_BYTES)
+            throw err("too_large", "Firmware input exceeded import size limit.");
+          const chunk = buffer.subarray(0, bytesRead);
+          hash.update(chunk);
+          await staging.write(chunk);
+        }
+      } finally {
+        await staging.close();
+      }
       const sha256 = hash.digest("hex");
       const artifact: ReverseFirmwareArtifact = {
         sha256,
-        sizeBytes: copied.size,
+        sizeBytes: copiedBytes,
         filename: NodePath.basename(relativePath),
         sourcePath: relativePath,
         importedAt: DateTime.formatIso(DateTime.nowUnsafe()),
@@ -207,6 +230,7 @@ export class ReverseInvestigationStore {
         };
       });
     } finally {
+      await source.close();
       await NodeFSP.rm(stagingPath, { force: true }).catch(() => undefined);
     }
   }
