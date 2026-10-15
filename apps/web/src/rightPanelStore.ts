@@ -317,19 +317,26 @@ export function pullRequestSurface(target: {
   };
 }
 
+const isModeSurface = (surface: RightPanelSurface | undefined) =>
+  surface?.kind === "kicad" || surface?.kind === "reverse";
+
 const upsertSurface = (
   current: ThreadRightPanelState,
   surface: RightPanelSurface,
   activate = true,
 ): ThreadRightPanelState => {
   const existing = current.surfaces.find((entry) => entry.id === surface.id);
+  const active = current.surfaces.find((entry) => entry.id === current.activeSurfaceId);
   // Entering CAD or Reverse mode remembers Code so returnToCode can restore it.
+  // Switching between the two modes keeps the Code panel the first one remembered.
   const nextSurface =
-    (surface.kind === "kicad" || surface.kind === "reverse") &&
-    current.activeSurfaceId !== surface.id
+    isModeSurface(surface) && current.activeSurfaceId !== surface.id
       ? {
           ...surface,
-          codePanel: { isOpen: current.isOpen, activeSurfaceId: current.activeSurfaceId },
+          codePanel:
+            active?.kind === "kicad" || active?.kind === "reverse"
+              ? active.codePanel
+              : { isOpen: current.isOpen, activeSurfaceId: current.activeSurfaceId },
         }
       : (existing ?? surface);
   return {
@@ -722,9 +729,9 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
               mode?.kind === "kicad" || mode?.kind === "reverse" ? mode.codePanel : undefined;
             const activeSurfaceId =
               current.surfaces.find(
-                (surface) => surface.id !== modeId && surface.id === previous?.activeSurfaceId,
+                (surface) => !isModeSurface(surface) && surface.id === previous?.activeSurfaceId,
               )?.id ??
-              current.surfaces.find((surface) => surface.id !== modeId)?.id ??
+              current.surfaces.find((surface) => !isModeSurface(surface))?.id ??
               null;
             return {
               ...current,
