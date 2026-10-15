@@ -17,9 +17,10 @@ describe("firmware diff", () => {
       false,
     );
     expect(result).toMatchObject({ identical: 1, relocated: 1, changed: 1, added: 0, removed: 0 });
+    // Changes are listed before relocations.
     expect(result.functions.map((row) => [row.status, row.left?.name])).toEqual([
-      ["relocated", "parse"],
       ["changed", "crc"],
+      ["relocated", "parse"],
     ]);
   });
 
@@ -38,7 +39,7 @@ describe("firmware diff", () => {
       false,
     );
     expect(result).toMatchObject({ relocated: 1, added: 2, removed: 2 });
-    expect(result.functions[0]).toEqual({
+    expect(result.functions.find((row) => row.status === "relocated")).toEqual({
       status: "relocated",
       left: { name: "FUN_00001000", address: "0x1000" },
       right: { name: "FUN_00001400", address: "0x1400" },

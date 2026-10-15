@@ -47,6 +47,7 @@ const NEXT: Record<Status, ReadonlyArray<{ status: Status; label: string }>> = {
 /** A draft handed over from elsewhere in the workspace, such as the selected function. */
 export type FindingSeed = {
   readonly nonce: number;
+  readonly investigationId: string;
   readonly title: string;
   readonly address: string;
 };
@@ -83,8 +84,9 @@ export function FindingsPanel({
     };
   }, []);
   // Each new draft from elsewhere replaces the form once, without an extra render pass.
-  const [appliedSeed, setAppliedSeed] = useState(0);
-  if (seed && seed.nonce !== appliedSeed) {
+  // A remount starts from the current draft, so an old one never comes back.
+  const [appliedSeed, setAppliedSeed] = useState(seed?.nonce ?? 0);
+  if (seed && seed.investigationId === investigationId && seed.nonce !== appliedSeed) {
     setAppliedSeed(seed.nonce);
     setTitle(seed.title);
     setAddress(seed.address);
@@ -159,15 +161,19 @@ export function FindingsPanel({
               <span className="font-medium">{finding.title}</span>{" "}
               <span className="text-muted-foreground">
                 · {finding.kind} · {finding.status} · by {finding.authorKind}
+                {finding.statusChangedBy ? ` · status set by ${finding.statusChangedBy}` : ""}
               </span>
             </p>
-            {finding.evidence.map((ref) =>
-              ref.kind === "code" ? (
-                <p key={ref.location.address} className="font-mono text-muted-foreground">
-                  {ref.location.addressSpace}:{ref.location.address}
-                </p>
-              ) : null,
-            )}
+            {finding.evidence.map((ref, index) => (
+              // oxlint-disable-next-line react/no-array-index-key -- evidence is an ordered, immutable list.
+              <p key={index} className="font-mono text-muted-foreground">
+                {ref.kind === "code"
+                  ? `code ${ref.location.addressSpace}:${ref.location.address}`
+                  : ref.kind === "execution"
+                    ? `${ref.source} run ${ref.runId}`
+                    : `capture ${ref.captureId}${ref.signal ? ` · ${ref.signal}` : ""}`}
+              </p>
+            ))}
             <div className="mt-1 flex flex-wrap gap-1">
               {NEXT[finding.status].map((next) => (
                 <Button

@@ -29,7 +29,7 @@ Two analyses run at once per environment and a few more wait; beyond that, try a
 
 ## Record findings
 
-Use **Findings** to keep track of what you suspect: a title, a kind (memory corruption, attack surface, boot chain, crypto, protocol, gadget or other), and optionally the code address it concerns. **Record finding** in a Ghidra function view starts one for that function. New findings are candidates. Mark them **Probable**, **Confirm** or **Reject**, **Supersede** a confirmed one, and **Reopen** any closed finding. Agents can record findings and reject or supersede them, but only a person can mark one probable or confirmed.
+Use **Findings** to keep track of what you suspect: a title, a kind (memory corruption, attack surface, boot chain, crypto, protocol, gadget or other), and optionally the code address it concerns. **Record finding** in a Ghidra function view starts one for that function. New findings are candidates. Mark them **Probable**, **Confirm** or **Reject**, **Supersede** a confirmed one, and **Reopen** any closed finding. Through T3's tools, agents can record findings with evidence and reject or supersede open ones, but only a person can mark a finding probable or confirmed or change a decision a person made. An agent that can run commands on the environment's host is not limited this way.
 
 **Delete investigation** removes it from the project. The firmware copy is removed once no project uses it.
 

@@ -32,6 +32,12 @@ const decode = Schema.decodeUnknownSync(
         artifactSha256: Schema.String,
         ghidraSessionId: Schema.optional(Schema.String),
         parentInvestigationId: Schema.optional(Schema.String),
+        ghidraProfile: Schema.optional(
+          Schema.Struct({
+            languageId: Schema.optional(Schema.String),
+            imageBase: Schema.optional(Schema.String),
+          }),
+        ),
       }),
     ),
     artifacts: Schema.Array(
@@ -295,7 +301,15 @@ export class ReverseInvestigationStore {
       const investigation = record.investigations.find((x) => x.id === input.investigationId);
       if (!investigation) throw err("not_found", "Investigation not found in this project.");
       const digest = investigation.artifactSha256;
+      if (input.authorKind === "agent" && input.evidence.length === 0)
+        throw err("invalid_file", "Agent findings must cite evidence a person can check.");
       for (const ref of input.evidence) {
+        // A QEMU run must be one this environment recorded for this firmware.
+        if (
+          ref.kind === "execution" &&
+          !(await this.emulationRecorded(input.projectId, ref.runId, digest))
+        )
+          throw err("invalid_file", "Execution evidence must name a QEMU run of this firmware.");
         const cited =
           ref.kind === "code"
             ? ref.location.artifactSha256
@@ -324,6 +338,19 @@ export class ReverseInvestigationStore {
     });
   }
 
+  private async emulationRecorded(projectId: string, runId: string, digest: string) {
+    if (!/^[0-9a-f-]{36}$/.test(runId)) return false;
+    const owner = NodeCrypto.createHash("sha256").update(projectId).digest("hex");
+    const receipt = await NodeFSP.readFile(
+      NodePath.join(this.stateDir, "reverse", "emulation", owner, runId, "receipt.json"),
+      "utf8",
+    ).catch(() => null);
+    return (
+      receipt !== null &&
+      (JSON.parse(receipt) as { artifactSha256?: unknown }).artifactSha256 === digest
+    );
+  }
+
   /** Humans set any status; agents may only reject or supersede, never promote. */
   updateFinding(input: {
     projectId: string;
@@ -340,14 +367,41 @@ export class ReverseInvestigationStore {
       const record = await readProject(this.stateDir, input.projectId);
       const index = record.findings.findIndex((x) => x.id === input.findingId);
       if (index < 0) throw err("not_found", "Finding not found in this project.");
+      const current = record.findings[index]!;
+      // Agents may close open hypotheses, never overturn a decision a person made.
+      if (
+        input.actor === "agent" &&
+        (current.statusChangedBy === "human" || current.status === "confirmed")
+      )
+        throw err("invalid_file", "A person decided this finding; only a person can change it.");
       const next: ReverseFindingRecord = {
-        ...record.findings[index]!,
+        ...current,
         status: input.status,
+        statusChangedBy: input.actor,
         updatedAt: DateTime.formatIso(DateTime.nowUnsafe()),
       };
       record.findings[index] = next;
       await saveProject(this.stateDir, input.projectId, record);
       return next;
+    });
+  }
+
+  /** Remembers how Ghidra loaded this firmware, so other views open the same program. */
+  rememberGhidraProfile(
+    projectId: string,
+    investigationId: string,
+    profile: { languageId?: string | undefined; imageBase?: string | undefined },
+  ): Promise<void> {
+    return this.locked(projectId, async () => {
+      const record = await readProject(this.stateDir, projectId);
+      const index = record.investigations.findIndex((x) => x.id === investigationId);
+      if (index < 0) return;
+      const ghidraProfile = {
+        ...(profile.languageId ? { languageId: profile.languageId } : {}),
+        ...(profile.imageBase ? { imageBase: profile.imageBase } : {}),
+      };
+      record.investigations[index] = { ...record.investigations[index]!, ghidraProfile };
+      await saveProject(this.stateDir, projectId, record);
     });
   }
 

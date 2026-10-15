@@ -17,6 +17,8 @@ The Reverse workspace runs in the existing T3 environment server and Electron/we
 - **The board revision comes from saved linkage.** Veritas registration uses the board revision saved by `reverse.link`, never one supplied with the publish request, because every caller shares the environment's Veritas token.
 - **The HTTP protocol has its own vocabulary over the same analyzers.** `scan`, `analysis` and `emulate` are translated in the service onto the analyzers the RPCs use. Ghidra disassembly, references and the call graph come from the function view. Only `lab` has no backend; it waits for station arbitration in Veritas.
 
+- **Findings live in the project record.** Older builds decode that record without `findings` and save it back without them, so running an older T3 against the same state loses findings. Keep that in mind before a rollback.
+
 ## Analysis paths
 
 Ghidra function/decompiler/disassembly, strings, Binwalk/Unblob extraction, ROP/JOP/COP gadget candidates, control-flow, memory-safety triage, boot-chain checks, firmware diffing, and protocol correlation.

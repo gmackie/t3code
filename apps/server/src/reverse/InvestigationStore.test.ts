@@ -115,10 +115,38 @@ describe("reverse investigation persistence", () => {
       );
     expect(
       await store.updateFinding({ ...update, status: "rejected", actor: "agent" }),
-    ).toMatchObject({ status: "rejected" });
+    ).toMatchObject({ status: "rejected", statusChangedBy: "agent" });
     expect(
       await store.updateFinding({ ...update, status: "confirmed", actor: "human" }),
-    ).toMatchObject({ status: "confirmed" });
+    ).toMatchObject({ status: "confirmed", statusChangedBy: "human" });
+    // Once a person decides, an agent cannot overturn it.
+    await expect(
+      store.updateFinding({ ...update, status: "superseded", actor: "agent" }),
+    ).rejects.toThrow("only a person");
+
+    const base = {
+      projectId: "p1",
+      investigationId: investigation.id,
+      title: "x",
+      kind: "other" as const,
+    };
+    await expect(
+      store.createFinding({ ...base, evidence: [], authorKind: "agent" }),
+    ).rejects.toThrow("cite evidence");
+    await expect(
+      store.createFinding({
+        ...base,
+        authorKind: "agent",
+        evidence: [
+          {
+            kind: "execution",
+            source: "qemu",
+            runId: "00000000-0000-0000-0000-000000000000",
+            artifactSha256: artifact.sha256,
+          },
+        ],
+      }),
+    ).rejects.toThrow("QEMU run");
     expect((await store.list("p1")).findings).toHaveLength(1);
 
     await store.remove("p1", investigation.id);

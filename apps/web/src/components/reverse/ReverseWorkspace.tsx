@@ -78,6 +78,7 @@ function ProjectWorkspace({
   const investigations = list.data?.investigations ?? [],
     artifacts = list.data?.artifacts ?? [];
   const active = investigations.find((item) => item.id === selected) ?? investigations[0];
+  const activeArtifact = artifacts.find((item) => item.sha256 === active?.artifactSha256);
   const parent = active?.parentInvestigationId
     ? investigations.find((item) => item.id === active.parentInvestigationId)
     : undefined;
@@ -331,12 +332,17 @@ function ProjectWorkspace({
                 threadRef={threadRef}
                 projectId={projectId}
                 investigationId={active.id}
+                ghidraProfile={active.ghidraProfile}
                 onOpenInvestigation={(id) => {
                   setSelected(id);
                   list.refresh();
                 }}
                 onRecordFinding={(draft) =>
-                  setFindingSeed({ ...draft, nonce: (findingSeed?.nonce ?? 0) + 1 })
+                  setFindingSeed({
+                    ...draft,
+                    investigationId: active.id,
+                    nonce: (findingSeed?.nonce ?? 0) + 1,
+                  })
                 }
               />
               <DiffPanel
@@ -426,7 +432,7 @@ function ProjectWorkspace({
               <div className="space-y-2 p-3">
                 <h3 className="text-xs font-medium">Veritas registration</h3>
                 <div className="flex items-center gap-2">
-                  {parent ? (
+                  {activeArtifact?.parentSha256 ? (
                     <p className="text-xs text-muted-foreground">
                       Registered as extracted from its parent; register the parent first.
                     </p>

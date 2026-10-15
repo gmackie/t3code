@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type {
+  ReverseInvestigation,
   ScopedThreadRef,
   ReverseAnalysisInput,
   ReverseAnalysisResult,
@@ -23,6 +24,7 @@ export function AnalysisPanel({
   investigationId,
   onRecordFinding,
   onOpenInvestigation,
+  ghidraProfile,
 }: {
   threadRef: ScopedThreadRef;
   projectId: string;
@@ -31,6 +33,8 @@ export function AnalysisPanel({
   onRecordFinding: (draft: { title: string; address: string }) => void;
   /** Shows an investigation this panel just created, such as one opened from an extraction. */
   onOpenInvestigation: (investigationId: string) => void;
+  /** Load settings saved from an earlier analysis of this firmware. */
+  ghidraProfile: ReverseInvestigation["ghidraProfile"];
 }) {
   const importExtracted = useAtomCommand(reverseEnvironment.importExtracted, {
     reportFailure: false,
@@ -73,8 +77,8 @@ export function AnalysisPanel({
     [selected, setSelected] = useState<ReverseGhidraFunction | null>(null);
   const [cursor, setCursor] = useState<number | undefined>(),
     [filter, setFilter] = useState("");
-  const [languageId, setLanguageId] = useState(""),
-    [imageBase, setImageBase] = useState(""),
+  const [languageId, setLanguageId] = useState(ghidraProfile?.languageId ?? ""),
+    [imageBase, setImageBase] = useState(ghidraProfile?.imageBase ?? ""),
     [rawProfile, setRawProfile] = useState("");
   const [address, setAddress] = useState(""),
     [newName, setNewName] = useState(""),

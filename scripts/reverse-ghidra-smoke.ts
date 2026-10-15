@@ -42,7 +42,7 @@ try {
   const prints = await pool.execute("test-project", binary, digest, { action: "fingerprints" });
   const print = prints.fingerprints?.find((row) => row.name === "fixture_fn");
   NodeAssert.ok(print && print.instructions > 0, "Ghidra fingerprinted the fixture function");
-  NodeAssert.match(print.shape, /^[0-9a-f]{64}$/);
+  NodeAssert.match(print.shape, /^[0-9a-f]{16}$/);
   const renamed = await pool.execute("test-project", binary, digest, {
     action: "rename",
     address: fn.address,

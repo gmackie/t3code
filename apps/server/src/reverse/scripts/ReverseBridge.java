@@ -11,7 +11,8 @@ import java.io.*;
 import java.nio.charset.StandardCharsets;
 
 public class ReverseBridge extends GhidraScript {
-    private final Gson gson = new Gson();
+    // No HTML escaping: replies are read by the server, and escapes inflate C++ names sixfold.
+    private final Gson gson = new GsonBuilder().disableHtmlEscaping().create();
     private DecompInterface decompiler;
     private boolean closing = false;
     public void run() throws Exception {
@@ -50,7 +51,9 @@ public class ReverseBridge extends GhidraScript {
     private String hex(Address a) { return "0x" + Long.toUnsignedString(a.getOffset(), 16); }
     private String digest(java.security.MessageDigest d) {
         StringBuilder out = new StringBuilder();
-        for (byte b : d.digest()) out.append(String.format("%02x", b));
+        // 64 bits is plenty to tell functions apart and keeps 20,000 rows well under the line cap.
+        byte[] hash = d.digest();
+        for (int i = 0; i < 8; i++) out.append(String.format("%02x", hash[i]));
         return out.toString();
     }
     private JsonObject identity(Function f) {

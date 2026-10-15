@@ -59,6 +59,8 @@ export const ReverseFindingRecord = Schema.Struct({
   investigationId: Id,
   createdAt: Id,
   updatedAt: Id,
+  // Who made the last status change, so a reversal is never mistaken for the author's own.
+  statusChangedBy: Schema.optional(Schema.Literals(["human", "agent"])),
 });
 export type ReverseFindingRecord = typeof ReverseFindingRecord.Type;
 export const ReverseFindingCreateInput = Schema.Struct({
@@ -84,6 +86,10 @@ export const ReverseInvestigation = Schema.Struct({
   ghidraSessionId: Schema.optional(Id),
   // Set when this firmware was extracted from another investigation's.
   parentInvestigationId: Schema.optional(Id),
+  // How Ghidra loads raw images of this firmware; remembered from the last analysis that set it.
+  ghidraProfile: Schema.optional(
+    Schema.Struct({ languageId: Schema.optional(Id), imageBase: Schema.optional(Id) }),
+  ),
 });
 export type ReverseInvestigation = typeof ReverseInvestigation.Type;
 export const ReverseFirmwareArtifact = Schema.Struct({

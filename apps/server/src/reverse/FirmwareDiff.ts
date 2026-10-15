@@ -2,6 +2,7 @@ import type { ReverseDiffResult } from "@t3tools/contracts";
 import type { GhidraFingerprint } from "./GhidraSession.ts";
 
 const MAX_ROWS = 2000;
+const ORDER = { changed: 0, removed: 1, added: 2, relocated: 3 } as const;
 // Ghidra names functions it could not name after their address; those say nothing across builds.
 const meaningful = (name: string) => !/^(?:FUN|thunk_FUN|LAB|SUB)_[0-9a-f]+$/i.test(name);
 
@@ -61,6 +62,8 @@ export function diffFingerprints(
     result.added++;
     rows.push({ status: "added", right: side(fn) });
   }
+  // Real differences first: a shifted build can relocate thousands of functions.
+  rows.sort((a, b) => ORDER[a.status] - ORDER[b.status]);
   return {
     ...result,
     truncated: truncated || rows.length > MAX_ROWS,

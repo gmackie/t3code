@@ -199,8 +199,14 @@ export class ReverseAnalysisService {
     return this.slots.use(async () => {
       const fingerprints = async (investigationId: string) => {
         const { artifact, path } = await this.store.getArtifact(projectId, investigationId);
+        // Open the same program the user browses, including a raw image's load settings.
+        const profile = (await this.store.list(projectId)).investigations.find(
+          (item) => item.id === investigationId,
+        )?.ghidraProfile;
         return ghidraSessions(this.stateDir).execute(projectId, path, artifact.sha256, {
           action: "fingerprints",
+          languageId: profile?.languageId,
+          imageBase: profile?.imageBase,
         });
       };
       const left = await fingerprints(leftId);

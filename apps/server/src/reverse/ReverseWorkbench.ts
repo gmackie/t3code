@@ -302,7 +302,15 @@ const make = Effect.gen(function* () {
       inProject(input.projectId, () =>
         store.strings(input.projectId, input.investigationId, input.minLength),
       ),
-    analyze: (input) => inProject(input.projectId, () => analysis.run(input)),
+    analyze: (input) =>
+      inProject(input.projectId, async () => {
+        const result = await analysis.run(input);
+        // A raw image's load settings are part of the investigation once they work.
+        const profile = input.kind === "ghidra" ? input.ghidra : undefined;
+        if (profile?.languageId || profile?.imageBase)
+          await store.rememberGhidraProfile(input.projectId, input.investigationId, profile);
+        return result;
+      }),
     emulate: (input) => inProject(input.projectId, () => analysis.emulate(input)),
     publish: (input) =>
       workbench.veritasConfigured
