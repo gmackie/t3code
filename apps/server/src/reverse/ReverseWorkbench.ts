@@ -311,7 +311,7 @@ const make = Effect.gen(function* () {
             message: "The window must end after it starts.",
           });
         const capture = await store.capture(input.projectId, input.captureId);
-        return captureWindow(capture, input.startNs, input.endNs, input.maxPoints);
+        return captureWindow(capture, input.startNs, input.endNs, input.maxPoints, input.channels);
       }),
     decodeCapture: (input) =>
       inProject(input.projectId, async () => {

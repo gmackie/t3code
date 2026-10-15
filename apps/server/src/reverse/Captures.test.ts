@@ -39,8 +39,8 @@ function uartLevels(bytes: number[]): Array<0 | 1> {
 }
 
 describe("capture formats", () => {
-  it("reads VCD scalar wires, skipping vectors", () => {
-    const capture = parseCapture(
+  it("reads VCD scalar wires, skipping vectors", async () => {
+    const capture = await parseCapture(
       strToU8(`$timescale 1 us $end
 $scope module top $end
 $var wire 1 ! tx $end
@@ -71,8 +71,8 @@ $end
     expect(capture.durationNs).toBe(12000);
   });
 
-  it("reads sigrok v2 session files across chunks", () => {
-    const capture = parseCapture(
+  it("reads sigrok v2 session files across chunks", async () => {
+    const capture = await parseCapture(
       zipSync({
         version: strToU8("2"),
         metadata: strToU8(
@@ -92,7 +92,7 @@ $end
     expect(edgesOf(capture, "SDA")).toEqual([2000, 4000]);
   });
 
-  it("reads Saleae binary exports, version 0 and chunked version 1", () => {
+  it("reads Saleae binary exports, version 0 and chunked version 1", async () => {
     const header = (version: number) => {
       const bytes = new Uint8Array(16);
       bytes.set(strToU8("<SALEAE>"));
@@ -134,7 +134,7 @@ $end
       }
       return bytes;
     };
-    const v0 = parseCapture(
+    const v0 = await parseCapture(
       join(header(0), run(1, null, -0.001, 0.001, [0, 0.0005])),
       "digital_3.bin",
     );
@@ -152,24 +152,69 @@ $end
       run(0, 1e6, 0, 0.001, [0.0002]),
       run(0, 1e6, 0.002, 0.003, [0.0025]),
     );
-    const zipped = parseCapture(zipSync({ "export/digital_0.bin": v1 }), "export.zip");
+    const zipped = await parseCapture(zipSync({ "export/digital_0.bin": v1 }), "export.zip");
     expect(zipped).toMatchObject({ sampleRateHz: 1e6 });
     expect(edgesOf(zipped, "D0")).toEqual([200_000, 2_000_000, 2_500_000]);
   });
 
-  it("reads Saleae CSV exports and explains .sal", () => {
-    const capture = parseCapture(
+  it("reads Saleae CSV exports and explains .sal", async () => {
+    const capture = await parseCapture(
       strToU8("Time [s],TX,RX\n0.000000,1,1\n0.000010,0,1\n0.000030,1,0\n"),
       "digital.csv",
     );
     expect(edgesOf(capture, "TX")).toEqual([10_000, 30_000]);
     expect(edgesOf(capture, "RX")).toEqual([30_000]);
-    expect(() => parseCapture(new Uint8Array(4), "session.sal")).toThrow("Export Raw Data");
+    await expect(parseCapture(new Uint8Array(4), "session.sal")).rejects.toThrow("Export Raw Data");
+  });
+});
+
+describe("capture format edge cases", () => {
+  it("skips VCD comments whole and reads 1-bit wires written as vectors", async () => {
+    const capture = await parseCapture(
+      strToU8(`$timescale 1 ns $end
+$var wire 1 ! a $end
+$var wire 1 " b $end
+$enddefinitions $end
+#0
+0!
+b0 "
+#10
+$comment see #notes and 1! $end
+#20
+1!
+b1 "
+#30
+`),
+      "comments.vcd",
+    );
+    expect(capture.durationNs).toBe(30);
+    expect(edgesOf(capture, "a")).toEqual([20]);
+    expect(edgesOf(capture, "b")).toEqual([20]);
+    await expect(
+      parseCapture(strToU8("$var wire 1 ! a $end $enddefinitions $end #x 1!"), "bad.vcd"),
+    ).rejects.toThrow("Invalid VCD timestamp");
+  });
+
+  it("reads Saleae v1 chunks with hundreds of thousands of transitions", async () => {
+    const count = 200_000;
+    const bytes = new Uint8Array(16 + 8 + 36 + count * 8);
+    const view = new DataView(bytes.buffer);
+    bytes.set(strToU8("<SALEAE>"));
+    view.setInt32(8, 1, true);
+    view.setBigUint64(16, 1n, true);
+    view.setUint32(24, 0, true);
+    view.setFloat64(28, 1e6, true);
+    view.setFloat64(36, 0, true);
+    view.setFloat64(44, count * 1e-6, true);
+    view.setBigUint64(52, BigInt(count), true);
+    for (let i = 0; i < count; i++) view.setFloat64(60 + i * 8, i * 1e-6, true);
+    const capture = await parseCapture(bytes, "digital_0.bin");
+    expect(capture.channels[0]!.edges.length).toBe(count);
   });
 });
 
 describe("capture decoding", () => {
-  it("decodes UART bytes and reports levels and dense windows", () => {
+  it("decodes UART bytes and reports levels and dense windows", async () => {
     const capture = fromLevels(1000, { tx: uartLevels([0x41, 0x0a]) });
     const events = decodeUart(capture, "tx", { baud: 1_000_000 }, all);
     expect(events.map((event) => event.text)).toEqual(["0x41 'A'", "0x0a"]);
@@ -186,7 +231,7 @@ describe("capture decoding", () => {
     expect(captureWindow(capture, 0, 30_000, 100).channels[0]!.edges!.length).toBeGreaterThan(2);
   });
 
-  it("decodes SPI mode 0 words inside chip select", () => {
+  it("decodes SPI mode 0 words inside chip select", async () => {
     // 0xA5 MSB first: data changes while the clock is low and is sampled on the rising edge.
     const bits = [1, 0, 1, 0, 0, 1, 0, 1] as Array<0 | 1>;
     const clk: Array<0 | 1> = [0, 0];
@@ -206,7 +251,7 @@ describe("capture decoding", () => {
     ).toEqual(["MOSI 0xa5"]);
   });
 
-  it("decodes an I2C address write with ack", () => {
+  it("decodes an I2C address write with ack", async () => {
     // START, address 0x50 write (0xA0), ACK, STOP.
     const scl: Array<0 | 1> = [1, 1, 0];
     const sda: Array<0 | 1> = [1, 0, 0];
@@ -221,6 +266,57 @@ describe("capture decoding", () => {
       "start",
       "addr 0x50 write ack",
       "stop",
+    ]);
+  });
+
+  it("realigns SPI words on chip select when decoding starts mid-transaction", async () => {
+    // Two transactions of two words each, separated by chip select going high.
+    const clk: Array<0 | 1> = [0, 0];
+    const mosi: Array<0 | 1> = [0, 0];
+    const cs: Array<0 | 1> = [1, 0];
+    const transaction = (words: number[]) => {
+      for (const word of words)
+        for (let bit = 7; bit >= 0; bit--) {
+          const value = ((word >> bit) & 1) as 0 | 1;
+          clk.push(0, 1);
+          mosi.push(value, value);
+          cs.push(0, 0);
+        }
+    };
+    transaction([0xa5, 0x5a]);
+    clk.push(0, 0, 0);
+    mosi.push(0, 0, 0);
+    cs.push(1, 1, 0);
+    transaction([0x3c, 0xc3]);
+    const capture = fromLevels(100, { clk, mosi, cs });
+    const wiring = { clk: "clk", mosi: "mosi", cs: "cs" };
+    expect(decodeSpi(capture, wiring, all).map((event) => event.text)).toEqual([
+      "MOSI 0xa5",
+      "MOSI 0x5a",
+      "MOSI 0x3c",
+      "MOSI 0xc3",
+    ]);
+    // From the middle of the first word, nothing torn is reported and the next transaction aligns.
+    expect(decodeSpi(capture, wiring, { ...all, fromNs: 400 }).map((event) => event.text)).toEqual([
+      "MOSI 0x3c",
+      "MOSI 0xc3",
+    ]);
+  });
+
+  it("treats SDA moving on an SCL edge as data, not a start or stop", async () => {
+    const capture: ParsedCapture = {
+      format: "vcd",
+      durationNs: 300,
+      sampleRateHz: null,
+      truncated: false,
+      skipped: [],
+      channels: [
+        { name: "sda", initial: 1, edges: Float64Array.from([100, 200]) },
+        { name: "scl", initial: 1, edges: Float64Array.from([150, 200, 250]) },
+      ],
+    };
+    expect(decodeI2c(capture, { sda: "sda", scl: "scl" }, all).map((event) => event.text)).toEqual([
+      "start",
     ]);
   });
 });

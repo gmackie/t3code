@@ -173,6 +173,8 @@ export const ReverseCaptureViewInput = Schema.Struct({
   endNs: TimeNs,
   // Roughly the drawing width; denser windows come back as busy spans.
   maxPoints: Schema.Int.check(Schema.isBetween({ minimum: 10, maximum: 4000 })),
+  // Which channels to return, by name; the first 64 when omitted.
+  channels: Schema.optional(Schema.Array(Schema.String).check(Schema.isMaxLength(64))),
 });
 export const ReverseCaptureViewResult = Schema.Struct({
   startNs: Schema.Number,

@@ -9,6 +9,7 @@ import type {
 import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
 import { reverseEnvironment } from "~/state/reverse";
 import { useAtomCommand } from "~/state/use-atom-command";
+import { observeResize } from "~/lib/observeResize";
 import { Button } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
 import {
@@ -21,6 +22,7 @@ import {
 import type { CaptureCitation } from "./FindingsPanel";
 
 const ROW_HEIGHT = 22;
+const MAX_VISIBLE_CHANNELS = 24;
 const LABEL_WIDTH = 96;
 
 /** Formats nanoseconds at a precision that suits the value. */
@@ -40,9 +42,9 @@ function drawWindow(
   canvas: HTMLCanvasElement,
   view: ReverseCaptureViewResult,
   cursorNs: number | null,
+  width: number,
 ) {
   const ratio = window.devicePixelRatio || 1;
-  const width = canvas.clientWidth;
   const height = view.channels.length * ROW_HEIGHT + 4;
   canvas.width = Math.round(width * ratio);
   canvas.height = Math.round(height * ratio);
@@ -72,6 +74,11 @@ function drawWindow(
       for (const [start, end] of channel.busy)
         context.fillRect(x(start), high, Math.max(1, x(end) - x(start)), low - high);
       context.globalAlpha = 1;
+      // The level at the window start still anchors the row between bursts.
+      context.beginPath();
+      context.moveTo(LABEL_WIDTH, channel.level ? high : low);
+      context.lineTo(channel.busy[0] ? x(channel.busy[0][0]) : width, channel.level ? high : low);
+      context.stroke();
       return;
     }
     let level = channel.level;
@@ -116,6 +123,7 @@ export function CapturesPanel({
   const viewCapture = useAtomCommand(reverseEnvironment.viewCapture, { reportFailure: false });
   const decodeCapture = useAtomCommand(reverseEnvironment.decodeCapture, { reportFailure: false });
   const removeCapture = useAtomCommand(reverseEnvironment.removeCapture, { reportFailure: false });
+  const [channelFilter, setChannelFilter] = useState("");
   const [path, setPath] = useState(""),
     [selectedId, setSelectedId] = useState<string | null>(null),
     [confirmDelete, setConfirmDelete] = useState(false);
@@ -128,7 +136,7 @@ export function CapturesPanel({
     [decoded, setDecoded] = useState<ReverseCaptureDecodeResult | null>(null);
   const [busy, setBusy] = useState(false),
     [error, setError] = useState<string | null>(null);
-  const canvas = useRef<HTMLCanvasElement | null>(null);
+  const [canvasElement, setCanvasElement] = useState<HTMLCanvasElement | null>(null);
   const alive = useRef(true),
     request = useRef(0);
   useEffect(() => {
@@ -160,30 +168,55 @@ export function CapturesPanel({
   }
 
   // Fetch the visible window whenever the capture or range changes.
+  // A new capture starts fresh: its channels and timeline share nothing with the last one.
+  const select = (id: string) => {
+    setSelectedId(id);
+    setRange(null);
+    setView(null);
+    setDecoded(null);
+    setCursorNs(null);
+    setLines({});
+    setChannelFilter("");
+    setConfirmDelete(false);
+  };
+  // Wide captures show a filtered subset, so payloads and the canvas stay bounded.
+  const visibleChannels = (selected?.channels ?? [])
+    .filter((name) => name.toLowerCase().includes(channelFilter.trim().toLowerCase()))
+    .slice(0, MAX_VISIBLE_CHANNELS);
+  const visibleKey = visibleChannels.join("\u0000");
+  const [width, setWidth] = useState(0);
+  useEffect(() => {
+    if (!canvasElement) return;
+    return observeResize(canvasElement, () => setWidth(canvasElement.clientWidth));
+  }, [canvasElement]);
   const captureId = selected?.id ?? null;
   const startNs = shown?.startNs ?? 0;
   const endNs = shown?.endNs ?? 0;
   const environmentId = threadRef.environmentId;
   useEffect(() => {
-    if (!captureId || !canvas.current) return;
+    if (!captureId || width === 0) return;
     const sequence = ++request.current;
-    const maxPoints = Math.max(
-      10,
-      Math.min(4000, Math.floor(canvas.current.clientWidth - LABEL_WIDTH)),
-    );
+    const maxPoints = Math.max(10, Math.min(4000, Math.floor(width - LABEL_WIDTH)));
     void viewCapture({
       environmentId,
-      input: { projectId, captureId, startNs, endNs, maxPoints },
+      input: {
+        projectId,
+        captureId,
+        startNs,
+        endNs,
+        maxPoints,
+        channels: visibleKey ? visibleKey.split("\u0000") : [],
+      },
     }).then((response) => {
       if (!alive.current || sequence !== request.current) return;
       if (response._tag === "Failure") setError(String(squashAtomCommandFailure(response)));
       else setView(response.value);
     });
-  }, [captureId, startNs, endNs, projectId, environmentId, viewCapture]);
+  }, [captureId, startNs, endNs, projectId, environmentId, viewCapture, visibleKey, width]);
 
   useEffect(() => {
-    if (view && canvas.current) drawWindow(canvas.current, view, cursorNs);
-  }, [view, cursorNs]);
+    if (view && canvasElement) drawWindow(canvasElement, view, cursorNs, width);
+  }, [view, cursorNs, canvasElement, width]);
 
   const zoom = (factor: number, centerNs?: number) => {
     if (!selected || !shown) return;
@@ -199,8 +232,8 @@ export function CapturesPanel({
     setRange({ startNs, endNs: startNs + (shown.endNs - shown.startNs) });
   };
   const timeAt = (clientX: number) => {
-    if (!canvas.current || !shown) return null;
-    const box = canvas.current.getBoundingClientRect();
+    if (!canvasElement || !shown) return null;
+    const box = canvasElement.getBoundingClientRect();
     const plot = box.width - LABEL_WIDTH;
     const fraction = (clientX - box.left - LABEL_WIDTH) / plot;
     return fraction < 0 ? null : shown.startNs + fraction * (shown.endNs - shown.startNs);
@@ -249,8 +282,7 @@ export function CapturesPanel({
             if (response._tag === "Failure") throw squashAtomCommandFailure(response);
             if (!alive.current) return;
             setPath("");
-            setSelectedId(response.value.id);
-            setRange(null);
+            select(response.value.id);
             onChanged();
           });
         }}
@@ -272,14 +304,7 @@ export function CapturesPanel({
               key={capture.id}
               size="xs"
               variant={capture.id === selectedId ? "secondary" : "ghost"}
-              onClick={() => {
-                setSelectedId(capture.id);
-                setRange(null);
-                setView(null);
-                setDecoded(null);
-                setCursorNs(null);
-                setConfirmDelete(false);
-              }}
+              onClick={() => select(capture.id)}
             >
               {capture.filename}
             </Button>
@@ -321,8 +346,16 @@ export function CapturesPanel({
               {cursorNs !== null ? ` · cursor ${formatNs(cursorNs)}` : ""}
             </span>
           </div>
+          {selected.channels.length > MAX_VISIBLE_CHANNELS && (
+            <Input
+              aria-label="Filter channels"
+              placeholder={`Filter ${selected.channels.length} channels (showing ${visibleChannels.length})`}
+              value={channelFilter}
+              onChange={(event) => setChannelFilter(event.target.value)}
+            />
+          )}
           <canvas
-            ref={canvas}
+            ref={setCanvasElement}
             aria-label={`Waveform of ${selected.filename}`}
             className="w-full cursor-crosshair border border-border"
             onClick={(event) => setCursorNs(timeAt(event.clientX))}

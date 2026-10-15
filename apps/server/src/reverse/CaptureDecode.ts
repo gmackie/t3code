@@ -65,12 +65,17 @@ export function captureWindow(
   startNs: number,
   endNs: number,
   maxPoints: number,
+  names?: ReadonlyArray<string>,
 ): CaptureWindow {
+  const wanted = names ? new Set(names) : null;
+  const channels = wanted
+    ? capture.channels.filter((channel) => wanted.has(channel.name))
+    : capture.channels.slice(0, 64);
   const span = Math.max(1, endNs - startNs);
   return {
     startNs,
     endNs,
-    channels: capture.channels.map((channel) => {
+    channels: channels.map((channel) => {
       const from = firstAfter(channel.edges, startNs);
       const to = firstAfter(channel.edges, endNs);
       const level = levelAt(channel, startNs);
@@ -213,7 +218,10 @@ export function decodeSpi(
     mosiWord = 0,
     misoWord = 0,
     wordStart = 0;
-  let csActive = cs ? levelAt(cs, range.fromNs) === 0 : true;
+  // Chip select toggling between two clock edges (normally with the clock idle) ends a word.
+  let csEdgesSeen = cs ? firstAfter(cs.edges, range.fromNs) : 0;
+  // From a mid-transaction start the first word may be torn, so words begin at an assertion.
+  let aligned = !cs || levelAt(cs, range.fromNs) !== 0 || range.fromNs === 0;
   const push = (word: number, bit: 0 | 1) =>
     msb ? ((word << 1) | bit) >>> 0 : (word | (bit << bits)) >>> 0;
   for (
@@ -224,13 +232,14 @@ export function decodeSpi(
     const timeNs = clk.edges[index]!;
     if (timeNs > range.toNs) break;
     if (cs) {
-      const active = levelAt(cs, timeNs) === 0;
-      if (active !== csActive) {
+      const seen = firstAfter(cs.edges, timeNs);
+      if (seen !== csEdgesSeen) {
         // A word torn by chip select is dropped, not reported.
         bits = mosiWord = misoWord = 0;
-        csActive = active;
+        csEdgesSeen = seen;
+        aligned = true;
       }
-      if (!active) continue;
+      if (levelAt(cs, timeNs) !== 0 || !aligned) continue;
     }
     if ((clk.initial + index + 1) % 2 !== sampleValue) continue;
     if (bits === 0) wordStart = timeNs;
@@ -307,6 +316,8 @@ export function decodeI2c(
     }
     const rising = (sda.initial + s + 1) % 2 === 1;
     s++;
+    // SDA moving on a clock edge is a data bit (already sampled), never a start or stop.
+    if (firstAfter(scl.edges, sdaNext) !== firstAtOrAfter(scl.edges, sdaNext)) continue;
     if (levelAt(scl, sdaNext) !== 1) continue;
     if (!rising) {
       events.push({

@@ -33,7 +33,7 @@ Use **Captures** to open logic-analyzer recordings from the project: VCD files (
 
 Captures up to 256 MiB are copied into the environment like firmware. Very busy recordings keep their first 8 million edges, and the capture says so.
 
-Zoom, fit and pan the waveform, and click to place a cursor; zooming centers on it. Where a window holds more edges than fit on screen, busy stretches are shaded; zoom in to see individual edges. **Decode window** reads the visible window as UART, SPI or I²C on the channels you pick. Select a decoded event to zoom to it. **Cite window in a finding** adds the visible window to a new finding on the selected investigation. Findings that cite a capture stay on this environment, since Veritas cannot open these captures.
+A capture with many channels shows 24 at a time; type in the channel filter to choose which. Zoom, fit and pan the waveform, and click to place a cursor; zooming centers on it. Where a window holds more edges than fit on screen, busy stretches are shaded; zoom in to see individual edges. **Decode window** reads the visible window as UART, SPI or I²C on the channels you pick. Select a decoded event to zoom to it. **Cite window in a finding** adds the visible window to a new finding on the selected investigation. Findings that cite a capture stay on this environment, since Veritas cannot open these captures.
 
 ## Record findings
 

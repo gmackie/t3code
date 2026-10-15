@@ -352,9 +352,7 @@ export class ReverseInvestigationStore {
         // A capture window must name a capture imported into this project.
         if (
           ref.kind === "capture" &&
-          !(await readProject(this.stateDir, input.projectId)).captures.some(
-            (capture) => capture.id === ref.captureId,
-          )
+          !record.captures.some((capture) => capture.id === ref.captureId)
         )
           throw err("invalid_file", "Capture evidence must name a capture in this project.");
         const cited =
@@ -570,11 +568,15 @@ export class ReverseInvestigationStore {
 
   // Parsing a large capture takes a while, so the most recent few stay in memory.
   private readonly parsedCaptures = new Map<string, Promise<ParsedCapture>>();
+  // Parsing depends on the extension too: the same bytes may be a sigrok session or a zip.
+  private parseKey = (sha256: string, filename: string) =>
+    `${sha256}:${NodePath.extname(filename).toLowerCase()}`;
   private parseStored(sha256: string, filename: string): Promise<ParsedCapture> {
-    const cached = this.parsedCaptures.get(sha256);
+    const key = this.parseKey(sha256, filename);
+    const cached = this.parsedCaptures.get(key);
     if (cached) {
-      this.parsedCaptures.delete(sha256);
-      this.parsedCaptures.set(sha256, cached);
+      this.parsedCaptures.delete(key);
+      this.parsedCaptures.set(key, cached);
       return cached;
     }
     const oldest = this.parsedCaptures.keys().next();
@@ -585,8 +587,8 @@ export class ReverseInvestigationStore {
       .catch((error: unknown) => {
         throw error instanceof CaptureFormatError ? err("invalid_file", error.message) : error;
       });
-    this.parsedCaptures.set(sha256, parsing);
-    parsing.catch(() => this.parsedCaptures.delete(sha256));
+    this.parsedCaptures.set(key, parsing);
+    parsing.catch(() => this.parsedCaptures.delete(key));
     return parsing;
   }
 
@@ -594,8 +596,9 @@ export class ReverseInvestigationStore {
   async removeCapture(projectId: string, captureId: string): Promise<void> {
     await this.locked(projectId, async () => {
       const record = await readProject(this.stateDir, projectId);
-      if (!record.captures.some((capture) => capture.id === captureId))
-        throw err("not_found", "Capture not found in this project.");
+      const removed = record.captures.find((capture) => capture.id === captureId);
+      if (!removed) throw err("not_found", "Capture not found in this project.");
+      this.parsedCaptures.delete(this.parseKey(removed.sha256, removed.filename));
       record.captures = record.captures.filter((capture) => capture.id !== captureId);
       await saveProject(this.stateDir, projectId, record);
     });

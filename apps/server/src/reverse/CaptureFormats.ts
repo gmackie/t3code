@@ -18,6 +18,19 @@ export interface ParsedCapture {
 
 export class CaptureFormatError extends Error {}
 
+const DUMP_SECTIONS = new Set(["$dumpvars", "$dumpall", "$dumpon", "$dumpoff"]);
+// Channel names fit the 256-character ids used to cite them.
+const MAX_NAME = 200;
+const MAX_SKIPPED = 50;
+const noteSkipped = (skipped: string[], name: string) => {
+  if (skipped.length < MAX_SKIPPED) skipped.push(name.slice(-MAX_NAME));
+  else if (skipped.length === MAX_SKIPPED) skipped.push("and more");
+};
+
+// Parsing runs on the server's event loop; long parses hand it back regularly.
+const YIELD_EVERY = 1 << 20;
+const yieldToEventLoop = () => new Promise<void>((resolve) => setImmediate(resolve));
+
 const MAX_EDGES = 8_000_000;
 const MAX_UNZIPPED_BYTES = 512 * 1024 * 1024;
 
@@ -49,6 +62,11 @@ function finish(
   sampleRateHz: number | null,
   skipped: string[] = [],
 ): ParsedCapture {
+  // These are stored in the project record; a NaN there would make it unreadable.
+  if (!Number.isFinite(durationNs) || durationNs < 0)
+    throw new CaptureFormatError("The capture has no valid duration.");
+  if (sampleRateHz !== null && !(Number.isFinite(sampleRateHz) && sampleRateHz > 0))
+    throw new CaptureFormatError("The capture has no valid sample rate.");
   return {
     format,
     durationNs,
@@ -76,7 +94,8 @@ const TIMESCALE_NS: Record<string, number> = {
  * Value Change Dump with scalar wires, as written by PulseView, Glasgow, simulators and most
  * logic analyzers. Vectors and reals are listed in `skipped`; x and z read as low.
  */
-export function parseVcd(text: string): ParsedCapture {
+export async function parseVcd(text: string): Promise<ParsedCapture> {
+  let work = 0;
   let pos = 0;
   const next = (): string | null => {
     while (pos < text.length && text.charCodeAt(pos) <= 32) pos++;
@@ -116,18 +135,25 @@ export function parseVcd(text: string): ParsedCapture {
       const kind = next(),
         width = next(),
         id = next(),
-        name = next();
-      skipToEnd();
-      if (!id || !name) throw new CaptureFormatError("Malformed VCD $var declaration.");
+        base = next();
+      // A bit select such as `data [3]` keeps its index in the name.
+      const select = [];
+      for (let part = next(); part !== null && part !== "$end"; part = next()) select.push(part);
+      if (!id || !base) throw new CaptureFormatError("Malformed VCD $var declaration.");
+      const name = select.length ? `${base}${select.join("")}` : base;
       if (width !== "1" || kind === "real") {
-        skipped.push(name);
+        noteSkipped(skipped, name);
         continue;
       }
       // Aliased ids (one signal declared twice) share a channel.
       if (ids.has(id)) continue;
-      const scoped = scopes.length > 1 ? `${scopes.slice(1).join(".")}.${name}` : name;
+      const scoped = (scopes.length > 1 ? `${scopes.slice(1).join(".")}.${name}` : name).slice(
+        -MAX_NAME,
+      );
       ids.set(id, names.length);
-      names.push(names.includes(scoped) ? `${scoped}#${names.length}` : scoped);
+      names.push(
+        names.includes(scoped) ? `${scoped.slice(-MAX_NAME + 8)}#${names.length}` : scoped,
+      );
     } else if (token.startsWith("$")) skipToEnd();
   }
   if (names.length === 0) throw new CaptureFormatError("The VCD file declares no 1-bit signals.");
@@ -138,19 +164,32 @@ export function parseVcd(text: string): ParsedCapture {
   let timeNs = 0;
   let lastNs = 0;
   for (let token = next(); token !== null && !sink.truncated; token = next()) {
+    if (++work % YIELD_EVERY === 0) await yieldToEventLoop();
     const first = token.charCodeAt(0);
     if (first === 35 /* # */) {
       timeNs = Number(token.slice(1)) * timescaleNs;
+      if (!Number.isFinite(timeNs) || timeNs < 0)
+        throw new CaptureFormatError(`Invalid VCD timestamp ${token.slice(0, 40)}.`);
       lastNs = Math.max(lastNs, timeNs);
       continue;
     }
-    if (token.startsWith("$")) continue;
-    if (first === 98 || first === 66 || first === 114 || first === 82) {
-      next(); // b/r vector value: its identifier follows; vectors were skipped
+    if (token.startsWith("$")) {
+      // Dump sections hold value changes; any other keyword's body ($comment…) is skipped whole.
+      if (!DUMP_SECTIONS.has(token) && token !== "$end") skipToEnd();
       continue;
     }
-    const value: 0 | 1 = first === 49 /* 1 */ ? 1 : 0;
-    const channel = ids.get(token.slice(1));
+    let value: 0 | 1;
+    let id: string;
+    if (first === 98 || first === 66 || first === 114 || first === 82) {
+      // b/r value then its identifier: a 1-bit wire written in vector form takes its last bit.
+      id = next() ?? "";
+      if (first === 114 || first === 82 || !ids.has(id)) continue;
+      value = token.charCodeAt(token.length - 1) === 49 ? 1 : 0;
+    } else {
+      value = first === 49 /* 1 */ ? 1 : 0;
+      id = token.slice(1);
+    }
+    const channel = ids.get(id);
     if (channel === undefined) continue;
     const previous = level[channel];
     if (previous === null) {
@@ -188,7 +227,7 @@ function unzipBounded(
 const RATE_UNITS: Record<string, number> = { hz: 1, khz: 1e3, mhz: 1e6, ghz: 1e9 };
 
 /** sigrok session files (v2 srzip): `metadata` INI plus little-endian `logic-1-N` chunks. */
-export function parseSigrok(bytes: Uint8Array): ParsedCapture {
+export async function parseSigrok(bytes: Uint8Array): Promise<ParsedCapture> {
   const files = unzipBounded(
     bytes,
     (name) => name === "version" || name === "metadata" || /^logic-1(-\d+)?$/.test(name),
@@ -221,7 +260,7 @@ export function parseSigrok(bytes: Uint8Array): ParsedCapture {
     const probe = /^probe(\d+)$/.exec(key);
     if (probe) {
       bits.push(Number(probe[1]) - 1);
-      names.push(value);
+      names.push(value.slice(0, MAX_NAME));
     }
   }
   if (names.length === 0) throw new CaptureFormatError("The sigrok capture has no logic channels.");
@@ -237,6 +276,8 @@ export function parseSigrok(bytes: Uint8Array): ParsedCapture {
   const level: Array<0 | 1> = order.map(() => 0);
   const nsPerSample = 1e9 / sampleRateHz;
   let sample = 0;
+  let previousLow = -1,
+    previousHigh = -1;
   for (const chunk of chunks) {
     const data = files[chunk]!;
     const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
@@ -253,6 +294,11 @@ export function parseSigrok(bytes: Uint8Array): ParsedCapture {
             ? view.getUint16(offset, true)
             : view.getUint32(offset, true);
       const high = unitsize === 8 ? view.getUint32(offset + 4, true) : 0;
+      if (sample % YIELD_EVERY === 0) await yieldToEventLoop();
+      // Most samples repeat the last one; only a changed word can hold an edge.
+      if (low === previousLow && high === previousHigh) continue;
+      previousLow = low;
+      previousHigh = high;
       for (let channel = 0; channel < order.length; channel++) {
         const bit = order[channel]!.bit;
         const value = ((bit < 32 ? low >>> bit : high >>> (bit - 32)) & 1) as 0 | 1;
@@ -318,6 +364,9 @@ function readSaleaeDigital(data: Uint8Array): {
   need(8);
   const chunkCount = Number(view.getBigUint64(offset, true));
   offset += 8;
+  // Every chunk needs at least its 36-byte header.
+  if (chunkCount > (data.byteLength - offset) / 36)
+    throw new CaptureFormatError("The Saleae export is truncated.");
   const runs = Array.from({ length: chunkCount }, () => readRun(true));
   if (runs.length === 0) throw new CaptureFormatError("The Saleae export has no data.");
   // Gaps between chunks keep the last level unless the next chunk starts at another one.
@@ -325,7 +374,7 @@ function readSaleaeDigital(data: Uint8Array): {
   let level = runs[0]!.initial;
   for (const [index, run] of runs.entries()) {
     if (index > 0 && run.initial !== level) times.push(run.beginS);
-    times.push(...run.times);
+    for (const time of run.times) times.push(time);
     level = ((run.initial + run.times.length) % 2) as 0 | 1;
   }
   return {
@@ -376,18 +425,33 @@ export function parseSaleaeBinary(bytes: Uint8Array, filename: string): ParsedCa
 }
 
 /** Logic 2's CSV export: `Time [s],<channel>,...`, one row per change. */
-export function parseSaleaeCsv(text: string): ParsedCapture {
-  const lines = text.split(/\r?\n/).filter((line) => line.trim() !== "");
-  const header = lines[0]?.split(",").map((cell) => cell.trim()) ?? [];
+export async function parseSaleaeCsv(text: string): Promise<ParsedCapture> {
+  // Walk lines in place: a large export split into an array costs several times its size.
+  let pos = 0;
+  const nextLine = (): string | null => {
+    while (pos < text.length) {
+      let end = text.indexOf("\n", pos);
+      if (end < 0) end = text.length;
+      const line = text.slice(pos, end).replace(/\r$/, "");
+      pos = end + 1;
+      if (line.trim() !== "") return line;
+    }
+    return null;
+  };
+  const header =
+    nextLine()
+      ?.split(",")
+      .map((cell) => cell.trim()) ?? [];
   if (!/^time/i.test(header[0] ?? "") || header.length < 2)
     throw new CaptureFormatError("Not a Saleae digital CSV export: expected a Time column first.");
-  const names = header.slice(1);
+  const names = header.slice(1).map((name) => name.slice(0, MAX_NAME));
   const sink = new EdgeSink(names.length);
   const initial: Array<0 | 1> = names.map(() => 0);
   const level: Array<0 | 1> = names.map(() => 0);
   let startS = 0;
   let lastNs = 0;
-  for (const [row, line] of lines.slice(1).entries()) {
+  for (let row = 0, line = nextLine(); line !== null && !sink.truncated; row++, line = nextLine()) {
+    if (row % YIELD_EVERY === 0) await yieldToEventLoop();
     const cells = line.split(",");
     const timeS = Number(cells[0]);
     if (!Number.isFinite(timeS)) throw new CaptureFormatError(`Row ${row + 2} has no time.`);
@@ -404,13 +468,12 @@ export function parseSaleaeCsv(text: string): ParsedCapture {
         sink.push(channel, timeNs);
       }
     }
-    if (sink.truncated) break;
   }
   return finish("saleae-csv", names, initial, sink, lastNs, null);
 }
 
 /** Picks a parser from the file name and contents. */
-export function parseCapture(bytes: Uint8Array, filename: string): ParsedCapture {
+export async function parseCapture(bytes: Uint8Array, filename: string): Promise<ParsedCapture> {
   const lower = filename.toLowerCase();
   if (lower.endsWith(".sal"))
     throw new CaptureFormatError(
