@@ -94,17 +94,8 @@ describe("Reverse workbench HTTP route", () => {
 
       // Workbench scans run the same analyzers as the RPCs.
       await NodeFSP.writeFile(NodePath.join(root, "fw.bin"), "\0\0boot=quiet\0");
-      const stateDir = await Effect.runPromise(
-        Effect.gen(function* () {
-          return (yield* ServerConfig).stateDir;
-        }).pipe(
-          Effect.provide(
-            ServerConfig.layerTest(root, NodePath.join(root, "state")).pipe(
-              Layer.provide(NodeServices.layer),
-            ),
-          ),
-        ),
-      );
+      // ServerConfig.layerTest keeps server state under <baseDir>/userdata.
+      const stateDir = NodePath.join(root, "state", "userdata");
       const { investigation } = await getReverseInvestigationStore(stateDir).importFile({
         projectId: "live",
         environmentId: "env",
