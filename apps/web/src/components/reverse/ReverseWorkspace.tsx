@@ -8,57 +8,236 @@ import { Button } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
 import { AnalysisPanel } from "./AnalysisPanel";
 
-export function ReverseWorkspace({ threadRef, projectId }: { readonly threadRef: ScopedThreadRef; readonly projectId: string | null }) {
-  if (!projectId) return <p className="p-4 text-sm">Open a project thread to begin a firmware investigation.</p>;
-  return <ProjectWorkspace key={`${threadRef.environmentId}:${projectId}`} threadRef={threadRef} projectId={projectId} />;
+export function ReverseWorkspace({
+  threadRef,
+  projectId,
+}: {
+  readonly threadRef: ScopedThreadRef;
+  readonly projectId: string | null;
+}) {
+  if (!projectId)
+    return <p className="p-4 text-sm">Open a project thread to begin a firmware investigation.</p>;
+  return (
+    <ProjectWorkspace
+      key={`${threadRef.environmentId}:${projectId}`}
+      threadRef={threadRef}
+      projectId={projectId}
+    />
+  );
 }
-function ProjectWorkspace({ threadRef, projectId }: { threadRef: ScopedThreadRef; projectId: string }) {
-  const [path, setPath] = useState(""), [selected, setSelected] = useState<string | null>(null);
-  const [filter, setFilter] = useState(""), [veritas, setVeritas] = useState(""), [board, setBoard] = useState("");
-  const [busy, setBusy] = useState(false), [error, setError] = useState<string | null>(null);
+function ProjectWorkspace({
+  threadRef,
+  projectId,
+}: {
+  threadRef: ScopedThreadRef;
+  projectId: string;
+}) {
+  const [path, setPath] = useState(""),
+    [selected, setSelected] = useState<string | null>(null);
+  const [filter, setFilter] = useState(""),
+    [veritas, setVeritas] = useState(""),
+    [board, setBoard] = useState("");
+  const [busy, setBusy] = useState(false),
+    [error, setError] = useState<string | null>(null);
   const alive = useRef(true);
-  useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
+  useEffect(() => {
+    alive.current = true;
+    return () => {
+      alive.current = false;
+    };
+  }, []);
   const target = { environmentId: threadRef.environmentId, input: { projectId } };
   const list = useEnvironmentQuery(reverseEnvironment.list(target));
-  const investigations = list.data?.investigations ?? [], artifacts = list.data?.artifacts ?? [];
-  const active = investigations.find(item => item.id === selected) ?? investigations[0];
-  const strings = useEnvironmentQuery(active ? reverseEnvironment.strings({ environmentId: threadRef.environmentId, input: { projectId, investigationId: active.id, minLength: 4 } }) : null);
+  const investigations = list.data?.investigations ?? [],
+    artifacts = list.data?.artifacts ?? [];
+  const active = investigations.find((item) => item.id === selected) ?? investigations[0];
+  const strings = useEnvironmentQuery(
+    active
+      ? reverseEnvironment.strings({
+          environmentId: threadRef.environmentId,
+          input: { projectId, investigationId: active.id, minLength: 4 },
+        })
+      : null,
+  );
   const importFile = useAtomCommand(reverseEnvironment.importFile, { reportFailure: false });
   const link = useAtomCommand(reverseEnvironment.link, { reportFailure: false });
   async function importFirmware() {
-    if (busy || !path.trim()) return; setBusy(true); setError(null);
+    if (busy || !path.trim()) return;
+    setBusy(true);
+    setError(null);
     try {
-      const response = await importFile({ environmentId: threadRef.environmentId, input: { projectId, relativePath: path.trim() } });
+      const response = await importFile({
+        environmentId: threadRef.environmentId,
+        input: { projectId, relativePath: path.trim() },
+      });
       if (!alive.current) return;
       if (response._tag === "Failure") throw squashAtomCommandFailure(response);
-      setSelected(response.value.investigation.id); setPath(""); list.refresh();
-    } catch (cause) { if (alive.current) setError(String(cause)); }
-    finally { if (alive.current) setBusy(false); }
+      setSelected(response.value.investigation.id);
+      setPath("");
+      list.refresh();
+    } catch (cause) {
+      if (alive.current) setError(String(cause));
+    } finally {
+      if (alive.current) setBusy(false);
+    }
   }
   async function saveLink() {
-    if (!active || busy) return; setBusy(true); setError(null);
+    if (!active || busy) return;
+    setBusy(true);
+    setError(null);
     try {
-      const response = await link({ environmentId: threadRef.environmentId, input: { projectId, investigationId: active.id, ...(veritas.trim() ? { veritasProjectId: veritas.trim() } : {}), ...(board.trim() ? { boardRevisionId: board.trim() } : {}) } });
+      const response = await link({
+        environmentId: threadRef.environmentId,
+        input: {
+          projectId,
+          investigationId: active.id,
+          ...(veritas.trim() ? { veritasProjectId: veritas.trim() } : {}),
+          ...(board.trim() ? { boardRevisionId: board.trim() } : {}),
+        },
+      });
       if (!alive.current) return;
-      if (response._tag === "Failure") throw squashAtomCommandFailure(response); list.refresh();
-    } catch (cause) { if (alive.current) setError(String(cause)); }
-    finally { if (alive.current) setBusy(false); }
+      if (response._tag === "Failure") throw squashAtomCommandFailure(response);
+      list.refresh();
+    } catch (cause) {
+      if (alive.current) setError(String(cause));
+    } finally {
+      if (alive.current) setBusy(false);
+    }
   }
-  return <section aria-label="Reverse engineering workspace" className="flex h-full min-h-0 flex-col bg-background text-foreground">
-    <header className="border-b border-border p-3"><h2 className="text-sm font-semibold">Reverse Workbench</h2><p className="text-xs text-muted-foreground">Firmware · code · hardware · evidence</p></header>
-    <form className="flex gap-2 border-b border-border p-3" onSubmit={event => { event.preventDefault(); void importFirmware(); }}><Input aria-label="Firmware path relative to the project" placeholder="Firmware path relative to this environment’s project" value={path} onChange={event => setPath(event.target.value)} /><Button type="submit" size="sm" disabled={busy || !path.trim()}>Import firmware</Button></form>
-    {(error || list.error) && <p role="alert" className="p-3 text-xs text-destructive">{error ?? list.error}</p>}
-    <div className="flex min-h-0 flex-1 overflow-hidden">
-      <aside aria-label="Firmware investigations" className="w-44 shrink-0 overflow-auto border-r border-border p-2">
-        {!investigations.length && <p className="text-xs text-muted-foreground">Import an ELF, PE or raw firmware image.</p>}
-        {investigations.map(item => <Button key={item.id} className="mb-1 w-full justify-start overflow-hidden" variant={active?.id === item.id ? "secondary" : "ghost"} size="sm" disabled={busy} onClick={() => { setSelected(item.id); setFilter(""); setVeritas(""); setBoard(""); }} title={item.artifactSha256}><span className="truncate">{artifacts.find(a => a.sha256 === item.artifactSha256)?.filename ?? item.artifactSha256.slice(0,12)}</span></Button>)}
-      </aside>
-      <div className="min-w-0 flex-1 overflow-auto">{active && <>
-        <p className="break-all border-b border-border p-3 font-mono text-xs">SHA-256 {active.artifactSha256}</p>
-        <AnalysisPanel key={active.id} threadRef={threadRef} projectId={projectId} investigationId={active.id} />
-        <details className="border-b border-border p-3"><summary className="cursor-pointer text-xs font-medium">Strings and file offsets</summary><Input aria-label="Filter extracted strings" className="my-2" placeholder="Find URLs, log messages, protocol names…" value={filter} onChange={e => setFilter(e.target.value)} /><p className="text-xs text-muted-foreground">ASCII scan, first 32 MiB, at most 2,000 matches; showing at most 500 filtered rows. {strings.data?.truncated ? "Scan truncated." : ""}</p>{strings.error && <p role="alert">{strings.error}</p>}<div className="max-h-64 overflow-auto font-mono text-xs">{(strings.data?.strings ?? []).filter(row => row.value.toLowerCase().includes(filter.toLowerCase())).slice(0,500).map(row => <div key={row.offset} className="flex gap-3 border-b border-border py-1"><span>0x{row.offset.toString(16)}</span><span className="break-all">{row.value}</span></div>)}</div></details>
-        <form className="space-y-2 p-3" onSubmit={event => { event.preventDefault(); void saveLink(); }}><h3 className="text-xs font-medium">Veritas linkage</h3><Input aria-label="Veritas project id" placeholder={active.veritasProjectId ?? "Veritas project ID"} value={veritas} onChange={e => setVeritas(e.target.value)} /><Input aria-label="Board revision id" placeholder={active.boardRevisionId ?? "Board revision ID"} value={board} onChange={e => setBoard(e.target.value)} /><Button type="submit" size="sm" variant="outline" disabled={busy}>Save linkage</Button><p className="text-xs text-muted-foreground">Linking identifiers does not publish firmware or qualify hardware.</p></form>
-      </>}</div>
-    </div>
-  </section>;
+  return (
+    <section
+      aria-label="Reverse engineering workspace"
+      className="flex h-full min-h-0 flex-col bg-background text-foreground"
+    >
+      <header className="border-b border-border p-3">
+        <h2 className="text-sm font-semibold">Reverse Workbench</h2>
+        <p className="text-xs text-muted-foreground">Firmware · code · hardware · evidence</p>
+      </header>
+      <form
+        className="flex gap-2 border-b border-border p-3"
+        onSubmit={(event) => {
+          event.preventDefault();
+          void importFirmware();
+        }}
+      >
+        <Input
+          aria-label="Firmware path relative to the project"
+          placeholder="Firmware path relative to this environment’s project"
+          value={path}
+          onChange={(event) => setPath(event.target.value)}
+        />
+        <Button type="submit" size="sm" disabled={busy || !path.trim()}>
+          Import firmware
+        </Button>
+      </form>
+      {(error || list.error) && (
+        <p role="alert" className="p-3 text-xs text-destructive">
+          {error ?? list.error}
+        </p>
+      )}
+      <div className="flex min-h-0 flex-1 overflow-hidden">
+        <aside
+          aria-label="Firmware investigations"
+          className="w-44 shrink-0 overflow-auto border-r border-border p-2"
+        >
+          {!investigations.length && (
+            <p className="text-xs text-muted-foreground">
+              Import an ELF, PE or raw firmware image.
+            </p>
+          )}
+          {investigations.map((item) => (
+            <Button
+              key={item.id}
+              className="mb-1 w-full justify-start overflow-hidden"
+              variant={active?.id === item.id ? "secondary" : "ghost"}
+              size="sm"
+              disabled={busy}
+              onClick={() => {
+                setSelected(item.id);
+                setFilter("");
+                setVeritas("");
+                setBoard("");
+              }}
+              title={item.artifactSha256}
+            >
+              <span className="truncate">
+                {artifacts.find((a) => a.sha256 === item.artifactSha256)?.filename ??
+                  item.artifactSha256.slice(0, 12)}
+              </span>
+            </Button>
+          ))}
+        </aside>
+        <div className="min-w-0 flex-1 overflow-auto">
+          {active && (
+            <>
+              <p className="break-all border-b border-border p-3 font-mono text-xs">
+                SHA-256 {active.artifactSha256}
+              </p>
+              <AnalysisPanel
+                key={active.id}
+                threadRef={threadRef}
+                projectId={projectId}
+                investigationId={active.id}
+              />
+              <details className="border-b border-border p-3">
+                <summary className="cursor-pointer text-xs font-medium">
+                  Strings and file offsets
+                </summary>
+                <Input
+                  aria-label="Filter extracted strings"
+                  className="my-2"
+                  placeholder="Find URLs, log messages, protocol names…"
+                  value={filter}
+                  onChange={(e) => setFilter(e.target.value)}
+                />
+                <p className="text-xs text-muted-foreground">
+                  ASCII scan, first 32 MiB, at most 2,000 matches; showing at most 500 filtered
+                  rows. {strings.data?.truncated ? "Scan truncated." : ""}
+                </p>
+                {strings.error && <p role="alert">{strings.error}</p>}
+                <div className="max-h-64 overflow-auto font-mono text-xs">
+                  {(strings.data?.strings ?? [])
+                    .filter((row) => row.value.toLowerCase().includes(filter.toLowerCase()))
+                    .slice(0, 500)
+                    .map((row) => (
+                      <div key={row.offset} className="flex gap-3 border-b border-border py-1">
+                        <span>0x{row.offset.toString(16)}</span>
+                        <span className="break-all">{row.value}</span>
+                      </div>
+                    ))}
+                </div>
+              </details>
+              <form
+                className="space-y-2 p-3"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  void saveLink();
+                }}
+              >
+                <h3 className="text-xs font-medium">Veritas linkage</h3>
+                <Input
+                  aria-label="Veritas project id"
+                  placeholder={active.veritasProjectId ?? "Veritas project ID"}
+                  value={veritas}
+                  onChange={(e) => setVeritas(e.target.value)}
+                />
+                <Input
+                  aria-label="Board revision id"
+                  placeholder={active.boardRevisionId ?? "Board revision ID"}
+                  value={board}
+                  onChange={(e) => setBoard(e.target.value)}
+                />
+                <Button type="submit" size="sm" variant="outline" disabled={busy}>
+                  Save linkage
+                </Button>
+                <p className="text-xs text-muted-foreground">
+                  Linking identifiers does not publish firmware or qualify hardware.
+                </p>
+              </form>
+            </>
+          )}
+        </div>
+      </div>
+    </section>
+  );
 }
