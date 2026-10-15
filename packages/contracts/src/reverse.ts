@@ -84,12 +84,14 @@ export const ReverseImportResult = Schema.Struct({
   investigation: ReverseInvestigation,
   artifact: ReverseFirmwareArtifact,
 });
+/** An omitted field is unchanged; null clears it. */
 export const ReverseLinkInput = Schema.Struct({
   projectId: Id,
   investigationId: Id,
-  veritasProjectId: Schema.optional(Id),
-  boardRevisionId: Schema.optional(Id),
+  veritasProjectId: Schema.optional(Schema.NullOr(Id)),
+  boardRevisionId: Schema.optional(Schema.NullOr(Id)),
 });
+export const ReverseDeleteInput = Schema.Struct({ projectId: Id, investigationId: Id });
 /** Provenance sent to Veritas. "extracted" needs a registered parent, which T3 does not send yet. */
 export const ReverseFirmwareSource = Schema.Literals(["imported", "vendor", "flash-read", "build"]);
 export type ReverseFirmwareSource = typeof ReverseFirmwareSource.Type;

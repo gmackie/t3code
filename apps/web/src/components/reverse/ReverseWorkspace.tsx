@@ -49,9 +49,10 @@ function ProjectWorkspace({
 }) {
   const [path, setPath] = useState(""),
     [selected, setSelected] = useState<string | null>(null);
-  const [filter, setFilter] = useState(""),
-    [veritas, setVeritas] = useState(""),
-    [board, setBoard] = useState("");
+  const [filter, setFilter] = useState("");
+  // Unsaved linkage edits for one investigation; otherwise the form shows what is saved.
+  const [draft, setDraft] = useState<{ id: string; veritas: string; board: string } | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [busy, setBusy] = useState(false),
     [error, setError] = useState<string | null>(null);
   const [source, setSource] = useState<FirmwareSource>("imported"),
@@ -70,6 +71,12 @@ function ProjectWorkspace({
   const investigations = list.data?.investigations ?? [],
     artifacts = list.data?.artifacts ?? [];
   const active = investigations.find((item) => item.id === selected) ?? investigations[0];
+  const editing = draft !== null && draft.id === active?.id ? draft : null;
+  const veritas = editing?.veritas ?? active?.veritasProjectId ?? "";
+  const board = editing?.board ?? active?.boardRevisionId ?? "";
+  const editLink = (change: { veritas?: string; board?: string }) => {
+    if (active) setDraft({ id: active.id, veritas, board, ...change });
+  };
   // Strings can be megabytes; fetch them only while their section is open.
   const [stringsOpen, setStringsOpen] = useState(false);
   const strings = useEnvironmentQuery(
@@ -82,6 +89,7 @@ function ProjectWorkspace({
   );
   const importFile = useAtomCommand(reverseEnvironment.importFile, { reportFailure: false });
   const link = useAtomCommand(reverseEnvironment.link, { reportFailure: false });
+  const remove = useAtomCommand(reverseEnvironment.remove, { reportFailure: false });
   const publish = useAtomCommand(reverseEnvironment.publish, { reportFailure: false });
   async function importFirmware() {
     if (busy || !path.trim()) return;
@@ -103,6 +111,26 @@ function ProjectWorkspace({
       if (alive.current) setBusy(false);
     }
   }
+  async function deleteInvestigation(investigationId: string) {
+    if (busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const response = await remove({
+        environmentId: threadRef.environmentId,
+        input: { projectId, investigationId },
+      });
+      if (!alive.current) return;
+      if (response._tag === "Failure") throw squashAtomCommandFailure(response);
+      setSelected(null);
+      setConfirmDelete(null);
+      list.refresh();
+    } catch (cause) {
+      if (alive.current) setError(String(cause));
+    } finally {
+      if (alive.current) setBusy(false);
+    }
+  }
   async function saveLink() {
     if (!active || busy) return;
     setBusy(true);
@@ -113,12 +141,14 @@ function ProjectWorkspace({
         input: {
           projectId,
           investigationId: active.id,
-          ...(veritas.trim() ? { veritasProjectId: veritas.trim() } : {}),
-          ...(board.trim() ? { boardRevisionId: board.trim() } : {}),
+          // An emptied field clears the saved link.
+          veritasProjectId: veritas.trim() || null,
+          boardRevisionId: board.trim() || null,
         },
       });
       if (!alive.current) return;
       if (response._tag === "Failure") throw squashAtomCommandFailure(response);
+      setDraft(null);
       list.refresh();
     } catch (cause) {
       if (alive.current) setError(String(cause));
@@ -199,8 +229,7 @@ function ProjectWorkspace({
               onClick={() => {
                 setSelected(item.id);
                 setFilter("");
-                setVeritas("");
-                setBoard("");
+                setConfirmDelete(null);
               }}
               title={item.artifactSha256}
             >
@@ -214,9 +243,40 @@ function ProjectWorkspace({
         <div className="min-w-0 flex-1 overflow-auto">
           {active && (
             <>
-              <p className="break-all border-b border-border p-3 font-mono text-xs">
-                SHA-256 {active.artifactSha256}
-              </p>
+              <div className="flex items-center gap-2 border-b border-border p-3">
+                <p className="min-w-0 flex-1 break-all font-mono text-xs">
+                  SHA-256 {active.artifactSha256}
+                </p>
+                {confirmDelete === active.id ? (
+                  <>
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      disabled={busy}
+                      onClick={() => void deleteInvestigation(active.id)}
+                    >
+                      Delete
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      disabled={busy}
+                      onClick={() => setConfirmDelete(null)}
+                    >
+                      Keep
+                    </Button>
+                  </>
+                ) : (
+                  <Button
+                    size="sm"
+                    variant="ghost-destructive"
+                    disabled={busy}
+                    onClick={() => setConfirmDelete(active.id)}
+                  >
+                    Delete investigation
+                  </Button>
+                )}
+              </div>
               <AnalysisPanel
                 key={active.id}
                 threadRef={threadRef}
@@ -264,15 +324,15 @@ function ProjectWorkspace({
                 <h3 className="text-xs font-medium">Veritas linkage</h3>
                 <Input
                   aria-label="Veritas project id"
-                  placeholder={active.veritasProjectId ?? "Veritas project ID"}
+                  placeholder="Veritas project ID"
                   value={veritas}
-                  onChange={(e) => setVeritas(e.target.value)}
+                  onChange={(e) => editLink({ veritas: e.target.value })}
                 />
                 <Input
                   aria-label="Board revision id"
-                  placeholder={active.boardRevisionId ?? "Board revision ID"}
+                  placeholder="Board revision ID"
                   value={board}
-                  onChange={(e) => setBoard(e.target.value)}
+                  onChange={(e) => editLink({ board: e.target.value })}
                 />
                 <Button type="submit" size="sm" variant="outline" disabled={busy}>
                   Save linkage

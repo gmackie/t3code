@@ -84,4 +84,39 @@ describe("reverse investigation persistence", () => {
     expect(linked.boardRevisionId).toBe("br1");
     expect((await store.list("p1")).artifacts[0]?.sha256).toBe(first.artifact.sha256);
   });
+
+  it("clears a link with null and leaves omitted fields alone", async () => {
+    await NodeFSP.writeFile(NodePath.join(root, "app.elf"), "test firmware");
+    const { investigation } = await store.importFile({
+      projectId: "p1",
+      environmentId: "env1",
+      workspaceRoot: root,
+      relativePath: "app.elf",
+    });
+    await store.link("p1", investigation.id, { veritasProjectId: "vp1", boardRevisionId: "br1" });
+    const cleared = await store.link("p1", investigation.id, { boardRevisionId: null });
+    expect(cleared.veritasProjectId).toBe("vp1");
+    expect(cleared.boardRevisionId).toBeUndefined();
+  });
+
+  it("deletes investigations and only collects firmware nobody references", async () => {
+    await NodeFSP.writeFile(NodePath.join(root, "shared.bin"), "shared firmware");
+    const base = { environmentId: "env1", workspaceRoot: root, relativePath: "shared.bin" };
+    const one = await store.importFile({ ...base, projectId: "p1" });
+    const two = await store.importFile({ ...base, projectId: "p2" });
+    const bytes = NodePath.join(directory, "state", "reverse", "artifacts", one.artifact.sha256);
+    // Older than the grace period that protects imports in flight.
+    const old = (await NodeFSP.stat(bytes)).mtimeMs / 1000 - 2 * 60 * 60;
+    await NodeFSP.utimes(bytes, old, old);
+
+    await store.remove("p1", one.investigation.id);
+    expect((await store.list("p1")).investigations).toHaveLength(0);
+    await expect(NodeFSP.stat(bytes)).resolves.toBeDefined();
+
+    await store.remove("p2", two.investigation.id);
+    await expect(NodeFSP.stat(bytes)).rejects.toThrow();
+    await expect(store.remove("p2", two.investigation.id)).rejects.toMatchObject({
+      reason: "not_found",
+    });
+  });
 });

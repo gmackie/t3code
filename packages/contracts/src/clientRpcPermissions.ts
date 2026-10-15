@@ -46,6 +46,7 @@ export const CLIENT_GUARDED_RPC_SCOPES = {
   [WS_METHODS.reverseAnalyze]: AuthOrchestrationOperateScope,
   [WS_METHODS.reverseEmulate]: AuthOrchestrationOperateScope,
   [WS_METHODS.reversePublish]: AuthOrchestrationOperateScope,
+  [WS_METHODS.reverseDelete]: AuthOrchestrationOperateScope,
   [WS_METHODS.scheduledTasksUpsert]: AuthOrchestrationOperateScope,
   [WS_METHODS.scheduledTasksSetEnabled]: AuthOrchestrationOperateScope,
   [WS_METHODS.scheduledTasksDelete]: AuthOrchestrationOperateScope,

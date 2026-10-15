@@ -11,6 +11,7 @@ import {
   type ProjectId,
   type ReverseAnalysisInput,
   type ReverseAnalysisResult,
+  type ReverseDeleteInput,
   type ReverseEmulateInput,
   type ReverseEmulateResult,
   type ReverseImportInput,
@@ -31,6 +32,7 @@ import type {
 } from "@t3tools/contracts/reverseWorkbench";
 import * as Config from "effect/Config";
 import * as Context from "effect/Context";
+import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
@@ -58,6 +60,9 @@ export class ReverseWorkbench extends Context.Service<
     readonly link: (
       input: typeof ReverseLinkInput.Type,
     ) => Effect.Effect<typeof ReverseInvestigation.Type, ReverseStoreError>;
+    readonly remove: (
+      input: typeof ReverseDeleteInput.Type,
+    ) => Effect.Effect<void, ReverseStoreError>;
     readonly strings: (
       input: typeof ReverseStringsInput.Type,
     ) => Effect.Effect<typeof ReverseStringsResult.Type, ReverseStoreError>;
@@ -78,14 +83,27 @@ export class ReverseWorkbench extends Context.Service<
 >()("t3/reverse/ReverseWorkbench") {}
 
 // The investigation code is promise-based; its own ReverseStoreErrors pass through.
+// Anything else can carry host paths, so clients get a fixed message and the log gets the cause.
+const unexpected = (cause: unknown) =>
+  Effect.logWarning("Reverse workbench operation failed", cause).pipe(
+    Effect.andThen(
+      Effect.fail(
+        new ReverseStoreError({
+          reason: "operation_failed",
+          message: "The reverse workbench operation failed. Details are in the server log.",
+        }),
+      ),
+    ),
+  );
+class UnexpectedReverseFailure extends Data.TaggedError("UnexpectedReverseFailure")<{
+  readonly cause: unknown;
+}> {}
 const attempt = <A>(run: () => Promise<A>) =>
   Effect.tryPromise({
     try: run,
     catch: (cause) =>
-      isReverseStoreError(cause)
-        ? cause
-        : new ReverseStoreError({ reason: "operation_failed", message: String(cause) }),
-  });
+      isReverseStoreError(cause) ? cause : new UnexpectedReverseFailure({ cause }),
+  }).pipe(Effect.catchTags({ UnexpectedReverseFailure: (failure) => unexpected(failure.cause) }));
 
 const make = Effect.gen(function* () {
   const config = yield* ServerConfig.ServerConfig;
@@ -110,9 +128,7 @@ const make = Effect.gen(function* () {
 
   const requireProject = (projectId: string) =>
     projects.getById(projectId as ProjectId).pipe(
-      Effect.mapError(
-        (cause) => new ReverseStoreError({ reason: "operation_failed", message: String(cause) }),
-      ),
+      Effect.catch(unexpected),
       Effect.flatMap(
         Option.match({
           onNone: () =>
@@ -144,14 +160,12 @@ const make = Effect.gen(function* () {
     link: (input) =>
       inProject(input.projectId, () =>
         store.link(input.projectId, input.investigationId, {
-          ...(input.veritasProjectId === undefined
-            ? {}
-            : { veritasProjectId: input.veritasProjectId }),
-          ...(input.boardRevisionId === undefined
-            ? {}
-            : { boardRevisionId: input.boardRevisionId }),
+          veritasProjectId: input.veritasProjectId,
+          boardRevisionId: input.boardRevisionId,
         }),
       ),
+    remove: (input) =>
+      inProject(input.projectId, () => store.remove(input.projectId, input.investigationId)),
     strings: (input) =>
       inProject(input.projectId, () =>
         store.strings(input.projectId, input.investigationId, input.minLength),

@@ -45,6 +45,7 @@ const MAX_IMPORT_BYTES = 512 * 1024 * 1024;
 const MAX_STRING_BYTES = 32 * 1024 * 1024;
 const MAX_STRING_RESULTS = 2_000;
 const MAX_STRING_VALUE = 512;
+const ARTIFACT_GRACE_MS = 60 * 60 * 1000;
 type StringScan = { strings: Array<{ offset: number; value: string }>; truncated: boolean };
 const STRING_SCAN_CACHE = 16;
 async function scanStrings(path: string, minLength: number): Promise<StringScan> {
@@ -239,20 +240,66 @@ export class ReverseInvestigationStore {
     projectId: string,
     investigationId: string,
     update: {
-      veritasProjectId?: string;
-      boardRevisionId?: string;
+      veritasProjectId?: string | null | undefined;
+      boardRevisionId?: string | null | undefined;
     },
   ): Promise<ReverseInvestigation> {
     return this.locked(projectId, async () => {
       const record = await readProject(this.stateDir, projectId);
       const index = record.investigations.findIndex((x) => x.id === investigationId);
       if (index < 0) throw err("not_found", "Investigation not found in this project.");
-      const existing = record.investigations[index]!;
-      const next = { ...existing, ...update };
+      const { veritasProjectId, boardRevisionId, ...rest } = record.investigations[index]!;
+      // Omitted fields stay as they are; null removes the link.
+      const keep = (value: string | null | undefined, current: string | undefined) =>
+        value === undefined ? current : (value ?? undefined);
+      const nextProject = keep(update.veritasProjectId, veritasProjectId);
+      const nextBoard = keep(update.boardRevisionId, boardRevisionId);
+      const next: ReverseInvestigation = {
+        ...rest,
+        ...(nextProject ? { veritasProjectId: nextProject } : {}),
+        ...(nextBoard ? { boardRevisionId: nextBoard } : {}),
+      };
       record.investigations[index] = next;
       await saveProject(this.stateDir, projectId, record);
       return next;
     });
+  }
+
+  /** Removes an investigation; its firmware bytes go once no project references them. */
+  async remove(projectId: string, investigationId: string): Promise<void> {
+    await this.locked(projectId, async () => {
+      const record = await readProject(this.stateDir, projectId);
+      const investigation = record.investigations.find((x) => x.id === investigationId);
+      if (!investigation) throw err("not_found", "Investigation not found in this project.");
+      record.investigations = record.investigations.filter((x) => x.id !== investigationId);
+      record.artifacts = record.artifacts.filter(
+        (artifact) =>
+          artifact.sha256 !== investigation.artifactSha256 ||
+          record.investigations.some((x) => x.artifactSha256 === artifact.sha256),
+      );
+      await saveProject(this.stateDir, projectId, record);
+    });
+    await this.collectArtifacts().catch(() => undefined);
+  }
+
+  // Skips recent files: another project's import renames its artifact before saving its record.
+  private async collectArtifacts(): Promise<void> {
+    const projects = NodePath.join(this.stateDir, "reverse", "projects");
+    const referenced = new Set<string>();
+    for (const name of await NodeFSP.readdir(projects).catch(() => [])) {
+      if (!name.endsWith(".json")) continue;
+      const value = JSON.parse(await NodeFSP.readFile(NodePath.join(projects, name), "utf8"));
+      for (const artifact of (decode(value) as ProjectRecord).artifacts)
+        referenced.add(artifact.sha256);
+    }
+    const artifacts = NodePath.join(this.stateDir, "reverse", "artifacts");
+    for (const name of await NodeFSP.readdir(artifacts).catch(() => [])) {
+      if (!/^[a-f0-9]{64}$/.test(name) || referenced.has(name)) continue;
+      const full = NodePath.join(artifacts, name);
+      const stat = await NodeFSP.stat(full).catch(() => null);
+      if (stat && performance.timeOrigin + performance.now() - stat.mtimeMs > ARTIFACT_GRACE_MS)
+        await NodeFSP.rm(full, { force: true });
+    }
   }
 
   // Artifacts are immutable, so scans are shared per digest and minimum length.
