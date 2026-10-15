@@ -338,6 +338,9 @@ const T3_MCP_TOOLS: Readonly<Record<string, T3McpToolDefinition>> = {
   t3_reverse_list: tool(["List", "Listing", "Listed", "firmware investigations"], "reverse-read"),
   t3_reverse_strings: tool(["Read", "Reading", "Read", "firmware strings"], "reverse-read"),
   t3_veritas_re_query: tool(["Read", "Reading", "Read", "Veritas hardware data"], "reverse-read"),
+  t3_reverse_capture_import: tool(["Import", "Importing", "Imported", "a capture"], "reverse-run"),
+  t3_reverse_capture_view: tool(["Read", "Reading", "Read", "a capture window"], "reverse-read"),
+  t3_reverse_capture_decode: tool(["Decode", "Decoding", "Decoded", "a capture"], "reverse-read"),
   t3_reverse_diff: tool(["Compare", "Comparing", "Compared", "firmware versions"], "reverse-run"),
   t3_reverse_import_extracted: tool(
     ["Open", "Opening", "Opened", "extracted firmware"],

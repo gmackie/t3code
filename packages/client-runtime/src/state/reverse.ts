@@ -30,6 +30,22 @@ export function createReverseEnvironmentAtoms<R, E>(
       label: "reverse:publish",
       tag: WS_METHODS.reversePublish,
     }),
+    importCapture: createEnvironmentRpcCommand(runtime, {
+      label: "reverse:capture-import",
+      tag: WS_METHODS.reverseCaptureImport,
+    }),
+    viewCapture: createEnvironmentRpcCommand(runtime, {
+      label: "reverse:capture-view",
+      tag: WS_METHODS.reverseCaptureView,
+    }),
+    decodeCapture: createEnvironmentRpcCommand(runtime, {
+      label: "reverse:capture-decode",
+      tag: WS_METHODS.reverseCaptureDecode,
+    }),
+    removeCapture: createEnvironmentRpcCommand(runtime, {
+      label: "reverse:capture-delete",
+      tag: WS_METHODS.reverseCaptureDelete,
+    }),
     publishFinding: createEnvironmentRpcCommand(runtime, {
       label: "reverse:finding-publish",
       tag: WS_METHODS.reverseFindingPublish,

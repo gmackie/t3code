@@ -27,6 +27,14 @@ Enter a path relative to the project and choose **Import firmware**. The file is
 
 Two analyses run at once per environment and a few more wait; beyond that, try again when one finishes. Each analysis keeps a receipt for a week.
 
+## Look at captures
+
+Use **Captures** to open logic-analyzer recordings from the project: VCD files (`.vcd`), sigrok and PulseView sessions (`.sr`), and Saleae Logic 2 exports. For Saleae, use **File → Export Raw Data** in Logic 2 and import the CSV, a single `digital_N.bin`, or a zip of the exported `.bin` files. T3 does not read `.sal` sessions directly, because Saleae does not document that format and changes it between versions.
+
+Captures up to 256 MiB are copied into the environment like firmware. Very busy recordings keep their first 8 million edges, and the capture says so.
+
+Zoom, fit and pan the waveform, and click to place a cursor; zooming centers on it. Where a window holds more edges than fit on screen, busy stretches are shaded; zoom in to see individual edges. **Decode window** reads the visible window as UART, SPI or I²C on the channels you pick. Select a decoded event to zoom to it. **Cite window in a finding** adds the visible window to a new finding on the selected investigation. Findings that cite a capture stay on this environment, since Veritas cannot open these captures.
+
 ## Record findings
 
 Use **Findings** to keep track of what you suspect: a title, a kind (memory corruption, attack surface, boot chain, crypto, protocol, gadget or other), and optionally the code address it concerns. **Record finding** in a Ghidra function view starts one for that function. New findings are candidates. Mark them **Probable**, **Confirm** or **Reject**, **Supersede** a confirmed one, and **Reopen** any closed finding. After the firmware is registered in Veritas, **Publish to Veritas** sends an open finding there as a candidate, with its evidence; QEMU runs it cites are recorded in Veritas first. Veritas lists it as an automated candidate from this environment, and people review and confirm it in Veritas. Through T3's tools, agents can record findings with evidence and reject or supersede open ones, but only a person can mark a finding probable or confirmed or change a decision a person made. An agent that can run commands on the environment's host is not limited this way.
@@ -43,4 +51,4 @@ Under **Veritas linkage**, record the Veritas project and board revision the fir
 
 When Veritas is configured, agents can also read its hardware data through T3: boards and signals, logic-analyzer captures, protocol decoders and timing analysis, hypotheses, and registered firmware. They cannot change anything in Veritas this way.
 
-Agents in the thread can check the toolchain, list investigations, read strings, import, link, analyze and emulate through T3's tools. Publishing to Veritas and deleting investigations stay with you.
+Agents in the thread can check the toolchain, list investigations, read strings, import, link, analyze, emulate, and import, view and decode captures through T3's tools. Publishing to Veritas and deleting investigations stay with you.

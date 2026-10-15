@@ -16,6 +16,12 @@ import {
   ReverseFindingCreateInput,
   ReverseImportExtractedInput,
   ReverseDiffInput,
+  ReverseCapture,
+  ReverseCaptureDecodeInput,
+  ReverseCaptureDecodeResult,
+  ReverseCaptureImportInput,
+  ReverseCaptureViewInput,
+  ReverseCaptureViewResult,
   VeritasReQueryInput,
   VeritasReQueryResult,
   ReverseDiffResult,
@@ -127,6 +133,34 @@ const VeritasReQueryTool = Tool.make("t3_veritas_re_query", {
   .annotate(Tool.Destructive, false)
   .annotate(Tool.OpenWorld, true);
 
+const ReverseCaptureImportTool = Tool.make("t3_reverse_capture_import", {
+  ...shared,
+  description:
+    "Import a logic-analyzer capture from the project workspace: VCD (.vcd), sigrok session (.sr), or a Saleae Logic 2 export (digital_N.bin, a zip of them, or the digital CSV). Saleae .sal files are not read; export from Logic 2 instead. Returns the capture with its channel names and duration; t3_reverse_list lists captures.",
+  parameters: ReverseCaptureImportInput,
+  success: ReverseCapture,
+}).annotate(Tool.Destructive, false);
+
+const ReverseCaptureViewTool = Tool.make("t3_reverse_capture_view", {
+  ...shared,
+  description:
+    "Read a time window of a capture: each channel's level at the window start and its edge times in nanoseconds, or busy spans where the window is too dense. Narrow the window to see individual edges.",
+  parameters: ReverseCaptureViewInput,
+  success: ReverseCaptureViewResult,
+})
+  .annotate(Tool.Readonly, true)
+  .annotate(Tool.Destructive, false);
+
+const ReverseCaptureDecodeTool = Tool.make("t3_reverse_capture_decode", {
+  ...shared,
+  description:
+    "Decode a capture's channels as UART (signal, baud, optional data bits, parity, stop bits, inversion), SPI (clk with mosi and/or miso, optional active-low cs, cpol, cpha, word size, bit order) or I2C (sda, scl), optionally within a time range. Returns timed events with readable text; truncated says the limit was reached.",
+  parameters: ReverseCaptureDecodeInput,
+  success: ReverseCaptureDecodeResult,
+})
+  .annotate(Tool.Readonly, true)
+  .annotate(Tool.Destructive, false);
+
 const ReverseFindingCreateTool = Tool.make("t3_reverse_finding_create", {
   ...shared,
   description:
@@ -147,6 +181,9 @@ export const ReverseToolkit = Toolkit.make(
   ReverseToolchainTool,
   ReverseImportExtractedTool,
   ReverseDiffTool,
+  ReverseCaptureImportTool,
+  ReverseCaptureViewTool,
+  ReverseCaptureDecodeTool,
   VeritasReQueryTool,
   ReverseFindingCreateTool,
   ReverseFindingUpdateTool,

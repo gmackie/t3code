@@ -14,6 +14,7 @@ import {
   SelectValue,
 } from "~/components/ui/select";
 import { AnalysisPanel } from "./AnalysisPanel";
+import { CapturesPanel } from "./CapturesPanel";
 import { DiffPanel } from "./DiffPanel";
 import { FindingsPanel, type FindingSeed } from "./FindingsPanel";
 
@@ -482,6 +483,23 @@ function ProjectWorkspace({
               </div>
             </>
           )}
+          <CapturesPanel
+            threadRef={threadRef}
+            projectId={projectId}
+            captures={list.data?.captures ?? []}
+            canCite={Boolean(active)}
+            onChanged={() => list.refresh()}
+            onCite={(capture) => {
+              if (!active) return;
+              setFindingSeed({
+                investigationId: active.id,
+                title: "",
+                address: "",
+                capture,
+                nonce: (findingSeed?.nonce ?? 0) + 1,
+              });
+            }}
+          />
         </div>
       </div>
     </section>

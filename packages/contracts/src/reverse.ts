@@ -134,13 +134,108 @@ export const ReverseFirmwareArtifact = Schema.Struct({
   parentSha256: Schema.optional(ReverseDigest),
 });
 export type ReverseFirmwareArtifact = typeof ReverseFirmwareArtifact.Type;
+/** A logic-analyzer capture imported into a project; its bytes stay on the environment. */
+export const ReverseCapture = Schema.Struct({
+  id: Id,
+  filename: Id,
+  sourcePath: Schema.String.check(Schema.isMaxLength(4096)),
+  format: Schema.Literals(["vcd", "sigrok", "saleae-binary", "saleae-csv"]),
+  sha256: ReverseDigest,
+  sizeBytes: SafeOffset,
+  importedAt: Id,
+  channels: Schema.Array(Schema.String),
+  durationNs: Schema.Number,
+  sampleRateHz: Schema.NullOr(Schema.Number),
+  // More edges than T3 keeps: later ones were dropped.
+  truncated: Schema.Boolean,
+  // Signals the parser could not read, such as multi-bit VCD vectors.
+  skipped: Schema.Array(Schema.String),
+});
+export type ReverseCapture = typeof ReverseCapture.Type;
 export const ReverseListInput = Schema.Struct({ projectId: Id });
 export const ReverseListResult = Schema.Struct({
   investigations: Schema.Array(ReverseInvestigation),
   artifacts: Schema.Array(ReverseFirmwareArtifact),
   // Optional so clients still read servers that predate findings.
   findings: Schema.optional(Schema.Array(ReverseFindingRecord)),
+  captures: Schema.optional(Schema.Array(ReverseCapture)),
 });
+export const ReverseCaptureImportInput = Schema.Struct({
+  projectId: Id,
+  relativePath: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(4096)),
+});
+export const ReverseCaptureDeleteInput = Schema.Struct({ projectId: Id, captureId: Id });
+const TimeNs = Schema.Number.check(Schema.isGreaterThanOrEqualTo(0));
+export const ReverseCaptureViewInput = Schema.Struct({
+  projectId: Id,
+  captureId: Id,
+  startNs: TimeNs,
+  endNs: TimeNs,
+  // Roughly the drawing width; denser windows come back as busy spans.
+  maxPoints: Schema.Int.check(Schema.isBetween({ minimum: 10, maximum: 4000 })),
+});
+export const ReverseCaptureViewResult = Schema.Struct({
+  startNs: Schema.Number,
+  endNs: Schema.Number,
+  channels: Schema.Array(
+    Schema.Struct({
+      name: Schema.String,
+      level: Schema.Literals([0, 1]),
+      edges: Schema.NullOr(Schema.Array(Schema.Number)),
+      busy: Schema.NullOr(Schema.Array(Schema.Tuple([Schema.Number, Schema.Number]))),
+    }),
+  ),
+});
+export type ReverseCaptureViewResult = typeof ReverseCaptureViewResult.Type;
+const ChannelName = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256));
+export const ReverseCaptureDecoder = Schema.Union([
+  Schema.Struct({
+    protocol: Schema.Literal("uart"),
+    signal: ChannelName,
+    baud: Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 100_000_000 })),
+    dataBits: Schema.optional(Schema.Literals([7, 8, 9])),
+    parity: Schema.optional(Schema.Literals(["none", "even", "odd"])),
+    stopBits: Schema.optional(Schema.Literals([1, 2])),
+    inverted: Schema.optional(Schema.Boolean),
+  }),
+  Schema.Struct({
+    protocol: Schema.Literal("spi"),
+    clk: ChannelName,
+    mosi: Schema.optional(ChannelName),
+    miso: Schema.optional(ChannelName),
+    cs: Schema.optional(ChannelName),
+    cpol: Schema.optional(Schema.Literals([0, 1])),
+    cpha: Schema.optional(Schema.Literals([0, 1])),
+    wordSize: Schema.optional(Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 32 }))),
+    bitOrder: Schema.optional(Schema.Literals(["msb", "lsb"])),
+  }),
+  Schema.Struct({ protocol: Schema.Literal("i2c"), sda: ChannelName, scl: ChannelName }),
+]);
+export type ReverseCaptureDecoder = typeof ReverseCaptureDecoder.Type;
+export const ReverseCaptureDecodeInput = Schema.Struct({
+  projectId: Id,
+  captureId: Id,
+  decoder: ReverseCaptureDecoder,
+  startNs: Schema.optional(TimeNs),
+  endNs: Schema.optional(TimeNs),
+  limit: Schema.optional(Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 5000 }))),
+});
+export const ReverseCaptureDecodeResult = Schema.Struct({
+  events: Schema.Array(
+    Schema.Struct({
+      startNs: Schema.Number,
+      endNs: Schema.Number,
+      text: Schema.String,
+      fields: Schema.Record(
+        Schema.String,
+        Schema.Union([Schema.String, Schema.Number, Schema.Boolean]),
+      ),
+    }),
+  ),
+  // The limit was reached before the end of the range.
+  truncated: Schema.Boolean,
+});
+export type ReverseCaptureDecodeResult = typeof ReverseCaptureDecodeResult.Type;
 export const ReverseImportInput = Schema.Struct({
   projectId: Id,
   relativePath: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(4096)),

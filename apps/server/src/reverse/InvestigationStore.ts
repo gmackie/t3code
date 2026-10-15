@@ -4,6 +4,7 @@ import * as NodeFS from "node:fs";
 import * as NodeFSP from "node:fs/promises";
 import * as NodePath from "node:path";
 import {
+  ReverseCapture,
   ReverseFindingRecord,
   ReverseStoreError,
   type ReverseFirmwareArtifact,
@@ -11,15 +12,24 @@ import {
 } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
 import * as Schema from "effect/Schema";
+import { CaptureFormatError, parseCapture, type ParsedCapture } from "./CaptureFormats.ts";
 
 type ProjectRecord = {
   investigations: ReverseInvestigation[];
   artifacts: ReverseFirmwareArtifact[];
   findings: ReverseFindingRecord[];
+  captures: ReverseCapture[];
 };
 type FindingStatus = ReverseFindingRecord["status"];
 
-const empty = (): ProjectRecord => ({ investigations: [], artifacts: [], findings: [] });
+const empty = (): ProjectRecord => ({
+  investigations: [],
+  artifacts: [],
+  findings: [],
+  captures: [],
+});
+const MAX_CAPTURE_BYTES = 256 * 1024 * 1024;
+const PARSED_CAPTURE_CACHE = 4;
 const decode = Schema.decodeUnknownSync(
   Schema.Struct({
     investigations: Schema.Array(
@@ -54,6 +64,7 @@ const decode = Schema.decodeUnknownSync(
     ),
     // Records written before findings existed have none.
     findings: Schema.optional(Schema.Array(ReverseFindingRecord)),
+    captures: Schema.optional(Schema.Array(ReverseCapture)),
   }),
 );
 const MAX_IMPORT_BYTES = 512 * 1024 * 1024;
@@ -109,7 +120,11 @@ async function readProject(stateDir: string, projectId: string): Promise<Project
   try {
     const value = JSON.parse(await NodeFSP.readFile(storagePath(stateDir, projectId), "utf8"));
     const record = decode(value);
-    return { ...record, findings: [...(record.findings ?? [])] } as ProjectRecord;
+    return {
+      ...record,
+      findings: [...(record.findings ?? [])],
+      captures: [...(record.captures ?? [])],
+    } as ProjectRecord;
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return empty();
     throw error;
@@ -125,6 +140,76 @@ async function saveProject(stateDir: string, projectId: string, value: ProjectRe
     await NodeFSP.rename(temp, dest);
   } finally {
     await NodeFSP.rm(temp, { force: true }).catch(() => undefined);
+  }
+}
+
+/**
+ * Copies a workspace file into content-addressed storage and returns its digest. The copy reads
+ * one open handle that is checked to be the contained regular file, so swapping a path component
+ * for a symlink after the check cannot redirect it, and a FIFO is refused instead of blocking.
+ */
+async function copyContained(input: {
+  workspaceRoot: string;
+  relativePath: string;
+  destDir: string;
+  maxBytes: number;
+  noun: string;
+}): Promise<{ sha256: string; sizeBytes: number }> {
+  const { relativePath, noun } = input;
+  if (
+    NodePath.isAbsolute(relativePath) ||
+    relativePath.includes("\0") ||
+    relativePath.trim() === "" ||
+    relativePath.split(/[\\/]/u).includes("..")
+  )
+    throw err("outside_workspace", "Select a relative path within the project workspace.");
+  const limit = `${Math.round(input.maxBytes / 1024 / 1024)} MiB`;
+  const root = await NodeFSP.realpath(input.workspaceRoot);
+  const target = NodePath.resolve(root, relativePath);
+  const real = await NodeFSP.realpath(target);
+  if (!real.startsWith(root + NodePath.sep))
+    throw err("outside_workspace", `${noun} file resolves outside the project workspace.`);
+  await NodeFSP.mkdir(input.destDir, { recursive: true });
+  const stagingPath = NodePath.join(input.destDir, `.${NodeCrypto.randomUUID()}.tmp`);
+  const source = await NodeFSP.open(
+    real,
+    NodeFS.constants.O_RDONLY | NodeFS.constants.O_NOFOLLOW | NodeFS.constants.O_NONBLOCK,
+  ).catch(() => {
+    throw err("invalid_file", `${noun} input must be a regular file.`);
+  });
+  try {
+    const opened = await source.stat();
+    if (!opened.isFile()) throw err("invalid_file", `${noun} input must be a regular file.`);
+    if (opened.size > input.maxBytes)
+      throw err("too_large", `${noun} input exceeds the ${limit} import limit.`);
+    const current = await NodeFSP.realpath(target);
+    const named = await NodeFSP.stat(current);
+    if (current !== real || named.dev !== opened.dev || named.ino !== opened.ino)
+      throw err("outside_workspace", `${noun} file changed while it was being imported.`);
+    const hash = NodeCrypto.createHash("sha256");
+    const staging = await NodeFSP.open(stagingPath, "wx", 0o600);
+    let sizeBytes = 0;
+    try {
+      const buffer = Buffer.alloc(1024 * 1024);
+      for (;;) {
+        const { bytesRead } = await source.read(buffer, 0, buffer.length, sizeBytes);
+        if (bytesRead === 0) break;
+        sizeBytes += bytesRead;
+        if (sizeBytes > input.maxBytes)
+          throw err("too_large", `${noun} input exceeded the ${limit} import limit.`);
+        const chunk = buffer.subarray(0, bytesRead);
+        hash.update(chunk);
+        await staging.write(chunk);
+      }
+    } finally {
+      await staging.close();
+    }
+    const sha256 = hash.digest("hex");
+    await NodeFSP.rename(stagingPath, NodePath.join(input.destDir, sha256));
+    return { sha256, sizeBytes };
+  } finally {
+    await source.close();
+    await NodeFSP.rm(stagingPath, { force: true }).catch(() => undefined);
   }
 }
 
@@ -169,59 +254,14 @@ export class ReverseInvestigationStore {
     origin?: { parentInvestigationId: string; parentSha256: string; label: string };
   }): Promise<{ investigation: ReverseInvestigation; artifact: ReverseFirmwareArtifact }> {
     const { projectId, relativePath } = input;
-    if (
-      NodePath.isAbsolute(relativePath) ||
-      relativePath.includes("\0") ||
-      relativePath.trim() === "" ||
-      relativePath.split(/[\\/]/u).includes("..")
-    ) {
-      throw err("outside_workspace", "Select a relative path within the project workspace.");
-    }
-    const root = await NodeFSP.realpath(input.workspaceRoot);
-    const target = NodePath.resolve(root, relativePath);
-    const real = await NodeFSP.realpath(target);
-    if (!real.startsWith(root + NodePath.sep))
-      throw err("outside_workspace", "Firmware file resolves outside the project workspace.");
-    const artifactsDir = NodePath.join(this.stateDir, "reverse", "artifacts");
-    await NodeFSP.mkdir(artifactsDir, { recursive: true });
-    const stagingPath = NodePath.join(artifactsDir, `.${NodeCrypto.randomUUID()}.tmp`);
-    // Copy from one open handle, checked to be the contained file, so swapping a path
-    // component for a symlink after the check cannot redirect the copy.
-    const source = await NodeFSP.open(
-      real,
-      // Non-blocking so a FIFO cannot hold the open forever before it is rejected below.
-      NodeFS.constants.O_RDONLY | NodeFS.constants.O_NOFOLLOW | NodeFS.constants.O_NONBLOCK,
-    ).catch(() => {
-      throw err("invalid_file", "Firmware input must be a regular file.");
+    const { sha256, sizeBytes: copiedBytes } = await copyContained({
+      workspaceRoot: input.workspaceRoot,
+      relativePath,
+      destDir: NodePath.join(this.stateDir, "reverse", "artifacts"),
+      maxBytes: MAX_IMPORT_BYTES,
+      noun: "Firmware",
     });
-    try {
-      const opened = await source.stat();
-      if (!opened.isFile()) throw err("invalid_file", "Firmware input must be a regular file.");
-      if (opened.size > MAX_IMPORT_BYTES)
-        throw err("too_large", "Firmware input exceeds the 512 MiB import limit.");
-      const current = await NodeFSP.realpath(target);
-      const named = await NodeFSP.stat(current);
-      if (current !== real || named.dev !== opened.dev || named.ino !== opened.ino)
-        throw err("outside_workspace", "Firmware file changed while it was being imported.");
-      const hash = NodeCrypto.createHash("sha256");
-      const staging = await NodeFSP.open(stagingPath, "wx", 0o600);
-      let copiedBytes = 0;
-      try {
-        const buffer = Buffer.alloc(1024 * 1024);
-        for (;;) {
-          const { bytesRead } = await source.read(buffer, 0, buffer.length, copiedBytes);
-          if (bytesRead === 0) break;
-          copiedBytes += bytesRead;
-          if (copiedBytes > MAX_IMPORT_BYTES)
-            throw err("too_large", "Firmware input exceeded import size limit.");
-          const chunk = buffer.subarray(0, bytesRead);
-          hash.update(chunk);
-          await staging.write(chunk);
-        }
-      } finally {
-        await staging.close();
-      }
-      const sha256 = hash.digest("hex");
+    {
       const artifact: ReverseFirmwareArtifact = {
         sha256,
         sizeBytes: copiedBytes,
@@ -230,7 +270,6 @@ export class ReverseInvestigationStore {
         importedAt: DateTime.formatIso(DateTime.nowUnsafe()),
         ...(input.origin ? { parentSha256: input.origin.parentSha256 } : {}),
       };
-      await NodeFSP.rename(stagingPath, artifactPath(this.stateDir, sha256));
       return await this.locked(projectId, async () => {
         const record = await readProject(this.stateDir, projectId);
         const prior = record.investigations.find((x) => x.artifactSha256 === sha256);
@@ -251,9 +290,6 @@ export class ReverseInvestigationStore {
           artifact: record.artifacts.find((x) => x.sha256 === sha256) ?? artifact,
         };
       });
-    } finally {
-      await source.close();
-      await NodeFSP.rm(stagingPath, { force: true }).catch(() => undefined);
     }
   }
 
@@ -313,6 +349,14 @@ export class ReverseInvestigationStore {
             !(await this.emulationRecorded(input.projectId, ref.runId, digest)))
         )
           throw err("invalid_file", "Execution evidence must name a QEMU run of this firmware.");
+        // A capture window must name a capture imported into this project.
+        if (
+          ref.kind === "capture" &&
+          !(await readProject(this.stateDir, input.projectId)).captures.some(
+            (capture) => capture.id === ref.captureId,
+          )
+        )
+          throw err("invalid_file", "Capture evidence must name a capture in this project.");
         const cited =
           ref.kind === "code"
             ? ref.location.artifactSha256
@@ -476,22 +520,109 @@ export class ReverseInvestigationStore {
   }
 
   // Skips recent files: another project's import renames its artifact before saving its record.
+  /** Imports a logic-analyzer capture; it must parse before it is kept. */
+  async importCapture(input: {
+    projectId: string;
+    workspaceRoot: string;
+    relativePath: string;
+  }): Promise<ReverseCapture> {
+    const capturesDir = NodePath.join(this.stateDir, "reverse", "captures");
+    const { sha256, sizeBytes } = await copyContained({
+      workspaceRoot: input.workspaceRoot,
+      relativePath: input.relativePath,
+      destDir: capturesDir,
+      maxBytes: MAX_CAPTURE_BYTES,
+      noun: "Capture",
+    });
+    const filename = NodePath.basename(input.relativePath);
+    const parsed = await this.parseStored(sha256, filename);
+    return this.locked(input.projectId, async () => {
+      const record = await readProject(this.stateDir, input.projectId);
+      const prior = record.captures.find((capture) => capture.sha256 === sha256);
+      if (prior) return prior;
+      const capture: ReverseCapture = {
+        id: NodeCrypto.randomUUID(),
+        filename,
+        sourcePath: input.relativePath,
+        format: parsed.format,
+        sha256,
+        sizeBytes,
+        importedAt: DateTime.formatIso(DateTime.nowUnsafe()),
+        channels: parsed.channels.map((channel) => channel.name),
+        durationNs: parsed.durationNs,
+        sampleRateHz: parsed.sampleRateHz,
+        truncated: parsed.truncated,
+        skipped: parsed.skipped,
+      };
+      record.captures.push(capture);
+      await saveProject(this.stateDir, input.projectId, record);
+      return capture;
+    });
+  }
+
+  /** The parsed signals of a capture in this project. */
+  async capture(projectId: string, captureId: string): Promise<ParsedCapture> {
+    const record = await readProject(this.stateDir, projectId);
+    const capture = record.captures.find((item) => item.id === captureId);
+    if (!capture) throw err("not_found", "Capture not found in this project.");
+    return this.parseStored(capture.sha256, capture.filename);
+  }
+
+  // Parsing a large capture takes a while, so the most recent few stay in memory.
+  private readonly parsedCaptures = new Map<string, Promise<ParsedCapture>>();
+  private parseStored(sha256: string, filename: string): Promise<ParsedCapture> {
+    const cached = this.parsedCaptures.get(sha256);
+    if (cached) {
+      this.parsedCaptures.delete(sha256);
+      this.parsedCaptures.set(sha256, cached);
+      return cached;
+    }
+    const oldest = this.parsedCaptures.keys().next();
+    if (this.parsedCaptures.size >= PARSED_CAPTURE_CACHE && !oldest.done)
+      this.parsedCaptures.delete(oldest.value);
+    const parsing = NodeFSP.readFile(NodePath.join(this.stateDir, "reverse", "captures", sha256))
+      .then((bytes) => parseCapture(new Uint8Array(bytes), filename))
+      .catch((error: unknown) => {
+        throw error instanceof CaptureFormatError ? err("invalid_file", error.message) : error;
+      });
+    this.parsedCaptures.set(sha256, parsing);
+    parsing.catch(() => this.parsedCaptures.delete(sha256));
+    return parsing;
+  }
+
+  /** Removes a capture; findings keep their citations, and its bytes go once nothing uses them. */
+  async removeCapture(projectId: string, captureId: string): Promise<void> {
+    await this.locked(projectId, async () => {
+      const record = await readProject(this.stateDir, projectId);
+      if (!record.captures.some((capture) => capture.id === captureId))
+        throw err("not_found", "Capture not found in this project.");
+      record.captures = record.captures.filter((capture) => capture.id !== captureId);
+      await saveProject(this.stateDir, projectId, record);
+    });
+    await this.collectArtifacts().catch(() => undefined);
+  }
+
+  // Firmware and capture bytes nobody references are removed once past the grace period.
   private async collectArtifacts(): Promise<void> {
     const projects = NodePath.join(this.stateDir, "reverse", "projects");
     const referenced = new Set<string>();
     for (const name of await NodeFSP.readdir(projects).catch(() => [])) {
       if (!name.endsWith(".json")) continue;
-      const value = JSON.parse(await NodeFSP.readFile(NodePath.join(projects, name), "utf8"));
-      for (const artifact of (decode(value) as ProjectRecord).artifacts)
-        referenced.add(artifact.sha256);
+      const value = decode(
+        JSON.parse(await NodeFSP.readFile(NodePath.join(projects, name), "utf8")),
+      );
+      for (const artifact of value.artifacts) referenced.add(artifact.sha256);
+      for (const capture of value.captures ?? []) referenced.add(capture.sha256);
     }
-    const artifacts = NodePath.join(this.stateDir, "reverse", "artifacts");
-    for (const name of await NodeFSP.readdir(artifacts).catch(() => [])) {
-      if (!/^[a-f0-9]{64}$/.test(name) || referenced.has(name)) continue;
-      const full = NodePath.join(artifacts, name);
-      const stat = await NodeFSP.stat(full).catch(() => null);
-      if (stat && performance.timeOrigin + performance.now() - stat.mtimeMs > ARTIFACT_GRACE_MS)
-        await NodeFSP.rm(full, { force: true });
+    for (const folder of ["artifacts", "captures"]) {
+      const dir = NodePath.join(this.stateDir, "reverse", folder);
+      for (const name of await NodeFSP.readdir(dir).catch(() => [])) {
+        if (!/^[a-f0-9]{64}$/.test(name) || referenced.has(name)) continue;
+        const full = NodePath.join(dir, name);
+        const stat = await NodeFSP.stat(full).catch(() => null);
+        if (stat && performance.timeOrigin + performance.now() - stat.mtimeMs > ARTIFACT_GRACE_MS)
+          await NodeFSP.rm(full, { force: true });
+      }
     }
   }
 
