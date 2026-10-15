@@ -51,9 +51,12 @@ async function checked(
   args: string[],
   cwd: string,
   timeoutMs = 90000,
+  // Listing tools may stop at the output cap; their partial output is still usable.
+  options: { allowTruncated?: boolean } = {},
 ): Promise<ToolResult> {
   const result = await runBoundedTool({ executable: tool, args, cwd, timeoutMs, sandbox: true });
-  if (result.timedOut || result.truncated || result.exitCode !== 0)
+  const cut = result.truncated && options.allowTruncated === true;
+  if (result.timedOut || (result.truncated && !cut) || (!cut && result.exitCode !== 0))
     throw failure(
       `${NodePath.basename(tool)} did not complete: ${result.timedOut ? "timeout" : result.truncated ? "output limit" : `exit ${result.exitCode}`} ${result.stderr.slice(-2048)}`,
     );
@@ -69,6 +72,20 @@ export class ReverseAnalysisService {
   }
   async run(input: AnalysisInput): Promise<AnalysisResult> {
     const { artifact, path } = await this.store.getArtifact(input.projectId, input.investigationId);
+    // Browsing a Ghidra program is a read; only edits leave a receipt.
+    const ghidraAction = input.ghidra?.action ?? "list";
+    if (input.kind === "ghidra" && ["list", "function", "close"].includes(ghidraAction)) {
+      const response = await ghidraSessions(this.stateDir)
+        .execute(input.projectId, path, artifact.sha256, input.ghidra)
+        .catch((error: unknown) => {
+          throw isReverseStoreError(error) ? error : failure(String(error));
+        });
+      return {
+        kind: "ghidra",
+        ...response,
+        output: `${response.functions.length} functions from the persistent Ghidra session.`,
+      };
+    }
     const receiptId = NodeCrypto.randomUUID(),
       owner = NodeCrypto.createHash("sha256").update(input.projectId).digest("hex");
     const dir = NodePath.join(this.stateDir, "reverse", "analysis", owner, receiptId);
@@ -127,13 +144,16 @@ export class ReverseAnalysisService {
             input.rawEndian ?? "little",
           );
         }
-        const run = await checked("ROPgadget", args, dir),
-          gadgets = parseGadgets(run.stdout);
+        const run = await checked("ROPgadget", args, dir, 90000, { allowTruncated: true }),
+          // A capped run ends mid-line; that last line is not a gadget.
+          gadgets = parseGadgets(
+            run.truncated ? run.stdout.slice(0, run.stdout.lastIndexOf("\n") + 1) : run.stdout,
+          );
         result = {
           kind: "gadgets",
           gadgets,
           output: `${gadgets.length} syntactic candidates. ${input.rawArch ? "Addresses are raw file offsets; execution permissions are unknown." : "Addresses are image virtual addresses reported by ROPgadget."} No reachability or exploitability claim.`,
-          truncated: gadgets.length >= 1000,
+          truncated: run.truncated || gadgets.length >= 1000,
         };
       } else if (input.kind === "rea") {
         const run = await checked("rea", ["analyze", path, "--json"], dir, 120000);
@@ -228,6 +248,11 @@ export class ReverseAnalysisService {
       );
       return result;
     } catch (error) {
+      // A failed run keeps only its failure record, never partial extraction output.
+      for (const entry of await NodeFSP.readdir(dir).catch(() => []))
+        await NodeFSP.rm(NodePath.join(dir, entry), { recursive: true, force: true }).catch(
+          () => undefined,
+        );
       await NodeFSP.writeFile(
         NodePath.join(dir, "failure.json"),
         JSON.stringify({

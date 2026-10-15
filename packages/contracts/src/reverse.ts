@@ -119,13 +119,18 @@ export class ReverseStoreError extends Schema.TaggedError<ReverseStoreError>()(
     message: Schema.String,
   },
 ) {}
+// Ghidra addresses are hexadecimal; code locations also accept decimal for Veritas.
+const ReverseHexAddress = Schema.String.check(
+  Schema.isPattern(/^0x[0-9a-fA-F]+$/),
+  Schema.isMaxLength(80),
+);
 export const ReverseGhidraOperation = Schema.Struct({
   action: Schema.optional(
     Schema.Literals(["list", "function", "rename", "comment", "save", "close"]),
   ),
   languageId: Schema.optional(Id),
-  imageBase: Schema.optional(ReverseAddress),
-  address: Schema.optional(ReverseAddress),
+  imageBase: Schema.optional(ReverseHexAddress),
+  address: Schema.optional(ReverseHexAddress),
   name: Schema.optional(Id),
   expectedName: Schema.optional(Id),
   comment: Schema.optional(Schema.String.check(Schema.isMaxLength(8192))),

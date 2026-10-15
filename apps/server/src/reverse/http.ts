@@ -24,6 +24,7 @@ import {
 import { ServerConfig } from "../config.ts";
 import { authenticateRawRouteWithScope } from "../http.ts";
 import * as ProjectService from "../project/ProjectService.ts";
+import { ghidraSessions } from "./GhidraSession.ts";
 import { getReverseInvestigationStore } from "./InvestigationStore.ts";
 import { VeritasEvidenceClient } from "./VeritasEvidenceClient.ts";
 import { WorkbenchService, type WorkbenchExtension } from "./WorkbenchService.ts";
@@ -48,7 +49,10 @@ export function makeReverseWorkbenchRouteLayer(
               makeExtensions(config.stateDir),
             ),
         ),
-        (value) => Effect.promise(() => value.close()),
+        (value) =>
+          Effect.promise(() => value.close()).pipe(
+            Effect.ensuring(Effect.sync(() => ghidraSessions(config.stateDir).dispose())),
+          ),
       );
       const handler = Effect.gen(function* () {
         yield* authenticateRawRouteWithScope(AuthOrchestrationReadScope);
