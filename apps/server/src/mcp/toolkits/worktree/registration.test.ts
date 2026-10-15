@@ -33,6 +33,7 @@ import * as ServerBrowser from "../../../preview/ServerBrowser.ts";
 import * as UnityHooks from "../../../game/UnityHooks.ts";
 import * as SourceControlRepositoryService from "../../../sourceControl/SourceControlRepositoryService.ts";
 import * as GitVcsDriver from "../../../vcs/GitVcsDriver.ts";
+import * as ReverseWorkbench from "../../../reverse/ReverseWorkbench.ts";
 import * as McpHttpServer from "../../McpHttpServer.ts";
 import * as McpSessionRegistry from "../../McpSessionRegistry.ts";
 import * as PreviewAutomationBroker from "../../PreviewAutomationBroker.ts";
@@ -63,6 +64,7 @@ const layerStubServices = Layer.mergeAll(
   Layer.mock(SourceControlRepositoryService.SourceControlRepositoryService)({}),
   Layer.mock(ThreadLaunchService.ThreadLaunchService)({}),
   Layer.mock(ThreadSearch.ThreadSearch)({}),
+  Layer.mock(ReverseWorkbench.ReverseWorkbench)({}),
 );
 
 const ToolsListPayload = Schema.fromJsonString(

@@ -11,7 +11,7 @@ The Reverse workspace runs in the existing T3 environment server and Electron/we
 
 ## One service, two transports
 
-[`ReverseWorkbench`](../../apps/server/src/reverse/ReverseWorkbench.ts) owns the investigation store, the native analyzers, the Ghidra session pool and the Veritas client. It also checks that the project exists. The `reverse.*` WebSocket RPCs and `POST /api/reverse/workbench` both call it, so add capabilities as service methods, not in either transport.
+[`ReverseWorkbench`](../../apps/server/src/reverse/ReverseWorkbench.ts) owns the investigation store, the native analyzers, the Ghidra session pool and the Veritas client. It also checks that the project exists. The `reverse.*` WebSocket RPCs, `POST /api/reverse/workbench` and the `t3_reverse_*` MCP tools all call it, so add capabilities as service methods, not in a transport. Agents get read, import, link, analyze and emulate; publishing to Veritas and deleting investigations stay human actions in the workspace.
 
 - **Ghidra JVMs live as long as the service.** The pool is disposed with the server, which also aborts an import in flight. The WebSocket layer is rebuilt per connection, so it must reuse the server's captured instance. A per-connection instance would start a second pool, and a disconnect would kill shared sessions.
 - **The board revision comes from saved linkage.** Veritas registration uses the board revision saved by `reverse.link`, never one supplied with the publish request, because every caller shares the environment's Veritas token.

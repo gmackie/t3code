@@ -53,6 +53,7 @@ import { PreviewControlsToolkit } from "./previewControls/tools.ts";
 import { EnvironmentToolkit } from "./environment/tools.ts";
 import * as EnvironmentHandlers from "./environment/handlers.ts";
 import { ProjectToolkit } from "./project/tools.ts";
+import { ReverseToolkit } from "./reverse/tools.ts";
 import { AttachmentToolkit } from "./attachment/tools.ts";
 import * as AttachmentHandlers from "./attachment/handlers.ts";
 import { ThreadToolkit } from "./thread/tools.ts";
@@ -97,6 +98,7 @@ it("publishes unique tool names with reference-free object-root inputs", () => {
     DeviceToolkit,
     PullRequestsToolkit,
     HtmlToolkit,
+    ReverseToolkit,
   ]) {
     for (const tool of Object.values(toolkit.tools)) {
       expect(names.has(tool.name)).toBe(false);
