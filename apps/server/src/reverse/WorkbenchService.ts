@@ -1,6 +1,6 @@
 // @effect-diagnostics nodeBuiltinImport:off
 import * as NodeFSP from "node:fs/promises";
-import type { ReverseFirmwareArtifact } from "@t3tools/contracts";
+import type { ReverseFirmwareArtifact, ReverseFirmwareSource } from "@t3tools/contracts";
 import type {
   ReverseWorkbenchRequest,
   ReverseWorkbenchReply,
@@ -61,10 +61,7 @@ export class WorkbenchService {
         await handle.close();
       }
     } else if (request.operation === "publish") {
-      const current = (await this.store.list(request.projectId)).investigations.find(
-        (x) => x.id === request.investigationId,
-      );
-      data = await this.veritas.register(source.artifact, current?.boardRevisionId);
+      data = await this.publish(request.projectId, request.investigationId, request.source);
     } else {
       const extension = this.extensions.find((x) => x.operations.includes(request.operation));
       if (!extension)
@@ -79,6 +76,21 @@ export class WorkbenchService {
       artifactSha256: source.artifact.sha256,
       data,
     };
+  }
+  /** The board revision comes from the saved linkage, never from the caller. */
+  async publish(
+    projectId: string,
+    investigationId: string,
+    source: ReverseFirmwareSource = "imported",
+  ): Promise<{ id: string; sha256: string }> {
+    const { artifact } = await this.store.getArtifact(projectId, investigationId);
+    const linked = (await this.store.list(projectId)).investigations.find(
+      (item) => item.id === investigationId,
+    );
+    return this.veritas.register(artifact, linked?.boardRevisionId, source);
+  }
+  get veritasConfigured(): boolean {
+    return this.veritas.configured;
   }
   async close(): Promise<void> {
     await Promise.all(this.extensions.map((x) => x.close()));

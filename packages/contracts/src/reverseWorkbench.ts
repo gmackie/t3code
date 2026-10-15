@@ -1,4 +1,5 @@
 import * as Schema from "effect/Schema";
+import { ReverseFirmwareSource } from "./reverse.ts";
 
 const Id = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256));
 const Address = Schema.String.check(
@@ -17,7 +18,11 @@ export const ReverseWorkbenchRequest = Schema.Union([
     offset: Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: Number.MAX_SAFE_INTEGER })),
     length: count(4096),
   }),
-  Schema.Struct({ ...scope, operation: Schema.Literal("publish") }),
+  Schema.Struct({
+    ...scope,
+    operation: Schema.Literal("publish"),
+    source: Schema.optional(ReverseFirmwareSource),
+  }),
   Schema.Struct({
     ...scope,
     operation: Schema.Literal("scan"),

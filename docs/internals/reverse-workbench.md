@@ -1,6 +1,6 @@
-# Reverse Workbench architecture (initial integration)
+# Reverse Workbench architecture
 
-The Reverse workspace runs in the existing T3 environment server and Electron/web renderer. It does not spawn Ghidra Swing. This document describes the implementation boundaries; integrations below are planned unless marked implemented.
+The Reverse workspace runs in the existing T3 environment server and Electron/web renderer. It does not spawn Ghidra Swing.
 
 ## Ownership
 
@@ -9,9 +9,13 @@ The Reverse workspace runs in the existing T3 environment server and Electron/we
 - REA provides agent-facing investigation tools. Initially use an isolated sidecar; later connect it to the persistent Ghidra program.
 - All binary bytes and captures are stored as immutable content-addressed artifacts. The orchestration event log stores identifiers, not binary payloads.
 
-## Implemented foundation
+## One service, two transports
 
-`packages/contracts/src/reverse.ts` defines code locations, evidence references, findings, and investigation metadata. Wire these into RPC and the UI in the next change. They are not yet wired into runtime services.
+[`ReverseWorkbench`](../../apps/server/src/reverse/ReverseWorkbench.ts) owns the investigation store, the native analyzers, the Ghidra session pool and the Veritas client. It also checks that the project exists. The `reverse.*` WebSocket RPCs and `POST /api/reverse/workbench` both call it, so add capabilities as service methods, not in either transport.
+
+- **Ghidra JVMs live as long as the service.** The pool is disposed with the server, which also aborts an import in flight. The WebSocket layer is rebuilt per connection, so it must reuse the server's captured instance. A per-connection instance would start a second pool, and a disconnect would kill shared sessions.
+- **The board revision comes from saved linkage.** Veritas registration uses the board revision saved by `reverse.link`, never one supplied with the publish request, because every caller shares the environment's Veritas token.
+- **HTTP-only operations have no backends yet.** `scan`, `analysis`, `emulator`, `lab` and `job` exist only in the HTTP protocol and report unavailable. The WebSocket `reverse.analyze` and `reverse.emulate` RPCs are the implemented analyzers. Their vocabularies differ, so connecting the two is a contract decision.
 
 ## Analysis paths
 
@@ -23,11 +27,10 @@ Gadget candidates must preserve architecture, mode, address space, executable re
 
 Firmware parsing, QEMU, and extraction run in supervised, resource-limited subprocesses. No arbitrary firmware is executed on the host. Hardware operations require capability-scoped authorization and shared station leases. Observe is distinct from halt/reset, write, and flash. Physical validation cannot be inferred from simulation.
 
-## PR milestones
+## Not built yet
 
-1. Shared contracts, Veritas linking, persisted investigations and read-only evidence references.
-2. Persistent Ghidra JVM bridge, React Reverse workspace, firmware extraction, strings, gadget discovery, REA and supported QEMU profiles.
-3. Station-owned serial/JTAG/SWD, GDB, verified flash acquisition, physical capture, and Veritas experiment correlation.
+- Station-owned serial, JTAG and SWD, plus GDB, verified flash acquisition, physical capture, and Veritas experiment correlation.
+- The Veritas side of this is tracked in its `docs/reverse-workbench-integration.md`.
 
 ## First integration fixture
 

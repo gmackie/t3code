@@ -16,9 +16,8 @@ import { HttpRouter } from "effect/http";
 import { describe, expect, it } from "vite-plus/test";
 import { EnvironmentAuth } from "../auth/EnvironmentAuth.ts";
 import { ServerConfig } from "../config.ts";
-import * as ProjectService from "../project/ProjectService.ts";
 import { kicadViewerSessionRouteLayer } from "./http.ts";
-import { kicadVeritasRouteLayer } from "./veritasHttp.ts";
+import { kicadVeritasRouteLayer } from "./veritasRoutes.ts";
 
 describe("Veritas CAD HTTP authorization", () => {
   it.each([false, true])(
@@ -39,7 +38,6 @@ describe("Veritas CAD HTTP authorization", () => {
               }),
           }),
         ),
-        Layer.provide(Layer.mock(ProjectService.ProjectService)({})),
         Layer.provide(ServerConfig.layerTest(root, NodePath.join(root, "state"))),
         Layer.provide(ConfigProvider.layer(ConfigProvider.fromEnv({ env: {} }))),
         Layer.provideMerge(NodeHttpPlatform.layer),
