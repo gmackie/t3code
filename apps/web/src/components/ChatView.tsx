@@ -718,6 +718,9 @@ const GameProjectPanel = lazy(() =>
 const KiCadProjectPanel = lazy(() =>
   import("./kicad/KiCadProjectPanel").then((module) => ({ default: module.KiCadProjectPanel })),
 );
+const ReverseWorkspace = lazy(() =>
+  import("./reverse/ReverseWorkspace").then((module) => ({ default: module.ReverseWorkspace })),
+);
 const FilePreviewPanel = lazy(() => import("./files/FilePreviewPanel"));
 const EMPTY_PENDING_FILE_SURFACE_IDS: ReadonlySet<string> = new Set();
 const TYPE_TO_FOCUS_EDITABLE_SELECTOR = [
@@ -11204,6 +11207,10 @@ export default function ChatView(props: ChatViewProps) {
       <Suspense fallback={null}>
         <GameProjectPanel threadRef={activeThreadRef} projectPath={activeWorkspaceRoot ?? null} />
       </Suspense>
+    ) : renderedRightPanelSurface?.kind === "reverse" ? (
+      <Suspense fallback={null}>
+        <ReverseWorkspace threadRef={activeThreadRef} projectId={activeThread.projectId ?? null} />
+      </Suspense>
     ) : renderedRightPanelSurface?.kind === "kicad" ? (
       <Suspense fallback={null}>
         <KiCadProjectPanel
@@ -12090,6 +12097,8 @@ export default function ChatView(props: ChatViewProps) {
           onAddDevice={addDeviceSurface}
           onAddKiCad={addKiCadSurface}
           onAddGame={() => useRightPanelStore.getState().open(activeThreadRef, "game")}
+          onAddReverse={() => useRightPanelStore.getState().open(activeThreadRef, "reverse")}
+          reverseAvailable={activeProject !== null}
           kicadAvailable={activeProject !== null}
           browserAvailable={canOperatePreview && browserAvailable}
           terminalAvailable={activeProject !== null && canOperateTerminal}
@@ -12152,6 +12161,8 @@ export default function ChatView(props: ChatViewProps) {
             onAddDevice={addDeviceSurface}
             onAddKiCad={addKiCadSurface}
             onAddGame={() => useRightPanelStore.getState().open(activeThreadRef, "game")}
+            onAddReverse={() => useRightPanelStore.getState().open(activeThreadRef, "reverse")}
+            reverseAvailable={activeProject !== null}
             kicadAvailable={activeProject !== null}
             browserAvailable={canOperatePreview && browserAvailable}
             terminalAvailable={activeProject !== null && canOperateTerminal}

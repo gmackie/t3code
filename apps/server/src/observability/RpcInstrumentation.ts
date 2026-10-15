@@ -238,6 +238,10 @@ const RPC_AGGREGATES = {
   [WS_METHODS.serverValidateLinearIssues]: "server",
   [WS_METHODS.routingGetOverview]: "routing",
   [WS_METHODS.routingGetThreadHistory]: "routing",
+  [WS_METHODS.reverseImport]: "reverse",
+  [WS_METHODS.reverseLink]: "reverse",
+  [WS_METHODS.reverseList]: "reverse",
+  [WS_METHODS.reverseStrings]: "reverse",
 } as const satisfies Readonly<Record<WsRpcMethod, string>>;
 
 const RPC_SPAN_PREFIX = "ws.rpc";

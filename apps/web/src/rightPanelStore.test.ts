@@ -30,6 +30,28 @@ beforeEach(() => {
 });
 
 describe("rightPanelStore", () => {
+  it("opens Reverse without losing the previous Code panel selection", () => {
+    const store = useRightPanelStore.getState();
+    store.openFile(refA, "src/main.ts");
+    store.open(refA, "reverse");
+    expect(selectActiveRightPanel(useRightPanelStore.getState().byThreadKey, refA)).toBe("reverse");
+    store.returnToCode(refA);
+    expect(selectActiveRightPanelSurface(useRightPanelStore.getState().byThreadKey, refA)?.id).toBe(
+      "file:src/main.ts",
+    );
+  });
+
+  it("returns to Code, not CAD, after moving from CAD into Reverse", () => {
+    const store = useRightPanelStore.getState();
+    store.openFile(refA, "src/main.ts");
+    store.open(refA, "kicad");
+    store.open(refA, "reverse");
+    store.returnToCode(refA);
+    expect(selectActiveRightPanelSurface(useRightPanelStore.getState().byThreadKey, refA)?.id).toBe(
+      "file:src/main.ts",
+    );
+  });
+
   it("records single and bulk tab closes, newest first", () => {
     const store = useRightPanelStore.getState();
     const pr = pullRequestSurface({

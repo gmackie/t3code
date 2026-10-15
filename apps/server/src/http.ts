@@ -1,7 +1,7 @@
 import * as Mime from "effect/http/Mime";
 import {
   AuthOrchestrationOperateScope,
-  AuthOrchestrationReadScope,
+  type AuthEnvironmentScope,
   EnvironmentHttpApi,
 } from "@t3tools/contracts";
 import { isDevProxiedPath } from "@t3tools/shared/devProxy";
@@ -299,9 +299,7 @@ export function resolveDevRedirectUrl(devUrl: URL, requestUrl: URL): string {
   return redirectUrl.toString();
 }
 
-export const authenticateRawRouteWithScope = (
-  scope: typeof AuthOrchestrationReadScope | typeof AuthOrchestrationOperateScope,
-) =>
+export const authenticateRawRouteWithScope = (scope: AuthEnvironmentScope) =>
   Effect.gen(function* () {
     const request = yield* HttpServerRequest.HttpServerRequest;
     const serverAuth = yield* EnvironmentAuth.EnvironmentAuth;

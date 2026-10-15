@@ -29,6 +29,7 @@ import {
   Smartphone,
   CircuitBoard,
   Gamepad2,
+  Cpu,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
@@ -147,6 +148,7 @@ interface RightPanelTabsProps {
   onAddDevice: () => void;
   onAddKiCad?: () => void;
   onAddGame?: () => void;
+  onAddReverse?: () => void;
   browserAvailable: boolean;
   terminalAvailable: boolean;
   diffAvailable: boolean;
@@ -155,6 +157,7 @@ interface RightPanelTabsProps {
   pullRequestsAvailable: boolean;
   deviceAvailable: boolean;
   kicadAvailable?: boolean;
+  reverseAvailable?: boolean;
   pullRequestStatusSeeds?: Readonly<Record<string, PullRequestTabStatusSeed>>;
   children: ReactNode;
 }
@@ -184,6 +187,7 @@ const SURFACE_DISABLED_REASONS = {
   pullRequests: "No linked pull requests are available for this thread.",
   device: "Devices are only available from a thread.",
   kicad: "KiCad is only available when a project is open.",
+  reverse: "Reverse Workbench is only available when a project is open.",
 } as const;
 
 /** Overlays that must win over the launcher's letter shortcuts. */
@@ -208,6 +212,7 @@ const SURFACE_UNAVAILABLE_HINTS = {
   pullRequests: "No linked pull requests available.",
   device: "Available from a thread.",
   kicad: "Available when a project is open.",
+  reverse: "Available when a project is open.",
 } as const;
 
 type TabContextMenuAction =
@@ -350,6 +355,7 @@ function RightPanelEmptyState(props: {
   onAddDevice: () => void;
   onAddKiCad?: () => void;
   onAddGame?: () => void;
+  onAddReverse?: () => void;
   browserAvailable: boolean;
   terminalAvailable: boolean;
   diffAvailable: boolean;
@@ -358,6 +364,7 @@ function RightPanelEmptyState(props: {
   pullRequestsAvailable: boolean;
   deviceAvailable: boolean;
   kicadAvailable?: boolean;
+  reverseAvailable?: boolean;
 }) {
   // -1 means no highlight: it only appears on hover or arrow use.
   const [highlight, setHighlight] = useState(-1);
@@ -428,6 +435,15 @@ function RightPanelEmptyState(props: {
       available: props.kicadAvailable ?? false,
       disabledReason: "Open a project to view Unity gameplay.",
       onClick: props.onAddGame ?? (() => undefined),
+    },
+    {
+      label: "Reverse",
+      description: "Inspect firmware and binary evidence.",
+      icon: Cpu,
+      shortcut: "R",
+      available: props.reverseAvailable ?? false,
+      disabledReason: SURFACE_UNAVAILABLE_HINTS.reverse,
+      onClick: props.onAddReverse ?? (() => undefined),
     },
     {
       label: "KiCad",
@@ -652,6 +668,8 @@ function surfaceTitle(
       return "Unity game";
     case "kicad":
       return "KiCad";
+    case "reverse":
+      return "Reverse";
     case "preview": {
       const snapshot = surface.resourceId ? sessions[surface.resourceId] : null;
       if (!snapshot || snapshot.navStatus._tag === "Idle") return "Browser";
@@ -737,6 +755,8 @@ function SurfaceIcon({
       return <Gamepad2 className="size-3.5 shrink-0" />;
     case "kicad":
       return <CircuitBoard className="size-3.5 shrink-0" />;
+    case "reverse":
+      return <Cpu className="size-3.5 shrink-0" />;
     case "device":
       return surface.target?.platform === "ios" ? (
         <AppleIcon className="size-3 shrink-0" />
@@ -1035,6 +1055,14 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
       available: props.kicadAvailable ?? false,
       disabledReason: "Open a project to view Unity gameplay.",
       onClick: props.onAddGame ?? (() => undefined),
+    },
+    {
+      label: "Reverse",
+      icon: Cpu,
+      shortcut: "R",
+      available: props.reverseAvailable ?? false,
+      disabledReason: SURFACE_DISABLED_REASONS.reverse,
+      onClick: props.onAddReverse ?? (() => undefined),
     },
     {
       label: "KiCad",
@@ -1538,6 +1566,7 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
             onAddDevice={props.onAddDevice}
             {...(props.onAddGame ? { onAddGame: props.onAddGame } : {})}
             {...(props.onAddKiCad ? { onAddKiCad: props.onAddKiCad } : {})}
+            {...(props.onAddReverse ? { onAddReverse: props.onAddReverse } : {})}
             browserAvailable={props.browserAvailable}
             terminalAvailable={props.terminalAvailable}
             diffAvailable={props.diffAvailable}
@@ -1546,6 +1575,7 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
             pullRequestsAvailable={props.pullRequestsAvailable}
             deviceAvailable={props.deviceAvailable}
             kicadAvailable={props.kicadAvailable ?? false}
+            reverseAvailable={props.reverseAvailable ?? false}
           />
         ) : (
           props.children

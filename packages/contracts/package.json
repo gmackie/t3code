@@ -22,6 +22,10 @@
     "./relayTransport": {
       "types": "./src/relayTransport.ts",
       "import": "./src/relayTransport.ts"
+    },
+    "./reverseWorkbench": {
+      "types": "./src/reverseWorkbench.ts",
+      "import": "./src/reverseWorkbench.ts"
     }
   },
   "scripts": {

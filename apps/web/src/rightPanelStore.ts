@@ -29,6 +29,7 @@ const RIGHT_PANEL_KINDS = [
   "device",
   "kicad",
   "game",
+  "reverse",
   "terminal",
   "pull-request",
   "pull-requests",
@@ -47,6 +48,11 @@ export type RightPanelSurface =
   | { id: "browser:new"; kind: "preview"; resourceId: null }
   | { id: "device" | `device:${string}`; kind: "device"; target?: DeviceTabTarget; title?: string }
   | { id: "game"; kind: "game" }
+  | {
+      id: "reverse";
+      kind: "reverse";
+      codePanel?: { isOpen: boolean; activeSurfaceId: string | null };
+    }
   | { id: "kicad"; kind: "kicad"; codePanel?: { isOpen: boolean; activeSurfaceId: string | null } }
   | {
       id: `terminal:${string}`;
@@ -97,7 +103,7 @@ const RIGHT_PANEL_STORAGE_KEY = "t3code:right-panel-state:v2";
 // v11 stops persisting the pull-request list's shared panel, so a restart opens the page fresh.
 // v12 adds the device surface.
 // v14 removes the agents surface; lineage lives in the thread title bar.
-const RIGHT_PANEL_STORAGE_VERSION = 14;
+const RIGHT_PANEL_STORAGE_VERSION = 15;
 
 /** A fixed workspace-level ref: each PR surface carries its own real environment. */
 export const PULL_REQUESTS_PANEL_REF = scopeThreadRef(
@@ -233,6 +239,8 @@ const singletonSurface = (
       return { id: "game", kind };
     case "kicad":
       return { id: "kicad", kind };
+    case "reverse":
+      return { id: "reverse", kind };
     case "device":
       return { id: "device", kind };
   }
@@ -309,18 +317,26 @@ export function pullRequestSurface(target: {
   };
 }
 
+const isModeSurface = (surface: RightPanelSurface | undefined) =>
+  surface?.kind === "kicad" || surface?.kind === "reverse";
+
 const upsertSurface = (
   current: ThreadRightPanelState,
   surface: RightPanelSurface,
   activate = true,
 ): ThreadRightPanelState => {
   const existing = current.surfaces.find((entry) => entry.id === surface.id);
-  // Entering CAD mode remembers the Code panel so returnToCode can restore it.
+  const active = current.surfaces.find((entry) => entry.id === current.activeSurfaceId);
+  // Entering CAD or Reverse mode remembers Code so returnToCode can restore it.
+  // Switching between the two modes keeps the Code panel the first one remembered.
   const nextSurface =
-    surface.kind === "kicad" && current.activeSurfaceId !== "kicad"
+    isModeSurface(surface) && current.activeSurfaceId !== surface.id
       ? {
           ...surface,
-          codePanel: { isOpen: current.isOpen, activeSurfaceId: current.activeSurfaceId },
+          codePanel:
+            active?.kind === "kicad" || active?.kind === "reverse"
+              ? (active.codePanel ?? { isOpen: current.isOpen, activeSurfaceId: null })
+              : { isOpen: current.isOpen, activeSurfaceId: current.activeSurfaceId },
         }
       : (existing ?? surface);
   return {
@@ -705,14 +721,17 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
       returnToCode: (ref) =>
         set((state) =>
           userAction(state, scopedThreadKey(ref), (current) => {
-            if (current.activeSurfaceId !== "kicad") return current;
-            const cad = current.surfaces.find((surface) => surface.kind === "kicad");
-            const previous = cad?.kind === "kicad" ? cad.codePanel : undefined;
+            if (current.activeSurfaceId !== "kicad" && current.activeSurfaceId !== "reverse")
+              return current;
+            const modeId = current.activeSurfaceId;
+            const mode = current.surfaces.find((surface) => surface.id === modeId);
+            const previous =
+              mode?.kind === "kicad" || mode?.kind === "reverse" ? mode.codePanel : undefined;
             const activeSurfaceId =
               current.surfaces.find(
-                (surface) => surface.kind !== "kicad" && surface.id === previous?.activeSurfaceId,
+                (surface) => !isModeSurface(surface) && surface.id === previous?.activeSurfaceId,
               )?.id ??
-              current.surfaces.find((surface) => surface.kind !== "kicad")?.id ??
+              current.surfaces.find((surface) => !isModeSurface(surface))?.id ??
               null;
             return {
               ...current,
@@ -876,8 +895,8 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
         set((state) =>
           userAction(state, scopedThreadKey(ref), (current) =>
             current.surfaces.some((surface) => surface.id === surfaceId)
-              ? surfaceId === "kicad"
-                ? upsertSurface(current, singletonSurface("kicad"))
+              ? surfaceId === "kicad" || surfaceId === "reverse"
+                ? upsertSurface(current, singletonSurface(surfaceId))
                 : { ...current, isOpen: true, activeSurfaceId: surfaceId }
               : current,
           ),
