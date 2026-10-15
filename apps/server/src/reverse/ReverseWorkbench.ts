@@ -105,6 +105,12 @@ const attempt = <A>(run: () => Promise<A>) =>
       isReverseStoreError(cause) ? cause : new UnexpectedReverseFailure({ cause }),
   }).pipe(Effect.catchTags({ UnexpectedReverseFailure: (failure) => unexpected(failure.cause) }));
 
+const veritasUnavailable = () =>
+  new ReverseStoreError({
+    reason: "unavailable",
+    message: "Set VERITAS_URL and VERITAS_API_TOKEN on this T3 environment.",
+  });
+
 const GHIDRA_ACTIONS = {
   open: "list",
   functions: "list",
@@ -186,6 +192,9 @@ const make = Effect.gen(function* () {
         );
       case "emulate":
         return reply(await analysis.emulate({ ...scope, machine: request.machine }));
+      case "publish":
+        if (!workbench.veritasConfigured) throw veritasUnavailable();
+        return workbench.execute(request);
       default:
         return workbench.execute(request);
     }
@@ -247,12 +256,7 @@ const make = Effect.gen(function* () {
             );
             return { artifactId: registered.id, sha256: registered.sha256 };
           })
-        : Effect.fail(
-            new ReverseStoreError({
-              reason: "unavailable",
-              message: "Set VERITAS_URL and VERITAS_API_TOKEN on this T3 environment.",
-            }),
-          ),
+        : Effect.fail(veritasUnavailable()),
     execute: (request) => inProject(request.projectId, () => executeWorkbench(request)),
   });
 });

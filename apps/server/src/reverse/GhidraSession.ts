@@ -40,14 +40,19 @@ export interface GhidraReply {
 const MAX_SESSIONS = 4;
 const MAX_SESSIONS_PER_PROJECT = 2;
 const PROJECT_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
+type Session = {
+  projectId: string;
+  opening: Promise<JsonLineProcess>;
+  // Set once the bridge answers; until then the session is still importing.
+  bridge: JsonLineProcess | null;
+  // Aborted when the session closes, so an import in flight stops with it.
+  abort: AbortController;
+  idle: ReturnType<typeof setTimeout>;
+};
+const nowSeconds = () => (performance.timeOrigin + performance.now()) / 1000;
 export class GhidraSessionPool {
-  // Aborted on dispose so an import still running dies with the server.
-  private imports = new AbortController();
   // Insertion order is recency: a used session is moved to the end, so the first is the LRU.
-  private readonly sessions = new Map<
-    string,
-    { projectId: string; opening: Promise<JsonLineProcess>; idle: ReturnType<typeof setTimeout> }
-  >();
+  private readonly sessions = new Map<string, Session>();
   private readonly directory: string;
   constructor(directory: string) {
     this.directory = directory;
@@ -108,17 +113,33 @@ export class GhidraSessionPool {
     if (!session && action === "close")
       return { functions: [], truncated: false, toolVersion: version };
     if (!session) {
-      // One project cannot hold every JVM: evict its least recently used program first.
-      const projectKeys = [...this.sessions].filter(([, open]) => open.projectId === projectId);
-      if (projectKeys.length >= MAX_SESSIONS_PER_PROJECT) this.close(projectKeys[0]![0]);
-      const oldest = this.sessions.keys().next();
-      if (this.sessions.size >= MAX_SESSIONS && !oldest.done) this.close(oldest.value);
-      const opening = this.open(cwd, executable, scripts, artifactPath, profile);
-      session = { projectId, opening, idle: setTimeout(() => this.close(key), 600000) };
-      this.sessions.set(key, session);
-      void opening.catch(() => {
-        if (this.sessions.get(key)?.opening === opening) this.close(key);
-      });
+      // One project cannot hold every JVM. Only idle programs are evicted: closing one that is
+      // importing or answering would lose work, so a full pool of busy programs refuses instead.
+      if (
+        [...this.sessions.values()].filter((open) => open.projectId === projectId).length >=
+        MAX_SESSIONS_PER_PROJECT
+      )
+        this.evict((open) => open.projectId === projectId);
+      if (this.sessions.size >= MAX_SESSIONS) this.evict(() => true);
+      const abort = new AbortController();
+      const opening = this.open(cwd, executable, scripts, artifactPath, profile, abort.signal);
+      const created: Session = {
+        projectId,
+        opening,
+        bridge: null,
+        abort,
+        idle: setTimeout(() => this.close(key), 600000),
+      };
+      session = created;
+      this.sessions.set(key, created);
+      opening.then(
+        (bridge) => {
+          created.bridge = bridge;
+        },
+        () => {
+          if (this.sessions.get(key) === created) this.close(key);
+        },
+      );
       void this.pruneProjects();
     } else {
       this.sessions.delete(key);
@@ -127,6 +148,8 @@ export class GhidraSessionPool {
     clearTimeout(session.idle);
     session.idle = setTimeout(() => this.close(key), 600000);
     session.idle.unref();
+    // Ghidra writes inside the project folder, so mark the profile as used for pruning.
+    void NodeFSP.utimes(cwd, nowSeconds(), nowSeconds()).catch(() => undefined);
     const bridge = await session.opening;
     if (bridge.isClosed()) {
       this.close(key);
@@ -160,6 +183,7 @@ export class GhidraSessionPool {
     scripts: string,
     artifact: string,
     profile: { languageId: string | null; imageBase: string | null; version: string },
+    signal: AbortSignal,
   ): Promise<JsonLineProcess> {
     await NodeFSP.mkdir(cwd, { recursive: true, mode: 0o700 });
     const projectDir = NodePath.join(cwd, "project"),
@@ -207,7 +231,7 @@ export class GhidraSessionPool {
         cwd,
         timeoutMs: 180000,
         sandbox: true,
-        signal: this.imports.signal,
+        signal,
       });
       if (result.exitCode !== 0 || result.timedOut || result.truncated)
         throw new Error(
@@ -239,10 +263,20 @@ export class GhidraSessionPool {
       throw error;
     }
   }
+  /** Closes the least recently used matching program that is open and idle, or refuses. */
+  private evict(matches: (session: Session) => boolean): void {
+    for (const [key, session] of this.sessions) {
+      if (!matches(session) || session.bridge === null || session.bridge.isBusy()) continue;
+      this.close(key);
+      return;
+    }
+    throw new Error("Ghidra is busy with other programs. Try again when one finishes or closes.");
+  }
   private close(key: string): void {
     const session = this.sessions.get(key);
     if (!session) return;
     clearTimeout(session.idle);
+    session.abort.abort(new Error("Ghidra session closed"));
     this.sessions.delete(key);
     void session.opening.then(
       (bridge) => bridge.close(),
@@ -256,13 +290,11 @@ export class GhidraSessionPool {
       if (!entry.isDirectory() || this.sessions.has(entry.name)) continue;
       const full = NodePath.join(this.directory, entry.name);
       const stat = await NodeFSP.stat(full).catch(() => null);
-      if (stat && performance.timeOrigin + performance.now() - stat.mtimeMs > PROJECT_RETENTION_MS)
+      if (stat && nowSeconds() * 1000 - stat.mtimeMs > PROJECT_RETENTION_MS)
         await NodeFSP.rm(full, { recursive: true, force: true }).catch(() => undefined);
     }
   }
   dispose(): void {
-    this.imports.abort(new Error("Ghidra session pool disposed"));
-    this.imports = new AbortController();
     for (const key of [...this.sessions.keys()]) this.close(key);
   }
 }

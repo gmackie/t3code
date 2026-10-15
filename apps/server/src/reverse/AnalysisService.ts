@@ -80,20 +80,20 @@ export class ToolSlots {
     this.queue = queue;
   }
   async use<A>(run: () => Promise<A>): Promise<A> {
-    if (this.running >= this.size) {
-      if (this.waiting.length >= this.queue)
-        throw new ReverseStoreError({
-          reason: "unavailable",
-          message: "Analysis workers are busy. Try again when a running analysis finishes.",
-        });
-      await new Promise<void>((resolve) => this.waiting.push(resolve));
-    }
-    this.running++;
+    if (this.running < this.size) this.running++;
+    else if (this.waiting.length >= this.queue)
+      throw new ReverseStoreError({
+        reason: "unavailable",
+        message: "Analysis workers are busy. Try again when a running analysis finishes.",
+      });
+    // A finishing run hands its slot straight to the next waiter, so the count never dips.
+    else await new Promise<void>((resolve) => this.waiting.push(resolve));
     try {
       return await run();
     } finally {
-      this.running--;
-      this.waiting.shift()?.();
+      const next = this.waiting.shift();
+      if (next) next();
+      else this.running--;
     }
   }
 }
@@ -129,21 +129,33 @@ function guardExtraction(folder: string, controller: AbortController): () => voi
   return () => clearInterval(timer);
 }
 
-const RECEIPTS_KEPT = 50;
-/** Keeps the newest receipts in a folder; older ones are removed best-effort. */
+const RECEIPTS_KEPT = 200;
+const RECEIPT_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
+/**
+ * Removes finished receipts older than a week, and the oldest beyond a cap. A run still in
+ * progress has no receipt.json or failure.json yet, so it is never touched.
+ */
 async function pruneReceipts(folder: string): Promise<void> {
   const entries = await NodeFSP.readdir(folder, { withFileTypes: true }).catch(() => []);
-  const dated = await Promise.all(
-    entries
-      .filter((entry) => entry.isDirectory())
-      .map(async (entry) => {
-        const full = NodePath.join(folder, entry.name);
-        return { full, mtime: (await NodeFSP.stat(full).catch(() => null))?.mtimeMs ?? 0 };
-      }),
-  );
-  dated.sort((a, b) => b.mtime - a.mtime);
-  for (const { full } of dated.slice(RECEIPTS_KEPT))
-    await NodeFSP.rm(full, { recursive: true, force: true }).catch(() => undefined);
+  const finished = (
+    await Promise.all(
+      entries
+        .filter((entry) => entry.isDirectory())
+        .map(async (entry) => {
+          const full = NodePath.join(folder, entry.name);
+          for (const record of ["receipt.json", "failure.json"]) {
+            const stat = await NodeFSP.stat(NodePath.join(full, record)).catch(() => null);
+            if (stat) return { full, mtime: stat.mtimeMs };
+          }
+          return null;
+        }),
+    )
+  ).filter((entry) => entry !== null);
+  finished.sort((a, b) => b.mtime - a.mtime);
+  const now = performance.timeOrigin + performance.now();
+  for (const [index, { full, mtime }] of finished.entries())
+    if (index >= RECEIPTS_KEPT || now - mtime > RECEIPT_RETENTION_MS)
+      await NodeFSP.rm(full, { recursive: true, force: true }).catch(() => undefined);
 }
 
 /** Tool completion is not validation. Receipts retain versions, parameters and immutable identity. */
@@ -379,7 +391,14 @@ export class ReverseAnalysisService {
       throw failure("Unsupported QEMU machine");
     const { artifact, path } = await this.store.getArtifact(input.projectId, input.investigationId);
     const receiptId = NodeCrypto.randomUUID(),
-      dir = NodePath.join(this.stateDir, "reverse", "emulation", receiptId);
+      // Per project, so one project's runs never prune another's receipts.
+      dir = NodePath.join(
+        this.stateDir,
+        "reverse",
+        "emulation",
+        NodeCrypto.createHash("sha256").update(input.projectId).digest("hex"),
+        receiptId,
+      );
     await NodeFSP.mkdir(dir, { recursive: true, mode: 0o700 });
     const run = await runBoundedTool({
       executable: "qemu-system-arm",

@@ -132,6 +132,20 @@ describe("Reverse workbench HTTP route", () => {
         operation: "scan",
         data: { strings: [{ offset: 2, value: "boot=quiet" }], truncated: false },
       });
+
+      // Publishing without Veritas configured explains itself instead of a generic 500.
+      const publish = await handler(
+        new Request(url, {
+          method: "POST",
+          headers: { ...headers, "x-test-operate": "1" },
+          body: JSON.stringify({
+            projectId: "live",
+            investigationId: investigation.id,
+            operation: "publish",
+          }),
+        }),
+      );
+      expect(publish.status).toBe(503);
     } finally {
       await dispose();
       await NodeFSP.rm(root, { recursive: true, force: true });

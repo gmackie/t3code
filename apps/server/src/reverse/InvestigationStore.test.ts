@@ -1,4 +1,5 @@
 // @effect-diagnostics nodeBuiltinImport:off
+import * as NodeChildProcess from "node:child_process";
 import * as NodeFSP from "node:fs/promises";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
@@ -59,6 +60,18 @@ describe("reverse investigation persistence", () => {
     });
     const { strings } = await store.strings("p1", investigation.id);
     expect(strings).toEqual([{ offset: 2, value: "A".repeat(512) }]);
+  });
+
+  it("refuses a named pipe instead of waiting for a writer", async () => {
+    NodeChildProcess.execFileSync("mkfifo", [NodePath.join(root, "pipe.bin")]);
+    await expect(
+      store.importFile({
+        projectId: "p1",
+        environmentId: "env1",
+        workspaceRoot: root,
+        relativePath: "pipe.bin",
+      }),
+    ).rejects.toMatchObject({ reason: "invalid_file" });
   });
 
   it("rejects paths escaping the workspace, including symlink traversal", async () => {

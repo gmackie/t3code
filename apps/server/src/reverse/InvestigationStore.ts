@@ -171,7 +171,8 @@ export class ReverseInvestigationStore {
     // component for a symlink after the check cannot redirect the copy.
     const source = await NodeFSP.open(
       real,
-      NodeFS.constants.O_RDONLY | NodeFS.constants.O_NOFOLLOW,
+      // Non-blocking so a FIFO cannot hold the open forever before it is rejected below.
+      NodeFS.constants.O_RDONLY | NodeFS.constants.O_NOFOLLOW | NodeFS.constants.O_NONBLOCK,
     ).catch(() => {
       throw err("invalid_file", "Firmware input must be a regular file.");
     });

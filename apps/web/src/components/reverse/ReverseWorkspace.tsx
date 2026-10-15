@@ -51,7 +51,7 @@ function ProjectWorkspace({
     [selected, setSelected] = useState<string | null>(null);
   const [filter, setFilter] = useState("");
   // Unsaved linkage edits for one investigation; otherwise the form shows what is saved.
-  const [draft, setDraft] = useState<{ id: string; veritas: string; board: string } | null>(null);
+  const [draft, setDraft] = useState<{ id: string; veritas?: string; board?: string } | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [busy, setBusy] = useState(false),
     [error, setError] = useState<string | null>(null);
@@ -74,8 +74,9 @@ function ProjectWorkspace({
   const editing = draft !== null && draft.id === active?.id ? draft : null;
   const veritas = editing?.veritas ?? active?.veritasProjectId ?? "";
   const board = editing?.board ?? active?.boardRevisionId ?? "";
+  // Only edited fields are sent, so a save never overwrites a link someone else just changed.
   const editLink = (change: { veritas?: string; board?: string }) => {
-    if (active) setDraft({ id: active.id, veritas, board, ...change });
+    if (active) setDraft({ ...editing, id: active.id, ...change });
   };
   // Strings can be megabytes; fetch them only while their section is open.
   const [stringsOpen, setStringsOpen] = useState(false);
@@ -141,9 +142,13 @@ function ProjectWorkspace({
         input: {
           projectId,
           investigationId: active.id,
-          // An emptied field clears the saved link.
-          veritasProjectId: veritas.trim() || null,
-          boardRevisionId: board.trim() || null,
+          // An emptied field clears the saved link; untouched fields are left out.
+          ...(editing?.veritas === undefined
+            ? {}
+            : { veritasProjectId: editing.veritas.trim() || null }),
+          ...(editing?.board === undefined
+            ? {}
+            : { boardRevisionId: editing.board.trim() || null }),
         },
       });
       if (!alive.current) return;
