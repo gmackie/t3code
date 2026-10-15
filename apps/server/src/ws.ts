@@ -1860,6 +1860,10 @@ const layerWsRpc = (
         [WS_METHODS.reverseStrings]: (input) => reverseWorkbench.strings(input),
         [WS_METHODS.reverseDelete]: (input) => reverseWorkbench.remove(input),
         [WS_METHODS.reverseToolchain]: () => reverseWorkbench.toolchain,
+        [WS_METHODS.reverseFindingCreate]: (input) =>
+          reverseWorkbench.createFinding(input, "human"),
+        [WS_METHODS.reverseFindingUpdate]: (input) =>
+          reverseWorkbench.updateFinding(input, "human"),
         [ORCHESTRATION_V2_WS_METHODS.dispatchCommand]: (command) =>
           Effect.annotateCurrentSpan({
             "orchestration_v2.command_id": command.commandId,

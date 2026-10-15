@@ -4,6 +4,7 @@ import * as NodeFS from "node:fs";
 import * as NodeFSP from "node:fs/promises";
 import * as NodePath from "node:path";
 import {
+  ReverseFindingRecord,
   ReverseStoreError,
   type ReverseFirmwareArtifact,
   type ReverseInvestigation,
@@ -14,9 +15,11 @@ import * as Schema from "effect/Schema";
 type ProjectRecord = {
   investigations: ReverseInvestigation[];
   artifacts: ReverseFirmwareArtifact[];
+  findings: ReverseFindingRecord[];
 };
+type FindingStatus = ReverseFindingRecord["status"];
 
-const empty = (): ProjectRecord => ({ investigations: [], artifacts: [] });
+const empty = (): ProjectRecord => ({ investigations: [], artifacts: [], findings: [] });
 const decode = Schema.decodeUnknownSync(
   Schema.Struct({
     investigations: Schema.Array(
@@ -39,6 +42,8 @@ const decode = Schema.decodeUnknownSync(
         importedAt: Schema.String,
       }),
     ),
+    // Records written before findings existed have none.
+    findings: Schema.optional(Schema.Array(ReverseFindingRecord)),
   }),
 );
 const MAX_IMPORT_BYTES = 512 * 1024 * 1024;
@@ -93,7 +98,8 @@ const err = (reason: ReverseStoreError["reason"], message: string) =>
 async function readProject(stateDir: string, projectId: string): Promise<ProjectRecord> {
   try {
     const value = JSON.parse(await NodeFSP.readFile(storagePath(stateDir, projectId), "utf8"));
-    return decode(value) as ProjectRecord;
+    const record = decode(value);
+    return { ...record, findings: [...(record.findings ?? [])] } as ProjectRecord;
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return empty();
     throw error;
@@ -266,6 +272,79 @@ export class ReverseInvestigationStore {
     });
   }
 
+  /**
+   * Records a candidate finding. Evidence about code or a run must concern this investigation's
+   * firmware, so a finding cannot quietly cite another artifact.
+   */
+  createFinding(input: {
+    projectId: string;
+    investigationId: string;
+    title: string;
+    kind: ReverseFindingRecord["kind"];
+    evidence: ReverseFindingRecord["evidence"];
+    authorKind: "human" | "agent";
+  }): Promise<ReverseFindingRecord> {
+    return this.locked(input.projectId, async () => {
+      const record = await readProject(this.stateDir, input.projectId);
+      const investigation = record.investigations.find((x) => x.id === input.investigationId);
+      if (!investigation) throw err("not_found", "Investigation not found in this project.");
+      const digest = investigation.artifactSha256;
+      for (const ref of input.evidence) {
+        const cited =
+          ref.kind === "code"
+            ? ref.location.artifactSha256
+            : ref.kind === "execution"
+              ? ref.artifactSha256
+              : digest;
+        if (cited !== digest)
+          throw err("invalid_file", "Evidence must refer to this investigation's firmware.");
+      }
+      const now = DateTime.formatIso(DateTime.nowUnsafe());
+      const finding: ReverseFindingRecord = {
+        id: NodeCrypto.randomUUID(),
+        investigationId: investigation.id,
+        artifactSha256: digest,
+        title: input.title,
+        kind: input.kind,
+        status: "candidate",
+        authorKind: input.authorKind,
+        evidence: input.evidence,
+        createdAt: now,
+        updatedAt: now,
+      };
+      record.findings.push(finding);
+      await saveProject(this.stateDir, input.projectId, record);
+      return finding;
+    });
+  }
+
+  /** Humans set any status; agents may only reject or supersede, never promote. */
+  updateFinding(input: {
+    projectId: string;
+    findingId: string;
+    status: FindingStatus;
+    actor: "human" | "agent";
+  }): Promise<ReverseFindingRecord> {
+    return this.locked(input.projectId, async () => {
+      if (input.actor === "agent" && input.status !== "rejected" && input.status !== "superseded")
+        throw err(
+          "invalid_file",
+          "Agents can reject or supersede findings; promoting or confirming one is up to a person.",
+        );
+      const record = await readProject(this.stateDir, input.projectId);
+      const index = record.findings.findIndex((x) => x.id === input.findingId);
+      if (index < 0) throw err("not_found", "Finding not found in this project.");
+      const next: ReverseFindingRecord = {
+        ...record.findings[index]!,
+        status: input.status,
+        updatedAt: DateTime.formatIso(DateTime.nowUnsafe()),
+      };
+      record.findings[index] = next;
+      await saveProject(this.stateDir, input.projectId, record);
+      return next;
+    });
+  }
+
   /** Removes an investigation; its firmware bytes go once no project references them. */
   async remove(projectId: string, investigationId: string): Promise<void> {
     await this.locked(projectId, async () => {
@@ -273,6 +352,7 @@ export class ReverseInvestigationStore {
       const investigation = record.investigations.find((x) => x.id === investigationId);
       if (!investigation) throw err("not_found", "Investigation not found in this project.");
       record.investigations = record.investigations.filter((x) => x.id !== investigationId);
+      record.findings = record.findings.filter((x) => x.investigationId !== investigationId);
       record.artifacts = record.artifacts.filter(
         (artifact) =>
           artifact.sha256 !== investigation.artifactSha256 ||

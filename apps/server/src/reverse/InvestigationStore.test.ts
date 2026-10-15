@@ -1,5 +1,6 @@
 // @effect-diagnostics nodeBuiltinImport:off
 import * as NodeChildProcess from "node:child_process";
+import * as NodeCrypto from "node:crypto";
 import * as NodeFSP from "node:fs/promises";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
@@ -72,6 +73,67 @@ describe("reverse investigation persistence", () => {
         relativePath: "pipe.bin",
       }),
     ).rejects.toMatchObject({ reason: "invalid_file" });
+  });
+
+  it("keeps findings as hypotheses that only a person confirms", async () => {
+    await NodeFSP.writeFile(NodePath.join(root, "fw.bin"), "firmware under review");
+    const { investigation, artifact } = await store.importFile({
+      projectId: "p1",
+      environmentId: "env1",
+      workspaceRoot: root,
+      relativePath: "fw.bin",
+    });
+    const code = (artifactSha256: string) => ({
+      kind: "code" as const,
+      location: { artifactSha256, addressSpace: "ram", address: "0x8000", architecture: "arm" },
+    });
+    await expect(
+      store.createFinding({
+        projectId: "p1",
+        investigationId: investigation.id,
+        title: "Cites other firmware",
+        kind: "other",
+        evidence: [code("f".repeat(64))],
+        authorKind: "agent",
+      }),
+    ).rejects.toMatchObject({ reason: "invalid_file" });
+
+    const finding = await store.createFinding({
+      projectId: "p1",
+      investigationId: investigation.id,
+      title: "Unchecked length in parser",
+      kind: "memory-corruption",
+      evidence: [code(artifact.sha256)],
+      authorKind: "agent",
+    });
+    expect(finding).toMatchObject({ status: "candidate", authorKind: "agent" });
+
+    const update = { projectId: "p1", findingId: finding.id };
+    for (const status of ["probable", "confirmed"] as const)
+      await expect(store.updateFinding({ ...update, status, actor: "agent" })).rejects.toThrow(
+        "up to a person",
+      );
+    expect(
+      await store.updateFinding({ ...update, status: "rejected", actor: "agent" }),
+    ).toMatchObject({ status: "rejected" });
+    expect(
+      await store.updateFinding({ ...update, status: "confirmed", actor: "human" }),
+    ).toMatchObject({ status: "confirmed" });
+    expect((await store.list("p1")).findings).toHaveLength(1);
+
+    await store.remove("p1", investigation.id);
+    expect((await store.list("p1")).findings).toHaveLength(0);
+  });
+
+  it("reads project records written before findings existed", async () => {
+    const projects = NodePath.join(directory, "state", "reverse", "projects");
+    await NodeFSP.mkdir(projects, { recursive: true });
+    const name = NodeCrypto.createHash("sha256").update("legacy").digest("hex");
+    await NodeFSP.writeFile(
+      NodePath.join(projects, `${name}.json`),
+      JSON.stringify({ investigations: [], artifacts: [] }),
+    );
+    expect((await store.list("legacy")).findings).toEqual([]);
   });
 
   it("rejects paths escaping the workspace, including symlink traversal", async () => {

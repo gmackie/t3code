@@ -53,6 +53,27 @@ export const ReverseFinding = Schema.Struct({
   evidence: Schema.Array(ReverseEvidenceRef),
 });
 export type ReverseFinding = typeof ReverseFinding.Type;
+/** A finding as T3 keeps it: tied to one investigation, with when it was recorded and last changed. */
+export const ReverseFindingRecord = Schema.Struct({
+  ...ReverseFinding.fields,
+  investigationId: Id,
+  createdAt: Id,
+  updatedAt: Id,
+});
+export type ReverseFindingRecord = typeof ReverseFindingRecord.Type;
+export const ReverseFindingCreateInput = Schema.Struct({
+  projectId: Id,
+  investigationId: Id,
+  title: ReverseFinding.fields.title,
+  kind: ReverseFinding.fields.kind,
+  evidence: Schema.Array(ReverseEvidenceRef).check(Schema.isMaxLength(100)),
+});
+/** Agents may only demote; confirming is a human decision. */
+export const ReverseFindingUpdateInput = Schema.Struct({
+  projectId: Id,
+  findingId: Id,
+  status: ReverseFinding.fields.status,
+});
 export const ReverseInvestigation = Schema.Struct({
   id: Id,
   projectId: Id,
@@ -75,6 +96,8 @@ export const ReverseListInput = Schema.Struct({ projectId: Id });
 export const ReverseListResult = Schema.Struct({
   investigations: Schema.Array(ReverseInvestigation),
   artifacts: Schema.Array(ReverseFirmwareArtifact),
+  // Optional so clients still read servers that predate findings.
+  findings: Schema.optional(Schema.Array(ReverseFindingRecord)),
 });
 export const ReverseImportInput = Schema.Struct({
   projectId: Id,

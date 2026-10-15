@@ -327,6 +327,14 @@ const T3_MCP_TOOLS: Readonly<Record<string, T3McpToolDefinition>> = {
     ["Check", "Checking", "Checked", "the reverse toolchain"],
     "reverse-read",
   ),
+  t3_reverse_finding_create: tool(
+    ["Record", "Recording", "Recorded", "a firmware finding"],
+    "reverse-run",
+  ),
+  t3_reverse_finding_update: tool(
+    ["Update", "Updating", "Updated", "a firmware finding"],
+    "reverse-run",
+  ),
   t3_reverse_list: tool(["List", "Listing", "Listed", "firmware investigations"], "reverse-read"),
   t3_reverse_strings: tool(["Read", "Reading", "Read", "firmware strings"], "reverse-read"),
   t3_reverse_import: tool(["Import", "Importing", "Imported", "firmware"], "reverse-run"),

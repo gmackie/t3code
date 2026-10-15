@@ -13,6 +13,9 @@ import {
   type ReverseAnalysisResult,
   type ReverseDeleteInput,
   type ReverseToolchainResult,
+  type ReverseFindingCreateInput,
+  type ReverseFindingRecord,
+  type ReverseFindingUpdateInput,
   type ReverseEmulateInput,
   type ReverseEmulateResult,
   type ReverseImportInput,
@@ -63,6 +66,15 @@ export class ReverseWorkbench extends Context.Service<
       input: typeof ReverseLinkInput.Type,
     ) => Effect.Effect<ReverseInvestigation, ReverseStoreError>;
     readonly toolchain: Effect.Effect<ReverseToolchainResult, ReverseStoreError>;
+    /** The author comes from the transport: people in the workspace, agents through MCP. */
+    readonly createFinding: (
+      input: typeof ReverseFindingCreateInput.Type,
+      author: "human" | "agent",
+    ) => Effect.Effect<ReverseFindingRecord, ReverseStoreError>;
+    readonly updateFinding: (
+      input: typeof ReverseFindingUpdateInput.Type,
+      actor: "human" | "agent",
+    ) => Effect.Effect<ReverseFindingRecord, ReverseStoreError>;
     readonly remove: (
       input: typeof ReverseDeleteInput.Type,
     ) => Effect.Effect<void, ReverseStoreError>;
@@ -242,6 +254,10 @@ const make = Effect.gen(function* () {
         }),
       ),
     toolchain: attempt(() => inspectToolchain()),
+    createFinding: (input, author) =>
+      inProject(input.projectId, () => store.createFinding({ ...input, authorKind: author })),
+    updateFinding: (input, actor) =>
+      inProject(input.projectId, () => store.updateFinding({ ...input, actor })),
     remove: (input) =>
       inProject(input.projectId, () => store.remove(input.projectId, input.investigationId)),
     strings: (input) =>

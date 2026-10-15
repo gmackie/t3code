@@ -26,6 +26,10 @@ Enter a path relative to the project and choose **Import firmware**. The file is
 
 Two analyses run at once per environment and a few more wait; beyond that, try again when one finishes. Each analysis keeps a receipt for a week.
 
+## Record findings
+
+Use **Findings** to keep track of what you suspect: a title, a kind (memory corruption, attack surface, boot chain, crypto, protocol, gadget or other), and optionally the code address it concerns. **Record finding** in a Ghidra function view starts one for that function. New findings are candidates. Mark them **Probable**, **Confirm** or **Reject**, **Supersede** a confirmed one, and **Reopen** any closed finding. Agents can record findings and reject or supersede them, but only a person can mark one probable or confirmed.
+
 **Delete investigation** removes it from the project. The firmware copy is removed once no project uses it.
 
 ## Link and publish to Veritas

@@ -30,6 +30,13 @@ const call =
 export const layer = McpToolAccess.toLayer(ReverseToolkit, {
   t3_reverse_toolchain: McpToolAccess.reads(call((workbench) => () => workbench.toolchain)),
   t3_reverse_list: McpToolAccess.reads(call((workbench) => workbench.list)),
+  // Agents author through MCP, so their findings are agent-authored and cannot be promoted.
+  t3_reverse_finding_create: McpToolAccess.writes(
+    call((workbench) => (input) => workbench.createFinding(input, "agent")),
+  ),
+  t3_reverse_finding_update: McpToolAccess.writes(
+    call((workbench) => (input) => workbench.updateFinding(input, "agent")),
+  ),
   t3_reverse_strings: McpToolAccess.reads(call((workbench) => workbench.strings)),
   t3_reverse_import: McpToolAccess.writes(call((workbench) => workbench.importFile)),
   t3_reverse_link: McpToolAccess.writes(call((workbench) => workbench.link)),

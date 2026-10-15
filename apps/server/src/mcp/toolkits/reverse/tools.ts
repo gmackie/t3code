@@ -13,6 +13,9 @@ import {
   ReverseStringsInput,
   ReverseStringsResult,
   ReverseToolchainResult,
+  ReverseFindingCreateInput,
+  ReverseFindingRecord,
+  ReverseFindingUpdateInput,
 } from "@t3tools/contracts";
 import { Tool, Toolkit } from "effect/ai";
 
@@ -92,8 +95,26 @@ const ReverseToolchainTool = Tool.make("t3_reverse_toolchain", {
   .annotate(Tool.Readonly, true)
   .annotate(Tool.Destructive, false);
 
+const ReverseFindingCreateTool = Tool.make("t3_reverse_finding_create", {
+  ...shared,
+  description:
+    "Record a candidate finding on an investigation (gadget, memory-corruption, attack-surface, boot-chain, crypto, protocol, other) with evidence: code locations in this firmware, capture windows, or QEMU runs. Findings are hypotheses for a person to review; they start as candidates and are recorded as agent-authored.",
+  parameters: ReverseFindingCreateInput,
+  success: ReverseFindingRecord,
+}).annotate(Tool.Destructive, false);
+
+const ReverseFindingUpdateTool = Tool.make("t3_reverse_finding_update", {
+  ...shared,
+  description:
+    "Reject or supersede a finding, for example when new evidence contradicts it. Agents cannot mark a finding probable or confirmed; a person does that in the workspace.",
+  parameters: ReverseFindingUpdateInput,
+  success: ReverseFindingRecord,
+}).annotate(Tool.Destructive, false);
+
 export const ReverseToolkit = Toolkit.make(
   ReverseToolchainTool,
+  ReverseFindingCreateTool,
+  ReverseFindingUpdateTool,
   ReverseListTool,
   ReverseStringsTool,
   ReverseImportTool,

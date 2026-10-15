@@ -14,6 +14,7 @@ import {
   SelectValue,
 } from "~/components/ui/select";
 import { AnalysisPanel } from "./AnalysisPanel";
+import { FindingsPanel, type FindingSeed } from "./FindingsPanel";
 
 const FIRMWARE_SOURCES = [
   { value: "imported", label: "Imported file" },
@@ -53,6 +54,7 @@ function ProjectWorkspace({
   // Unsaved linkage edits for one investigation; otherwise the form shows what is saved.
   const [draft, setDraft] = useState<{ id: string; veritas?: string; board?: string } | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  const [findingSeed, setFindingSeed] = useState<FindingSeed | null>(null);
   const [busy, setBusy] = useState(false),
     [error, setError] = useState<string | null>(null);
   const [source, setSource] = useState<FirmwareSource>("imported"),
@@ -316,6 +318,21 @@ function ProjectWorkspace({
                 threadRef={threadRef}
                 projectId={projectId}
                 investigationId={active.id}
+                onRecordFinding={(draft) =>
+                  setFindingSeed({ ...draft, nonce: (findingSeed?.nonce ?? 0) + 1 })
+                }
+              />
+              <FindingsPanel
+                key={`findings:${active.id}`}
+                threadRef={threadRef}
+                projectId={projectId}
+                investigationId={active.id}
+                artifactSha256={active.artifactSha256}
+                findings={(list.data?.findings ?? []).filter(
+                  (finding) => finding.investigationId === active.id,
+                )}
+                seed={findingSeed}
+                onChanged={() => list.refresh()}
               />
               <details
                 className="border-b border-border p-3"

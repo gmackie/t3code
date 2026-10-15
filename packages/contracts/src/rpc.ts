@@ -54,6 +54,9 @@ import {
   ReverseDeleteInput,
   ReverseToolchainInput,
   ReverseToolchainResult,
+  ReverseFindingCreateInput,
+  ReverseFindingUpdateInput,
+  ReverseFindingRecord,
   ReverseStoreError,
 } from "./reverse.ts";
 import * as Rpc from "effect/rpc/Rpc";
@@ -467,6 +470,8 @@ export const WS_METHODS = {
   reversePublish: "reverse.publish",
   reverseDelete: "reverse.delete",
   reverseToolchain: "reverse.toolchain",
+  reverseFindingCreate: "reverse.findingCreate",
+  reverseFindingUpdate: "reverse.findingUpdate",
 
   // Shell methods
   shellOpenInEditor: "shell.openInEditor",
@@ -1537,6 +1542,18 @@ const WsReverseToolchainRpc = Rpc.make(WS_METHODS.reverseToolchain, {
   error: Schema.Union([ReverseStoreError, EnvironmentAuthorizationError]),
 });
 
+const WsReverseFindingCreateRpc = Rpc.make(WS_METHODS.reverseFindingCreate, {
+  payload: ReverseFindingCreateInput,
+  success: ReverseFindingRecord,
+  error: Schema.Union([ReverseStoreError, EnvironmentAuthorizationError]),
+});
+
+const WsReverseFindingUpdateRpc = Rpc.make(WS_METHODS.reverseFindingUpdate, {
+  payload: ReverseFindingUpdateInput,
+  success: ReverseFindingRecord,
+  error: Schema.Union([ReverseStoreError, EnvironmentAuthorizationError]),
+});
+
 const WsReverseDeleteRpc = Rpc.make(WS_METHODS.reverseDelete, {
   payload: ReverseDeleteInput,
   error: Schema.Union([ReverseStoreError, EnvironmentAuthorizationError]),
@@ -2225,6 +2242,8 @@ export const WsRpcGroup = RpcGroup.make(
   WsReversePublishRpc,
   WsReverseDeleteRpc,
   WsReverseToolchainRpc,
+  WsReverseFindingCreateRpc,
+  WsReverseFindingUpdateRpc,
   WsServerProbeRpc,
   WsServerGetConfigRpc,
   WsPluginCommandsListRpc,

@@ -21,10 +21,13 @@ export function AnalysisPanel({
   threadRef,
   projectId,
   investigationId,
+  onRecordFinding,
 }: {
   threadRef: ScopedThreadRef;
   projectId: string;
   investigationId: string;
+  /** Starts a finding about the given function in the findings panel. */
+  onRecordFinding: (draft: { title: string; address: string }) => void;
 }) {
   const analyze = useAtomCommand(reverseEnvironment.analyze, { reportFailure: false });
   const emulate = useAtomCommand(reverseEnvironment.emulate, { reportFailure: false });
@@ -279,6 +282,15 @@ export function AnalysisPanel({
                       }
                     >
                       Apply rename
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() =>
+                        onRecordFinding({ title: `${selected.name}: `, address: selected.address })
+                      }
+                    >
+                      Record finding
                     </Button>
                   </div>
                   <pre className="max-h-96 overflow-auto border border-border p-2 text-xs">
