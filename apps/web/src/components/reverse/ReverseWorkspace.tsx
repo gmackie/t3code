@@ -191,6 +191,8 @@ function ProjectWorkspace({
     } catch (cause) {
       if (alive.current) setError(String(cause));
     } finally {
+      // Registration is recorded even when a later step fails, and it enables publishing findings.
+      list.refresh();
       if (alive.current) setBusy(false);
     }
   }
@@ -369,6 +371,7 @@ function ProjectWorkspace({
                   (finding) => finding.investigationId === active.id,
                 )}
                 seed={findingSeed}
+                registered={Boolean(active.veritasArtifactId)}
                 onChanged={() => list.refresh()}
               />
               <details

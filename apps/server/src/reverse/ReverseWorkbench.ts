@@ -16,6 +16,9 @@ import {
   type ReverseFindingCreateInput,
   type ReverseImportExtractedInput,
   type ReverseDiffInput,
+  type ReverseFindingPublishInput,
+  type VeritasReQueryInput,
+  type VeritasReQueryResult,
   type ReverseDiffResult,
   type ReverseFindingRecord,
   type ReverseFindingUpdateInput,
@@ -69,6 +72,14 @@ export class ReverseWorkbench extends Context.Service<
       input: typeof ReverseLinkInput.Type,
     ) => Effect.Effect<ReverseInvestigation, ReverseStoreError>;
     readonly toolchain: Effect.Effect<ReverseToolchainResult, ReverseStoreError>;
+    /** Publishing leaves this environment, so only people do it; it is not an agent tool. */
+    /** A read-only Veritas RE query on the environment's token, for agents and future views. */
+    readonly veritasQuery: (
+      input: typeof VeritasReQueryInput.Type,
+    ) => Effect.Effect<typeof VeritasReQueryResult.Type, ReverseStoreError>;
+    readonly publishFinding: (
+      input: typeof ReverseFindingPublishInput.Type,
+    ) => Effect.Effect<ReverseFindingRecord, ReverseStoreError>;
     readonly diff: (
       input: typeof ReverseDiffInput.Type,
     ) => Effect.Effect<ReverseDiffResult, ReverseStoreError>;
@@ -156,12 +167,10 @@ const make = Effect.gen(function* () {
   const veritasToken = yield* Config.String("VERITAS_API_TOKEN").pipe(Config.withDefault(""));
   const store = getReverseInvestigationStore(config.stateDir);
   const analysis = new ReverseAnalysisService(config.stateDir, store);
-  const workbench = new WorkbenchService(
-    store,
-    new VeritasEvidenceClient(
-      veritasUrl && veritasToken ? { url: veritasUrl, token: veritasToken } : null,
-    ),
+  const veritas = new VeritasEvidenceClient(
+    veritasUrl && veritasToken ? { url: veritasUrl, token: veritasToken } : null,
   );
+  const workbench = new WorkbenchService(store, veritas);
   // Ghidra JVMs and in-flight imports end with the server.
   yield* Effect.addFinalizer(() =>
     Effect.promise(() => workbench.close()).pipe(
@@ -263,6 +272,17 @@ const make = Effect.gen(function* () {
         }),
       ),
     toolchain: attempt(() => inspectToolchain()),
+    veritasQuery: (input) =>
+      veritas.configured
+        ? attempt(async () => ({ result: await veritas.query(input.procedure, input.input ?? {}) }))
+        : Effect.fail(veritasUnavailable()),
+    publishFinding: (input) =>
+      workbench.veritasConfigured
+        ? inProject(input.projectId, async () => {
+            await workbench.publishFinding(input.projectId, input.findingId);
+            return store.finding(input.projectId, input.findingId);
+          })
+        : Effect.fail(veritasUnavailable()),
     diff: (input) =>
       inProject(input.projectId, () =>
         analysis.diff(input.projectId, input.leftInvestigationId, input.rightInvestigationId),

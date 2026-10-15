@@ -61,7 +61,36 @@ export const ReverseFindingRecord = Schema.Struct({
   updatedAt: Id,
   // Who made the last status change, so a reversal is never mistaken for the author's own.
   statusChangedBy: Schema.optional(Schema.Literals(["human", "agent"])),
+  // Set once published; Veritas then owns its review.
+  veritasFindingId: Schema.optional(Id),
 });
+export const ReverseFindingPublishInput = Schema.Struct({ projectId: Id, findingId: Id });
+/**
+ * Read-only Veritas RE queries agents may call through T3 with the environment's token. Veritas's
+ * decoders are mutations over raw transition data, so they are not proxied here.
+ */
+export const VeritasReReadProcedure = Schema.Literals([
+  "reBoards.list",
+  "reBoards.get",
+  "reBoards.listSignals",
+  "reBoards.listProbeMaps",
+  "reCaptures.list",
+  "reCaptures.get",
+  "reAnalysis.pulsePresets",
+  "reHypotheses.list",
+  "reHypotheses.get",
+  "reAnnotations.list",
+  "reProtocols.list",
+  "reFirmware.list",
+  "reFirmware.get",
+  "reFirmware.listFindings",
+  "reFirmware.listExperiments",
+]);
+export const VeritasReQueryInput = Schema.Struct({
+  procedure: VeritasReReadProcedure,
+  input: Schema.optional(Schema.Record(Schema.String, Schema.Unknown)),
+});
+export const VeritasReQueryResult = Schema.Struct({ result: Schema.Unknown });
 export type ReverseFindingRecord = typeof ReverseFindingRecord.Type;
 export const ReverseFindingCreateInput = Schema.Struct({
   projectId: Id,
@@ -86,6 +115,10 @@ export const ReverseInvestigation = Schema.Struct({
   ghidraSessionId: Schema.optional(Id),
   // Set when this firmware was extracted from another investigation's.
   parentInvestigationId: Schema.optional(Id),
+  // Set once this firmware is registered in Veritas; findings can be published after that.
+  veritasArtifactId: Schema.optional(Id),
+  // The board revision last synced to Veritas (null: synced as none); unset until then.
+  veritasBoardRevisionId: Schema.optional(Schema.NullOr(Id)),
   // How Ghidra loads raw images of this firmware; remembered from the last analysis that set it.
   ghidraProfile: Schema.optional(
     Schema.Struct({ languageId: Schema.optional(Id), imageBase: Schema.optional(Id) }),

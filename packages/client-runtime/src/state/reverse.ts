@@ -30,6 +30,10 @@ export function createReverseEnvironmentAtoms<R, E>(
       label: "reverse:publish",
       tag: WS_METHODS.reversePublish,
     }),
+    publishFinding: createEnvironmentRpcCommand(runtime, {
+      label: "reverse:finding-publish",
+      tag: WS_METHODS.reverseFindingPublish,
+    }),
     diff: createEnvironmentRpcCommand(runtime, {
       label: "reverse:diff",
       tag: WS_METHODS.reverseDiff,

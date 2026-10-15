@@ -1,6 +1,10 @@
 // @effect-diagnostics nodeBuiltinImport:off
 import * as NodeFSP from "node:fs/promises";
-import type { ReverseFirmwareArtifact, ReverseFirmwareSource } from "@t3tools/contracts";
+import {
+  type ReverseFirmwareArtifact,
+  type ReverseFirmwareSource,
+  ReverseStoreError,
+} from "@t3tools/contracts";
 import type {
   ReverseWorkbenchRequest,
   ReverseWorkbenchReply,
@@ -95,7 +99,94 @@ export class WorkbenchService {
     const linked = (await this.store.list(projectId)).investigations.find(
       (item) => item.id === investigationId,
     );
-    return this.veritas.register(artifact, linked?.boardRevisionId, source);
+    const saved = linked?.boardRevisionId ?? null;
+    // Veritas artifacts are shared across the organization, so a board link someone else set is
+    // only changed when this user changed theirs since the last sync, never just because none
+    // is saved here.
+    const changed =
+      linked?.veritasBoardRevisionId !== undefined && saved !== linked.veritasBoardRevisionId;
+    // Registration validates the board and only fills an empty link.
+    const registered = await this.veritas.register(
+      artifact,
+      changed ? undefined : (saved ?? undefined),
+      source,
+    );
+    if (changed) {
+      try {
+        await this.veritas.linkBoardRevision(artifact.sha256, saved);
+      } catch (cause) {
+        // Registered either way; keep the previous board as the last synced one.
+        await this.store.markRegistered(
+          projectId,
+          investigationId,
+          registered.id,
+          linked?.veritasBoardRevisionId ?? null,
+        );
+        throw new ReverseStoreError({
+          reason: "operation_failed",
+          message: `Registered in Veritas, but the board revision was not updated: ${
+            cause instanceof Error ? cause.message : "unknown error"
+          }`,
+        });
+      }
+    }
+    await this.store.markRegistered(projectId, investigationId, registered.id, saved);
+    return registered;
+  }
+
+  /**
+   * Publishes a finding as a Veritas candidate. The firmware must be registered first, and each
+   * QEMU run the finding cites is recorded before the finding so its evidence resolves.
+   */
+  publishFinding(projectId: string, findingId: string): Promise<{ id: string }> {
+    // Concurrent clicks share one publication; Veritas also deduplicates by the T3 finding id.
+    const key = `${projectId}:${findingId}`;
+    const running = this.publishing.get(key);
+    if (running) return running;
+    const publication = this.publishFindingOnce(projectId, findingId).finally(() =>
+      this.publishing.delete(key),
+    );
+    this.publishing.set(key, publication);
+    return publication;
+  }
+  private readonly publishing = new Map<string, Promise<{ id: string }>>();
+  private async publishFindingOnce(projectId: string, findingId: string): Promise<{ id: string }> {
+    const finding = await this.store.finding(projectId, findingId);
+    if (finding.veritasFindingId) return { id: finding.veritasFindingId };
+    if (finding.status === "rejected" || finding.status === "superseded")
+      throw new ReverseStoreError({
+        reason: "invalid_file",
+        message: "Closed findings are not published; reopen it first.",
+      });
+    const investigation = (await this.store.list(projectId)).investigations.find(
+      (item) => item.id === finding.investigationId,
+    );
+    if (!investigation?.veritasArtifactId)
+      throw new ReverseStoreError({
+        reason: "unavailable",
+        message: "Register this firmware in Veritas before publishing its findings.",
+      });
+    for (const ref of finding.evidence) {
+      if (ref.kind !== "execution") continue;
+      const outcome = await this.store.emulationOutcome(
+        projectId,
+        ref.runId,
+        finding.artifactSha256,
+      );
+      if (outcome === null)
+        throw new ReverseStoreError({
+          reason: "not_found",
+          message: `QEMU run ${ref.runId} is no longer recorded on this environment.`,
+        });
+      await this.veritas.recordEmulation({
+        artifactSha256: finding.artifactSha256,
+        runId: ref.runId,
+        outcome,
+      });
+    }
+    const published = await this.veritas.createFinding(finding);
+    await this.store.markFindingPublished(projectId, findingId, published.id);
+    return published;
   }
   get veritasConfigured(): boolean {
     return this.veritas.configured;

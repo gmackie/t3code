@@ -57,6 +57,7 @@ import {
   ReverseFindingCreateInput,
   ReverseImportExtractedInput,
   ReverseDiffInput,
+  ReverseFindingPublishInput,
   ReverseDiffResult,
   ReverseFindingUpdateInput,
   ReverseFindingRecord,
@@ -476,6 +477,7 @@ export const WS_METHODS = {
   reverseFindingCreate: "reverse.findingCreate",
   reverseImportExtracted: "reverse.importExtracted",
   reverseDiff: "reverse.diff",
+  reverseFindingPublish: "reverse.findingPublish",
   reverseFindingUpdate: "reverse.findingUpdate",
 
   // Shell methods
@@ -1547,6 +1549,12 @@ const WsReverseToolchainRpc = Rpc.make(WS_METHODS.reverseToolchain, {
   error: Schema.Union([ReverseStoreError, EnvironmentAuthorizationError]),
 });
 
+const WsReverseFindingPublishRpc = Rpc.make(WS_METHODS.reverseFindingPublish, {
+  payload: ReverseFindingPublishInput,
+  success: ReverseFindingRecord,
+  error: Schema.Union([ReverseStoreError, EnvironmentAuthorizationError]),
+});
+
 const WsReverseDiffRpc = Rpc.make(WS_METHODS.reverseDiff, {
   payload: ReverseDiffInput,
   success: ReverseDiffResult,
@@ -2262,6 +2270,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsReverseFindingCreateRpc,
   WsReverseImportExtractedRpc,
   WsReverseDiffRpc,
+  WsReverseFindingPublishRpc,
   WsReverseFindingUpdateRpc,
   WsServerProbeRpc,
   WsServerGetConfigRpc,

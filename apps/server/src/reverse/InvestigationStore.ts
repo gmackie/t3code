@@ -32,6 +32,8 @@ const decode = Schema.decodeUnknownSync(
         artifactSha256: Schema.String,
         ghidraSessionId: Schema.optional(Schema.String),
         parentInvestigationId: Schema.optional(Schema.String),
+        veritasArtifactId: Schema.optional(Schema.String),
+        veritasBoardRevisionId: Schema.optional(Schema.NullOr(Schema.String)),
         ghidraProfile: Schema.optional(
           Schema.Struct({
             languageId: Schema.optional(Schema.String),
@@ -307,7 +309,8 @@ export class ReverseInvestigationStore {
         // A QEMU run must be one this environment recorded for this firmware.
         if (
           ref.kind === "execution" &&
-          !(await this.emulationRecorded(input.projectId, ref.runId, digest))
+          (ref.source !== "qemu" ||
+            !(await this.emulationRecorded(input.projectId, ref.runId, digest)))
         )
           throw err("invalid_file", "Execution evidence must name a QEMU run of this firmware.");
         const cited =
@@ -339,16 +342,65 @@ export class ReverseInvestigationStore {
   }
 
   private async emulationRecorded(projectId: string, runId: string, digest: string) {
-    if (!/^[0-9a-f-]{36}$/.test(runId)) return false;
+    return (await this.emulationOutcome(projectId, runId, digest)) !== null;
+  }
+
+  /** The outcome of a QEMU run this environment recorded for this firmware, or null. */
+  async emulationOutcome(
+    projectId: string,
+    runId: string,
+    digest: string,
+  ): Promise<"pass" | "fail" | "error" | "inconclusive" | null> {
+    if (!/^[0-9a-f-]{36}$/.test(runId)) return null;
     const owner = NodeCrypto.createHash("sha256").update(projectId).digest("hex");
     const receipt = await NodeFSP.readFile(
       NodePath.join(this.stateDir, "reverse", "emulation", owner, runId, "receipt.json"),
       "utf8",
     ).catch(() => null);
-    return (
-      receipt !== null &&
-      (JSON.parse(receipt) as { artifactSha256?: unknown }).artifactSha256 === digest
-    );
+    if (receipt === null) return null;
+    const value = JSON.parse(receipt) as { artifactSha256?: unknown; outcome?: unknown };
+    if (value.artifactSha256 !== digest) return null;
+    return value.outcome === "pass" || value.outcome === "fail" || value.outcome === "error"
+      ? value.outcome
+      : "inconclusive";
+  }
+
+  /** Records that this firmware is registered in Veritas and which board revision was synced. */
+  markRegistered(
+    projectId: string,
+    investigationId: string,
+    veritasArtifactId: string,
+    veritasBoardRevisionId: string | null,
+  ) {
+    return this.locked(projectId, async () => {
+      const record = await readProject(this.stateDir, projectId);
+      const index = record.investigations.findIndex((x) => x.id === investigationId);
+      if (index < 0) return;
+      record.investigations[index] = {
+        ...record.investigations[index]!,
+        veritasArtifactId,
+        veritasBoardRevisionId,
+      };
+      await saveProject(this.stateDir, projectId, record);
+    });
+  }
+
+  /** Records the Veritas id of a published finding. */
+  markFindingPublished(projectId: string, findingId: string, veritasFindingId: string) {
+    return this.locked(projectId, async () => {
+      const record = await readProject(this.stateDir, projectId);
+      const index = record.findings.findIndex((x) => x.id === findingId);
+      if (index < 0) return;
+      record.findings[index] = { ...record.findings[index]!, veritasFindingId };
+      await saveProject(this.stateDir, projectId, record);
+    });
+  }
+
+  async finding(projectId: string, findingId: string): Promise<ReverseFindingRecord> {
+    const record = await readProject(this.stateDir, projectId);
+    const finding = record.findings.find((x) => x.id === findingId);
+    if (!finding) throw err("not_found", "Finding not found in this project.");
+    return finding;
   }
 
   /** Humans set any status; agents may only reject or supersede, never promote. */
