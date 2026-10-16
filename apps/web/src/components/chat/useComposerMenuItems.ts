@@ -1,4 +1,4 @@
-import { useGT, useMessages } from "gt-react";
+import { msg, useGT, useMessages } from "gt-react";
 import {
   legacyThreadPullRequestKey,
   threadPullRequestKeyOf,
@@ -34,6 +34,7 @@ import {
   getProviderSlashCommandsForSlashMenu,
 } from "@t3tools/client-runtime/providerSkills";
 import { searchProviderSkills } from "../../providerSkillSearch";
+import { useCuaApplications } from "~/state/cua";
 import { useVisibleThreadShells } from "~/state/entities";
 import { useEnvironmentIdentities, useEnvironmentMachines } from "~/state/environments";
 import { offersLinkedEnvironmentsAtom } from "~/state/peerLinks";
@@ -131,6 +132,7 @@ export function useComposerMenuItems({
   const settledPullRequestTextQuery =
     pullRequestTextQuery === debouncedPullRequestTextQuery ? pullRequestTextQuery : null;
   const isPathTrigger = composerTriggerKind === "path";
+  const applications = useCuaApplications(isPathTrigger ? environmentId : null);
   const environmentThreadShells = useVisibleThreadShells(isPathTrigger);
   // Mounts older settled threads matching the mention, here and on linked machines, which shells
   // may leave out.
@@ -217,7 +219,19 @@ export function useComposerMenuItems({
   const items = ((): ComposerCommandItem[] => {
     if (!composerTrigger) return [];
     if (composerTrigger.kind === "path") {
+      const query = composerTrigger.query.toLocaleLowerCase();
       return [
+        ...(applications.data ?? [])
+          .filter((app) => app.name.toLocaleLowerCase().includes(query))
+          .slice(0, 8)
+          .map((application) => ({
+            id: `application:${application.bundleId ?? application.launchPath ?? application.name}`,
+            type: "application" as const,
+            application,
+            environmentId,
+            label: application.name,
+            description: messages(msg("Application")),
+          })),
         ...matchComposerThreadItems(
           {
             shells: environmentThreadShells,
@@ -424,6 +438,7 @@ export function useComposerMenuItems({
     return [];
   })();
   const isLoading =
+    (isPathTrigger && applications.isPending) ||
     (composerTriggerKind === "path" && workspaceEntries.isPending) ||
     ((composerTriggerKind === "skill" || composerTriggerKind === "slash-command") &&
       workspaceSkillsScanning) ||
@@ -453,7 +468,7 @@ export function useComposerMenuItems({
         : gt("No pull requests found in this repository.");
     }
     return composerTriggerKind === "path"
-      ? gt("No matching files or folders.")
+      ? gt("No matching files, threads, or applications.")
       : gt("No matching command.");
   })();
 
