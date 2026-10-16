@@ -36,7 +36,12 @@ import * as Stream from "effect/Stream";
 
 import * as BackgroundPolicy from "../background/BackgroundPolicy.ts";
 import * as Settings from "../serverSettings.ts";
-import { makePistacheApi, type PistacheConfig, type PistacheSnapshot } from "./pistacheApi.ts";
+import {
+  makePistacheApi,
+  pistacheThreadKey,
+  type PistacheConfig,
+  type PistacheSnapshot,
+} from "./pistacheApi.ts";
 
 export const PISTACHE_INSTANCE_ID = ProviderInstanceId.make("pistache");
 /** Rollups older than this are not shown; the page offers 24h and 7d views. */
@@ -203,17 +208,19 @@ export const make = Effect.gen(function* () {
 
   yield* refresh.pipe(Effect.forkScoped);
 
-  const threadHistory = (threadId: ThreadId) =>
-    Ref.get(stateRef).pipe(
+  const threadHistory = (threadId: ThreadId) => {
+    const key = pistacheThreadKey(threadId);
+    return Ref.get(stateRef).pipe(
       Effect.map((state): RoutingThreadHistory => ({
         configured: state.overview.configured,
         threadId,
         decisions: state.decisions
-          .filter((decision) => decision.threadId === threadId)
+          .filter((decision) => decision.threadId === key)
           .map(({ threadId: _threadId, ...decision }): RoutingDecision => decision)
           .toSorted((a, b) => b.at.localeCompare(a.at)),
       })),
     );
+  };
 
   return {
     overview: Ref.get(stateRef).pipe(Effect.map((state) => state.overview)),

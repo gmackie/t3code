@@ -238,6 +238,8 @@ import { TerminalContextInlineChip } from "./TerminalContextInlineChip";
 import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
 import { Spinner } from "../ui/spinner";
 import { Tooltip, TooltipPopup, TooltipTrigger, TooltipScrollDismissArea } from "../ui/tooltip";
+import { ServedModelTag } from "./RoutingBadge";
+import { shouldShowRoutingBadge } from "./RoutingBadge.logic";
 import { WorktreeSetupCard } from "./WorktreeSetupCard";
 import {
   ContextChipPopover as UserMessageContextPopover,
@@ -2871,6 +2873,7 @@ function AssistantTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "mess
             className="mt-1.5"
             projectedItem={row.projectedItem}
             message={row.message}
+            durationStart={row.durationStart}
             showCopyButton={row.showAssistantCopyButton}
             copyStreaming={row.assistantCopyStreaming}
           />
@@ -2937,6 +2940,7 @@ function AssistantMetaTimelineRow({
         className="mt-0.5"
         projectedItem={row.projectedItem}
         message={row.message}
+        durationStart={row.durationStart}
         showCopyButton={row.showAssistantCopyButton}
         copyStreaming={row.assistantCopyStreaming}
         alwaysVisible
@@ -2949,6 +2953,7 @@ function AssistantMessageMeta({
   className,
   projectedItem,
   message,
+  durationStart,
   showCopyButton,
   copyStreaming,
   alwaysVisible = false,
@@ -2956,11 +2961,15 @@ function AssistantMessageMeta({
   className?: string;
   projectedItem?: Extract<TimelineRow, { kind: "message" }>["projectedItem"];
   message: ChatMessage;
+  durationStart: string;
   showCopyButton: boolean;
   copyStreaming: boolean;
   alwaysVisible?: boolean;
 }) {
   const ctx = use(TimelineRowCtx);
+  const routed =
+    ctx.threadRef !== null &&
+    shouldShowRoutingBadge(ctx.runs.find((run) => run.id === message.runId)?.providerInstanceId);
 
   return (
     <div
@@ -2984,6 +2993,14 @@ function AssistantMessageMeta({
       />
       {projectedItem?.item.type === "assistant_message" ? (
         <AssistantForkButton projectedItem={projectedItem} />
+      ) : null}
+      {routed && ctx.threadRef ? (
+        <ServedModelTag
+          environmentId={ctx.threadRef.environmentId}
+          threadId={ctx.threadRef.threadId}
+          start={durationStart}
+          end={message.streaming ? null : message.updatedAt}
+        />
       ) : null}
       {!message.streaming && (
         <Tooltip>

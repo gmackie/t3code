@@ -1,3 +1,4 @@
+// @effect-diagnostics nodeBuiltinImport:off
 /**
  * Typed reads against a Pistache router's HTTP API.
  *
@@ -9,6 +10,8 @@
  *
  * @module routing/pistacheApi
  */
+import * as NodeCrypto from "node:crypto";
+
 import {
   ForwardCompatibleArray,
   RoutingSourceError,
@@ -121,6 +124,18 @@ export interface PistacheSnapshot {
 
 const toIso = (epochSeconds: number) =>
   DateTime.formatIso(DateTime.makeUnsafe(Math.round(epochSeconds * 1000)));
+
+// Pistache's own thread id rule (`thread_key` in its gateway). T3 delegated-task
+// ids are percent-encoded and longer than 120 characters, so the router stores a
+// sanitised prefix plus a hash of the original; history lookups must use the
+// same key or those threads never match.
+const PISTACHE_THREAD_ID = /^[\p{L}\p{N}_.:-]{1,120}$/u;
+
+export function pistacheThreadKey(raw: string): string {
+  if (raw === "" || PISTACHE_THREAD_ID.test(raw)) return raw;
+  const digest = NodeCrypto.createHash("sha256").update(raw).digest("hex").slice(0, 16);
+  return `${raw.replace(/[^\p{L}\p{N}_.:-]/gu, "_").slice(0, 100)}-${digest}`;
+}
 
 export function toRoutingDecision(
   decision: SnapshotDecision,
