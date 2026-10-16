@@ -6,7 +6,9 @@ import {
   formatRoutingBadgeLabel,
   formatRoutingDecision,
   formatRoutingSource,
+  formatServedModels,
   latestRoutingDecision,
+  servedDecisions,
   shouldShowRoutingBadge,
 } from "./RoutingBadge.logic";
 
@@ -56,5 +58,46 @@ describe("RoutingBadge logic", () => {
     expect(formatRoutingAdvice("compact")).toContain("compacting");
     expect(formatRoutingAdvice("handoff")).toContain("switching models");
     expect(formatRoutingAdvice(null)).toBeNull();
+  });
+});
+
+describe("served models", () => {
+  const at = (requestId: string, time: string, label: string, tier: number): RoutingDecision => ({
+    ...decision,
+    requestId,
+    at: time,
+    label,
+    tier,
+  });
+  const history = {
+    configured: true,
+    threadId: ThreadId.make("thread-a"),
+    // The router reports newest first.
+    decisions: [
+      at("next", "2026-09-06T15:05:00.000Z", "Opus", 3),
+      at("tool", "2026-09-06T15:00:20.000Z", "Sonnet", 2),
+      at("tool-2", "2026-09-06T15:00:15.000Z", "Sonnet", 2),
+      at("first", "2026-09-06T15:00:10.000Z", "Haiku", 1),
+      at("before", "2026-09-06T14:59:00.000Z", "Opus", 3),
+    ],
+  };
+
+  it("attributes the decisions inside a message's turn, oldest first", () => {
+    const served = servedDecisions(history, "2026-09-06T15:00:00.000Z", "2026-09-06T15:00:30.000Z");
+    expect(served.map((d) => d.requestId)).toEqual(["first", "tool-2", "tool"]);
+    expect(formatServedModels(served)).toBe("Haiku → Sonnet · T1–2");
+  });
+
+  it("keeps collecting while the message streams", () => {
+    const served = servedDecisions(history, "2026-09-06T15:00:30.000Z", null);
+    expect(formatServedModels(served)).toBe("Opus · T3");
+  });
+
+  it("shows nothing without decisions or an unconfigured router", () => {
+    expect(formatServedModels([])).toBeNull();
+    expect(
+      servedDecisions({ ...history, configured: false }, "2026-09-06T15:00:00.000Z", null),
+    ).toEqual([]);
+    expect(servedDecisions(null, "2026-09-06T15:00:00.000Z", null)).toEqual([]);
   });
 });

@@ -2,7 +2,7 @@ import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import { HttpClient, HttpClientResponse } from "effect/http";
 
-import { makePistacheApi } from "./pistacheApi.ts";
+import { makePistacheApi, pistacheThreadKey } from "./pistacheApi.ts";
 import { metricsFixture, snapshotFixture } from "./pistacheApi.fixture.ts";
 
 const config = { baseUrl: "http://router.test:8080", token: "router-secret" } as const;
@@ -117,4 +117,22 @@ describe("Pistache API", () => {
       }
     }),
   );
+});
+
+describe("pistacheThreadKey", () => {
+  // Vectors from Pistache's own `thread_key`; the delegated one is the id it stored live.
+  it("keeps ids Pistache accepts and maps the rest the way Pistache does", () => {
+    expect(pistacheThreadKey("thread-a")).toBe("thread-a");
+    expect(pistacheThreadKey("ce5642ba-27a1-4f00-9c3e-0a1b2c3d4e5f")).toBe(
+      "ce5642ba-27a1-4f00-9c3e-0a1b2c3d4e5f",
+    );
+    expect(
+      pistacheThreadKey(
+        "thread:delegated-task:command%3Amcp%3A5149c256-5393-44cc-af76-b1ee706eb5e4%3Adelegate-task%3Apist19-low-smoke-1",
+      ),
+    ).toBe(
+      "thread:delegated-task:command_3Amcp_3A5149c256-5393-44cc-af76-b1ee706eb5e4_3Adelegate-task_3Apist19--d752cd40f2b35235",
+    );
+    expect(pistacheThreadKey("has space/slash")).toBe("has_space_slash-b6f273a3ec240fc5");
+  });
 });

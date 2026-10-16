@@ -4,13 +4,16 @@ import { ArrowDownRightIcon, WaypointsIcon } from "lucide-react";
 import { useRoutingThreadHistory } from "../../state/routing";
 import { Badge } from "../ui/badge";
 import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
+import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { composerFloatingLayerProps } from "./composerEventScope";
 import {
   formatRoutingAdvice,
   formatRoutingBadgeLabel,
   formatRoutingDecision,
   formatRoutingSource,
+  formatServedModels,
   latestRoutingDecision,
+  servedDecisions,
 } from "./RoutingBadge.logic";
 
 /**
@@ -87,5 +90,45 @@ export function RoutingBadge({
         </div>
       </PopoverPopup>
     </Popover>
+  );
+}
+
+/**
+ * Which models served one assistant message, from the router's decisions in
+ * that message's turn. The picker only names the routing level; this names
+ * what actually ran. Renders nothing until the router reports a decision.
+ */
+export function ServedModelTag({
+  environmentId,
+  threadId,
+  start,
+  end,
+}: {
+  readonly environmentId: EnvironmentId;
+  readonly threadId: ThreadId;
+  readonly start: string;
+  readonly end: string | null;
+}) {
+  const decisions = servedDecisions(useRoutingThreadHistory(environmentId, threadId), start, end);
+  const label = formatServedModels(decisions);
+  if (label === null) return null;
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <span className="inline-flex items-center gap-1 text-muted-foreground text-xs tabular-nums" />
+        }
+      >
+        <WaypointsIcon aria-hidden="true" className="size-3" />
+        {label}
+      </TooltipTrigger>
+      <TooltipPopup className="max-w-sm text-left whitespace-normal">
+        <ul className="flex flex-col gap-1">
+          {decisions.map((decision) => (
+            <li key={decision.requestId}>{formatRoutingDecision(decision)}</li>
+          ))}
+        </ul>
+      </TooltipPopup>
+    </Tooltip>
   );
 }

@@ -69,7 +69,10 @@ function instance(
   };
 }
 
-function harness(instances: Record<string, ProviderInstanceConfig>) {
+function harness(
+  instances: Record<string, ProviderInstanceConfig>,
+  snapshot: unknown = snapshotFixture,
+) {
   const requests: string[] = [];
   const http = HttpClient.make((request) =>
     Effect.sync(() => {
@@ -77,7 +80,7 @@ function harness(instances: Record<string, ProviderInstanceConfig>) {
       requests.push(url.origin + url.pathname);
       return HttpClientResponse.fromWeb(
         request,
-        Response.json(url.pathname === "/api/v1/metrics" ? metricsFixture : snapshotFixture),
+        Response.json(url.pathname === "/api/v1/metrics" ? metricsFixture : snapshot),
       );
     }),
   );
@@ -218,6 +221,35 @@ describe("PistacheSource", () => {
           "http://router.test:8080/api/v1/snapshot",
         ]),
       );
+    }),
+  );
+
+  it.effect("finds delegated threads under the id Pistache stored for them", () =>
+    Effect.gen(function* () {
+      const delegated =
+        "thread:delegated-task:command%3Amcp%3A5149c256-5393-44cc-af76-b1ee706eb5e4%3Adelegate-task%3Apist19-low-smoke-1";
+      const test = harness(
+        configured([
+          { name: "OPENCODE_CONFIG_CONTENT", value: V1_CONFIG },
+          { name: "PISTACHE_API_KEY", value: "secret", sensitive: true },
+        ]),
+        {
+          ...snapshotFixture,
+          decisions: [
+            {
+              ...snapshotFixture.decisions[0],
+              request_id: "req-delegated",
+              thread_id:
+                "thread:delegated-task:command_3Amcp_3A5149c256-5393-44cc-af76-b1ee706eb5e4_3Adelegate-task_3Apist19--d752cd40f2b35235",
+            },
+          ],
+        },
+      );
+      const source = yield* PistacheSource.PistacheSource.pipe(Effect.provide(test.layer));
+      yield* source.refresh;
+      const history = yield* source.threadHistory(ThreadId.make(delegated));
+      expect(history.threadId).toBe(delegated);
+      expect(history.decisions.map((decision) => decision.requestId)).toEqual(["req-delegated"]);
     }),
   );
 });
