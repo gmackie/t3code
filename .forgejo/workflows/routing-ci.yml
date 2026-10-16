@@ -1,0 +1,62 @@
+name: Routing CI
+
+on:
+  pull_request:
+    branches:
+      - custom-local
+    paths:
+      - apps/server/src/routing/**
+      - apps/web/src/state/routing.ts
+      - apps/web/src/components/chat/RoutingBadge*
+      - apps/web/src/components/chat/MessagesTimeline*
+      - packages/contracts/src/routing.ts
+      - .forgejo/workflows/routing-ci.yml
+      - pnpm-lock.yaml
+      - pnpm-workspace.yaml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  server-routing:
+    runs-on: forgegraph-ci
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.14.0
+      - name: Install pinned dependencies
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.10.0 --activate
+          pnpm install --frozen-lockfile
+      - name: Verify the Pistache routing source
+        working-directory: apps/server
+        run: |
+          pnpm exec vp test run src/routing
+          pnpm exec tsc --noEmit
+          pnpm exec vp lint src/routing
+          pnpm exec vp fmt --check src/routing
+
+  web-routing:
+    runs-on: forgegraph-ci
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.14.0
+      - name: Install pinned dependencies
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.10.0 --activate
+          pnpm install --frozen-lockfile
+      - name: Verify routing badges and the timeline
+        working-directory: apps/web
+        run: |
+          pnpm exec vp test run src/components/chat/RoutingBadge.logic.test.ts src/components/chat/MessagesTimeline --project unit
+          pnpm exec tsc --noEmit
+          pnpm exec vp lint src/components/chat/RoutingBadge.tsx src/components/chat/RoutingBadge.logic.ts src/components/chat/MessagesTimeline.logic.ts
+          pnpm exec vp fmt --check src/state/routing.ts src/components/chat/RoutingBadge.tsx src/components/chat/RoutingBadge.logic.ts src/components/chat/RoutingBadge.logic.test.ts src/components/chat/MessagesTimeline.tsx src/components/chat/MessagesTimeline.logic.ts
