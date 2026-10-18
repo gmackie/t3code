@@ -21,10 +21,11 @@ const commit = (subject: string) => {
 };
 
 // main:   u1 (nightly .100) ─ u2 (nightly .101) ─ u3 (nightly .102) ─ u4
-// lane:   u1 ─ L1 ─ [tag gmacko.202610010000] ─ merge u2 ─ lockfile ─ PR 7 ─ direct ─ merge u3
-//                                                                   └ f1, f2
+// lane:   u1 ─ L1 ─ [tag gmacko.202610010000] ─ merge u2 ─ lockfile ─ PR 7 ─ direct ─ merge local ─ merge u3
+//                                                                   └ f1, f2           └ r, r (same subject)
 let pullRequestMerge = "";
 let directCommit = "";
+let localMerged = "";
 beforeAll(() => {
   repo = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "gmacko-changelog-test-"));
   git("init", "-q", "-b", "main");
@@ -58,6 +59,12 @@ beforeAll(() => {
   );
   pullRequestMerge = git("rev-parse", "HEAD");
   directCommit = commit("fix(ci): direct lane fix");
+  git("checkout", "-q", "-b", "local", "HEAD~1");
+  commit("feat: rewritten change");
+  commit("feat: rewritten change");
+  git("checkout", "-q", "custom-local");
+  git("merge", "-q", "--no-ff", "-m", "Merge branch 'local' into custom-local", "local");
+  localMerged = git("rev-parse", "local");
   git("merge", "-q", "--no-edit", "-m", "Merge upstream/main again", "v0.1.1-nightly.20261003.102");
   git("update-ref", "refs/remotes/upstream/main", "main");
 });
@@ -92,6 +99,7 @@ describe("buildGmackoChangelogManifest", () => {
           : { kind: change.kind, subject: change.subject, sha: change.sha },
       ),
       [
+        { kind: "commit", subject: "feat: rewritten change", sha: localMerged },
         { kind: "commit", subject: "fix(ci): direct lane fix", sha: directCommit },
         {
           kind: "pr",

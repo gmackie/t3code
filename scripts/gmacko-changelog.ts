@@ -99,7 +99,14 @@ function collectGmackoChanges(options: {
       continue;
     }
     // Other merges (upstream syncs, local branch merges): keep only fork work.
-    for (const commit of merged) changes.push({ kind: "commit", ...commit });
+    // Rewritten history (jj, rebases) can bring the same change in several
+    // times; list each subject once.
+    const subjects = new Set<string>();
+    for (const commit of merged) {
+      if (subjects.has(commit.subject)) continue;
+      subjects.add(commit.subject);
+      changes.push({ kind: "commit", ...commit });
+    }
   }
   return changes.slice(0, MAX_CHANGES);
 }
