@@ -267,6 +267,38 @@ jobs:
             echo "should_release=true" >> "$GITHUB_OUTPUT"
           fi
 
+      # Fork PRs merge on ForgeGraph, so GitHub's generated notes find nothing.
+      # These notes carry the manifest Settings > Changelog reads. They are
+      # written here because this job has the full lane history and upstream's
+      # nightly tags.
+      - name: Write GMACKO release notes
+        if: steps.decide.outputs.should_release == 'true'
+        shell: bash
+        working-directory: lane
+        env:
+          TAG: ${{ steps.release_meta.outputs.tag }}
+          PREVIOUS_TAG: ${{ steps.previous_tag.outputs.previous_tag }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/gmacko-release-notes"
+          node scripts/gmacko-changelog.ts generate \
+            --tag "$TAG" \
+            --previous-tag "${PREVIOUS_TAG:-}" \
+            --upstream-ref upstream/main \
+            --repository "$GITHUB_FORK" \
+            --pulls-url "${FORGEJO_REPO_URL%.git}/pulls" \
+            --output "$RUNNER_TEMP/gmacko-release-notes/release-notes.md"
+          cat "$RUNNER_TEMP/gmacko-release-notes/release-notes.md"
+
+      - name: Upload GMACKO release notes
+        if: steps.decide.outputs.should_release == 'true'
+        uses: https://code.forgejo.org/forgejo/upload-artifact@v4
+        with:
+          name: gmacko-release-notes
+          path: ${{ runner.temp }}/gmacko-release-notes/release-notes.md
+          if-no-files-found: error
+          retention-days: 7
+
   preflight:
     name: Preflight (check, runtime tests, bundles)
     needs: sync
@@ -1065,6 +1097,12 @@ jobs:
           merge-multiple: true
           path: release-assets
 
+      - name: Download GMACKO release notes
+        uses: https://code.forgejo.org/forgejo/download-artifact@v4
+        with:
+          name: gmacko-release-notes
+          path: release-notes
+
       - name: Merge macOS updater manifests
         shell: bash
         run: |
@@ -1100,7 +1138,6 @@ jobs:
           TAG: ${{ needs.sync.outputs.tag }}
           RELEASE_NAME: ${{ needs.sync.outputs.release_name }}
           TARGET: ${{ needs.sync.outputs.ref }}
-          PREVIOUS_TAG: ${{ needs.sync.outputs.previous_tag }}
         run: |
           set -euo pipefail
           shopt -s nullglob
@@ -1111,10 +1148,7 @@ jobs:
               exit 1
             fi
           done
-          notes_args=(--generate-notes)
-          if [[ -n "${PREVIOUS_TAG:-}" ]]; then
-            notes_args+=(--notes-start-tag "$PREVIOUS_TAG")
-          fi
+          notes_args=(--notes-file release-notes/release-notes.md)
           assets=(release-assets/*.dmg release-assets/*.zip release-assets/*.AppImage release-assets/*.exe release-assets/*.blockmap release-assets/*.yml release-assets/t3-*.tar.gz release-assets/SHA256SUMS)
           gh release create "$TAG" "${assets[@]}" \
             --repo "$GITHUB_FORK" \

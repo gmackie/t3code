@@ -220,6 +220,7 @@ import {
   ProjectIssueStatusUpdateInput,
   ProjectIssueStatusUpdateResult,
 } from "./issue.ts";
+import { GmackoChangelog, GmackoChangelogInput } from "./gmackoChangelog.ts";
 import {
   OrchestrationSearchThreadsError,
   OrchestrationSearchThreadsInput,
@@ -642,6 +643,7 @@ export const WS_METHODS = {
   serverDisableAcpRegistryProvider: "server.disableAcpRegistryProvider",
   serverLogoutAcpRegistry: "server.logoutAcpRegistry",
   serverGetTraceDiagnostics: "server.getTraceDiagnostics",
+  serverGetGmackoChangelog: "server.getGmackoChangelog",
   serverGetProcessDiagnostics: "server.getProcessDiagnostics",
   serverGetHostResources: "server.getHostResources",
   serverGetProcessResourceHistory: "server.getProcessResourceHistory",
@@ -1161,6 +1163,12 @@ const WsServerLogoutAcpRegistryRpc = Rpc.make(WS_METHODS.serverLogoutAcpRegistry
   payload: AcpRegistryLogoutInput,
   success: AcpRegistryLogoutResult,
   error: Schema.Union([AcpRegistryOperationError, EnvironmentAuthorizationError]),
+});
+
+const WsServerGetGmackoChangelogRpc = Rpc.make(WS_METHODS.serverGetGmackoChangelog, {
+  payload: GmackoChangelogInput,
+  success: GmackoChangelog,
+  error: EnvironmentAuthorizationError,
 });
 
 const WsServerGetTraceDiagnosticsRpc = Rpc.make(WS_METHODS.serverGetTraceDiagnostics, {
@@ -2433,6 +2441,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsServerSetAcpRegistryProviderRpc,
   WsServerDisableAcpRegistryProviderRpc,
   WsServerLogoutAcpRegistryRpc,
+  WsServerGetGmackoChangelogRpc,
   WsServerGetTraceDiagnosticsRpc,
   WsServerGetProcessDiagnosticsRpc,
   WsServerGetHostResourcesRpc,

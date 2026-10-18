@@ -20,6 +20,7 @@ import {
   PanelsTopLeftIcon,
   KeyboardIcon,
   Link2Icon,
+  ScrollTextIcon,
   PuzzleIcon,
   PaletteIcon,
   SearchIcon,
@@ -90,6 +91,7 @@ const SETTINGS_SECTION_ICONS: Readonly<
   "/settings/source-control": GitBranchIcon,
   "/settings/storage": HardDriveIcon,
   "/settings/connections": Link2Icon,
+  "/settings/changelog": ScrollTextIcon,
   "/settings/archived": ArchiveIcon,
   "/settings/plugins": PuzzleIcon,
 };

@@ -407,6 +407,10 @@
       "types": "./src/cliRelease.ts",
       "import": "./src/cliRelease.ts"
     },
+    "./gmackoChangelog": {
+      "types": "./src/gmackoChangelog.ts",
+      "import": "./src/gmackoChangelog.ts"
+    },
     "./gitPatchPath": {
       "types": "./src/gitPatchPath.ts",
       "import": "./src/gitPatchPath.ts"

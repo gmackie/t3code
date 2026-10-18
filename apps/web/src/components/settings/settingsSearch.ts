@@ -27,6 +27,7 @@ export type SettingsPath =
   | "/settings/source-control"
   | "/settings/storage"
   | "/settings/connections"
+  | "/settings/changelog"
   | "/settings/archived"
   | "/settings/plugins";
 
@@ -107,6 +108,7 @@ export const SETTINGS_SECTION_LABELS: Readonly<Record<SettingsPath, string>> = {
   "/settings/source-control": "Source Control",
   "/settings/storage": "Storage",
   "/settings/connections": "Connections",
+  "/settings/changelog": "Changelog",
   "/settings/archived": "Archive",
   "/settings/plugins": "Plugins",
 };
@@ -1045,6 +1047,7 @@ const SETTINGS_CATEGORY_SCOPES: Readonly<Record<SettingsPath, SettingsSearchScop
   "/settings/source-control": "environment-defaults",
   "/settings/storage": "project-defaults",
   "/settings/connections": "connections",
+  "/settings/changelog": "environment",
   "/settings/scheduled-tasks": null,
   "/settings/archived": "project-defaults",
 };

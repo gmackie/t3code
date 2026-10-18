@@ -1076,6 +1076,10 @@ export function createServerEnvironmentAtoms<R, E>(
       label: "environment-data:server:process-diagnostics",
       tag: WS_METHODS.serverGetProcessDiagnostics,
     }),
+    gmackoChangelog: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:server:gmacko-changelog",
+      tag: WS_METHODS.serverGetGmackoChangelog,
+    }),
     hostResources: createEnvironmentQueryAtomFamily(runtime, {
       label: "environment-data:server:host-resources",
       idleTtlMs: 0,
