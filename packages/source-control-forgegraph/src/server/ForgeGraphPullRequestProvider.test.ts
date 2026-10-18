@@ -199,9 +199,52 @@ describe("ForgeGraphPullRequestProvider", () => {
           [12, "open", "https://forgegraf.com/changesets/cs-old"],
         ],
       );
-      assert.strictEqual(fake.sent.find((r) => r.path === "/fg/prs")?.query.get("app"), "t3code");
+      // An older server ignores `repository` and answers the thin list, so it is asked by app.
+      assert.deepStrictEqual(
+        fake.sent
+          .filter((r) => r.path === "/fg/prs")
+          .map((r) => [r.query.get("repository"), r.query.get("app")]),
+        [
+          ["gmackie/t3code", null],
+          [null, "t3code"],
+        ],
+      );
       // The closed changeset was never read in full.
       assert.isFalse(fake.sent.some((r) => r.path === "/fg/prs/cs-closed"));
+    }),
+  );
+
+  it.effect("reads past changesets without a number to fill the page", () =>
+    Effect.gen(function* () {
+      const { result } = yield* run(
+        {
+          ...repositoryRoutes,
+          "GET /fg/prs": {
+            prs: [
+              // Forgejo-backed changesets that never got a Forgejo PR, newer than the real one.
+              { id: "cs-a", title: "a", status: "open", createdAt: "2026-10-18T00:00:00Z" },
+              { id: "cs-b", title: "b", status: "open", createdAt: "2026-10-17T00:00:00Z" },
+              { id: "cs-17", title: "c", status: "open", createdAt: "2026-10-04T00:00:00Z" },
+            ],
+          },
+          "GET /fg/prs/cs-a": detail({ id: "cs-a", number: null }),
+          "GET /fg/prs/cs-b": detail({ id: "cs-b", number: null }),
+          "GET /fg/prs/cs-17": detail({ id: "cs-17", number: 17 }),
+        },
+        (provider) =>
+          provider.listChangeRequests({
+            ...target,
+            state: "open",
+            involvement: "all",
+            viewer: "gmackie",
+            limit: 1,
+          }),
+      );
+      assert.deepStrictEqual(
+        result.items.map((item) => item.number),
+        [17],
+      );
+      assert.isFalse(result.truncated);
     }),
   );
 
@@ -350,6 +393,154 @@ describe("ForgeGraphPullRequestProvider", () => {
         Effect.provide(fake.layer),
       );
       assert.strictEqual(error.reason, "not-found");
+    }),
+  );
+});
+
+describe("ForgeGraphPullRequestProvider against a FORGE-138 server", () => {
+  const summary = (number: number, overrides: Record<string, unknown> = {}) => ({
+    ...detail({ id: `cs-${number}`, number }),
+    state: "open",
+    isDraft: false,
+    url: `https://forgegraf.com/changesets/cs-${number}`,
+    ci: null,
+    review: null,
+    updatedAt: "2026-10-18T20:00:00.000Z",
+    comments: undefined,
+    reviews: undefined,
+    ...overrides,
+  });
+  // The repository resolves with no app at all: nothing should need one.
+  const resolveOnly = {
+    "GET /fg/repositories/resolve": {
+      repository: {
+        id: "repo-1",
+        slug: "gmackie-t3code",
+        owner: "gmackie",
+        repoName: "t3code",
+        prBackend: "native",
+        storageBackend: "artifacts",
+        cloneUrl: "https://gitgw.forgegraf.com/gmackie/t3code.git",
+      },
+    },
+    "GET /fg/apps": { apps: [] },
+  };
+
+  it.effect("lists by repository in pages, without reading each pull request", () =>
+    Effect.gen(function* () {
+      const { result, fake } = yield* run(
+        {
+          ...resolveOnly,
+          "GET /fg/prs": (request: SentRequest) =>
+            request.query.get("cursor") === null
+              ? ([
+                  200,
+                  { prs: [summary(140, { ci: "running" }), summary(139)], nextCursor: "c-2" },
+                ] as const)
+              : ([200, { prs: [summary(12, { ci: "pass" })], nextCursor: "c-3" }] as const),
+        },
+        (provider) =>
+          provider.listChangeRequests({
+            ...target,
+            state: "open",
+            involvement: "all",
+            viewer: "gmackie",
+            limit: 3,
+          }),
+      );
+      assert.deepStrictEqual(
+        result.items.map((item) => [item.number, item.checksState ?? null]),
+        [
+          [140, "pending"],
+          [139, null],
+          [12, "passing"],
+        ],
+      );
+      assert.isTrue(result.truncated);
+      assert.deepStrictEqual(
+        fake.sent.map((r) => [r.path, r.query.get("limit"), r.query.get("cursor")]),
+        [
+          ["/fg/prs", "3", null],
+          ["/fg/prs", "1", "c-2"],
+        ],
+      );
+    }),
+  );
+
+  it.effect("reads a native pull request by its number, with no app for CI", () =>
+    Effect.gen(function* () {
+      const { result, fake } = yield* run(
+        {
+          ...resolveOnly,
+          "GET /fg/prs/by-number": (request: SentRequest) =>
+            request.query.get("number") === "140" &&
+            request.query.get("repository") === "gmackie/t3code"
+              ? ([
+                  200,
+                  {
+                    ...summary(140, { ci: "fail" }),
+                    prBackend: "native",
+                    body: "Native body",
+                    mergeStrategies: ["merge", "squash", "fast-forward"],
+                    comments: [],
+                    reviews: [],
+                  },
+                ] as const)
+              : ([404, { error: "PR not found" }] as const),
+        },
+        (provider) => provider.getChangeRequest({ ...target, number: 140 }),
+      );
+      assert.strictEqual(result.number, 140);
+      assert.strictEqual(result.body, "Native body");
+      assert.strictEqual(result.checksState, "failing");
+      assert.deepStrictEqual(result.checks, []);
+      assert.deepStrictEqual(result.mergeCapabilities, {
+        merge: true,
+        squash: true,
+        rebase: false,
+      });
+      // Native when-green waits on FORGE-138 item 7.
+      assert.deepStrictEqual(result.viewerPermissions.actions, ["merge", "close"]);
+      assert.isFalse(fake.sent.some((r) => r.path === "/fg/prs" || r.path === "/fg/ci/gate"));
+    }),
+  );
+
+  it.effect("falls back to the app listing when the server refuses a repository listing", () =>
+    Effect.gen(function* () {
+      const { result } = yield* run(
+        {
+          ...repositoryRoutes,
+          "GET /fg/prs": (request: SentRequest) =>
+            request.query.get("app") === null
+              ? ([400, { error: "app query parameter required (or all=true)" }] as const)
+              : ([
+                  200,
+                  {
+                    prs: [
+                      {
+                        id: "cs-33",
+                        title: "x",
+                        status: "open",
+                        createdAt: "2026-10-18T19:33:04.084Z",
+                      },
+                    ],
+                  },
+                ] as const),
+          "GET /fg/prs/cs-33": detail(),
+        },
+        (provider) =>
+          provider.listChangeRequests({
+            ...target,
+            state: "open",
+            involvement: "all",
+            viewer: "gmackie",
+            limit: 10,
+          }),
+      );
+      assert.deepStrictEqual(
+        result.items.map((item) => item.number),
+        [33],
+      );
     }),
   );
 });

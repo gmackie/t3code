@@ -212,29 +212,9 @@ export const make = Effect.gen(function* () {
         const repository = yield* resolveRepository(operation, input);
         const branch = SourceControlProvider.sourceBranch(input);
         const server = yield* api.server;
-        const app = yield* lookups
-          .appSlug(operation, repository)
+        const details = yield* lookups
+          .listByBranch(operation, repository, branch, input.state, input.limit ?? 20)
           .pipe(Effect.mapError(fromApi(operation, input.cwd)));
-        const { prs } = yield* lookups
-          .read(
-            {
-              operation,
-              path: `/fg/prs?${new URLSearchParams({ app, vcsType: "git", changeId: branch })}`,
-            },
-            Json.ForgeGraphPullList,
-          )
-          .pipe(Effect.mapError(fromApi(operation, input.cwd)));
-        const details = yield* Effect.forEach(
-          prs
-            .filter((pull) => Json.matchesListState(pull.status, input.state))
-            .toSorted((a, b) => b.createdAt.localeCompare(a.createdAt))
-            .slice(0, input.limit ?? 20),
-          (item) =>
-            lookups
-              .pullById(operation, item.id)
-              .pipe(Effect.mapError(fromApi(operation, input.cwd))),
-          { concurrency: 4 },
-        );
         return details
           .filter(Json.isNumbered)
           .filter((pull) => pull.sourceBranch === branch)
@@ -306,10 +286,15 @@ export const make = Effect.gen(function* () {
         const [gitHost = "git.forgegraf.com"] = ForgeGraphHosts.forgeGraphGitHosts(
           yield* api.server,
         );
+        const https = found.repository.cloneUrl ?? `https://${gitHost}/${nameWithOwner}.git`;
         return {
           nameWithOwner,
-          url: `https://${gitHost}/${nameWithOwner}.git`,
-          sshUrl: `git@${gitHost}:${nameWithOwner}.git`,
+          url: https,
+          // Artifacts storage is only served by the gateway; its Forgejo SSH remote is stale.
+          sshUrl:
+            found.repository.storageBackend === "artifacts"
+              ? https
+              : `git@${gitHost}:${nameWithOwner}.git`,
         };
       },
     ),
@@ -339,14 +324,39 @@ export const make = Effect.gen(function* () {
         const pull = yield* getChangeRequest(input);
         const server = yield* api.server;
         const git = host.git;
+        // Where ForgeGraph says to fetch from; absent on a server that predates `cloneUrl`.
+        const cloneUrl = yield* resolveRepository(operation, input).pipe(
+          Effect.flatMap((repository) => lookups.target(operation, repository)),
+          Effect.map((found) => found.repository.cloneUrl ?? null),
+          Effect.orElseSucceed(() => null),
+        );
         yield* Effect.gen(function* () {
-          const contextRemote = input.context
-            ? ForgeGraphHosts.parseForgeGraphRemote(input.context.remoteUrl, server)
-            : null;
+          const primary = input.context
+            ? { name: input.context.remoteName, url: input.context.remoteUrl }
+            : yield* git
+                .resolvePrimaryRemoteName(input.cwd)
+                .pipe(
+                  Effect.flatMap((name) =>
+                    git
+                      .readConfigValue(input.cwd, `remote.${name}.url`)
+                      .pipe(Effect.map((url) => ({ name, url: url ?? "" }))),
+                  ),
+                );
+          const primaryHost = ForgeGraphHosts.parseForgeGraphRemote(primary.url, server)?.gitHost;
+          const cloneHost = cloneUrl
+            ? ForgeGraphHosts.parseForgeGraphRemote(cloneUrl, server)?.gitHost
+            : undefined;
+          // The checkout's own remote serves when it reaches the host ForgeGraph names, which keeps
+          // its SSH or credential setup; otherwise the branch is fetched from ForgeGraph's URL,
+          // which is how an Artifacts repository is never read from Forgejo.
           const remoteName =
-            input.context && contextRemote !== null
-              ? input.context.remoteName
-              : yield* git.resolvePrimaryRemoteName(input.cwd);
+            cloneUrl === null || (primaryHost !== undefined && primaryHost === cloneHost)
+              ? primary.name
+              : yield* git.ensureRemote({
+                  cwd: input.cwd,
+                  preferredName: "forgegraph",
+                  url: cloneUrl,
+                });
           const remoteBranch = { cwd: input.cwd, remoteName, remoteBranch: pull.headRefName };
           const branches = yield* git.listLocalBranchNames(input.cwd);
           if (input.force !== true && !branches.includes(pull.headRefName))

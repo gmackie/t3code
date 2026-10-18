@@ -41,8 +41,6 @@ const CAPABILITIES: PullRequestCapabilities = {
   edit: { changeRequest: false, comment: false },
 };
 
-/** Details read at once while listing; ForgeGraph's list carries no number or branch yet. */
-const LIST_CONCURRENCY = 6;
 const HEAD_SHA = /^[0-9a-f]{40}(?:[0-9a-f]{24})?$/u;
 
 type PullRef = ProviderRepositoryRef & { readonly number: number };
@@ -102,10 +100,7 @@ export const make = Effect.gen(function* () {
       .pipe(Effect.asVoid, Effect.mapError(fromApi));
 
   const checksFor = (operation: string, input: PullRef, pull: Json.NumberedPull) =>
-    lookups.appSlug(operation, input.repository).pipe(
-      Effect.flatMap((app) => lookups.gate(operation, app, pull.headSha)),
-      Effect.mapError(fromApi),
-    );
+    lookups.gate(operation, input.repository, pull.headSha).pipe(Effect.mapError(fromApi));
 
   const merge = Effect.fn("ForgeGraphPullRequestProvider.merge")(function* (
     input: PullRef & { readonly mergeMethod?: PullRequestMergeMethod; readonly whenGreen: boolean },
@@ -144,38 +139,19 @@ export const make = Effect.gen(function* () {
       function* (input) {
         const operation = "listChangeRequests";
         const repository = yield* repositoryOf(operation, input);
-        const app = yield* lookups.appSlug(operation, repository).pipe(Effect.mapError(fromApi));
-        const { prs } = yield* lookups
-          .read(
-            { operation, path: `/fg/prs?${new URLSearchParams({ app })}` },
-            Json.ForgeGraphPullList,
-          )
+        const page = yield* lookups
+          .listPulls(operation, repository, input.state, Math.max(1, input.limit))
           .pipe(Effect.mapError(fromApi));
         const viewer = input.viewer.toLowerCase();
-        const wanted = prs
-          .filter(
-            (pull) => pull.status !== "draft" && Json.matchesListState(pull.status, input.state),
-          )
-          .toSorted((a, b) =>
-            (b.updatedAt ?? b.createdAt).localeCompare(a.updatedAt ?? a.createdAt),
-          );
-        const limit = Math.max(1, input.limit);
-        const details = yield* Effect.forEach(
-          wanted.slice(0, limit),
-          (item) => lookups.pullById(operation, item.id).pipe(Effect.mapError(fromApi)),
-          { concurrency: LIST_CONCURRENCY },
-        );
         const server = yield* api.server;
         return {
-          items: details
-            // A native pull request without its number yet cannot be addressed, so it is left out.
-            .filter(Json.isNumbered)
+          items: page.pulls
             // ForgeGraph names authors by display name, so this narrows as far as it can.
             .filter(
-              (pull) => input.involvement !== "authored" || pull.author.toLowerCase() === viewer,
+              (pull) => input.involvement !== "authored" || pull.author?.toLowerCase() === viewer,
             )
             .map((pull) => Json.toChangeRequest(pull, server)),
-          truncated: wanted.length > limit,
+          truncated: page.truncated,
           continues: false,
         };
       },
@@ -190,7 +166,7 @@ export const make = Effect.gen(function* () {
       function* (input) {
         const pull = yield* readPull("getChangeRequestChecks", input);
         const gate = yield* checksFor("getChangeRequestChecks", input, pull);
-        return { state: Json.toState(pull.status), checks: Json.toChecks(gate, yield* api.server) };
+        return { state: Json.stateOf(pull), checks: Json.toChecks(gate, yield* api.server) };
       },
     ),
     getChangeRequest: Effect.fn("ForgeGraphPullRequestProvider.getChangeRequest")(
@@ -198,8 +174,8 @@ export const make = Effect.gen(function* () {
         const pull = yield* readPull("getChangeRequest", input);
         const gate = yield* checksFor("getChangeRequest", input, pull);
         const server = yield* api.server;
-        const checksState = Json.toChecksState(gate);
-        const state = Json.toState(pull.status);
+        const checksState = Json.toChecksState(gate, pull);
+        const state = Json.stateOf(pull);
         return {
           ...Json.toChangeRequest(pull, server),
           headSha: pull.headSha ?? null,
@@ -207,7 +183,7 @@ export const make = Effect.gen(function* () {
           changedFiles: 0,
           mergedAt: state === "merged" ? Json.lastActivityAt(pull) : null,
           closedAt: state === "open" ? null : Json.lastActivityAt(pull),
-          reviewers: [...new Set(pull.reviews.map((review) => review.author))]
+          reviewers: [...new Set((pull.reviews ?? []).map((review) => review.author))]
             .filter((author) => author !== "unknown")
             .map((login) => ({ login, name: null, avatarUrl: null })),
           checks: Json.toChecks(gate, server),
@@ -231,7 +207,7 @@ export const make = Effect.gen(function* () {
           return yield* merge({ ...input, whenGreen: true });
         case "close": {
           const pull = yield* readPull("close", input);
-          if (Json.toState(pull.status) !== "open") return;
+          if (Json.stateOf(pull) !== "open") return;
           return yield* post("close", `/fg/prs/${encodeURIComponent(pull.id)}/close`, {});
         }
         default:
