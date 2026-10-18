@@ -5,6 +5,10 @@ import type {
   SourceControlProviderAuth,
 } from "@t3tools/contracts";
 import { readForgeGraphSettings } from "@t3tools/client-runtime/source-control-clients";
+import {
+  isAtomCommandInterrupted,
+  squashAtomCommandFailure,
+} from "@t3tools/client-runtime/state/runtime";
 import * as Option from "effect/Option";
 import { ExternalLinkIcon } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
@@ -49,6 +53,7 @@ export function ForgeGraphSignInSettings({
   });
   const [state, setState] = useState<ForgeGraphSignInState | null>(null);
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   // Held so a parent re-render does not restart the status interval.
   const onChangedRef = useRef(onChanged);
   useEffect(() => {
@@ -58,8 +63,15 @@ export function ForgeGraphSignInSettings({
   const run = async (command: typeof start) => {
     setBusy(true);
     try {
+      setError(null);
       const result = await command({ environmentId, input: {} });
       if (result._tag === "Success") setState(result.value);
+      else if (!isAtomCommandInterrupted(result)) {
+        const failure = squashAtomCommandFailure(result);
+        setError(
+          failure instanceof Error ? failure.message : "ForgeGraph did not answer. Try again.",
+        );
+      }
       return result;
     } finally {
       setBusy(false);
@@ -87,17 +99,15 @@ export function ForgeGraphSignInSettings({
     return () => clearInterval(timer);
   }, [waiting, environmentId, status]);
 
-  const account = Option.getOrNull(auth.account);
   const signedIn = auth.status === "authenticated";
   const savedInT3 = token.length > 0;
 
   return (
     <div className="grid gap-3">
       <p className="max-w-2xl text-xs leading-relaxed text-muted-foreground">
+        {/* The account itself is shown, redactable, in the row above. */}
         {signedIn
-          ? account
-            ? `Signed in as ${account}${Option.isSome(auth.host) ? ` on ${auth.host.value}` : ""}.`
-            : "Signed in."
+          ? `Signed in${Option.isSome(auth.host) ? ` on ${auth.host.value}` : ""}.`
           : "Not signed in. Sign in here, or set FG_API_TOKEN or run `forge login` on the server."}
         {signedIn && !savedInT3 ? " The token comes from FG_API_TOKEN or the forge CLI." : null}
       </p>
@@ -115,6 +125,12 @@ export function ForgeGraphSignInSettings({
             <ExternalLinkIcon aria-hidden className="size-3" />
           </InlineButton>
         </div>
+      ) : null}
+
+      {error ? (
+        <p role="alert" className="max-w-2xl text-xs text-destructive">
+          {error}
+        </p>
       ) : null}
 
       {state?.message && !waiting ? (
