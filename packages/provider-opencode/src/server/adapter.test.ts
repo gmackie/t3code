@@ -1258,6 +1258,98 @@ describe("OpenCodeAdapterV2", () => {
     ),
   );
 
+  it.effect.each(["compacted", "not-compacted"] as const)(
+    "keeps a context-overflowing turn open while OpenCode compacts (%s)",
+    (ending) =>
+      Effect.gen(function* () {
+        const nativeEvents = asyncEventStream();
+        const nativeSessionId = `native-opencode-overflow-${ending}`;
+        let promptId = "";
+        const harness = yield* makeOpenCodeRuntimeHarness(`overflow-${ending}`, nativeSessionId, {
+          event: {
+            subscribe: async (_input: unknown, options: { signal?: AbortSignal }) => {
+              options.signal?.addEventListener("abort", () => nativeEvents.close(), { once: true });
+              return { stream: nativeEvents.stream };
+            },
+          },
+          session: {
+            create: async () => ({
+              data: { id: nativeSessionId, time: { created: 1, updated: 1 } },
+            }),
+            promptAsync: async (input: { messageID: string }) => {
+              promptId = input.messageID;
+              return { data: true };
+            },
+          },
+        });
+        yield* harness.startTurn();
+        const received = yield* harness.runtime.events.pipe(
+          Stream.takeUntil((event) => event.type === "turn.terminal"),
+          Stream.runCollect,
+          Effect.forkScoped,
+        );
+        const status = (type: "busy" | "idle") => ({
+          type: "session.status",
+          properties: { sessionID: nativeSessionId, status: { type } },
+        });
+        yield* Effect.promise(() =>
+          nativeEvents.push({
+            type: "message.updated",
+            properties: {
+              sessionID: nativeSessionId,
+              info: { id: promptId, role: "user", time: { created: 1 } },
+            },
+          }),
+        );
+        yield* Effect.promise(() => nativeEvents.push(status("busy")));
+        yield* Effect.promise(() =>
+          nativeEvents.push({
+            type: "session.error",
+            properties: {
+              sessionID: nativeSessionId,
+              error: {
+                name: "ContextOverflowError",
+                data: { message: "Input exceeds context window of this model" },
+              },
+            },
+          }),
+        );
+        if (ending === "compacted") {
+          yield* Effect.promise(() =>
+            nativeEvents.push({
+              type: "session.compacted",
+              properties: { sessionID: nativeSessionId },
+            }),
+          );
+          yield* Effect.promise(() => nativeEvents.push(status("busy")));
+        }
+        yield* Effect.promise(() => nativeEvents.push(status("idle")));
+        const events = Array.from(yield* Fiber.join(received));
+        const terminals = events.filter((event) => event.type === "turn.terminal");
+        assert.equal(terminals.length, 1);
+        const compactions = events.filter(
+          (event) => event.type === "turn_item.updated" && event.turnItem.type === "compaction",
+        );
+        if (ending === "compacted") {
+          assert.equal(terminals[0]?.status, "completed");
+          assert.isNull(terminals[0]?.failure ?? null);
+          assert.isAbove(compactions.length, 0);
+        } else {
+          assert.equal(terminals[0]?.status, "failed");
+          assert.equal(
+            terminals[0]?.failure?.message,
+            "Input exceeds context window of this model",
+          );
+          assert.equal(terminals[0]?.failure?.code, "ContextOverflowError");
+          assert.equal(terminals[0]?.threadDisposition, "reusable");
+          assert.equal(compactions.length, 0);
+        }
+      }).pipe(
+        Effect.provide(Layer.merge(IdAllocator.layer, McpProviderSessions.layer)),
+        Effect.scoped,
+      ),
+  );
+
   it.effect("admits a native command on its user receipt before generation completes", () =>
     Effect.gen(function* () {
       const nativeEvents = asyncEventStream();
