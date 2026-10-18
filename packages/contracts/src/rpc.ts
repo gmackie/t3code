@@ -4,6 +4,7 @@ import {
   OrchestrationV2SearchThreadResult,
 } from "./orchestrationV2.ts";
 import { OrchestrationDispatchCommandError } from "./orchestrationDispatch.ts";
+import { BobOperationInput, BobConnectionState, BobCoordinationError } from "./bobCoordination.ts";
 import {
   McpAppCallToolInput,
   McpAppCallToolResult,
@@ -627,6 +628,8 @@ export const WS_METHODS = {
   serverUpdateSettings: "server.updateSettings",
   serverValidateLinearIssues: "server.validateLinearIssues",
   serverListProjectIssues: "server.listProjectIssues",
+  serverBobCoordination: "server.bobCoordination",
+  serverBobConnection: "server.bobConnection",
   serverListProjectIssueStatuses: "server.listProjectIssueStatuses",
   serverCreateProjectIssue: "server.createProjectIssue",
   serverUpdateProjectIssueStatus: "server.updateProjectIssueStatus",
@@ -1061,6 +1064,16 @@ export const WsServerListProjectIssuesRpc = Rpc.make(WS_METHODS.serverListProjec
   payload: ProjectIssueListInput,
   success: IssueListResult,
   error: Schema.Union([IssueProviderError, ServerSettingsError, EnvironmentAuthorizationError]),
+});
+export const WsServerBobCoordinationRpc = Rpc.make(WS_METHODS.serverBobCoordination, {
+  payload: BobOperationInput,
+  success: Schema.Unknown,
+  error: Schema.Union([BobCoordinationError, EnvironmentAuthorizationError]),
+});
+export const WsServerBobConnectionRpc = Rpc.make(WS_METHODS.serverBobConnection, {
+  payload: Schema.Struct({}),
+  success: BobConnectionState,
+  error: Schema.Union([BobCoordinationError, EnvironmentAuthorizationError]),
 });
 
 export const WsServerListProjectIssueStatusesRpc = Rpc.make(
@@ -2426,6 +2439,8 @@ export const WsRpcGroup = RpcGroup.make(
   WsServerUpdateSettingsRpc,
   WsServerValidateLinearIssuesRpc,
   WsServerListProjectIssuesRpc,
+  WsServerBobCoordinationRpc,
+  WsServerBobConnectionRpc,
   WsServerListProjectIssueStatusesRpc,
   WsServerCreateProjectIssueRpc,
   WsServerUpdateProjectIssueStatusRpc,

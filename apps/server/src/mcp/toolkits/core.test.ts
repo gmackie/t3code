@@ -56,6 +56,7 @@ import { ProjectToolkit } from "./project/tools.ts";
 import { ReverseToolkit } from "./reverse/tools.ts";
 import { AttachmentToolkit } from "./attachment/tools.ts";
 import * as AttachmentHandlers from "./attachment/handlers.ts";
+import { CoordinationToolkit } from "./coordination/tools.ts";
 import { ThreadToolkit } from "./thread/tools.ts";
 import { WorktreeToolkit } from "./worktree/tools.ts";
 import { DeviceToolkit } from "./device/tools.ts";
@@ -91,6 +92,7 @@ it("publishes unique tool names with reference-free object-root inputs", () => {
     PreviewToolkit,
     WorktreeToolkit,
     ThreadToolkit,
+    CoordinationToolkit,
     AttachmentToolkit,
     ProjectToolkit,
     EnvironmentToolkit,

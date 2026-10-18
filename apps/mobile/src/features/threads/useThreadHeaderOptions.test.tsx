@@ -34,7 +34,12 @@ vi.mock("@react-navigation/native", () => {
 vi.mock("../../native/useOpenPullRequest", () => ({ useOpenPullRequest: () => () => {} }));
 
 vi.mock("../../state/session", () => ({ useEnvironmentScope: () => true }));
-vi.mock("react-native", () => ({ Alert: { alert: () => {} }, Linking: {}, Platform: {} }));
+vi.mock("react-native", () => ({
+  Alert: { alert: () => {} },
+  Linking: {},
+  Platform: {},
+  View: () => null,
+}));
 vi.mock("../layout/AdaptiveWorkspaceLayout", () => ({
   useAdaptiveWorkspaceLayout: () => ({
     layout: { usesSplitView: false },
@@ -110,6 +115,7 @@ function Header(props: { readonly gitStatus: VcsStatusResult | null; readonly ti
       onToggleInspector={() => {}}
       onOpenGitInspector={() => {}}
       onOpenFilesInspector={() => {}}
+      onOpenWork={() => {}}
     />
   );
 }

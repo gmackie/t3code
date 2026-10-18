@@ -20,6 +20,8 @@ import * as MetaMaskHandlers from "./toolkits/metamask/handlers.ts";
 import * as GameSessions from "../game/GameSessions.ts";
 import { UnityToolkit, UnitySnapshotTool, UnitySnapshotToolkit } from "./toolkits/unity/tools.ts";
 import * as UnityHandlers from "./toolkits/unity/handlers.ts";
+import { CoordinationToolkit } from "./toolkits/coordination/tools.ts";
+import * as CoordinationHandlers from "./toolkits/coordination/handlers.ts";
 import packageJson from "../../package.json" with { type: "json" };
 import * as ServerConfig from "../config.ts";
 import * as DeviceService from "../device/DeviceService.ts";
@@ -906,6 +908,11 @@ export const layerDeviceToolkit = Layer.mergeAll(
   layerDeviceScreenshotRegistration,
 );
 
+export const layerCoordinationToolkit = toolkitRegistration(
+  CoordinationToolkit,
+  CoordinationHandlers.layer,
+);
+
 export const layerMcpTransport = McpServer.layerHttp({
   name: "T3 Code",
   version: packageJson.version,
@@ -915,6 +922,7 @@ export const layerMcpTransport = McpServer.layerHttp({
 }).pipe(Layer.provide(layerMcpAuthMiddleware));
 
 export const layer = Layer.mergeAll(
+  layerCoordinationToolkit,
   layerPreviewToolkit,
   callerCheckedToolkitRegistration(MetaMaskToolkit, MetaMaskHandlers.layer),
   layerOrchestratorToolkit,

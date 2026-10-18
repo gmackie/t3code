@@ -77,6 +77,8 @@ import Migration0060 from "./Migrations/060_ThreadSnapshotWindowIndexes.ts";
 import Migration0061 from "./Migrations/061_PullRequestReviewGuides.ts";
 // GMACKO lane migration, released as 59 before upstream claimed that id.
 import Migration0062 from "./Migrations/059_BoundedShellLookups.ts";
+// T3CODE-6 Bob admission; released as 59 on main, renumbered after the GMACKO lane.
+import Migration0063 from "./Migrations/063_BobExecutionAdmission.ts";
 
 /**
  * Migration loader with all migrations defined inline.
@@ -154,6 +156,8 @@ export const migrationEntries = [
   [61, "PullRequestReviewGuides", Migration0061],
   // Released as 59 on the GMACKO lane; reconcileMigrationLedger re-keys it by name.
   [62, "BoundedShellLookups", Migration0062],
+  // Main released this as 59; on custom-local it follows the GMACKO lane migrations.
+  [63, "BobExecutionAdmission", Migration0063],
 ] as const;
 
 export const migrationManifest = migrationEntries.map(([id, name]) => [id, name] as const);
