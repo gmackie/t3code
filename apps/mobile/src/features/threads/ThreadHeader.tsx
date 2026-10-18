@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { View } from "react-native";
 import { ScreenHeader } from "../../components/ScreenHeader";
 import { ScreenHeaderButton } from "../../components/ScreenHeaderButton";
 import type { ScreenHeaderAction } from "../../components/ScreenHeader.types";
@@ -16,6 +17,7 @@ export function ThreadHeader(
     readonly onToggleInspector: () => void;
     readonly onOpenGitInspector: () => void;
     readonly onOpenFilesInspector: () => void;
+    readonly onOpenWork: () => void;
   },
 ) {
   const returnToList = useWorkspaceListNavigation("threads");
@@ -61,6 +63,11 @@ export function ThreadHeader(
       });
     }
     actions.push({
+      accessibilityLabel: "Open Work",
+      icon: "list.number",
+      onPress: props.onOpenWork,
+    });
+    actions.push({
       accessibilityLabel: "Open git controls",
       icon: "point.topleft.down.curvedto.point.bottomright.up",
       onPress: props.onOpenGitInspector,
@@ -82,6 +89,7 @@ export function ThreadHeader(
     onOpenTerminal,
     onMergeBack,
     props.onOpenGitInspector,
+    props.onOpenWork,
     toggleAuxiliaryPane,
     props.onReturnToThread,
     props.hasThreadCwd,
@@ -98,18 +106,25 @@ export function ThreadHeader(
         options={native.options}
         optionsVersion={native.optionsVersion}
         trailing={
-          props.fileInspectorSupported && props.hasThreadCwd ? (
+          <View className="flex-row">
             <ScreenHeaderButton
-              accessibilityLabel={
-                props.inspectorMode !== null && panes.auxiliaryPaneVisible
-                  ? "Hide inspector"
-                  : "Show inspector"
-              }
-              icon="sidebar.right"
-              selected={props.inspectorMode !== null && panes.auxiliaryPaneVisible}
-              onPress={props.onToggleInspector}
+              accessibilityLabel="Open Work"
+              icon="list.number"
+              onPress={props.onOpenWork}
             />
-          ) : null
+            {props.fileInspectorSupported && props.hasThreadCwd ? (
+              <ScreenHeaderButton
+                accessibilityLabel={
+                  props.inspectorMode !== null && panes.auxiliaryPaneVisible
+                    ? "Hide inspector"
+                    : "Show inspector"
+                }
+                icon="sidebar.right"
+                selected={props.inspectorMode !== null && panes.auxiliaryPaneVisible}
+                onPress={props.onToggleInspector}
+              />
+            ) : null}
+          </View>
         }
         onBack={layout.usesSplitView ? undefined : returnToList}
         actions={androidHeaderActions}

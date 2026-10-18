@@ -234,6 +234,8 @@ const RPC_AGGREGATES = {
   [WS_METHODS.serverCreateProjectIssue]: "server",
   [WS_METHODS.serverListProjectIssueStatuses]: "server",
   [WS_METHODS.serverListProjectIssues]: "server",
+  [WS_METHODS.serverBobCoordination]: "server",
+  [WS_METHODS.serverBobConnection]: "server",
   [WS_METHODS.serverUpdateProjectIssueStatus]: "server",
   [WS_METHODS.serverValidateLinearIssues]: "server",
   [WS_METHODS.routingGetOverview]: "routing",

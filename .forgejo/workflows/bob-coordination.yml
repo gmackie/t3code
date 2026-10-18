@@ -1,0 +1,66 @@
+name: Bob coordination CI
+
+on:
+  pull_request:
+    branches:
+      - custom-local
+    paths:
+      - apps/server/src/coordination/**
+      - apps/server/src/mcp/toolkits/coordination/**
+      - apps/server/src/persistence/Migrations.ts
+      - apps/server/src/persistence/Migrations/063_BobExecutionAdmission.ts
+      - apps/web/src/components/coordination/**
+      - apps/web/src/state/bobCoordination.ts
+      - apps/web/src/rightPanelStore*
+      - apps/mobile/src/features/work/**
+      - apps/mobile/src/state/bobCoordination.ts
+      - packages/client-runtime/src/state/bobCoordination.ts
+      - packages/contracts/src/bob/**
+      - packages/contracts/src/bobContract.ts
+      - packages/contracts/src/bobCoordination*
+      - scripts/sync-bob-contract.mjs
+      - .forgejo/workflows/bob-coordination.yml
+      - pnpm-lock.yaml
+      - pnpm-workspace.yaml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  coordination:
+    runs-on: forgegraph-ci
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.14.0
+      - name: Install pinned dependencies
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.10.0 --activate
+          pnpm install --frozen-lockfile
+      - name: Verify ForgeC artifacts
+        run: node scripts/sync-bob-contract.mjs --check
+      - name: Verify admission, receipts and project-scoped management
+        run: >-
+          pnpm exec vp test run
+          packages/contracts/src/bobCoordination.test.ts
+          apps/server/src/coordination
+          apps/server/src/mcp/toolkits/core.test.ts
+          apps/server/src/mcp/toolkits/coordination
+          apps/server/src/persistence/Migrations/055_OrchestrationV2.test.ts
+          apps/server/src/persistence/Migrations/059_BoundedShellLookups.test.ts
+          apps/server/src/persistence/reconcileV2PreviewMigration.test.ts
+      - name: Verify the Work panel store
+        working-directory: apps/web
+        run: pnpm exec vp test run src/rightPanelStore.test.ts --project unit
+      - name: Check affected server and clients
+        run: |
+          pnpm --filter t3 --filter @t3tools/web --filter @t3tools/mobile --filter @t3tools/contracts run typecheck
+      # Lint from the root: oxlint resolves the repo's local plugin relative to it.
+      - name: Lint the coordination source
+        run: |
+          pnpm exec vp lint apps/server/src/coordination apps/server/src/mcp/toolkits/coordination apps/web/src/components/coordination apps/mobile/src/features/work
+          pnpm exec vp fmt --check apps/server/src/coordination apps/server/src/mcp/toolkits/coordination apps/web/src/components/coordination apps/mobile/src/features/work packages/contracts/src/bob packages/contracts/src/bobContract.ts packages/contracts/src/bobCoordination.ts .forgejo/workflows/bob-coordination.yml

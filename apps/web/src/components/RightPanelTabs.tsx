@@ -35,6 +35,7 @@ import {
   ChevronRight,
   FileDiff,
   Files,
+  ClipboardList,
   Globe2,
   Plus,
   TerminalSquare,
@@ -143,6 +144,7 @@ interface RightPanelTabsProps {
   onAddTerminal: () => void;
   onAddDiff: () => void;
   onAddFiles: () => void;
+  onAddWork?: (() => void) | undefined;
   onAddPullRequest: () => void;
   onAddPullRequests: () => void;
   onAddDevice: () => void;
@@ -350,6 +352,7 @@ function RightPanelEmptyState(props: {
   onAddTerminal: () => void;
   onAddDiff: () => void;
   onAddFiles: () => void;
+  onAddWork?: (() => void) | undefined;
   onAddPullRequest: () => void;
   onAddPullRequests: () => void;
   onAddDevice: () => void;
@@ -453,6 +456,14 @@ function RightPanelEmptyState(props: {
       available: props.kicadAvailable ?? false,
       disabledReason: SURFACE_UNAVAILABLE_HINTS.kicad,
       onClick: props.onAddKiCad ?? (() => undefined),
+    },
+    {
+      label: "Work",
+      icon: ClipboardList,
+      shortcut: "W",
+      available: props.onAddWork !== undefined,
+      disabledReason: "Work is available beside a thread.",
+      onClick: () => props.onAddWork?.(),
     },
   ] as const;
 
@@ -662,6 +673,8 @@ function surfaceTitle(
       return `#${surface.number}`;
     case "pull-requests":
       return "Pull requests";
+    case "work":
+      return "Work";
     case "device":
       return surface.title ?? surface.target?.name ?? "Device";
     case "game":
@@ -757,6 +770,8 @@ function SurfaceIcon({
       return <CircuitBoard className="size-3.5 shrink-0" />;
     case "reverse":
       return <Cpu className="size-3.5 shrink-0" />;
+    case "work":
+      return <ClipboardList className="size-3.5 shrink-0" />;
     case "device":
       return surface.target?.platform === "ios" ? (
         <AppleIcon className="size-3 shrink-0" />
@@ -1071,6 +1086,14 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
       available: props.kicadAvailable ?? false,
       disabledReason: SURFACE_DISABLED_REASONS.kicad,
       onClick: props.onAddKiCad ?? (() => undefined),
+    },
+    {
+      label: "Work",
+      icon: ClipboardList,
+      shortcut: "W",
+      available: props.onAddWork !== undefined,
+      disabledReason: "Work is available beside a thread.",
+      onClick: () => props.onAddWork?.(),
     },
   ] as const;
 
@@ -1561,6 +1584,7 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
             onAddTerminal={props.onAddTerminal}
             onAddDiff={props.onAddDiff}
             onAddFiles={props.onAddFiles}
+            onAddWork={props.onAddWork}
             onAddPullRequest={props.onAddPullRequest}
             onAddPullRequests={props.onAddPullRequests}
             onAddDevice={props.onAddDevice}

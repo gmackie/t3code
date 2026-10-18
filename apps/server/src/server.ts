@@ -195,6 +195,10 @@ import {
 } from "./serverRuntimeState.ts";
 import * as OrchestrationHttp from "./orchestration-v2/http.ts";
 import * as ProjectHttp from "./project/http.ts";
+import * as BobCoordination from "./coordination/BobCoordination.ts";
+import * as ExecutionReceipts from "./coordination/ExecutionReceipts.ts";
+import * as ExecutionAdmission from "./coordination/ExecutionAdmission.ts";
+import * as ExecutionHttp from "./coordination/http.ts";
 import * as NetService from "@t3tools/shared/Net";
 import * as RelayClient from "@t3tools/shared/relayClient";
 import { disableTailscaleServe, ensureTailscaleServe } from "@t3tools/tailscale";
@@ -693,7 +697,15 @@ const layerRuntimeCoreDependencies = layerRuntimeCoreDependenciesBase.pipe(
   ),
 );
 
-const layerRuntimeDependencies = layerRuntimeCoreDependencies.pipe(
+const layerCoordinationDependencies = Layer.mergeAll(
+  BobCoordination.layer,
+  ExecutionAdmission.layer,
+  ExecutionReceipts.layer.pipe(Layer.provide(ProcessRunner.layer)),
+).pipe(
+  Layer.provideMerge(BobCoordination.configurationLayer),
+  Layer.provideMerge(layerRuntimeCoreDependencies),
+);
+const layerRuntimeDependencies = layerCoordinationDependencies.pipe(
   // Misc.
   // Usage reads provider history through the ProviderHost, which needs the
   // background policy below it.
@@ -725,6 +737,7 @@ const layerMakeRoutes = Layer.mergeAll(
       Layer.provide(McpOAuthHttp.layer.pipe(Layer.provide(McpOAuth.layer))),
       Layer.provide(CloudHttp.layer),
       Layer.provide(OrchestrationHttp.layer),
+      Layer.provide(ExecutionHttp.layer),
       Layer.provide(PullRequestHttp.layer),
       Layer.provide(ProjectHttp.layer),
       Layer.provide(ServerHttp.layerServerEnvironmentHttpApi),

@@ -126,6 +126,7 @@ import * as ThreadManagementService from "./orchestration-v2/ThreadManagementSer
 import * as McpAppRequests from "./mcpApps/McpAppRequests.ts";
 import * as ProviderSessionManager from "./orchestration-v2/ProviderSessionManager.ts";
 import * as ThreadLaunchService from "./orchestration-v2/ThreadLaunchService.ts";
+import * as BobCoordination from "./coordination/BobCoordination.ts";
 import * as ThreadMessageIntake from "./orchestration-v2/ThreadMessageIntake.ts";
 import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
 import * as ScheduledTasks from "./scheduledTasks/ScheduledTaskService.ts";
@@ -1240,6 +1241,7 @@ const layerWsRpc = (
         }
       };
       const threadLaunch = yield* ThreadLaunchService.ThreadLaunchService;
+      const bobCoordination = yield* BobCoordination.BobCoordination;
       const providerSessionManager = yield* ProviderSessionManager.ProviderSessionManagerV2;
       const scheduledTasks = yield* ScheduledTasks.ScheduledTaskService;
       const secretRequests = yield* SecretRequests.SecretRequests;
@@ -2668,6 +2670,17 @@ const layerWsRpc = (
               }),
             ),
           ),
+        [WS_METHODS.serverBobConnection]: () => bobCoordination.state,
+        [WS_METHODS.serverBobCoordination]: (input) =>
+          !BobCoordination.readOperations.has(input.operation) &&
+          !currentSession.scopes.includes(AuthOrchestrationOperateScope)
+            ? Effect.fail(
+                new EnvironmentAuthorizationError({
+                  requiredScope: AuthOrchestrationOperateScope,
+                  message: "This credential cannot mutate Bob work.",
+                }),
+              )
+            : bobCoordination.call(input),
         [WS_METHODS.serverListProjectIssueStatuses]: (input) =>
           serverSettings.getSettings.pipe(
             Effect.flatMap((settings) =>

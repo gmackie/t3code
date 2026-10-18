@@ -3,6 +3,7 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./state/bobCoordination": "./src/state/bobCoordination.ts",
     "./composerThreadItems": {
       "types": "./src/composerThreadItems.ts",
       "default": "./src/composerThreadItems.ts"

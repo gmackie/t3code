@@ -11,9 +11,9 @@ it.effect("upgrades an existing database with bounded shell lookup indexes exact
     yield* sql`INSERT INTO orchestration_v2_projection_messages
       (message_id, thread_id, run_id, node_id, role, streaming, created_at, updated_at, payload_json)
       VALUES ('existing-user', 'thread', NULL, NULL, 'user', 0, '2026-01-01', '2026-01-01', '{"createdBy":"user"}')`;
-    const ran = yield* runMigrations();
+    const ran = yield* runMigrations({ toMigrationInclusive: 62 });
     assert.deepEqual(ran, [[62, "BoundedShellLookups"]]);
-    assert.deepEqual(yield* runMigrations(), []);
+    assert.deepEqual(yield* runMigrations({ toMigrationInclusive: 62 }), []);
     const rows = yield* sql<{ message_id: string }>`
       SELECT message_id FROM orchestration_v2_projection_messages
         INDEXED BY orchestration_v2_projection_messages_latest_authored_idx

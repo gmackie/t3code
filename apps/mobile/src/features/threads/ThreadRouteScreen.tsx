@@ -1116,6 +1116,12 @@ function ThreadRouteContent(
         {...(selectedThreadCwd !== null
           ? { onOpenCad: handleOpenCad, onOpenGame: handleOpenGame }
           : {})}
+        onOpenWork={() =>
+          navigation.navigate("ThreadWork", {
+            environmentId: selectedThread.environmentId,
+            threadId: selectedThread.id,
+          })
+        }
         onReturnToThread={props.onReturnToThread}
       />
 

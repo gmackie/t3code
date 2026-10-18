@@ -1995,6 +1995,19 @@ function OpenCommandPaletteDialog(props: {
   }
 
   if (activeThread !== null) {
+    actionItems.push({
+      kind: "action",
+      value: "action:open-work",
+      searchTerms: ["work", "bob", "plan", "issues", "execution"],
+      title: "Open Work panel",
+      icon: <LinkIcon className={ITEM_ICON_CLASS} />,
+      shortcutCommand: "work.open",
+      run: async () => {
+        useRightPanelStore
+          .getState()
+          .open(scopeThreadRef(activeThread.environmentId, activeThread.id), "work");
+      },
+    });
     const thread = activeThread;
     actionItems.push({
       kind: "action",
