@@ -1,4 +1,4 @@
-import Svg, { Circle, Defs, G, LinearGradient, Path, Rect, Stop } from "react-native-svg";
+import Svg, { Circle, Defs, G, LinearGradient, Path, Rect, Stop, Text } from "react-native-svg";
 import { withUniwind } from "uniwind";
 
 const ThemedSvg = withUniwind(Svg);
@@ -256,6 +256,24 @@ export function SourceControlIcon(props: {
       return (
         <Svg width={size} height={size} viewBox="0 0 64 64">
           <Rect x={4.8} y={4.8} width={54.4} height={54.4} fill="#a78bfa" />
+        </Svg>
+      );
+    case "forgegraph":
+      // ForgeGraph's own mark, from forgegraf.com's app icon.
+      return (
+        <Svg width={size} height={size} viewBox="0 0 32 32">
+          <Rect width={32} height={32} rx={6} fill="#1f2328" />
+          <Text
+            x={16}
+            y={22}
+            fontFamily="serif"
+            fontSize={16}
+            fontWeight="600"
+            fill="#f4f1ea"
+            textAnchor="middle"
+          >
+            FG
+          </Text>
         </Svg>
       );
     default:

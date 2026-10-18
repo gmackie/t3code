@@ -25,6 +25,7 @@ import * as GitHubCredentials from "@t3tools/source-control-github/server/GitHub
 import * as GitLabCli from "@t3tools/source-control-gitlab/server/GitLabCli";
 import * as GitLabPullRequestCli from "@t3tools/source-control-gitlab/server/GitLabPullRequestCli";
 import * as ForgejoCli from "@t3tools/source-control-forgejo/server/ForgejoCli";
+import * as ForgeGraphApi from "@t3tools/source-control-forgegraph/server/ForgeGraphApi";
 import * as GitCafeApi from "@t3tools/source-control-gitcafe/server/GitCafeApi";
 import * as GitCafeCredentials from "@t3tools/source-control-gitcafe/server/GitCafeCredentials";
 import * as SourceControlProviderRegistry from "./SourceControlProviderRegistry.ts";
@@ -129,6 +130,19 @@ function makeRegistry(input: {
         Layer.mock(GitLabCli.GitLabCli)(input.gitlab ?? {}),
         Layer.mock(GitLabPullRequestCli.GitLabPullRequestCli)({}),
         Layer.mock(ForgejoCli.ForgejoCli)({ listLogins: () => Effect.succeed([]) }),
+        Layer.mock(ForgeGraphApi.ForgeGraphApi)({
+          server: Effect.succeed("https://forgegraf.com"),
+          request: (input) =>
+            Effect.fail(
+              new ForgeGraphApi.ForgeGraphApiError({
+                operation: input.operation,
+                status: null,
+                reason: "unauthenticated",
+                code: null,
+                detail: "Not signed in to ForgeGraph.",
+              }),
+            ),
+        }),
         Layer.mock(GitCafeApi.GitCafeApi)({}),
         Layer.mock(GitCafeCredentials.GitCafeCredentials)({
           cliEnv: () => Effect.succeed({}),

@@ -13,6 +13,9 @@ import * as AzureDevOpsDriver from "@t3tools/source-control-azure-devops/server/
 import * as BitbucketApi from "@t3tools/source-control-bitbucket/server/BitbucketApi";
 import * as BitbucketPullRequestApi from "@t3tools/source-control-bitbucket/server/BitbucketPullRequestApi";
 import * as BitbucketDriver from "@t3tools/source-control-bitbucket/server/driver";
+import * as ForgeGraphApi from "@t3tools/source-control-forgegraph/server/ForgeGraphApi";
+import * as ForgeGraphCredentials from "@t3tools/source-control-forgegraph/server/ForgeGraphCredentials";
+import * as ForgeGraphDriver from "@t3tools/source-control-forgegraph/server/driver";
 import * as ForgejoCli from "@t3tools/source-control-forgejo/server/ForgejoCli";
 import * as ForgejoDriver from "@t3tools/source-control-forgejo/server/driver";
 import * as GitCafeApi from "@t3tools/source-control-gitcafe/server/GitCafeApi";
@@ -34,6 +37,8 @@ const drivers = [
   GitLabDriver.driver,
   AzureDevOpsDriver.driver,
   BitbucketDriver.driver,
+  // Before Forgejo: ForgeGraph remotes are read through ForgeGraph's own API.
+  ForgeGraphDriver.driver,
   ForgejoDriver.driver,
   GitCafeDriver.driver,
 ];
@@ -54,6 +59,7 @@ export const layer = Layer.mergeAll(
   GitHubPullRequestApi.layer.pipe(Layer.provideMerge(GitHubApi.layerWithDependencies)),
   AzureDevOpsPullRequestCli.layer.pipe(Layer.provideMerge(AzureDevOpsCli.layer)),
   BitbucketPullRequestApi.layer.pipe(Layer.provideMerge(BitbucketApi.layer)),
+  ForgeGraphApi.layer.pipe(Layer.provideMerge(ForgeGraphCredentials.layer)),
   ForgejoCli.layer,
   GitCafeApi.layer.pipe(Layer.provideMerge(GitCafeCredentials.layer)),
   GitLabPullRequestCli.layer.pipe(Layer.provideMerge(GitLabCli.layer)),

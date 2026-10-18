@@ -9,6 +9,7 @@ export interface ChangeRequestPresentation {
     | "azure-devops"
     | "bitbucket"
     | "gitcafe"
+    | "forgegraph"
     | "change-request";
   readonly providerName: string;
   readonly shortName: string;
@@ -89,6 +90,16 @@ const GITCAFE_CHANGE_REQUEST_PRESENTATION: ChangeRequestPresentation = {
   urlExample: "https://git.cafe/owner/repo/pulls/42",
 };
 
+const FORGEGRAPH_CHANGE_REQUEST_PRESENTATION: ChangeRequestPresentation = {
+  icon: "forgegraph",
+  providerName: "ForgeGraph",
+  shortName: "PR",
+  longName: "pull request",
+  pluralLongName: "pull requests",
+  providerLongName: "ForgeGraph pull request",
+  urlExample: "https://git.forgegraf.com/owner/repo/pulls/42",
+};
+
 const GENERIC_CHANGE_REQUEST_PRESENTATION: ChangeRequestPresentation = {
   icon: "change-request",
   providerName: "source control",
@@ -116,6 +127,8 @@ export function resolveChangeRequestPresentation(
       return BITBUCKET_CHANGE_REQUEST_PRESENTATION;
     case "gitcafe":
       return GITCAFE_CHANGE_REQUEST_PRESENTATION;
+    case "forgegraph":
+      return FORGEGRAPH_CHANGE_REQUEST_PRESENTATION;
     default:
       return GENERIC_CHANGE_REQUEST_PRESENTATION;
   }
@@ -208,6 +221,14 @@ function isGitCafeHost(host: string): boolean {
   return host === "git.cafe" || host === "staging.git.cafe";
 }
 
+/**
+ * forgegraf.com's git hosts: `git.` today and the `gitgw.` gateway after its storage migration.
+ * A self-hosted ForgeGraph's hosts are only known from Settings, so its driver claims them.
+ */
+function isForgeGraphHost(host: string): boolean {
+  return host === "git.forgegraf.com" || host === "gitgw.forgegraf.com";
+}
+
 function isBitbucketHost(host: string): boolean {
   return host === "bitbucket.org" || hasDnsLabel(host, "bitbucket");
 }
@@ -226,6 +247,15 @@ export function detectSourceControlProviderFromRemoteUrl(
       kind: SourceControlProviderKind.make("gitcafe"),
       name: "GitCafe",
       baseUrl: toBaseUrl(hostname),
+    };
+  }
+
+  // Before Forgejo: ForgeGraph serves its repositories through its own API, not Forgejo's.
+  if (isForgeGraphHost(hostname)) {
+    return {
+      kind: SourceControlProviderKind.make("forgegraph"),
+      name: "ForgeGraph",
+      baseUrl: "https://forgegraf.com",
     };
   }
 

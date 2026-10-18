@@ -1329,6 +1329,15 @@ const PROVIDER_REQUIREMENT = new Map<
     },
   ],
   [
+    "forgegraph",
+    {
+      missing:
+        "No ForgeGraph credential on the server. Sign in from Settings → Source Control, set FG_API_TOKEN, or run `forge login` on the server.",
+      unauthenticated:
+        "ForgeGraph refused the server's token. Sign in again from Settings → Source Control.",
+    },
+  ],
+  [
     "gitlab",
     {
       missing:

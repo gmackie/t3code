@@ -20,6 +20,7 @@ export {
   type ChangeRequestTerminology,
   type SourceControlClientDefinition,
 } from "@t3tools/source-control-core/client/definition";
+import * as ForgeGraph from "@t3tools/source-control-forgegraph/client/definition";
 import * as Forgejo from "@t3tools/source-control-forgejo/client/definition";
 import * as GitCafe from "@t3tools/source-control-gitcafe/client/definition";
 import * as GitHub from "@t3tools/source-control-github/client/definition";
@@ -28,13 +29,14 @@ import * as GitLab from "@t3tools/source-control-gitlab/client/definition";
 /**
  * GitHub comes first because a repository that has not reported its host yet reads as GitHub,
  * which is what clients have always shown there. A change request URL goes to the first host
- * whose shape it has, so GitCafe, which claims `/pulls/` only on its own hostnames, comes before
- * Forgejo, which claims it everywhere. Pickers sort by readiness and label, not by this order.
+ * whose shape it has, so GitCafe and ForgeGraph, which claim `/pulls/` only on their own
+ * hostnames, come before Forgejo, which claims it everywhere. Pickers sort by readiness and label, not by this order.
  */
 const BUILT_IN_SOURCE_CONTROL_CLIENTS = [
   GitHub.definition,
   GitLab.definition,
   GitCafe.definition,
+  ForgeGraph.definition,
   Forgejo.definition,
   Bitbucket.definition,
   AzureDevOps.definition,
