@@ -85,7 +85,12 @@ export const definition = defineSourceControlClient({
   // ForgeGraph's page for a pull request is keyed by its changeset id, which a number does not
   // carry; clients open the URL the server handed back instead.
   changeRequestUrl: () => null,
-  changeRequestActions: new Set(["merge", "enable-auto-merge", "close"] as const),
+  changeRequestActions: new Set([
+    "merge",
+    "enable-auto-merge",
+    "disable-auto-merge",
+    "close",
+  ] as const),
   checkoutCommand: ({ headBranch }) =>
     SHELL_SAFE_BRANCH.test(headBranch)
       ? `git fetch origin ${headBranch} && git switch ${headBranch}`

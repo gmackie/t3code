@@ -544,3 +544,262 @@ describe("ForgeGraphPullRequestProvider against a FORGE-138 server", () => {
     }),
   );
 });
+
+describe("ForgeGraphPullRequestProvider merge-when-green and threads (FORGE-138 items 6–7)", () => {
+  const native = (overrides: Record<string, unknown> = {}) =>
+    detail({
+      prBackend: "native",
+      mergeStrategies: ["merge", "squash", "fast-forward"],
+      ...overrides,
+    });
+  const withNumber = (body: unknown) => ({
+    ...repositoryRoutes,
+    ...byNumber,
+    "GET /fg/prs/cs-33": body,
+  });
+
+  it.effect("schedules a native merge when green only on a server that reports autoMerge", () =>
+    Effect.gen(function* () {
+      const { result, fake } = yield* run(
+        {
+          ...withNumber(native({ autoMerge: null })),
+          "POST /fg/prs/cs-33/merge": () =>
+            [
+              202,
+              { merged: false, queued: false, scheduled: true, headSha: head, missing: ["review"] },
+            ] as const,
+        },
+        (provider) =>
+          Effect.gen(function* () {
+            const permissions = yield* provider.getViewerPermissions(target);
+            yield* provider.runAction({ ...target, action: "enable-auto-merge" });
+            return permissions;
+          }),
+      );
+      assert.deepStrictEqual(result.actions, ["merge", "enable-auto-merge", "close"]);
+      assert.deepStrictEqual(
+        fake.writes().map((write) => write.body),
+        [{ strategy: "merge", whenGreen: true, expectedHeadSha: head }],
+      );
+    }),
+  );
+
+  it.effect("reports a pending request and cancels it", () =>
+    Effect.gen(function* () {
+      const armed = native({
+        autoMerge: { headSha: head, strategy: "squash", requestedAt: "2026-10-18T21:00:00Z" },
+      });
+      const { result, fake } = yield* run(
+        {
+          ...withNumber(armed),
+          "GET /fg/prs/cs-33/mergeability": {
+            mergeable: "unknown",
+            gate: { ok: false, missing: ["review"], approvals: 0 },
+            strategies: ["merge", "squash", "fast-forward"],
+            headSha: head,
+            prBackend: "native",
+            autoMerge: { headSha: head, strategy: "squash", requestedAt: "2026-10-18T21:00:00Z" },
+          },
+          "DELETE /fg/prs/cs-33/merge": { cancelled: true, autoMergeWithdrawn: true },
+        },
+        (provider) =>
+          Effect.gen(function* () {
+            const read = yield* provider.getChangeRequest(target);
+            yield* provider.runAction({ ...target, action: "disable-auto-merge" });
+            return read;
+          }),
+      );
+      assert.isTrue(result.autoMergeEnabled);
+      assert.strictEqual(result.autoMergeMethod, "squash");
+      assert.deepStrictEqual(result.viewerPermissions.actions, [
+        "merge",
+        "disable-auto-merge",
+        "close",
+      ]);
+      assert.deepStrictEqual(
+        fake.writes().map((write) => `${write.method} ${write.path}`),
+        ["DELETE /fg/prs/cs-33/merge"],
+      );
+    }),
+  );
+
+  it.effect("says a running merge can no longer be cancelled", () =>
+    Effect.gen(function* () {
+      const fake = fakeForgeGraph({
+        ...withNumber(native({ autoMerge: { headSha: head, strategy: "merge" } })),
+        "DELETE /fg/prs/cs-33/merge": () =>
+          [409, { error: "Merge is running", code: "running" }] as const,
+      });
+      const error = yield* ForgeGraphPullRequestProvider.make.pipe(
+        Effect.flatMap((provider) =>
+          provider.runAction({ ...target, action: "disable-auto-merge" }),
+        ),
+        Effect.flip,
+        Effect.provide(fake.layer),
+      );
+      assert.match(error.detail, /already running/u);
+    }),
+  );
+
+  it.effect("reads mergeability, and stops asking a server that has no such route", () =>
+    Effect.gen(function* () {
+      const conflicting = yield* run(
+        {
+          ...withNumber(detail()),
+          "GET /fg/prs/cs-33/mergeability": {
+            mergeable: "conflicting",
+            gate: { ok: true, missing: [], approvals: 1 },
+            strategies: ["merge", "squash"],
+            headSha: head,
+            prBackend: "forgejo",
+            autoMerge: null,
+          },
+        },
+        (provider) => provider.getChangeRequest(target),
+      );
+      assert.strictEqual(conflicting.result.mergeability, "conflicting");
+      assert.deepStrictEqual(conflicting.result.mergeCapabilities, {
+        merge: true,
+        squash: true,
+        rebase: false,
+      });
+      assert.isFalse(conflicting.result.autoMergeEnabled);
+
+      const older = yield* run(withNumber(detail()), (provider) =>
+        Effect.gen(function* () {
+          const first = yield* provider.getChangeRequest(target);
+          yield* provider.getChangeRequest(target);
+          return first;
+        }),
+      );
+      assert.strictEqual(older.result.mergeability, "unknown");
+      assert.isUndefined(older.result.autoMergeEnabled);
+      assert.strictEqual(older.fake.sent.filter((r) => r.path.endsWith("/mergeability")).length, 1);
+    }),
+  );
+
+  const threaded = detail({
+    comments: [
+      {
+        id: "c-1",
+        parentId: null,
+        author: "alice",
+        body: "Why?",
+        content: "Why?",
+        filePath: "src/a.ts",
+        line: 12,
+        side: "new",
+        lineNumber: "new:12",
+        resolved: false,
+        createdAt: "2026-10-18T20:00:00Z",
+        updatedAt: "2026-10-18T20:00:00Z",
+      },
+      {
+        id: "c-2",
+        parentId: "c-1",
+        author: "gmackie",
+        body: "Because.",
+        content: "Because.",
+        filePath: "src/a.ts",
+        line: 12,
+        side: "new",
+        lineNumber: "new:12",
+        resolved: false,
+        createdAt: "2026-10-18T20:05:00Z",
+        updatedAt: "2026-10-18T20:05:00Z",
+      },
+      {
+        id: "c-3",
+        parentId: null,
+        author: "alice",
+        body: "LGTM overall",
+        content: "LGTM overall",
+        filePath: null,
+        line: null,
+        side: null,
+        lineNumber: null,
+        resolved: false,
+        createdAt: "2026-10-18T20:10:00Z",
+        updatedAt: "2026-10-18T20:10:00Z",
+      },
+    ],
+  });
+
+  it.effect("groups inline remarks into threads and replies to and resolves them", () =>
+    Effect.gen(function* () {
+      const { result, fake } = yield* run(
+        {
+          ...withNumber(threaded),
+          "POST /fg/prs/cs-33/comments": () => [201, { id: "c-4" }] as const,
+          "POST /fg/prs/cs-33/comments/c-1/resolve": () => [200, { comments: [] }] as const,
+        },
+        (provider) =>
+          Effect.gen(function* () {
+            const activity = yield* provider.getChangeRequestActivity(target);
+            const permissions = yield* provider.getViewerPermissions(target);
+            yield* provider.replyToThread({ ...target, threadId: "c-1", body: "Fixed." });
+            yield* provider.setThreadResolution({ ...target, threadId: "c-1", resolved: true });
+            return { activity, permissions };
+          }),
+      );
+      assert.deepStrictEqual(
+        result.activity.reviewThreads.map((thread) => [
+          thread.id,
+          thread.path,
+          thread.line,
+          thread.side,
+          thread.comments.map((comment) => comment.id),
+        ]),
+        [["c-1", "src/a.ts", 12, "right", ["c-1", "c-2"]]],
+      );
+      assert.deepStrictEqual(
+        result.activity.comments.filter((c) => c.kind !== "review").map((c) => [c.id, c.kind]),
+        [
+          ["c-1", "review-comment"],
+          ["c-2", "review-comment"],
+          ["c-3", "issue-comment"],
+        ],
+      );
+      assert.isTrue(result.permissions.resolve);
+      assert.deepStrictEqual(
+        fake.writes().map((write) => [write.path, write.body]),
+        [
+          ["/fg/prs/cs-33/comments", { body: "Fixed.", parentId: "c-1" }],
+          ["/fg/prs/cs-33/comments/c-1/resolve", { resolved: true }],
+        ],
+      );
+    }),
+  );
+
+  it.effect(
+    "refuses a thread reply on a server without threads instead of posting a loose comment",
+    () =>
+      Effect.gen(function* () {
+        const fake = fakeForgeGraph({
+          ...withNumber(
+            detail({
+              comments: [
+                {
+                  id: "c-1",
+                  author: "alice",
+                  content: "Why?",
+                  filePath: "src/a.ts",
+                  lineNumber: "new:12",
+                  createdAt: "2026-10-18T20:00:00Z",
+                },
+              ],
+            }),
+          ),
+        });
+        const error = yield* ForgeGraphPullRequestProvider.make.pipe(
+          Effect.flatMap((provider) =>
+            provider.replyToThread({ ...target, threadId: "c-1", body: "Fixed." }),
+          ),
+          Effect.flip,
+          Effect.provide(fake.layer),
+        );
+        assert.match(error.detail, /does not support review threads/u);
+        assert.deepStrictEqual(fake.writes(), []);
+      }),
+  );
+});

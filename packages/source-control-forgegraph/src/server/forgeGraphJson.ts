@@ -15,6 +15,7 @@ import type {
   PullRequestComment,
   PullRequestMergeCapabilities,
   PullRequestMergeability,
+  PullRequestReviewThread,
   PullRequestState,
   PullRequestViewerPermissions,
 } from "@t3tools/contracts";
@@ -83,14 +84,32 @@ const MergeEntry = Schema.Struct({
   updatedAt: OptionalText,
 });
 
+/**
+ * A remark. A server with threads (FORGE-138 item 6) adds `parentId`, `line`, `side`, and the
+ * thread root's `resolved`; `parentId` being present at all is what says the server has them.
+ */
 const Comment = Schema.Struct({
   id: Text,
+  parentId: Schema.optional(Schema.NullOr(Text)),
   author: Text,
-  content: Text,
+  body: OptionalText,
+  /** The older name for `body`, kept by newer servers too. */
+  content: OptionalText,
   filePath: OptionalText,
+  line: OptionalNumber,
+  side: Schema.optional(Schema.NullOr(Schema.Literals(["old", "new"]))),
   lineNumber: OptionalText,
   resolved: Schema.optional(Schema.NullOr(Schema.Boolean)),
   createdAt: Text,
+  updatedAt: OptionalText,
+});
+type Comment = typeof Comment.Type;
+
+/** A standing merge-when-green request, pinned to the head it was made at. */
+const AutoMerge = Schema.Struct({
+  headSha: OptionalText,
+  strategy: OptionalText,
+  requestedAt: OptionalText,
 });
 
 const Review = Schema.Struct({
@@ -128,6 +147,11 @@ export const ForgeGraphPull = Schema.Struct({
   prBackend: Schema.optional(Schema.Literals(["forgejo", "native"])),
   mergeStrategies: Schema.optional(Schema.Array(Text)),
   merge: Schema.optional(Schema.NullOr(MergeEntry)),
+  /**
+   * The pending merge-when-green request, null when there is none. Absent from a server that
+   * cannot hold one for a native pull request, which ignores `whenGreen` and merges at once.
+   */
+  autoMerge: Schema.optional(Schema.NullOr(AutoMerge)),
   comments: Schema.optional(Schema.Array(Comment)),
   reviews: Schema.optional(Schema.Array(Review)),
 });
@@ -138,6 +162,15 @@ export const ForgeGraphPullList = Schema.Struct({
   prs: Schema.Array(ForgeGraphPull),
   nextCursor: Schema.optional(Schema.NullOr(Text)),
 });
+
+export const ForgeGraphMergeability = Schema.Struct({
+  mergeable: Schema.Literals(["mergeable", "conflicting", "unknown"]),
+  strategies: Schema.optional(Schema.Array(Text)),
+  autoMerge: Schema.optional(Schema.NullOr(AutoMerge)),
+});
+export type ForgeGraphMergeability = typeof ForgeGraphMergeability.Type;
+
+export const ForgeGraphMergeCancelled = Schema.Struct({ cancelled: Schema.Boolean });
 
 export const ForgeGraphCreated = Schema.Struct({
   id: Text,
@@ -298,9 +331,13 @@ function canMerge(pull: ForgeGraphPull): boolean {
  * by merge, squash, or fast-forward, Forgejo-backed by merge, squash, or rebase. T3 has no
  * fast-forward method, so a native PR offers no rebase.
  */
-export function toMergeCapabilities(pull: ForgeGraphPull): PullRequestMergeCapabilities {
+export function toMergeCapabilities(
+  pull: ForgeGraphPull,
+  mergeability?: ForgeGraphMergeability | null,
+): PullRequestMergeCapabilities {
   const open = canMerge(pull);
   const strategies =
+    mergeability?.strategies ??
     pull.mergeStrategies ??
     (pull.prBackend === "native"
       ? ["merge", "squash", "fast-forward"]
@@ -313,20 +350,36 @@ export function toMergeCapabilities(pull: ForgeGraphPull): PullRequestMergeCapab
 }
 
 /**
- * What can be done with the pull request. Merge-when-green is only offered on the Forgejo backend,
- * the only one whose `whenGreen` ForgeGraph honours today.
+ * Whether ForgeGraph can hold a merge-when-green request for this pull request. The Forgejo backend
+ * always could, through Forgejo's auto-merge. A native one only can on a server that reports
+ * `autoMerge`; an older server ignores `whenGreen` there and merges at once, so it is never asked.
  */
+export function canMergeWhenGreen(pull: ForgeGraphPull): boolean {
+  return pull.prBackend !== "native" || pull.autoMerge !== undefined;
+}
+
+/** Whether the server reports review threads: its remarks carry `parentId`, null or not. */
+export function hasThreads(pull: ForgeGraphPull): boolean {
+  return (pull.comments ?? []).some((comment) => comment.parentId !== undefined);
+}
+
+/** What can be done with the pull request. */
 export function toViewerPermissions(pull: ForgeGraphPull): PullRequestViewerPermissions {
   const open = stateOf(pull) === "open";
+  // A pending request is only known where the server reports one, which it does for native.
+  const armed = pull.autoMerge != null;
   const actions: Array<PullRequestAction> = [
     ...(canMerge(pull) ? (["merge"] as const) : []),
-    ...(canMerge(pull) && pull.prBackend !== "native" ? (["enable-auto-merge"] as const) : []),
+    ...(canMerge(pull) && !armed && canMergeWhenGreen(pull)
+      ? (["enable-auto-merge"] as const)
+      : []),
+    ...(armed ? (["disable-auto-merge"] as const) : []),
     ...(open && pull.status !== "merging" ? (["close"] as const) : []),
   ];
   return {
     actions,
     comment: true,
-    resolve: false,
+    resolve: hasThreads(pull),
     verdicts: open ? ["approve", "request-changes", "comment"] : [],
     requestReviewers: false,
     updateMethods: [],
@@ -342,15 +395,63 @@ export const REVIEW_VERDICT = {
   comment: "commented",
 } as const;
 
+const commentBody = (comment: Comment) => comment.body ?? comment.content ?? "";
+
+/** A remark anchored to a line: a thread root, or a reply that hangs off one. */
+const isInline = (comment: Comment) => Boolean(comment.filePath) && (comment.line ?? 0) > 0;
+
+/**
+ * ForgeGraph's threads are one level deep: a reply names its root in `parentId` and takes the
+ * root's anchor and resolution. Only inline roots make review threads; a reply to a general remark
+ * stays in the conversation.
+ */
+function toReviewThreads(comments: ReadonlyArray<Comment>): Array<PullRequestReviewThread> {
+  const replies = new Map<string, Array<Comment>>();
+  for (const comment of comments)
+    if (comment.parentId)
+      replies.set(comment.parentId, [...(replies.get(comment.parentId) ?? []), comment]);
+  return comments
+    .filter((comment) => !comment.parentId && isInline(comment))
+    .map((root) => ({
+      id: root.id,
+      path: root.filePath!,
+      line: root.line ?? null,
+      side: root.side === "old" ? ("left" as const) : ("right" as const),
+      isResolved: root.resolved === true,
+      isOutdated: false,
+      canResolve: true,
+      comments: [root, ...(replies.get(root.id) ?? [])].map((comment) => ({
+        id: comment.id,
+        author: actor(comment.author),
+        body: commentBody(comment),
+        createdAt: comment.createdAt,
+        url: null,
+      })),
+    }));
+}
+
 export function toActivity(pull: ForgeGraphPull): ProviderChangeRequestActivity {
+  const remarks = pull.comments ?? [];
+  const threaded = hasThreads(pull);
+  const inlineIds = new Set(
+    remarks
+      .filter((comment) => !comment.parentId && isInline(comment))
+      .map((comment) => comment.id),
+  );
   const comments: Array<PullRequestComment> = [
-    // ForgeGraph has no review threads yet (FORGE-138), so a line comment is a file remark.
-    ...(pull.comments ?? []).map((comment) => ({
+    ...remarks.map((comment) => ({
       id: comment.id,
-      kind: comment.filePath ? ("review-comment" as const) : ("issue-comment" as const),
+      // On a server without threads, a remark on a file is still shown as one.
+      kind:
+        comment.filePath || (comment.parentId && inlineIds.has(comment.parentId))
+          ? ("review-comment" as const)
+          : ("issue-comment" as const),
       author: actor(comment.author),
-      body: comment.content,
+      body: commentBody(comment),
       createdAt: comment.createdAt,
+      ...(comment.updatedAt && comment.updatedAt !== comment.createdAt
+        ? { editedAt: comment.updatedAt }
+        : {}),
       url: null,
       path: comment.filePath || null,
       reviewState: null,
@@ -371,7 +472,7 @@ export function toActivity(pull: ForgeGraphPull): ProviderChangeRequestActivity 
     comments: comments.toSorted((a, b) => a.createdAt.localeCompare(b.createdAt)),
     commentCount: comments.length,
     commentsTruncated: false,
-    reviewThreads: [],
+    reviewThreads: threaded ? toReviewThreads(remarks) : [],
     commits: [],
   };
 }

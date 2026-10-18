@@ -3,6 +3,7 @@ import {
   type PullRequestCapabilities,
   type PullRequestMergeMethod,
 } from "@t3tools/contracts";
+import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import { randomUuidV4 } from "@t3tools/provider-core/server/randomUuid";
 import {
@@ -20,8 +21,9 @@ import * as ForgeGraphLookups from "./forgeGraphLookups.ts";
 const KIND = SourceControlProviderKind.make("forgegraph");
 
 /**
- * What today's `/api/fg` supports. Diffs, review threads, and replies wait on FORGE-138; each is
- * switched on here once the server serves it.
+ * What ForgeGraph can do at most. A server without review threads reports no thread to reply to
+ * or resolve, and one without native merge-when-green offers it only on the Forgejo backend, both
+ * through each pull request's own permissions. Diffs wait on FORGE-147, whose routes answer 404.
  */
 const CAPABILITIES: PullRequestCapabilities = {
   diff: false,
@@ -32,9 +34,10 @@ const CAPABILITIES: PullRequestCapabilities = {
   reactions: false,
   labels: false,
   review: {
+    // Line comments need a diff to be placed on, which waits on FORGE-147.
     inlineComment: false,
-    reply: false,
-    resolve: false,
+    reply: true,
+    resolve: true,
     verdicts: ["approve", "request-changes", "comment"],
   },
   reviewers: { request: false, listCandidates: false },
@@ -42,6 +45,9 @@ const CAPABILITIES: PullRequestCapabilities = {
 };
 
 const HEAD_SHA = /^[0-9a-f]{40}(?:[0-9a-f]{24})?$/u;
+const COMMENT_ID = /^[A-Za-z0-9_-]{1,128}$/u;
+/** How long a server that answered 404 for mergeability is not asked again. */
+const MERGEABILITY_RETRY_MS = 5 * 60_000;
 
 type PullRef = ProviderRepositoryRef & { readonly number: number };
 
@@ -54,6 +60,8 @@ function refusal(error: ForgeGraphApi.ForgeGraphApiError): string {
       return "ForgeGraph is already merging this pull request.";
     case "unsupported_strategy":
       return "This repository's ForgeGraph backend does not merge with that strategy.";
+    case "running":
+      return "ForgeGraph is already running this merge, so it can no longer be cancelled.";
     default:
       return error.status === 409 && error.operation === "submitReview"
         ? "The pull request moved since it was read. Refresh it and review the new head."
@@ -108,10 +116,11 @@ export const make = Effect.gen(function* () {
     const operation = input.whenGreen ? "enable-auto-merge" : "merge";
     const pull = yield* readPull(operation, input);
     if (pull.status === "merged") return;
-    if (input.whenGreen && pull.prBackend === "native")
+    // An older server ignores `whenGreen` on a native pull request and merges at once.
+    if (input.whenGreen && !Json.canMergeWhenGreen(pull))
       return yield* failure(
         operation,
-        "ForgeGraph cannot merge native pull requests when green yet.",
+        "This ForgeGraph server cannot merge native pull requests when green yet.",
       );
     if ((input.mergeMethod ?? "merge") === "rebase" && pull.prBackend === "native")
       return yield* failure(operation, "Native ForgeGraph pull requests do not rebase-merge.");
@@ -122,6 +131,75 @@ export const make = Effect.gen(function* () {
       ...(pull.headSha && HEAD_SHA.test(pull.headSha) ? { expectedHeadSha: pull.headSha } : {}),
     });
   });
+
+  // A server without the route answers 404 for every pull request, so it is not asked for a while.
+  let mergeabilityMissingAt: number | null = null;
+  const readMergeability = Effect.fn("ForgeGraphPullRequestProvider.readMergeability")(function* (
+    pull: Json.NumberedPull,
+  ) {
+    const now = yield* Clock.currentTimeMillis;
+    if (mergeabilityMissingAt !== null && now - mergeabilityMissingAt < MERGEABILITY_RETRY_MS)
+      return null;
+    return yield* lookups
+      .read(
+        {
+          operation: "getChangeRequest",
+          path: `/fg/prs/${encodeURIComponent(pull.id)}/mergeability`,
+        },
+        Json.ForgeGraphMergeability,
+      )
+      .pipe(
+        Effect.tap(() => Effect.sync(() => (mergeabilityMissingAt = null))),
+        Effect.catchTags({
+          ForgeGraphApiError: (error) => {
+            if (error.reason === "unauthenticated" || error.reason === "rate-limited")
+              return Effect.fail(fromApi(error));
+            if (error.status === 404) mergeabilityMissingAt = now;
+            // Mergeability decorates the detail; without it the detail still stands.
+            return Effect.succeed(null);
+          },
+        }),
+      );
+  });
+
+  const cancelAutoMerge = Effect.fn("ForgeGraphPullRequestProvider.cancelAutoMerge")(function* (
+    input: PullRef,
+  ) {
+    const operation = "disable-auto-merge";
+    const pull = yield* readPull(operation, input);
+    yield* lookups
+      .read(
+        {
+          operation,
+          method: "DELETE",
+          path: `/fg/prs/${encodeURIComponent(pull.id)}/merge`,
+        },
+        Json.ForgeGraphMergeCancelled,
+      )
+      .pipe(
+        // The pull request was just read, so a 404 is a server without the route.
+        Effect.mapError((error) =>
+          error.status === 404
+            ? failure(operation, "This ForgeGraph server cannot cancel a merge when green yet.")
+            : fromApi(error),
+        ),
+      );
+    // `cancelled: false` means nothing was pending, which is the state asked for.
+  });
+
+  /** A thread root's or reply's id as ForgeGraph writes it, refused before it reaches a path. */
+  const commentId = (operation: string, id: string) =>
+    COMMENT_ID.test(id)
+      ? Effect.succeed(id)
+      : Effect.fail(failure(operation, "ForgeGraph comment ids are opaque slugs."));
+
+  /** Refuses thread writes on a server without threads, which would post a loose comment instead. */
+  const readThreadedPull = (operation: string, input: PullRef) =>
+    readPull(operation, input).pipe(
+      Effect.filterOrFail(Json.hasThreads, () =>
+        failure(operation, "This ForgeGraph server does not support review threads yet."),
+      ),
+    );
 
   const provider: PullRequestProviderApi = {
     kind: KIND,
@@ -172,8 +250,13 @@ export const make = Effect.gen(function* () {
     getChangeRequest: Effect.fn("ForgeGraphPullRequestProvider.getChangeRequest")(
       function* (input) {
         const pull = yield* readPull("getChangeRequest", input);
-        const gate = yield* checksFor("getChangeRequest", input, pull);
+        const [gate, mergeability] = yield* Effect.all(
+          [checksFor("getChangeRequest", input, pull), readMergeability(pull)],
+          { concurrency: 2 },
+        );
         const server = yield* api.server;
+        const autoMerge =
+          mergeability?.autoMerge !== undefined ? mergeability.autoMerge : pull.autoMerge;
         const checksState = Json.toChecksState(gate, pull);
         const state = Json.stateOf(pull);
         return {
@@ -188,8 +271,22 @@ export const make = Effect.gen(function* () {
             .map((login) => ({ login, name: null, avatarUrl: null })),
           checks: Json.toChecks(gate, server),
           ...(checksState === null ? {} : { checksState }),
-          mergeCapabilities: Json.toMergeCapabilities(pull),
-          viewerPermissions: Json.toViewerPermissions(pull),
+          ...(mergeability === null ? {} : { mergeability: mergeability.mergeable }),
+          // Absent where the server cannot say whether a merge-when-green request is pending.
+          ...(autoMerge === undefined
+            ? {}
+            : {
+                autoMergeEnabled: autoMerge !== null,
+                ...(autoMerge?.strategy === "merge" ||
+                autoMerge?.strategy === "squash" ||
+                autoMerge?.strategy === "rebase"
+                  ? { autoMergeMethod: autoMerge.strategy }
+                  : {}),
+              }),
+          mergeCapabilities: Json.toMergeCapabilities(pull, mergeability),
+          viewerPermissions: Json.toViewerPermissions(
+            autoMerge === undefined ? pull : { ...pull, autoMerge },
+          ),
         };
       },
     ),
@@ -205,6 +302,8 @@ export const make = Effect.gen(function* () {
           return yield* merge({ ...input, whenGreen: false });
         case "enable-auto-merge":
           return yield* merge({ ...input, whenGreen: true });
+        case "disable-auto-merge":
+          return yield* cancelAutoMerge(input);
         case "close": {
           const pull = yield* readPull("close", input);
           if (Json.stateOf(pull) !== "open") return;
@@ -249,14 +348,28 @@ export const make = Effect.gen(function* () {
       ),
     setReviewerRequest: () =>
       Effect.fail(failure("setReviewerRequest", "ForgeGraph reviewer requests are not supported.")),
-    replyToThread: () =>
-      Effect.fail(failure("replyToThread", "ForgeGraph review threads are not supported yet.")),
+    // Threads are one level deep; a reply takes its root's anchor, so only the root is named.
+    replyToThread: Effect.fn("ForgeGraphPullRequestProvider.replyToThread")(function* (input) {
+      const parentId = yield* commentId("replyToThread", input.threadId);
+      const pull = yield* readThreadedPull("replyToThread", input);
+      yield* post("replyToThread", `/fg/prs/${encodeURIComponent(pull.id)}/comments`, {
+        body: input.body,
+        parentId,
+      });
+    }),
     setReaction: () =>
       Effect.fail(failure("setReaction", "ForgeGraph reactions are not supported.")),
-    setThreadResolution: () =>
-      Effect.fail(
-        failure("setThreadResolution", "ForgeGraph review threads are not supported yet."),
-      ),
+    setThreadResolution: Effect.fn("ForgeGraphPullRequestProvider.setThreadResolution")(
+      function* (input) {
+        const id = yield* commentId("setThreadResolution", input.threadId);
+        const pull = yield* readThreadedPull("setThreadResolution", input);
+        yield* post(
+          "setThreadResolution",
+          `/fg/prs/${encodeURIComponent(pull.id)}/comments/${id}/resolve`,
+          { resolved: input.resolved },
+        );
+      },
+    ),
   };
   return provider;
 });

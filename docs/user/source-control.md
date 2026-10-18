@@ -129,8 +129,9 @@ ForgeGraph too if you no longer want it to work.
 
 ForgeGraph pull requests show their ForgeGraph CI builds as checks. Approving or requesting changes
 is tied to the head you read, so a push in between is refused rather than approved unseen. Merge
-when green is available on repositories that still use ForgeGraph's Forgejo backend. Diffs and review
-threads are not shown until ForgeGraph serves them.
+when green waits for the checks and reviews ForgeGraph requires at that head; a push past it cancels
+the request, so turn it on again for the new head. Line comments are shown as review threads you can
+reply to and resolve. Diffs are not shown until ForgeGraph serves them.
 
 ## Start, clone, or publish a project
 
