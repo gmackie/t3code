@@ -313,6 +313,11 @@ interface ActiveOpenCodeTurn {
     readonly failure: OrchestrationV2ProviderFailure;
     readonly retry: OrchestrationV2ProviderRetry;
   } | null;
+  /**
+   * OpenCode reported a context overflow and is compacting before it continues. The turn
+   * fails with this only if the session goes idle without compacting.
+   */
+  pendingOverflow: OrchestrationV2ProviderFailure | null;
 }
 
 type OpenCodeAdmissionSignal =
@@ -896,6 +901,10 @@ function terminalStatusForError(
 
 function isMessageAbortedError(event: Extract<OpenCodeEvent, { type: "session.error" }>): boolean {
   return event.properties.error?.name === "MessageAbortedError";
+}
+
+function isContextOverflowError(event: Extract<OpenCodeEvent, { type: "session.error" }>): boolean {
+  return event.properties.error?.name === "ContextOverflowError";
 }
 
 function isOpenCodeNotFound(cause: unknown): boolean {
@@ -2215,6 +2224,25 @@ export const makeOpenCodeAdapterV2 = Effect.fn("makeOpenCodeAdapterV2")(function
           );
         });
 
+        // An idle session ends its turn; a context overflow OpenCode never compacted
+        // ends it as the failure it was.
+        const finalizeIdleTurn = Effect.fnUntraced(function* (
+          state: OpenCodeThreadState,
+          turn: ActiveOpenCodeTurn,
+        ) {
+          const overflow = turn.interrupted ? null : turn.pendingOverflow;
+          if (overflow === null) {
+            return yield* finalizeTurn(state, turn, turn.interrupted ? "interrupted" : "completed");
+          }
+          if (state.parentSubagent === null) {
+            yield* updateProviderSession("error", overflow.message);
+          }
+          yield* finalizeTurn(state, turn, "failed", {
+            failure: overflow,
+            threadDisposition: "reusable",
+          });
+        });
+
         const promptAdmissionIsCurrent = (
           state: OpenCodeThreadState,
           turn: ActiveOpenCodeTurn,
@@ -2353,6 +2381,7 @@ export const makeOpenCodeAdapterV2 = Effect.fn("makeOpenCodeAdapterV2")(function
             admissionSettled: Deferred.makeUnsafe<void>(),
             admissionAbortController: null,
             retry: null,
+            pendingOverflow: null,
           };
           state.activeTurn = turn;
           state.providerTurns.set(String(providerTurnId), providerTurn);
@@ -2655,6 +2684,7 @@ export const makeOpenCodeAdapterV2 = Effect.fn("makeOpenCodeAdapterV2")(function
             case "session.compacted": {
               const state = threads.get(event.properties.sessionID);
               if (state?.activeTurn !== undefined && state.activeTurn !== null) {
+                state.activeTurn.pendingOverflow = null;
                 yield* emitCompactionItem(state, state.activeTurn);
               }
               return;
@@ -2754,11 +2784,7 @@ export const makeOpenCodeAdapterV2 = Effect.fn("makeOpenCodeAdapterV2")(function
                   advanceOpenCodePromptAdmission(state.activeTurn, "idle");
                   return;
                 }
-                yield* finalizeTurn(
-                  state,
-                  state.activeTurn,
-                  state.activeTurn.interrupted ? "interrupted" : "completed",
-                );
+                yield* finalizeIdleTurn(state, state.activeTurn);
               }
               return;
             }
@@ -2770,11 +2796,7 @@ export const makeOpenCodeAdapterV2 = Effect.fn("makeOpenCodeAdapterV2")(function
                   advanceOpenCodePromptAdmission(state.activeTurn, "idle");
                   return;
                 }
-                yield* finalizeTurn(
-                  state,
-                  state.activeTurn,
-                  state.activeTurn.interrupted ? "interrupted" : "completed",
-                );
+                yield* finalizeIdleTurn(state, state.activeTurn);
               }
               return;
             }
@@ -2786,6 +2808,26 @@ export const makeOpenCodeAdapterV2 = Effect.fn("makeOpenCodeAdapterV2")(function
                       (state): state is OpenCodeThreadState => state !== undefined,
                     );
               const message = openCodeErrorMessage(event);
+              // OpenCode compacts after a context overflow and continues the turn, unless
+              // compaction is off; the idle that follows decides how the turn ends.
+              const overflowing = states.filter(
+                (state) => state.activeTurn !== null && !state.activeTurn.interrupted,
+              );
+              if (
+                isContextOverflowError(event) &&
+                event.properties.sessionID !== undefined &&
+                overflowing.length > 0
+              ) {
+                const failure = makeProviderFailure({
+                  message,
+                  code: "ContextOverflowError",
+                  class: "provider_error",
+                });
+                for (const state of overflowing) {
+                  if (state.activeTurn !== null) state.activeTurn.pendingOverflow = failure;
+                }
+                return;
+              }
               if (
                 !isMessageAbortedError(event) &&
                 (event.properties.sessionID === undefined ||
@@ -3320,6 +3362,7 @@ export const makeOpenCodeAdapterV2 = Effect.fn("makeOpenCodeAdapterV2")(function
                 admissionSettled: Deferred.makeUnsafe<void>(),
                 admissionAbortController: new AbortController(),
                 retry: null,
+                pendingOverflow: null,
               };
               if (turn.admissionMessageId !== null)
                 turn.usage.promptMessageIds.add(turn.admissionMessageId);

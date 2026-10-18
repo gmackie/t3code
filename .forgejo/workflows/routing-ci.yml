@@ -10,6 +10,7 @@ on:
       - apps/web/src/components/chat/RoutingBadge*
       - apps/web/src/components/chat/MessagesTimeline*
       - packages/contracts/src/routing.ts
+      - packages/provider-opencode/src/server/**
       - .forgejo/workflows/routing-ci.yml
       - pnpm-lock.yaml
       - pnpm-workspace.yaml
@@ -65,3 +66,29 @@ jobs:
         run: |
           pnpm exec vp lint apps/web/src/components/chat/RoutingBadge.tsx apps/web/src/components/chat/RoutingBadge.logic.ts apps/web/src/components/chat/MessagesTimeline.logic.ts
           pnpm exec vp fmt --check apps/web/src/state/routing.ts apps/web/src/components/chat/RoutingBadge.tsx apps/web/src/components/chat/RoutingBadge.logic.ts apps/web/src/components/chat/RoutingBadge.logic.test.ts apps/web/src/components/chat/MessagesTimeline.tsx apps/web/src/components/chat/MessagesTimeline.logic.ts
+
+  # Pistache threads run through OpenCode; its adapter decides how their turns end.
+  opencode-adapter:
+    runs-on: forgegraph-ci
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.14.0
+      - name: Install pinned dependencies
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.10.0 --activate
+          pnpm install --frozen-lockfile
+      # Only the adapter tests: the package's process-group tests need a PID 1 that
+      # reaps orphans, and its large-history usage test times out on the shared runner.
+      - name: Verify the OpenCode provider
+        working-directory: packages/provider-opencode
+        run: |
+          pnpm exec vp test run --config ../../vite.config.ts --dir . src/server/adapter.test.ts
+          pnpm typecheck
+      - name: Lint the OpenCode provider
+        run: |
+          pnpm exec vp lint packages/provider-opencode/src/server
+          pnpm exec vp fmt --check packages/provider-opencode/src/server
