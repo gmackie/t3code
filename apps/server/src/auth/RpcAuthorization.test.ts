@@ -143,6 +143,17 @@ describe("RPC authorization scopes", () => {
     );
   });
 
+  it("requires the settings grant that saving a token needs to sign in to ForgeGraph", () => {
+    for (const method of [
+      WS_METHODS.sourceControlForgeGraphSignInStart,
+      WS_METHODS.sourceControlForgeGraphSignInStatus,
+      WS_METHODS.sourceControlForgeGraphSignInCancel,
+      WS_METHODS.sourceControlForgeGraphSignOut,
+    ]) {
+      expect(requiredScopeForRpcMethod(method)).toBe(AuthSettingsWriteScope);
+    }
+  });
+
   it("separates viewing pull request file progress from writing it", () => {
     expect(requiredScopeForRpcMethod(WS_METHODS.pullRequestsFilesViewed)).toBe(
       AuthOrchestrationReadScope,

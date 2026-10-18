@@ -222,6 +222,7 @@ import {
   ProjectIssueStatusUpdateResult,
 } from "./issue.ts";
 import { GmackoChangelog, GmackoChangelogInput } from "./gmackoChangelog.ts";
+import { ForgeGraphSignInError, ForgeGraphSignInState } from "./forgeGraphSignIn.ts";
 import {
   OrchestrationSearchThreadsError,
   OrchestrationSearchThreadsInput,
@@ -728,6 +729,10 @@ export const WS_METHODS = {
   sourceControlLookupRepository: "sourceControl.lookupRepository",
   sourceControlCloneRepository: "sourceControl.cloneRepository",
   sourceControlPublishRepository: "sourceControl.publishRepository",
+  sourceControlForgeGraphSignInStart: "sourceControl.forgeGraphSignIn.start",
+  sourceControlForgeGraphSignInStatus: "sourceControl.forgeGraphSignIn.status",
+  sourceControlForgeGraphSignInCancel: "sourceControl.forgeGraphSignIn.cancel",
+  sourceControlForgeGraphSignOut: "sourceControl.forgeGraphSignIn.signOut",
   projectCloneStart: "projectClone.start",
   projectCloneCancel: "projectClone.cancel",
   projectCloneRetry: "projectClone.retry",
@@ -1551,6 +1556,32 @@ const WsSourceControlPublishRepositoryRpc = Rpc.make(WS_METHODS.sourceControlPub
   payload: SourceControlPublishRepositoryInput,
   success: SourceControlPublishRepositoryResult,
   error: Schema.Union([SourceControlRepositoryError, EnvironmentAuthorizationError]),
+});
+
+const ForgeGraphSignInRpcError = Schema.Union([
+  ForgeGraphSignInError,
+  EnvironmentAuthorizationError,
+]);
+
+const WsSourceControlForgeGraphSignInStartRpc = Rpc.make(
+  WS_METHODS.sourceControlForgeGraphSignInStart,
+  { payload: Schema.Struct({}), success: ForgeGraphSignInState, error: ForgeGraphSignInRpcError },
+);
+
+const WsSourceControlForgeGraphSignInStatusRpc = Rpc.make(
+  WS_METHODS.sourceControlForgeGraphSignInStatus,
+  { payload: Schema.Struct({}), success: ForgeGraphSignInState, error: ForgeGraphSignInRpcError },
+);
+
+const WsSourceControlForgeGraphSignInCancelRpc = Rpc.make(
+  WS_METHODS.sourceControlForgeGraphSignInCancel,
+  { payload: Schema.Struct({}), success: ForgeGraphSignInState, error: ForgeGraphSignInRpcError },
+);
+
+const WsSourceControlForgeGraphSignOutRpc = Rpc.make(WS_METHODS.sourceControlForgeGraphSignOut, {
+  payload: Schema.Struct({}),
+  success: ForgeGraphSignInState,
+  error: ForgeGraphSignInRpcError,
 });
 
 const WsReverseListRpc = Rpc.make(WS_METHODS.reverseList, {
@@ -2519,6 +2550,10 @@ export const WsRpcGroup = RpcGroup.make(
   WsSourceControlLookupRepositoryRpc,
   WsSourceControlCloneRepositoryRpc,
   WsSourceControlPublishRepositoryRpc,
+  WsSourceControlForgeGraphSignInStartRpc,
+  WsSourceControlForgeGraphSignInStatusRpc,
+  WsSourceControlForgeGraphSignInCancelRpc,
+  WsSourceControlForgeGraphSignOutRpc,
   WsProjectCloneStartRpc,
   WsProjectCloneCancelRpc,
   WsProjectCloneRetryRpc,

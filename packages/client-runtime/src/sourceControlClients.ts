@@ -53,6 +53,11 @@ export type { GitHubSettings } from "@t3tools/source-control-github/client/defin
  * An environment's GitHub host choices and tokens, decoded with GitHub's settings schema. GitHub's
  * settings panels are its own, since its logins come from `gh` at runtime.
  */
+/** ForgeGraph's saved settings: its server, and whether a token is saved (never the token). */
+export function readForgeGraphSettings(settings: Pick<ServerSettings, "sourceControlHosts">) {
+  return readSourceControlHostSettings(ForgeGraph.settings, settings.sourceControlHosts.forgegraph);
+}
+
 export function readGitHubSettings(settings: Pick<ServerSettings, "sourceControlHosts">) {
   return readSourceControlHostSettings(GitHub.settings, settings.sourceControlHosts.github);
 }

@@ -29,6 +29,11 @@ export const CLIENT_GUARDED_RPC_SCOPES = {
   [WS_METHODS.pullRequestsGenerateReviewGuide]: AuthOrchestrationOperateScope,
   [WS_METHODS.sourceControlCloneRepository]: AuthSourceControlWriteScope,
   [WS_METHODS.sourceControlPublishRepository]: AuthSourceControlWriteScope,
+  // Signing in saves a credential, which is the grant saving a token in Settings needs.
+  [WS_METHODS.sourceControlForgeGraphSignInStart]: AuthSettingsWriteScope,
+  [WS_METHODS.sourceControlForgeGraphSignInStatus]: AuthSettingsWriteScope,
+  [WS_METHODS.sourceControlForgeGraphSignInCancel]: AuthSettingsWriteScope,
+  [WS_METHODS.sourceControlForgeGraphSignOut]: AuthSettingsWriteScope,
   [WS_METHODS.projectCloneStart]: AuthSourceControlWriteScope,
   [WS_METHODS.projectCloneCancel]: AuthSourceControlWriteScope,
   [WS_METHODS.projectCloneRetry]: AuthSourceControlWriteScope,

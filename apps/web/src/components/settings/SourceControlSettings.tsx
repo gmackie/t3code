@@ -49,6 +49,7 @@ import { GitIcon, JujutsuIcon, type Icon } from "../Icons";
 import { SourceControlHostSettings } from "./SourceControlHostSettings";
 import { GitHubAccountSettings } from "./GitHubAccountSettings";
 import { GitHubTokenSettings } from "./GitHubTokenSettings";
+import { ForgeGraphSignInSettings } from "./ForgeGraphSignInSettings";
 import { RedactedSensitiveText } from "./RedactedSensitiveText";
 import { SourceControlWritingSettingsSection } from "./SourceControlWritingSettings";
 import {
@@ -625,6 +626,16 @@ export function SourceControlSettingsPanel() {
                         ) : null}
                       </div>
                     </SettingsSearchTarget>
+                  ) : item.kind === "forgegraph" && environmentId !== null ? (
+                    <div className="grid gap-6">
+                      <ForgeGraphSignInSettings
+                        key={environmentId}
+                        environmentId={environmentId}
+                        auth={item.auth}
+                        onChanged={handleScan}
+                      />
+                      {hostSettingsPanel(item.kind)}
+                    </div>
                   ) : (
                     hostSettingsPanel(item.kind)
                   )}
