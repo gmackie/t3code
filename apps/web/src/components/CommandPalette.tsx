@@ -217,7 +217,11 @@ import { ProjectFilePicker } from "./files/ProjectFilePicker";
 import { openLinkPullRequestDialog } from "./pullRequest/LinkPullRequestDialog";
 import { ProjectContentSearchDialog } from "./search/ProjectContentSearchDialog";
 import { toggleThemeEditorForTheme } from "./settings/themeEditorStore";
-import { searchSettings, SETTINGS_SECTION_LABELS } from "./settings/settingsSearch";
+import {
+  searchSettings,
+  SETTINGS_SECTION_LABELS,
+  sourceControlHostSettingsSearchId,
+} from "./settings/settingsSearch";
 import {
   COMMAND_PALETTE_META_ICON_CLASS,
   CommandPaletteMetaDot,
@@ -2320,7 +2324,13 @@ function OpenCommandPaletteDialog(props: {
             description: pending.verificationUrl,
           });
         }
-        await navigate({ to: "/settings/source-control" });
+        // The settings-search target opens ForgeGraph's row, which is where the code waits.
+        await navigate({
+          to: "/settings/source-control",
+          hash: sourceControlHostSettingsSearchId("forgegraph"),
+          replace: pathname === "/settings/source-control",
+          hashScrollIntoView: false,
+        });
       },
     });
     if (forgeGraphProvider.auth.status === "authenticated") {
