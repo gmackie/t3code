@@ -7654,3 +7654,154 @@ it.effect.each([
       assert.deepStrictEqual(calls, [expected]);
     }),
 );
+
+it.effect("acts only on the head its caller checked, read from the host and not a cache", () =>
+  Effect.gen(function* () {
+    let head = "abcdef1234567890";
+    let reads = 0;
+    const written: Array<string> = [];
+    const service = yield* makeService({
+      projects: [project({ id: "p1", title: "web", workspaceRoot: "/a", repository: "acme/web" })],
+      providers: [
+        fakeProvider(SourceControlProviderKind.make("github"), {
+          getChangeRequest: () =>
+            Effect.sync(() => {
+              reads += 1;
+              return { ...hostedChangeRequest("Description"), headSha: head };
+            }),
+          submitReview: (input) => Effect.sync(() => void written.push(input.verdict)),
+          runAction: (input) => Effect.sync(() => void written.push(input.action)),
+        }),
+      ],
+    });
+    const reference = { projectId: "p1" as ProjectId, repository: "acme/web", number: 1 };
+    const review = { ...reference, verdict: "approve" as const, body: "", comments: [] };
+
+    // A short SHA is enough, in any case.
+    yield* service.submitReview({ ...review, expectedHeadSha: "ABCDEF1" });
+    yield* service.runAction({ ...reference, action: "merge", expectedHeadSha: head });
+    assert.deepStrictEqual(written, ["approve", "merge"]);
+
+    head = "9999999999999999";
+    const moved = yield* Effect.flip(
+      service.submitReview({ ...review, expectedHeadSha: "abcdef1" }),
+    );
+    assert.strictEqual(moved._tag, "PullRequestOperationError");
+    assert.strictEqual(moved._tag === "PullRequestOperationError" && moved.reason, "head-moved");
+    assert.include(moved.message, "The head is now 9999999999999999, not abcdef1.");
+
+    // Fewer than seven characters could match more than one commit, so it is no match at all.
+    const tooShort = yield* Effect.flip(
+      service.runAction({ ...reference, action: "merge", expectedHeadSha: "999" }),
+    );
+    assert.strictEqual(
+      tooShort._tag === "PullRequestOperationError" && tooShort.reason,
+      "head-moved",
+    );
+    assert.deepStrictEqual(written, ["approve", "merge"]);
+
+    // Without an expected head, nothing extra is read before writing.
+    const before = reads;
+    yield* service.runAction({ ...reference, action: "close" });
+    assert.strictEqual(reads, before);
+  }),
+);
+
+it.effect("refuses a head check on a host that does not report its head", () =>
+  Effect.gen(function* () {
+    let ran = false;
+    const service = yield* makeService({
+      projects: [project({ id: "p1", title: "web", workspaceRoot: "/a", repository: "acme/web" })],
+      providers: [
+        fakeProvider(SourceControlProviderKind.make("github"), {
+          getChangeRequest: () => Effect.succeed(hostedChangeRequest("Description")),
+          runAction: () => Effect.sync(() => void (ran = true)),
+        }),
+      ],
+    });
+    const error = yield* Effect.flip(
+      service.runAction({
+        projectId: "p1" as ProjectId,
+        repository: "acme/web",
+        number: 1,
+        action: "merge",
+        expectedHeadSha: "abcdef1",
+      }),
+    );
+    assert.include(error.message, "does not report the head commit");
+    assert.isFalse(ran);
+  }),
+);
+
+it.effect("reads readiness fresh, narrowed by what the host can do and the viewer may", () =>
+  Effect.gen(function* () {
+    let reads = 0;
+    const service = yield* makeService({
+      projects: [project({ id: "p1", title: "web", workspaceRoot: "/a", repository: "acme/web" })],
+      providers: [
+        fakeProvider(SourceControlProviderKind.make("github"), {
+          capabilities: {
+            diff: true,
+            comment: true,
+            actions: ["merge", "enable-auto-merge", "disable-auto-merge", "close", "revert"],
+            mergeMethods: ["merge", "squash", "rebase"],
+            search: true,
+            review: { inlineComment: false, reply: true, resolve: true, verdicts: ["approve"] },
+            reviewers: FULL_REVIEWERS,
+          },
+          getChangeRequest: () =>
+            Effect.sync(() => {
+              reads += 1;
+              return {
+                ...hostedChangeRequest("Description"),
+                headSha: "abcdef1234",
+                mergeability: "mergeable" as const,
+                checks: [
+                  {
+                    name: "preflight",
+                    status: "success" as const,
+                    description: null,
+                    url: null,
+                    required: true,
+                  },
+                ],
+                mergeCapabilities: { merge: true, squash: true, rebase: false },
+                autoMergeEnabled: true,
+                autoMergeMethod: "squash" as const,
+                viewerPermissions: {
+                  actions: ["merge", "enable-auto-merge", "disable-auto-merge", "revert"] as const,
+                  comment: true,
+                  resolve: false,
+                  verdicts: ["comment", "approve"] as const,
+                  requestReviewers: false,
+                },
+              };
+            }),
+        }),
+      ],
+    });
+    const reference = { projectId: "p1" as ProjectId, repository: "acme/web", number: 1 };
+    const readiness = yield* service.readiness(reference);
+    yield* service.readiness(reference);
+    assert.strictEqual(reads, 2);
+    assert.deepInclude(readiness, {
+      headSha: "abcdef1234",
+      mergeability: "mergeable",
+      autoMergeEnabled: true,
+      autoMergeMethod: "squash",
+    });
+    assert.deepStrictEqual(
+      readiness.checks.map((check) => [check.name, check.required]),
+      [["preflight", true]],
+    );
+    assert.deepStrictEqual(readiness.allowed, {
+      // Revert stays with the page; close is the host's but not this viewer's.
+      actions: ["merge", "enable-auto-merge", "disable-auto-merge"],
+      mergeMethods: ["merge", "squash"],
+      verdicts: ["approve"],
+      comment: true,
+      replyToThreads: true,
+      resolveThreads: false,
+    });
+  }),
+);

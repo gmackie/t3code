@@ -310,6 +310,13 @@ A watched thread counts as working between wakes, so it stays in the **Working**
 not auto-settle. Agents stop watching when they hand the work back to you, and the thread then
 returns to your inbox.
 
+Agents can also act on a review through MCP tools: read it with its checks and review threads,
+comment, approve or request changes, reply to and resolve threads, and merge, arm or cancel
+auto-merge, close, or reopen it. Each tool offers only what the host supports and your account may
+do there. Approving and merging can name the head commit the agent checked, and they are refused if
+someone pushed since. Agents act with the server's credentials for that host, so tell them when
+they may merge. The repository needs a project checked out in the same environment.
+
 Cross-repository links use a project on the same host. Azure DevOps reviews require a project checked
 out from the matching organization and repository.
 

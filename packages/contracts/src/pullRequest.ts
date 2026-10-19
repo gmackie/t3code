@@ -928,6 +928,38 @@ export const PullRequestDetail = Schema.Struct({
 });
 export type PullRequestDetail = typeof PullRequestDetail.Type;
 
+/**
+ * Whether a change request is ready to approve or merge, read fresh from the host: its head, the
+ * checks on that head, mergeability, a standing auto-merge, and what this viewer may do there
+ * (host capability and viewer permission, both narrowing). Agents read this before acting.
+ */
+export const PullRequestReadiness = Schema.Struct({
+  provider: SourceControlProviderKind,
+  number: PositiveInt,
+  title: TrimmedNonEmptyString,
+  url: TrimmedNonEmptyString,
+  state: PullRequestState,
+  isDraft: Schema.Boolean,
+  headBranch: TrimmedNonEmptyString,
+  baseBranch: TrimmedNonEmptyString,
+  /** The commit `checks` belong to. Null where the host does not report it. */
+  headSha: Schema.NullOr(TrimmedNonEmptyString),
+  mergeability: PullRequestMergeability,
+  checks: Schema.Array(PullRequestCheck),
+  /** Null where the host does not say, which is not the same as off. */
+  autoMergeEnabled: Schema.NullOr(Schema.Boolean),
+  autoMergeMethod: Schema.NullOr(PullRequestMergeMethod),
+  allowed: Schema.Struct({
+    actions: Schema.Array(PullRequestAction),
+    mergeMethods: Schema.Array(PullRequestMergeMethod),
+    verdicts: Schema.Array(PullRequestReviewVerdict),
+    comment: Schema.Boolean,
+    replyToThreads: Schema.Boolean,
+    resolveThreads: Schema.Boolean,
+  }),
+});
+export type PullRequestReadiness = typeof PullRequestReadiness.Type;
+
 export const PullRequestChecks = Schema.Struct({
   state: PullRequestState,
   checks: Schema.Array(PullRequestCheck),
@@ -1123,6 +1155,12 @@ export const PullRequestActionInput = Schema.Struct({
   mergeMethod: Schema.optional(PullRequestMergeMethod),
   /** Only read for `update-branch`, where absent means the host's own default. */
   updateMethod: Schema.optional(PullRequestUpdateMethod),
+  /**
+   * Refuse unless the host's head commit is still this one (the full SHA, or at least its first
+   * seven characters), so a verdict or merge never lands on a push its caller has not checked.
+   * Absent skips the check. A host that does not report its head refuses the check.
+   */
+  expectedHeadSha: Schema.optional(TrimmedNonEmptyString),
 });
 export type PullRequestActionInput = typeof PullRequestActionInput.Type;
 
@@ -1217,6 +1255,12 @@ export const PullRequestSubmitReviewInput = Schema.Struct({
   /** The review's own words. May be empty, which is how an approval with no remarks is sent. */
   body: Schema.String.check(Schema.isMaxLength(65_536)),
   comments: Schema.Array(PullRequestReviewCommentDraft),
+  /**
+   * Refuse unless the host's head commit is still this one (the full SHA, or at least its first
+   * seven characters), so a verdict or merge never lands on a push its caller has not checked.
+   * Absent skips the check. A host that does not report its head refuses the check.
+   */
+  expectedHeadSha: Schema.optional(TrimmedNonEmptyString),
 });
 export type PullRequestSubmitReviewInput = typeof PullRequestSubmitReviewInput.Type;
 
@@ -1476,7 +1520,8 @@ export class PullRequestOperationError extends Schema.TaggedError<PullRequestOpe
   {
     operation: Schema.String,
     detail: TrimmedNonEmptyString,
-    reason: Schema.optional(Schema.Literal("not-found")),
+    /** `head-moved`: the head is no longer the `expectedHeadSha` the caller checked. */
+    reason: Schema.optional(Schema.Literals(["not-found", "head-moved"])),
     cause: Schema.optional(Schema.Defect()),
   },
   { httpApiStatus: 502 },

@@ -2,8 +2,11 @@ import {
   McpCapabilityUnavailableError,
   OrchestratorMcpFailure,
   PositiveInt,
+  PullRequestMergeMethod,
+  PullRequestReadiness,
   PullRequestReviewGuide,
   PullRequestReviewGuideRun,
+  PullRequestReviewVerdict,
   PullRequestState,
   ThreadPullRequestLinkSource,
   TrimmedNonEmptyString,
@@ -18,6 +21,7 @@ import * as Orchestrator from "../../../orchestration-v2/Orchestrator.ts";
 import * as ThreadManagementService from "../../../orchestration-v2/ThreadManagementService.ts";
 import * as ProjectService from "../../../project/ProjectService.ts";
 import * as PullRequestReviewGuideService from "../../../pullRequest/PullRequestReviewGuideService.ts";
+import * as PullRequestService from "../../../pullRequest/PullRequestService.ts";
 
 const dependencies = [
   McpInvocationContext.McpInvocationContext,
@@ -30,6 +34,8 @@ const guideDependencies = [
   ...dependencies,
   PullRequestReviewGuideService.PullRequestReviewGuideService,
 ];
+
+const hostDependencies = [...dependencies, PullRequestService.PullRequestService];
 
 const REGISTER_EVERY_PR =
   "Register every pull request you open for this thread, including each layer of a stack, right after creating it.";
@@ -188,6 +194,16 @@ export class PullRequestGuideFailedError extends Schema.TaggedError<PullRequestG
   }
 }
 
+/** The host or the service refused or failed a read or a write; `detail` says why in its words. */
+export class PullRequestHostOperationFailedError extends Schema.TaggedError<PullRequestHostOperationFailedError>()(
+  "PullRequestHostOperationFailedError",
+  { detail: Schema.String, cause: Schema.optional(Schema.Defect()) },
+) {
+  override get message(): string {
+    return this.detail;
+  }
+}
+
 export const PullRequestToolError = Schema.Union([
   OrchestratorMcpFailure,
   McpCapabilityUnavailableError,
@@ -204,6 +220,7 @@ export const PullRequestToolError = Schema.Union([
   PullRequestWatchFromSubagentError,
   PullRequestProjectNotFoundError,
   PullRequestGuideFailedError,
+  PullRequestHostOperationFailedError,
 ]);
 export type PullRequestToolError = typeof PullRequestToolError.Type;
 
@@ -411,6 +428,202 @@ const ReadPullRequestGuideTool = Tool.make("read_pull_request_guide", {
   .annotate(Tool.Idempotent, true)
   .annotate(Tool.OpenWorld, true);
 
+/**
+ * A pull request on its host, by URL or by repository and number. These tools act on the host,
+ * not on a T3 thread, so they take no threadId; the pull request is read and written through a
+ * project in this environment whose checkout is that repository.
+ */
+const HostTarget = GuideTarget;
+
+const ExpectedHeadSha = Schema.optional(
+  TrimmedNonEmptyString.annotate({
+    description:
+      "Act only if the pull request's head commit is still this SHA (full, or at least 7 leading characters), for example the commit whose checks you verified. Refused when someone pushed since.",
+  }),
+);
+
+export const ReadPullRequestResult = Schema.Struct({
+  ...PullRequestIdentity,
+  readiness: PullRequestReadiness,
+});
+export type ReadPullRequestResult = typeof ReadPullRequestResult.Type;
+
+export const ListReviewThreadsResult = Schema.Struct({
+  ...PullRequestIdentity,
+  reviewThreads: Schema.Array(
+    Schema.Struct({
+      id: Schema.String,
+      path: Schema.String,
+      line: Schema.NullOr(Schema.Int),
+      isResolved: Schema.Boolean,
+      isOutdated: Schema.Boolean,
+      comments: Schema.Array(
+        Schema.Struct({
+          id: Schema.String,
+          author: Schema.NullOr(Schema.String),
+          body: Schema.String,
+          createdAt: Schema.String,
+        }),
+      ),
+    }),
+  ),
+  truncated: Schema.Boolean.annotate({
+    description: "True when the host listing stopped before every thread was read.",
+  }),
+});
+export type ListReviewThreadsResult = typeof ListReviewThreadsResult.Type;
+
+const PullRequestWriteResult = Schema.Struct(PullRequestIdentity);
+
+const ReadPullRequestTool = Tool.make("read_pull_request", {
+  description:
+    "Read whether a pull request is ready to approve or merge, fresh from its host: state, branches, head commit, mergeability, checks on that head (with which are required), a standing auto-merge, and what this account may do (allowed). Before approving or merging, confirm every required check passed at readiness.headSha, then pass that headSha as expectedHeadSha. Review threads are read with list_review_threads.",
+  parameters: HostTarget,
+  success: ReadPullRequestResult,
+  failure: PullRequestToolError,
+  dependencies: hostDependencies,
+})
+  .annotate(Tool.Title, "Read pull request")
+  .annotate(Tool.Readonly, true)
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.Idempotent, true)
+  .annotate(Tool.OpenWorld, true);
+
+const ListReviewThreadsTool = Tool.make("list_review_threads", {
+  description:
+    "List a pull request's review threads with their ids, resolved state, and comments, for reply_to_review_thread and resolve_review_thread.",
+  parameters: HostTarget,
+  success: ListReviewThreadsResult,
+  failure: PullRequestToolError,
+  dependencies: hostDependencies,
+})
+  .annotate(Tool.Title, "List review threads")
+  .annotate(Tool.Readonly, true)
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.Idempotent, true)
+  .annotate(Tool.OpenWorld, true);
+
+const CommentOnPullRequestTool = Tool.make("comment_on_pull_request", {
+  description:
+    "Post a top-level comment on a pull request's conversation. To answer a review thread, use reply_to_review_thread instead.",
+  parameters: Schema.Struct({
+    ...HostTarget.fields,
+    body: Schema.String.check(Schema.isNonEmpty(), Schema.isMaxLength(65_536)).annotate({
+      description: "Markdown.",
+    }),
+  }),
+  success: PullRequestWriteResult,
+  failure: PullRequestToolError,
+  dependencies: hostDependencies,
+})
+  .annotate(Tool.Title, "Comment on pull request")
+  .annotate(Tool.Readonly, false)
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.Idempotent, false)
+  .annotate(Tool.OpenWorld, true);
+
+const ReviewPullRequestTool = Tool.make("review_pull_request", {
+  description:
+    "Submit a review: approve, request-changes, or comment. A request-changes or comment review needs a body. Pass expectedHeadSha so the verdict lands on the commit you checked. Refused when the host or this account cannot give that verdict; read_pull_request's readiness.allowed.verdicts says which it can.",
+  parameters: Schema.Struct({
+    ...HostTarget.fields,
+    verdict: PullRequestReviewVerdict,
+    body: Schema.optional(
+      Schema.String.check(Schema.isMaxLength(65_536)).annotate({
+        description: "The review's summary, in markdown. Optional for approve.",
+      }),
+    ),
+    expectedHeadSha: ExpectedHeadSha,
+  }),
+  success: PullRequestWriteResult,
+  failure: PullRequestToolError,
+  dependencies: hostDependencies,
+})
+  .annotate(Tool.Title, "Review pull request")
+  .annotate(Tool.Readonly, false)
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.Idempotent, false)
+  .annotate(Tool.OpenWorld, true);
+
+const ReviewThreadId = TrimmedNonEmptyString.annotate({
+  description: "The review thread's id, from list_review_threads.",
+});
+
+const ReplyToReviewThreadTool = Tool.make("reply_to_review_thread", {
+  description: "Reply inside a pull request review thread.",
+  parameters: Schema.Struct({
+    ...HostTarget.fields,
+    reviewThreadId: ReviewThreadId,
+    body: Schema.String.check(Schema.isNonEmpty(), Schema.isMaxLength(65_536)).annotate({
+      description: "Markdown.",
+    }),
+  }),
+  success: PullRequestWriteResult,
+  failure: PullRequestToolError,
+  dependencies: hostDependencies,
+})
+  .annotate(Tool.Title, "Reply to review thread")
+  .annotate(Tool.Readonly, false)
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.Idempotent, false)
+  .annotate(Tool.OpenWorld, true);
+
+const ResolveReviewThreadTool = Tool.make("resolve_review_thread", {
+  description:
+    "Mark a pull request review thread resolved, or unresolved again with resolved=false.",
+  parameters: Schema.Struct({
+    ...HostTarget.fields,
+    reviewThreadId: ReviewThreadId,
+    resolved: Schema.optional(
+      Schema.Boolean.annotate({ description: "Defaults to true. False reopens the thread." }),
+    ),
+  }),
+  success: PullRequestWriteResult,
+  failure: PullRequestToolError,
+  dependencies: hostDependencies,
+})
+  .annotate(Tool.Title, "Resolve review thread")
+  .annotate(Tool.Readonly, false)
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.Idempotent, true)
+  .annotate(Tool.OpenWorld, true);
+
+/** The actions an agent may run. Stack, revert and workflow approval stay with the user. */
+export const AgentPullRequestAction = Schema.Literals([
+  "merge",
+  "enable-auto-merge",
+  "disable-auto-merge",
+  "close",
+  "reopen",
+  "ready",
+  "draft",
+  "update-branch",
+]);
+
+const RunPullRequestActionTool = Tool.make("run_pull_request_action", {
+  description:
+    "Run an action on a pull request: merge now, enable-auto-merge (the host merges once its required checks and approvals pass), disable-auto-merge, close, reopen, ready, draft, or update-branch. Only merge with the user's authorization. Pass expectedHeadSha with merge and enable-auto-merge so a push you have not checked is never merged. Refused when the host or this account cannot take the action; read_pull_request's readiness.allowed.actions says which it can.",
+  parameters: Schema.Struct({
+    ...HostTarget.fields,
+    action: AgentPullRequestAction,
+    mergeMethod: Schema.optional(
+      PullRequestMergeMethod.annotate({
+        description:
+          "Strategy for merge and enable-auto-merge. Omit for the host's default; it must be in readiness.allowed.mergeMethods.",
+      }),
+    ),
+    expectedHeadSha: ExpectedHeadSha,
+  }),
+  success: PullRequestWriteResult,
+  failure: PullRequestToolError,
+  dependencies: hostDependencies,
+})
+  .annotate(Tool.Title, "Run pull request action")
+  .annotate(Tool.Readonly, false)
+  .annotate(Tool.Destructive, true)
+  .annotate(Tool.Idempotent, false)
+  .annotate(Tool.OpenWorld, true);
+
 export const PullRequestsToolkit = Toolkit.make(
   LinkPullRequestTool,
   UnlinkPullRequestTool,
@@ -419,4 +632,11 @@ export const PullRequestsToolkit = Toolkit.make(
   UnwatchPullRequestTool,
   WritePullRequestGuidesTool,
   ReadPullRequestGuideTool,
+  ReadPullRequestTool,
+  ListReviewThreadsTool,
+  CommentOnPullRequestTool,
+  ReviewPullRequestTool,
+  ReplyToReviewThreadTool,
+  ResolveReviewThreadTool,
+  RunPullRequestActionTool,
 );

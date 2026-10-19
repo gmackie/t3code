@@ -7,6 +7,8 @@ import {
   pullRequestHostOf,
   type OrchestrationProjectShell,
   type OrchestrationV2ThreadShell,
+  type PullRequestActivity,
+  type PullRequestRef,
   type SourceControlProviderKind,
   type ThreadId,
   type ThreadPullRequestLink,
@@ -27,11 +29,14 @@ import * as Option from "effect/Option";
 import * as Orchestrator from "../../../orchestration-v2/Orchestrator.ts";
 import * as ProjectService from "../../../project/ProjectService.ts";
 import * as PullRequestReviewGuideService from "../../../pullRequest/PullRequestReviewGuideService.ts";
+import * as PullRequestService from "../../../pullRequest/PullRequestService.ts";
 import { pullRequestSyncKey } from "../../../pullRequest/pullRequestSyncKey.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
 import * as McpToolAccess from "../../McpToolAccess.ts";
 import {
+  type ListReviewThreadsResult,
   type ListThreadPullRequestsResult,
+  PullRequestHostOperationFailedError,
   PullRequestLinkFailedError,
   PullRequestUrlInvalidError,
   PullRequestTargetIncompleteError,
@@ -197,8 +202,31 @@ function projectForPullRequest(
   return projects.find(matches);
 }
 
+/** The review threads list_review_threads reports, without avatars, reactions or page cursors. */
+export function reviewThreadsOf(
+  activity: Pick<PullRequestActivity, "reviewThreads" | "reviewThreadsTruncated">,
+): Pick<ListReviewThreadsResult, "reviewThreads" | "truncated"> {
+  return {
+    reviewThreads: activity.reviewThreads.map((thread) => ({
+      id: thread.id,
+      path: thread.path,
+      line: thread.line,
+      isResolved: thread.isResolved,
+      isOutdated: thread.isOutdated,
+      comments: thread.comments.map((comment) => ({
+        id: comment.id,
+        author: comment.author?.login ?? null,
+        body: comment.body,
+        createdAt: comment.createdAt,
+      })),
+    })),
+    truncated: activity.reviewThreadsTruncated ?? false,
+  };
+}
+
 const make = Effect.gen(function* () {
   const engine = yield* Orchestrator.OrchestratorV2;
+  const pullRequests = yield* PullRequestService.PullRequestService;
   const reviewGuides = yield* PullRequestReviewGuideService.PullRequestReviewGuideService;
 
   const projects = yield* ProjectService.ProjectService;
@@ -358,6 +386,64 @@ const make = Effect.gen(function* () {
   /** A host or service error, said as its own detail rather than its operation's wrapper. */
   const guideFailureDetail = (error: { readonly message: string }) =>
     "detail" in error && typeof error.detail === "string" ? error.detail : error.message;
+
+  /**
+   * One pull request on its host and the reference the service reads and writes it through. The
+   * same resolution as the guide tools, so a repository with no checkout here is refused.
+   */
+  const locateHost = Effect.fn("PullRequestsToolkit.locateHost")(function* (
+    input: Omit<PullRequestTargetInput, "threadId">,
+  ) {
+    const [entry] = yield* locateAll([input]);
+    if (entry !== undefined && entry.target === null) {
+      return yield* new PullRequestHostOperationFailedError({ detail: entry.failure ?? "" });
+    }
+    if (entry === undefined || entry.target === null || entry.project === undefined) {
+      return yield* new PullRequestProjectNotFoundError({
+        repository: entry?.target.repository ?? input.repository ?? "",
+      });
+    }
+    const target = entry.target;
+    const ref: PullRequestRef = guideReference(entry.project, target);
+    const identity = {
+      host: target.host,
+      repository: target.repository,
+      number: target.number,
+      url: target.url,
+    };
+    return { target, ref, identity };
+  });
+
+  const hostFailure = (error: { readonly message: string }) =>
+    new PullRequestHostOperationFailedError({ detail: guideFailureDetail(error), cause: error });
+
+  /** A host write through one service method, reporting the pull request it wrote to. */
+  const hostWrite = <P extends Omit<PullRequestTargetInput, "threadId">>(
+    write: (
+      ref: PullRequestRef,
+      params: P,
+    ) => Effect.Effect<void, PullRequestService.PullRequestError>,
+  ) =>
+    McpToolAccess.writesWithCapability((params: P) =>
+      Effect.gen(function* () {
+        const { ref, identity } = yield* locateHost(params);
+        yield* write(ref, params).pipe(Effect.mapError(hostFailure));
+        return identity;
+      }),
+    );
+
+  /** A host read through one service method, presented with the pull request it read. */
+  const hostRead = <P extends Omit<PullRequestTargetInput, "threadId">, A, B>(
+    read: (ref: PullRequestRef) => Effect.Effect<A, PullRequestService.PullRequestError>,
+    present: (identity: ResolvedTarget, value: A) => B,
+  ) =>
+    McpToolAccess.reads((params: P) =>
+      Effect.gen(function* () {
+        const { ref, identity } = yield* locateHost(params);
+        const value = yield* read(ref).pipe(Effect.mapError(hostFailure));
+        return present(identity, value);
+      }),
+    );
 
   /** A tool that changes `threadId`, or the caller's own thread when it is omitted. */
   const writesThread = <P extends { readonly threadId?: ThreadId | undefined }, A, E, R>(
@@ -523,6 +609,54 @@ const make = Effect.gen(function* () {
             result.currentHeadSha !== null &&
             result.guide.headSha !== result.currentHeadSha,
         };
+      }),
+    ),
+    read_pull_request: hostRead(
+      (ref) => pullRequests.readiness(ref),
+      (identity, readiness) => ({
+        ...identity,
+        readiness,
+      }),
+    ),
+    list_review_threads: hostRead(
+      (ref) => pullRequests.activity(ref),
+      (identity, activity) => ({
+        ...identity,
+        ...reviewThreadsOf(activity),
+      }),
+    ),
+    comment_on_pull_request: hostWrite((ref, params) =>
+      pullRequests.comment({ ...ref, body: params.body }),
+    ),
+    review_pull_request: hostWrite((ref, params) =>
+      pullRequests.submitReview({
+        ...ref,
+        verdict: params.verdict,
+        body: params.body ?? "",
+        comments: [],
+        ...(params.expectedHeadSha === undefined
+          ? {}
+          : { expectedHeadSha: params.expectedHeadSha }),
+      }),
+    ),
+    reply_to_review_thread: hostWrite((ref, params) =>
+      pullRequests.replyToThread({ ...ref, threadId: params.reviewThreadId, body: params.body }),
+    ),
+    resolve_review_thread: hostWrite((ref, params) =>
+      pullRequests.setThreadResolution({
+        ...ref,
+        threadId: params.reviewThreadId,
+        resolved: params.resolved ?? true,
+      }),
+    ),
+    run_pull_request_action: hostWrite((ref, params) =>
+      pullRequests.runAction({
+        ...ref,
+        action: params.action,
+        ...(params.mergeMethod === undefined ? {} : { mergeMethod: params.mergeMethod }),
+        ...(params.expectedHeadSha === undefined
+          ? {}
+          : { expectedHeadSha: params.expectedHeadSha }),
       }),
     ),
   } satisfies McpToolAccess.Handlers<typeof PullRequestsToolkit.tools>;
