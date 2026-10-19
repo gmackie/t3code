@@ -1,0 +1,50 @@
+name: Migration ledger CI
+
+# Ledger reconciliation by name, and the migrate-dev-db script built on it (T3CODE-34).
+on:
+  pull_request:
+    branches:
+      - custom-local
+    paths:
+      - apps/server/src/persistence/Migrations.ts
+      - apps/server/src/persistence/Migrations.test.ts
+      - apps/server/src/persistence/Migrations/**
+      - apps/server/scripts/migrate-dev-db.ts
+      - apps/server/scripts/migrate-dev-db.test.ts
+      - .forgejo/workflows/migration-ledger-ci.yml
+      - pnpm-lock.yaml
+      - pnpm-workspace.yaml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  server:
+    runs-on: forgegraph-ci
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.14.0
+      - name: Install pinned dependencies
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.10.0 --activate
+          pnpm install --frozen-lockfile
+      - name: Verify ledger reconciliation and migrate-dev-db
+        run: |
+          pnpm -C apps/server exec vp test run src/persistence/Migrations.test.ts scripts/migrate-dev-db.test.ts
+          pnpm -C apps/server exec tsc --noEmit
+      # Lint from the root: oxlint resolves the repo's local plugin relative to it.
+      - name: Lint and format the touched files
+        run: |
+          FILES="
+            apps/server/src/persistence/Migrations.ts
+            apps/server/src/persistence/Migrations.test.ts
+            apps/server/scripts/migrate-dev-db.ts
+            apps/server/scripts/migrate-dev-db.test.ts
+          "
+          pnpm exec vp lint $FILES
+          pnpm exec vp fmt --check $FILES .forgejo/workflows/migration-ledger-ci.yml
