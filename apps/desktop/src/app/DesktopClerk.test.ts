@@ -134,7 +134,12 @@ describe("DesktopClerk", () => {
           ),
         ),
       );
-      assert.deepEqual(events, ["setPath:userData:/isolated/review-profile", "createClerkBridge"]);
+      assert.deepEqual(events, [
+        "setPath:userData:/isolated/review-profile",
+        "requestSingleInstanceLock",
+        "on:second-instance",
+        "createClerkBridge",
+      ]);
     });
   });
 
