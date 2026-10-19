@@ -14,6 +14,8 @@ on:
       - apps/server/src/sourceControl/**
       - apps/server/src/pullRequest/**
       - apps/server/src/mcp/toolkits/pullRequests/**
+      - apps/server/src/mcp/McpHttpServer.test.ts
+      - apps/server/src/mcp/toolkits/worktree/registration.test.ts
       - apps/server/src/ws.ts
       - apps/server/src/server.ts
       - apps/server/src/observability/RpcInstrumentation.ts
@@ -90,7 +92,7 @@ jobs:
           corepack prepare pnpm@11.10.0 --activate
           pnpm install --frozen-lockfile
       - name: Test the server's source control and pull request services
-        run: pnpm -C apps/server exec vp test run src/sourceControl/ForgeGraphSignIn.test.ts src/sourceControl/SourceControlDiscovery.test.ts src/sourceControl/SourceControlProviderRegistry.test.ts src/auth/RpcAuthorization.test.ts src/pullRequest/PullRequestService.test.ts src/mcp/toolkits/pullRequests src/mcp/McpHttpServer.test.ts
+        run: pnpm -C apps/server exec vp test run src/sourceControl/ForgeGraphSignIn.test.ts src/sourceControl/SourceControlDiscovery.test.ts src/sourceControl/SourceControlProviderRegistry.test.ts src/auth/RpcAuthorization.test.ts src/pullRequest/PullRequestService.test.ts src/mcp/toolkits/pullRequests src/mcp/McpHttpServer.test.ts src/mcp/toolkits/worktree/registration.test.ts
 
   server-typecheck:
     runs-on: forgegraph-ci
@@ -167,6 +169,11 @@ jobs:
             apps/web/src/components/settings/settingsSearch.ts
             apps/web/src/sourceControlPresentation.ts
             apps/mobile/src/components/SourceControlIcon.tsx
+            apps/server/src/pullRequest/PullRequestService.ts
+            apps/server/src/pullRequest/PullRequestService.test.ts
+            apps/server/src/mcp/toolkits/pullRequests
+            apps/server/src/mcp/McpHttpServer.test.ts
+            apps/server/src/mcp/toolkits/worktree/registration.test.ts
           "
           pnpm exec vp lint $FILES
           pnpm exec vp fmt --check $FILES .forgejo/workflows/forgegraph-provider-ci.yml
