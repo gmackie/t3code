@@ -909,7 +909,7 @@ describe("ForgeGraph diffs and commits (FORGE-147)", () => {
     }),
   );
 
-  it.effect("says what is missing: an older server, a pull request with no diff, one commit", () =>
+  it.effect("says what is missing: an older server, a pull request with no diff", () =>
     Effect.gen(function* () {
       const older = yield* run(withPull({}), (provider) =>
         provider.getDiff(target).pipe(Effect.flip),
@@ -924,13 +924,73 @@ describe("ForgeGraph diffs and commits (FORGE-147)", () => {
         (provider) => provider.getDiff(target).pipe(Effect.flip),
       );
       assert.match(unavailable.result.detail, /no diff for this pull request/u);
+    }),
+  );
 
-      const oneCommit = yield* run(withPull({}), (provider) =>
+  it.effect("reads one commit's diff from its own route (FORGE-171)", () =>
+    Effect.gen(function* () {
+      const commitPath = `/fg/prs/cs-33/commits/${head}/diff`;
+      let asked = 0;
+      const fiber = yield* run(
+        withPull({
+          [`GET ${commitPath}`]: (request: SentRequest) => {
+            asked += 1;
+            return asked === 1
+              ? ([202, { status: "pending", headSha: head, retryAfter: 3 }] as const)
+              : ([
+                  200,
+                  {
+                    status: "ready",
+                    headSha: head,
+                    baseSha: "a".repeat(40),
+                    source: "forgejo",
+                    commit: { sha: head, parents: ["a".repeat(40)], message: "feat: one" },
+                    patch: `diff --git ${request.query.get("cursor") ?? "first"}\n`,
+                    files: ["a.ts"],
+                    truncated: false,
+                    nextCursor: null,
+                  },
+                ] as const);
+          },
+        }),
+        (provider) => provider.getDiff({ ...target, commit: head.toUpperCase(), cursor: "c2" }),
+      ).pipe(Effect.forkChild);
+      yield* TestClock.adjust("5 seconds");
+      const { result, fake } = yield* Fiber.join(fiber);
+      assert.deepStrictEqual(result, {
+        patch: "diff --git c2\n",
+        truncated: false,
+        nextCursor: null,
+      });
+      const sent = fake.sent.filter((request) => request.path === commitPath);
+      assert.strictEqual(sent.length, 2);
+      assert.strictEqual(sent[0]?.query.get("maxBytes"), String(512 * 1024));
+      assert.isFalse(fake.sent.some((request) => request.path === "/fg/prs/cs-33/diff"));
+    }),
+  );
+
+  it.effect("says why one commit's diff is missing", () =>
+    Effect.gen(function* () {
+      const outside = yield* run(
+        withPull({
+          [`GET /fg/prs/cs-33/commits/${head}/diff`]: () =>
+            [404, { error: "Commit not in this PR" }] as const,
+        }),
+        (provider) => provider.getDiff({ ...target, commit: head }).pipe(Effect.flip),
+      );
+      assert.match(outside.result.detail, /does not list this commit/u);
+
+      const older = yield* run(withPull({}), (provider) =>
         provider.getDiff({ ...target, commit: head }).pipe(Effect.flip),
       );
-      assert.match(oneCommit.result.detail, /one commit's changes/u);
+      assert.match(older.result.detail, /does not show one commit's changes yet/u);
+
+      const short = yield* run(withPull({}), (provider) =>
+        provider.getDiff({ ...target, commit: head.slice(0, 7) }).pipe(Effect.flip),
+      );
+      assert.match(short.result.detail, /full id/u);
       // Refused before anything is asked.
-      assert.deepStrictEqual(oneCommit.fake.sent, []);
+      assert.deepStrictEqual(short.fake.sent, []);
     }),
   );
 

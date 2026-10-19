@@ -123,6 +123,23 @@ export const make = Effect.gen(function* () {
         : fromApi(error);
 
   /**
+   * FORGE-171's one-commit route names a commit outside the pull request in its 404; any other
+   * 404 is a server without the route.
+   */
+  const fromCommitDiffApi = (error: ForgeGraphApi.ForgeGraphApiError) =>
+    error.status !== 404
+      ? fromDiffApi(error)
+      : error.detail === "Commit not in this PR"
+        ? failure(
+            error.operation,
+            "ForgeGraph does not list this commit in the pull request. It shows the newest 250.",
+          )
+        : failure(
+            error.operation,
+            "This ForgeGraph server does not show one commit's changes yet.",
+          );
+
+  /**
    * A diff route's ready answer. A head ForgeGraph is still computing (a git job takes 30–90 s)
    * is asked for again at its `retryAfter`, a bounded number of times.
    */
@@ -130,12 +147,13 @@ export const make = Effect.gen(function* () {
     operation: string,
     path: string,
     schema: S,
+    fromError: (error: ForgeGraphApi.ForgeGraphApiError) => PullRequestProviderError = fromDiffApi,
   ) => {
     const attempt = (
       remaining: number,
     ): Effect.Effect<Extract<S["Type"], { readonly status: "ready" }>, PullRequestProviderError> =>
       lookups.read({ operation, method: "GET", path }, schema).pipe(
-        Effect.mapError(fromDiffApi),
+        Effect.mapError(fromError),
         Effect.flatMap((answer) => {
           const value = answer as S["Type"];
           if (value.status === "ready")
@@ -360,19 +378,22 @@ export const make = Effect.gen(function* () {
     getViewerPermissions: (input) =>
       readPull("getViewerPermissions", input).pipe(Effect.map(Json.toViewerPermissions)),
     getDiff: Effect.fn("ForgeGraphPullRequestProvider.getDiff")(function* (input) {
-      if (input.commit !== undefined)
-        return yield* failure(
-          "getDiff",
-          "ForgeGraph does not show one commit's changes yet. Open the whole pull request's diff instead.",
-        );
+      // FORGE-171 takes a commit by its full id, as the pull request's commit list gives it.
+      const commit = input.commit?.toLowerCase();
+      if (commit !== undefined && !HEAD_SHA.test(commit))
+        return yield* failure("getDiff", "ForgeGraph needs the commit's full id.");
       const pull = yield* readPull("getDiff", input);
       const query = new URLSearchParams({ maxBytes: String(DIFF_PAGE_BYTES) });
       if (input.cursor) query.set("cursor", input.cursor);
-      const page = yield* readDiffRoute(
-        "getDiff",
-        `/fg/prs/${encodeURIComponent(pull.id)}/diff?${query}`,
-        Json.ForgeGraphDiffPage,
-      );
+      const id = encodeURIComponent(pull.id);
+      const page = yield* commit === undefined
+        ? readDiffRoute("getDiff", `/fg/prs/${id}/diff?${query}`, Json.ForgeGraphDiffPage)
+        : readDiffRoute(
+            "getDiff",
+            `/fg/prs/${id}/commits/${commit}/diff?${query}`,
+            Json.ForgeGraphDiffPage,
+            fromCommitDiffApi,
+          );
       return {
         patch: page.patch,
         truncated: page.truncated === true,
