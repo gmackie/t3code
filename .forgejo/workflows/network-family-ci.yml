@@ -1,0 +1,41 @@
+name: Network family CI
+
+# The server's Happy Eyeballs budget for networks without working IPv6 (T3CODE-29).
+on:
+  pull_request:
+    branches:
+      - custom-local
+    paths:
+      - apps/server/src/networkFamilyAutoselection*.ts
+      - apps/server/src/cli/server.ts
+      - .forgejo/workflows/network-family-ci.yml
+      - pnpm-lock.yaml
+      - pnpm-workspace.yaml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  server:
+    runs-on: forgegraph-ci
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.14.0
+      - name: Install pinned dependencies
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.10.0 --activate
+          pnpm install --frozen-lockfile
+      - name: Verify the network family decision
+        run: |
+          pnpm -C apps/server exec vp test run src/networkFamilyAutoselection.test.ts
+          pnpm -C apps/server exec tsc --noEmit
+      # Lint from the root: oxlint resolves the repo's local plugin relative to it.
+      - name: Lint and format the touched files
+        run: |
+          pnpm exec vp lint apps/server/src/networkFamilyAutoselection.ts apps/server/src/networkFamilyAutoselection.test.ts apps/server/src/cli/server.ts
+          pnpm exec vp fmt --check apps/server/src/networkFamilyAutoselection.ts apps/server/src/networkFamilyAutoselection.test.ts apps/server/src/cli/server.ts .forgejo/workflows/network-family-ci.yml
