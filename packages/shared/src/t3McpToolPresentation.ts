@@ -63,6 +63,11 @@ export type T3McpToolSummaryAction =
   | "unwatch-pr"
   | "write-pr-guides"
   | "read-pr-guide"
+  | "read-pr"
+  | "review-pr"
+  | "pr-action"
+  | "pr-comment"
+  | "review-threads"
   | "browser"
   | "device"
   | "html-preview"
@@ -120,6 +125,37 @@ const T3_MCP_TOOLS: Readonly<Record<string, T3McpToolDefinition>> = {
   read_pull_request_guide: tool(
     ["Read", "Reading", "Read", "a review guide"],
     "read-pr-guide",
+    "pull-request",
+  ),
+  read_pull_request: tool(["Read", "Reading", "Read", "a pull request"], "read-pr", "pull-request"),
+  review_pull_request: tool(
+    ["Review", "Reviewing", "Reviewed", "a pull request"],
+    "review-pr",
+    "pull-request",
+  ),
+  run_pull_request_action: tool(
+    ["Update", "Updating", "Updated", "a pull request"],
+    "pr-action",
+    "pull-request",
+  ),
+  comment_on_pull_request: tool(
+    ["Comment on", "Commenting on", "Commented on", "a pull request"],
+    "pr-comment",
+    "pull-request",
+  ),
+  list_review_threads: tool(
+    ["List", "Listing", "Listed", "review threads"],
+    "review-threads",
+    "pull-request",
+  ),
+  reply_to_review_thread: tool(
+    ["Reply to", "Replying to", "Replied to", "a review thread"],
+    "pr-comment",
+    "pull-request",
+  ),
+  resolve_review_thread: tool(
+    ["Resolve", "Resolving", "Resolved", "a review thread"],
+    "review-threads",
     "pull-request",
   ),
   orchestrator_capabilities: tool(
