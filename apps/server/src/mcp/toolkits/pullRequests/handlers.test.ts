@@ -28,6 +28,7 @@ import {
   v2PullRequestThread,
 } from "../../../orchestration-v2/testkit/pullRequestFixtures.ts";
 import * as ProjectService from "../../../project/ProjectService.ts";
+import * as RepositoryIdentityResolver from "../../../project/RepositoryIdentityResolver.ts";
 import * as PullRequestReviewGuideService from "../../../pullRequest/PullRequestReviewGuideService.ts";
 import * as PullRequestService from "../../../pullRequest/PullRequestService.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
@@ -146,6 +147,8 @@ interface HarnessOptions {
   readonly reject?: (command: OrchestrationCommand) => string | null;
   /** Every project in the environment; defaults to the thread's own. */
   readonly projects?: ReadonlyArray<OrchestrationProjectShell>;
+  /** What reading a checkout's remotes finds when its shell has no cached identity. */
+  readonly checkoutIdentity?: OrchestrationProjectShell["repositoryIdentity"];
   /** What the guide service answers for a pull request it is asked to write. */
   readonly generate?: (
     input: PullRequestRef,
@@ -298,6 +301,9 @@ const makeHarness = Effect.fn("makePullRequestsToolkitHarness")(function* (
       replyToThread: write("replyToThread"),
       setThreadResolution: write("setThreadResolution"),
       runAction: write("runAction"),
+    }),
+    Layer.mock(RepositoryIdentityResolver.RepositoryIdentityResolver)({
+      resolve: () => Effect.succeed(options.checkoutIdentity ?? null),
     }),
     Layer.succeed(Crypto.Crypto, testCrypto),
     McpToolAccessTestkit.liveThreadsLayer,
@@ -1027,6 +1033,24 @@ describe("pull request host tools", () => {
       expect(error).toMatchObject({ _tag: "OrchestratorMcpFailure", code: "capability_denied" });
       yield* harness.call("read_pull_request", TARGET, ["pull-requests"], readOnly);
       expect(writes(yield* Ref.get(harness.pullRequestCalls))).toEqual([]);
+    }),
+  );
+
+  it.effect("finds the checkout after the project's cached identity has lapsed", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness({
+        project: makeProject(null),
+        checkoutIdentity: makeProject().repositoryIdentity,
+      });
+      const approved = yield* harness.call("review_pull_request", {
+        ...TARGET,
+        host: "github.com",
+        verdict: "approve",
+      });
+      expect(approved).toEqual(IDENTITY);
+      expect(writes(yield* Ref.get(harness.pullRequestCalls))).toEqual([
+        { method: "submitReview", input: { ...REF, verdict: "approve", body: "", comments: [] } },
+      ]);
     }),
   );
 
