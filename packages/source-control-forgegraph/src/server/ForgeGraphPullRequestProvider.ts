@@ -154,6 +154,25 @@ export const make = Effect.gen(function* () {
   const checksFor = (operation: string, input: PullRef, pull: Json.NumberedPull) =>
     lookups.gate(operation, input.repository, pull.headSha).pipe(Effect.mapError(fromApi));
 
+  /**
+   * The size ForgeGraph has ready for the head. Reading a pull request never waits on a diff job,
+   * so a head still computing, a server without the route, or any failure leaves it unknown.
+   */
+  const fileTotalsOf = (pull: Json.NumberedPull) =>
+    lookups
+      .read(
+        {
+          operation: "getChangeRequest",
+          method: "GET",
+          path: `/fg/prs/${encodeURIComponent(pull.id)}/files`,
+        },
+        Json.ForgeGraphFileTotals,
+      )
+      .pipe(
+        Effect.map((answer) => (answer.status === "ready" ? answer.totals : null)),
+        Effect.orElseSucceed(() => null),
+      );
+
   const merge = Effect.fn("ForgeGraphPullRequestProvider.merge")(function* (
     input: PullRef & { readonly mergeMethod?: PullRequestMergeMethod; readonly whenGreen: boolean },
   ) {
@@ -294,9 +313,9 @@ export const make = Effect.gen(function* () {
     getChangeRequest: Effect.fn("ForgeGraphPullRequestProvider.getChangeRequest")(
       function* (input) {
         const pull = yield* readPull("getChangeRequest", input);
-        const [gate, mergeability] = yield* Effect.all(
-          [checksFor("getChangeRequest", input, pull), readMergeability(pull)],
-          { concurrency: 2 },
+        const [gate, mergeability, totals] = yield* Effect.all(
+          [checksFor("getChangeRequest", input, pull), readMergeability(pull), fileTotalsOf(pull)],
+          { concurrency: 3 },
         );
         const server = yield* api.server;
         const autoMerge =
@@ -307,7 +326,8 @@ export const make = Effect.gen(function* () {
           ...Json.toChangeRequest(pull, server),
           headSha: pull.headSha ?? null,
           body: pull.body ?? "",
-          changedFiles: 0,
+          changedFiles: totals?.files ?? 0,
+          ...(totals === null ? {} : { additions: totals.additions, deletions: totals.deletions }),
           mergedAt: state === "merged" ? Json.lastActivityAt(pull) : null,
           closedAt: state === "open" ? null : Json.lastActivityAt(pull),
           reviewers: [...new Set((pull.reviews ?? []).map((review) => review.author))]
