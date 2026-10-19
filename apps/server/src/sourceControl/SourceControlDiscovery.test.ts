@@ -35,6 +35,18 @@ import * as SourceControlDiscovery from "./SourceControlDiscovery.ts";
 import * as SourceControlProviderRegistry from "./SourceControlProviderRegistry.ts";
 import * as ServerSourceControlHost from "./ServerSourceControlHost.ts";
 import * as SourceControlHost from "@t3tools/source-control-core/server/SourceControlHost";
+import * as HostProcess from "@t3tools/shared/HostProcess";
+
+/**
+ * The machine's environment without its tokens. Each test says what the mocked CLIs and APIs
+ * report, so a GH_TOKEN, a CI runner's GITHUB_TOKEN or an FG_ variable on the machine running the
+ * suite must not sign a host in behind its back.
+ */
+const hermeticEnvironment: NodeJS.ProcessEnv = Object.fromEntries(
+  Object.entries(process.env).filter(
+    ([name]) => !name.endsWith("TOKEN") && !name.startsWith("FG_"),
+  ),
+);
 
 const layerSourceControlProviderRegistryTest = (input: {
   readonly bitbucket: Partial<BitbucketApi.BitbucketApi["Service"]>;
@@ -46,6 +58,7 @@ const layerSourceControlProviderRegistryTest = (input: {
         ServerConfig.layerTest(process.cwd(), {
           prefix: "t3-source-control-registry-test-",
         }).pipe(Layer.provide(NodeServices.layer)),
+        Layer.succeed(HostProcess.Environment, hermeticEnvironment),
         Layer.mock(AzureDevOpsCli.AzureDevOpsCli)({}),
         Layer.mock(AzureDevOpsPullRequestCli.AzureDevOpsPullRequestCli)({}),
         Layer.mock(BitbucketApi.BitbucketApi)(input.bitbucket),
