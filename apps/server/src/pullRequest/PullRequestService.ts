@@ -34,6 +34,7 @@ import {
   type PullRequestCommentUpdateInput,
   type PullRequestDetail,
   type PullRequestPreview,
+  type PullRequestReadiness,
   type PullRequestChecks,
   type PullRequestDiffFileContentsInput,
   type PullRequestDiffFileContentsResult,
@@ -204,6 +205,61 @@ const routingCredential = Context.Reference<{
 const credentialNamespace = Symbol("pullRequestCredentialNamespace");
 type CredentialRef = PullRequestRef & { readonly [credentialNamespace]?: string };
 
+/**
+ * Whether the host's head is still the commit a caller checked: the same SHA, or at least its first
+ * seven characters (git's own shortest abbreviation), compared without case.
+ */
+export function headShaMatches(actual: string, expected: string): boolean {
+  const head = actual.toLowerCase();
+  const wanted = expected.toLowerCase();
+  return head === wanted || (wanted.length >= 7 && head.startsWith(wanted));
+}
+
+const READINESS_ACTIONS: ReadonlySet<PullRequestDetail["capabilities"]["actions"][number]> =
+  new Set([
+    "merge",
+    "enable-auto-merge",
+    "disable-auto-merge",
+    "close",
+    "reopen",
+    "ready",
+    "draft",
+    "update-branch",
+  ]);
+
+/**
+ * A detail read as readiness: what the page would offer, narrowed by host capability and viewer
+ * permission alike. Stack, revert and workflow approval are left to the page.
+ */
+export function readinessOf(detail: PullRequestDetail): PullRequestReadiness {
+  const { capabilities, viewerPermissions: viewer } = detail;
+  return {
+    provider: detail.provider,
+    number: detail.number,
+    title: detail.title,
+    url: detail.url,
+    state: detail.state,
+    isDraft: detail.isDraft,
+    headBranch: detail.headBranch,
+    baseBranch: detail.baseBranch,
+    headSha: detail.headSha ?? null,
+    mergeability: detail.mergeability,
+    checks: detail.checks,
+    autoMergeEnabled: detail.autoMergeEnabled ?? null,
+    autoMergeMethod: detail.autoMergeMethod ?? null,
+    allowed: {
+      actions: capabilities.actions.filter(
+        (action) => READINESS_ACTIONS.has(action) && viewer.actions.includes(action),
+      ),
+      mergeMethods: capabilities.mergeMethods.filter((method) => detail.mergeCapabilities[method]),
+      verdicts: capabilities.review.verdicts.filter((verdict) => viewer.verdicts.includes(verdict)),
+      comment: capabilities.comment && viewer.comment,
+      replyToThreads: capabilities.review.reply && viewer.comment,
+      resolveThreads: capabilities.review.resolve && viewer.resolve,
+    },
+  };
+}
+
 export class PullRequestService extends Context.Service<
   PullRequestService,
   {
@@ -265,6 +321,13 @@ export class PullRequestService extends Context.Service<
     readonly checks: (
       input: PullRequestRef,
     ) => Effect.Effect<PullRequestChecks | null, PullRequestError>;
+    /**
+     * Whether the change request is ready to approve or merge, read fresh from the host rather
+     * than from a reader's cache, since it is read right before acting on it.
+     */
+    readonly readiness: (
+      input: PullRequestRef,
+    ) => Effect.Effect<PullRequestReadiness, PullRequestError>;
     /**
      * What a pull request watch compares between passes, so it reads detail and activity only
      * when something moved. Null when the host has no fingerprint or gave none for this one.
@@ -1035,6 +1098,49 @@ export const make = Effect.gen(function* () {
         includeUpdateBranch,
       })
       .pipe(Effect.mapError(toPullRequestError(operation)));
+
+  /**
+   * Refuses a write whose caller checked an older head than the host has now. Read from the host,
+   * not a cache. The head can still move between this read and the write; providers that pin a
+   * write to its head (ForgeGraph's merge) close that gap themselves.
+   */
+  const requireHead = (
+    project: SupportedProject,
+    input: PullRequestRef & { readonly expectedHeadSha?: string | undefined },
+    operation: string,
+  ): Effect.Effect<void, PullRequestError> => {
+    const expected = input.expectedHeadSha;
+    if (expected === undefined) return Effect.void;
+    return project.api
+      .getChangeRequest({
+        cwd: project.project.workspaceRoot,
+        repository: project.repository,
+        host: project.host,
+        number: input.number,
+      })
+      .pipe(
+        Effect.mapError(toPullRequestError(operation)),
+        Effect.flatMap((changeRequest) => {
+          if (!changeRequest.headSha) {
+            return Effect.fail(
+              new PullRequestOperationError({
+                operation,
+                detail:
+                  "This host does not report the head commit, so the expected head cannot be checked.",
+              }),
+            );
+          }
+          if (headShaMatches(changeRequest.headSha, expected)) return Effect.void;
+          return Effect.fail(
+            new PullRequestOperationError({
+              operation,
+              reason: "head-moved",
+              detail: `The head is now ${changeRequest.headSha}, not ${expected}. Check the new head before acting.`,
+            }),
+          );
+        }),
+      );
+  };
 
   /**
    * The cursors the page sent back, read once before any host is asked anything. Null where the
@@ -2073,91 +2179,99 @@ export const make = Effect.gen(function* () {
         // What the host can do and what this account may ask of it are two questions, and both
         // have to say yes. The second is asked last, because it costs a request and the checks
         // above do not.
-        return viewerPermissionsOf(
-          project,
-          input,
-          "runAction",
-          input.action === "update-branch",
-        ).pipe(
-          Effect.flatMap((viewer): Effect.Effect<string, PullRequestError> => {
-            const stackRebase = input.stackNumber !== undefined && input.action === "update-branch";
-            if (
-              stackRebase ? viewer.stackRebase !== true : !viewer.actions.includes(input.action)
-            ) {
-              return Effect.fail(
-                new PullRequestOperationError({
-                  operation: "runAction",
-                  detail: ACTION_ACCESS_REFUSALS[input.action],
-                }),
+        return requireHead(project, input, "runAction")
+          .pipe(
+            Effect.andThen(
+              viewerPermissionsOf(project, input, "runAction", input.action === "update-branch"),
+            ),
+          )
+          .pipe(
+            Effect.flatMap((viewer): Effect.Effect<string, PullRequestError> => {
+              const stackRebase =
+                input.stackNumber !== undefined && input.action === "update-branch";
+              if (
+                stackRebase ? viewer.stackRebase !== true : !viewer.actions.includes(input.action)
+              ) {
+                return Effect.fail(
+                  new PullRequestOperationError({
+                    operation: "runAction",
+                    detail: ACTION_ACCESS_REFUSALS[input.action],
+                  }),
+                );
+              }
+              if (
+                !stackRebase &&
+                input.updateMethod !== undefined &&
+                !(viewer.updateMethods ?? []).includes(input.updateMethod)
+              ) {
+                return Effect.fail(
+                  new PullRequestOperationError({
+                    operation: "runAction",
+                    detail: ACTION_ACCESS_REFUSALS["update-branch"],
+                  }),
+                );
+              }
+              const mergeSettings =
+                project.api.mergeMessageRewrite !== undefined &&
+                input.stackNumber === undefined &&
+                (input.action === "merge" || input.action === "enable-auto-merge")
+                  ? serverSettings.getSettings.pipe(
+                      Effect.map(
+                        (settings) =>
+                          resolveProjectSettings(settings, project.project.id).settings
+                            .removeAgentCreditsOnMerge,
+                      ),
+                      Effect.mapError(
+                        () =>
+                          new PullRequestOperationError({
+                            operation: "runAction",
+                            detail: "Could not read merge settings.",
+                          }),
+                      ),
+                    )
+                  : Effect.succeed(false);
+              return mergeSettings.pipe(
+                Effect.flatMap((removeAgentCreditsOnMerge) =>
+                  project.api
+                    .runAction({
+                      cwd: project.project.workspaceRoot,
+                      repository: project.repository,
+                      host: project.host,
+                      number: input.number,
+                      action: input.action,
+                      ...(removeAgentCreditsOnMerge ? { removeAgentCreditsOnMerge: true } : {}),
+                      ...(input.stackNumber === undefined
+                        ? {}
+                        : { stackNumber: input.stackNumber }),
+                      ...(input.expectedStackHeads === undefined
+                        ? {}
+                        : { expectedStackHeads: input.expectedStackHeads }),
+                      ...(input.mergeMethod === undefined
+                        ? {}
+                        : { mergeMethod: input.mergeMethod }),
+                      ...(input.updateMethod === undefined
+                        ? {}
+                        : { updateMethod: input.updateMethod }),
+                    })
+                    .pipe(
+                      // Once the authorized provider action starts, a failure may leave partial
+                      // remote updates. Validation and permission failures above changed nothing.
+                      Effect.ensuring(
+                        input.stackNumber === undefined
+                          ? Effect.void
+                          : refreshAfterTurn(project.project.id),
+                      ),
+                      Effect.mapError(toPullRequestError("runAction")),
+                      Effect.as(
+                        project.repositoryKey !== null
+                          ? input.repository.trim()
+                          : project.repository,
+                      ),
+                    ),
+                ),
               );
-            }
-            if (
-              !stackRebase &&
-              input.updateMethod !== undefined &&
-              !(viewer.updateMethods ?? []).includes(input.updateMethod)
-            ) {
-              return Effect.fail(
-                new PullRequestOperationError({
-                  operation: "runAction",
-                  detail: ACTION_ACCESS_REFUSALS["update-branch"],
-                }),
-              );
-            }
-            const mergeSettings =
-              project.api.mergeMessageRewrite !== undefined &&
-              input.stackNumber === undefined &&
-              (input.action === "merge" || input.action === "enable-auto-merge")
-                ? serverSettings.getSettings.pipe(
-                    Effect.map(
-                      (settings) =>
-                        resolveProjectSettings(settings, project.project.id).settings
-                          .removeAgentCreditsOnMerge,
-                    ),
-                    Effect.mapError(
-                      () =>
-                        new PullRequestOperationError({
-                          operation: "runAction",
-                          detail: "Could not read merge settings.",
-                        }),
-                    ),
-                  )
-                : Effect.succeed(false);
-            return mergeSettings.pipe(
-              Effect.flatMap((removeAgentCreditsOnMerge) =>
-                project.api
-                  .runAction({
-                    cwd: project.project.workspaceRoot,
-                    repository: project.repository,
-                    host: project.host,
-                    number: input.number,
-                    action: input.action,
-                    ...(removeAgentCreditsOnMerge ? { removeAgentCreditsOnMerge: true } : {}),
-                    ...(input.stackNumber === undefined ? {} : { stackNumber: input.stackNumber }),
-                    ...(input.expectedStackHeads === undefined
-                      ? {}
-                      : { expectedStackHeads: input.expectedStackHeads }),
-                    ...(input.mergeMethod === undefined ? {} : { mergeMethod: input.mergeMethod }),
-                    ...(input.updateMethod === undefined
-                      ? {}
-                      : { updateMethod: input.updateMethod }),
-                  })
-                  .pipe(
-                    // Once the authorized provider action starts, a failure may leave partial
-                    // remote updates. Validation and permission failures above changed nothing.
-                    Effect.ensuring(
-                      input.stackNumber === undefined
-                        ? Effect.void
-                        : refreshAfterTurn(project.project.id),
-                    ),
-                    Effect.mapError(toPullRequestError("runAction")),
-                    Effect.as(
-                      project.repositoryKey !== null ? input.repository.trim() : project.repository,
-                    ),
-                  ),
-              ),
-            );
-          }),
-        );
+            }),
+          );
       }),
     );
 
@@ -2300,33 +2414,35 @@ export const make = Effect.gen(function* () {
         ) {
           return refuse("A review needs a summary or at least one comment.");
         }
-        return viewerPermissionsOf(project, input, "submitReview").pipe(
-          Effect.flatMap((viewer): Effect.Effect<void, PullRequestError> => {
-            if (!viewer.verdicts.includes(input.verdict)) {
-              return refuse(
-                `You need write access on this repository to ${
-                  VERDICT_LABELS[input.verdict]
-                } a change request.`,
-              );
-            }
-            if (input.comments.length > 0 && !viewer.comment) {
-              return refuse(
-                "You need write access on this repository to comment on a line of a change request.",
-              );
-            }
-            return project.api
-              .submitReview({
-                cwd: project.project.workspaceRoot,
-                repository: project.repository,
-                host: project.host,
-                number: input.number,
-                verdict: input.verdict,
-                body: input.body,
-                comments: input.comments,
-              })
-              .pipe(Effect.mapError(toPullRequestError("submitReview")));
-          }),
-        );
+        return requireHead(project, input, "submitReview")
+          .pipe(Effect.andThen(viewerPermissionsOf(project, input, "submitReview")))
+          .pipe(
+            Effect.flatMap((viewer): Effect.Effect<void, PullRequestError> => {
+              if (!viewer.verdicts.includes(input.verdict)) {
+                return refuse(
+                  `You need write access on this repository to ${
+                    VERDICT_LABELS[input.verdict]
+                  } a change request.`,
+                );
+              }
+              if (input.comments.length > 0 && !viewer.comment) {
+                return refuse(
+                  "You need write access on this repository to comment on a line of a change request.",
+                );
+              }
+              return project.api
+                .submitReview({
+                  cwd: project.project.workspaceRoot,
+                  repository: project.repository,
+                  host: project.host,
+                  number: input.number,
+                  verdict: input.verdict,
+                  body: input.body,
+                  comments: input.comments,
+                })
+                .pipe(Effect.mapError(toPullRequestError("submitReview")));
+            }),
+          );
       }),
     );
 
@@ -3560,6 +3676,11 @@ export const make = Effect.gen(function* () {
     ),
     refreshAfterTurn,
     detail: credentialCached(detail),
+    readiness: (input) =>
+      invalidate({ reference: input }).pipe(
+        Effect.andThen(credentialCached(detail)(input)),
+        Effect.map(readinessOf),
+      ),
     checks: credentialCached((input) => Cache.get(checksCache, refCacheKey(input))),
     watchFingerprint: credentialCached((input) =>
       Cache.get(watchFingerprintCache, refCacheKey(input)),

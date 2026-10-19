@@ -8,7 +8,6 @@ import {
   type OrchestrationProjectShell,
   type OrchestrationV2ThreadShell,
   type PullRequestActivity,
-  type PullRequestDetail,
   type PullRequestRef,
   type SourceControlProviderKind,
   type ThreadId,
@@ -35,12 +34,9 @@ import { pullRequestSyncKey } from "../../../pullRequest/pullRequestSyncKey.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
 import * as McpToolAccess from "../../McpToolAccess.ts";
 import {
-  AgentPullRequestAction,
+  type ListReviewThreadsResult,
   type ListThreadPullRequestsResult,
-  PullRequestHeadMovedError,
-  PullRequestHeadUnknownError,
   PullRequestHostOperationFailedError,
-  type ReadPullRequestResult,
   PullRequestLinkFailedError,
   PullRequestUrlInvalidError,
   PullRequestTargetIncompleteError,
@@ -206,51 +202,11 @@ function projectForPullRequest(
   return projects.find(matches);
 }
 
-const isAgentAction = (action: string): action is typeof AgentPullRequestAction.Type =>
-  (AgentPullRequestAction.literals as ReadonlyArray<string>).includes(action);
-
-/**
- * What read_pull_request reports: the detail and its review threads, with what this account may
- * do narrowed the same way the page narrows its controls (host capability and viewer permission).
- */
-export function readPullRequestResult(
-  target: { readonly host: string; readonly repository: string; readonly number: number },
-  detail: PullRequestDetail,
-  activity: Pick<PullRequestActivity, "reviewThreads">,
-): ReadPullRequestResult {
-  const { capabilities, viewerPermissions: viewer } = detail;
+/** The review threads list_review_threads reports, without avatars, reactions or page cursors. */
+export function reviewThreadsOf(
+  activity: Pick<PullRequestActivity, "reviewThreads" | "reviewThreadsTruncated">,
+): Pick<ListReviewThreadsResult, "reviewThreads" | "truncated"> {
   return {
-    host: target.host,
-    repository: target.repository,
-    number: target.number,
-    url: detail.url,
-    provider: detail.provider,
-    title: detail.title,
-    body: detail.body,
-    author: detail.author?.login ?? null,
-    state: detail.state,
-    isDraft: detail.isDraft,
-    headBranch: detail.headBranch,
-    baseBranch: detail.baseBranch,
-    headSha: detail.headSha ?? null,
-    mergeability: detail.mergeability,
-    checks: detail.checks.map((check) => ({
-      name: check.name,
-      status: check.status,
-      required: check.required ?? null,
-      url: check.url,
-    })),
-    autoMergeEnabled: detail.autoMergeEnabled ?? null,
-    allowed: {
-      actions: capabilities.actions.filter(
-        (action) => isAgentAction(action) && viewer.actions.includes(action),
-      ),
-      mergeMethods: capabilities.mergeMethods.filter((method) => detail.mergeCapabilities[method]),
-      verdicts: capabilities.review.verdicts.filter((verdict) => viewer.verdicts.includes(verdict)),
-      comment: capabilities.comment && viewer.comment,
-      replyToThreads: capabilities.review.reply && viewer.comment,
-      resolveThreads: capabilities.review.resolve && viewer.resolve,
-    },
     reviewThreads: activity.reviewThreads.map((thread) => ({
       id: thread.id,
       path: thread.path,
@@ -264,6 +220,7 @@ export function readPullRequestResult(
         createdAt: comment.createdAt,
       })),
     })),
+    truncated: activity.reviewThreadsTruncated ?? false,
   };
 }
 
@@ -460,46 +417,31 @@ const make = Effect.gen(function* () {
   const hostFailure = (error: { readonly message: string }) =>
     new PullRequestHostOperationFailedError({ detail: guideFailureDetail(error), cause: error });
 
-  /** The detail as the host has it now, not as a reader cached it. */
-  const freshDetail = (ref: PullRequestRef) =>
-    pullRequests
-      .invalidate({ reference: ref })
-      .pipe(Effect.andThen(pullRequests.detail(ref)), Effect.mapError(hostFailure));
-
-  /**
-   * Refuses to act when the head moved past the commit the agent checked. The host may still move
-   * between this read and the write; where a provider pins its own writes to the head, it does too.
-   */
-  const checkHead = Effect.fn("PullRequestsToolkit.checkHead")(function* (
-    ref: PullRequestRef,
-    expected: string | undefined,
-  ) {
-    if (expected === undefined) return null;
-    const detail = yield* freshDetail(ref);
-    if (detail.headSha === undefined) return yield* new PullRequestHeadUnknownError();
-    // A short SHA is how agents usually quote a commit; seven characters is git's own minimum.
-    const head = detail.headSha.toLowerCase();
-    const wanted = expected.toLowerCase();
-    if (head !== wanted && !(wanted.length >= 7 && head.startsWith(wanted))) {
-      return yield* new PullRequestHeadMovedError({ expected, actual: detail.headSha });
-    }
-    return detail.headSha;
-  });
-
-  /** A host write behind an optional head check, reporting the head it checked. */
+  /** A host write through one service method, reporting the pull request it wrote to. */
   const hostWrite = <P extends Omit<PullRequestTargetInput, "threadId">>(
     write: (
       ref: PullRequestRef,
       params: P,
     ) => Effect.Effect<void, PullRequestService.PullRequestError>,
-    expectedHeadSha: (params: P) => string | undefined = () => undefined,
   ) =>
     McpToolAccess.writesWithCapability((params: P) =>
       Effect.gen(function* () {
         const { ref, identity } = yield* locateHost(params);
-        const headSha = yield* checkHead(ref, expectedHeadSha(params));
         yield* write(ref, params).pipe(Effect.mapError(hostFailure));
-        return { ...identity, headSha };
+        return identity;
+      }),
+    );
+
+  /** A host read through one service method, presented with the pull request it read. */
+  const hostRead = <P extends Omit<PullRequestTargetInput, "threadId">, A, B>(
+    read: (ref: PullRequestRef) => Effect.Effect<A, PullRequestService.PullRequestError>,
+    present: (identity: ResolvedTarget, value: A) => B,
+  ) =>
+    McpToolAccess.reads((params: P) =>
+      Effect.gen(function* () {
+        const { ref, identity } = yield* locateHost(params);
+        const value = yield* read(ref).pipe(Effect.mapError(hostFailure));
+        return present(identity, value);
       }),
     );
 
@@ -669,28 +611,33 @@ const make = Effect.gen(function* () {
         };
       }),
     ),
-    read_pull_request: McpToolAccess.reads((input) =>
-      Effect.gen(function* () {
-        const { target, ref } = yield* locateHost(input);
-        const [detail, activity] = yield* Effect.all(
-          [freshDetail(ref), pullRequests.activity(ref).pipe(Effect.mapError(hostFailure))],
-          { concurrency: 2 },
-        );
-        return readPullRequestResult(target, detail, activity);
+    read_pull_request: hostRead(
+      (ref) => pullRequests.readiness(ref),
+      (identity, readiness) => ({
+        ...identity,
+        readiness,
+      }),
+    ),
+    list_review_threads: hostRead(
+      (ref) => pullRequests.activity(ref),
+      (identity, activity) => ({
+        ...identity,
+        ...reviewThreadsOf(activity),
       }),
     ),
     comment_on_pull_request: hostWrite((ref, params) =>
       pullRequests.comment({ ...ref, body: params.body }),
     ),
-    review_pull_request: hostWrite(
-      (ref, params) =>
-        pullRequests.submitReview({
-          ...ref,
-          verdict: params.verdict,
-          body: params.body ?? "",
-          comments: [],
-        }),
-      (params) => params.expectedHeadSha,
+    review_pull_request: hostWrite((ref, params) =>
+      pullRequests.submitReview({
+        ...ref,
+        verdict: params.verdict,
+        body: params.body ?? "",
+        comments: [],
+        ...(params.expectedHeadSha === undefined
+          ? {}
+          : { expectedHeadSha: params.expectedHeadSha }),
+      }),
     ),
     reply_to_review_thread: hostWrite((ref, params) =>
       pullRequests.replyToThread({ ...ref, threadId: params.reviewThreadId, body: params.body }),
@@ -702,14 +649,15 @@ const make = Effect.gen(function* () {
         resolved: params.resolved ?? true,
       }),
     ),
-    run_pull_request_action: hostWrite(
-      (ref, params) =>
-        pullRequests.runAction({
-          ...ref,
-          action: params.action,
-          ...(params.mergeMethod === undefined ? {} : { mergeMethod: params.mergeMethod }),
-        }),
-      (params) => params.expectedHeadSha,
+    run_pull_request_action: hostWrite((ref, params) =>
+      pullRequests.runAction({
+        ...ref,
+        action: params.action,
+        ...(params.mergeMethod === undefined ? {} : { mergeMethod: params.mergeMethod }),
+        ...(params.expectedHeadSha === undefined
+          ? {}
+          : { expectedHeadSha: params.expectedHeadSha }),
+      }),
     ),
   } satisfies McpToolAccess.Handlers<typeof PullRequestsToolkit.tools>;
 });

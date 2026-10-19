@@ -287,8 +287,10 @@ const makeHarness = Effect.fn("makePullRequestsToolkitHarness")(function* (
       dispatch,
     }),
     Layer.mock(PullRequestService.PullRequestService)({
-      invalidate: (input) => record("invalidate")(input),
-      detail: (input) => record("detail")(input).pipe(Effect.as(options.detail ?? makeDetail())),
+      readiness: (input) =>
+        record("readiness")(input).pipe(
+          Effect.as(PullRequestService.readinessOf(options.detail ?? makeDetail())),
+        ),
       activity: (input) =>
         record("activity")(input).pipe(Effect.as(options.activity ?? NO_ACTIVITY)),
       comment: write("comment"),
@@ -851,14 +853,35 @@ describe("pull request host tools", () => {
     repository: "t3tools/t3code",
     number: 35,
   };
+  const IDENTITY = {
+    host: "github.com",
+    repository: "t3tools/t3code",
+    number: 35,
+    url: "https://github.com/t3tools/t3code/pull/35",
+  };
   const writes = (calls: ReadonlyArray<PullRequestCall>) =>
-    calls.filter((call) => !["invalidate", "detail", "activity"].includes(call.method));
+    calls.filter((call) => !["readiness", "activity"].includes(call.method));
 
-  it.effect("reads a fresh detail, its threads, and only what host and viewer both allow", () =>
+  it.effect("reads readiness through the project whose checkout is the repository", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness();
+      const result = yield* harness.call("read_pull_request", TARGET);
+      expect(result).toMatchObject({
+        ...IDENTITY,
+        readiness: { headSha: "5421326abc", allowed: { actions: ["merge", "enable-auto-merge"] } },
+      });
+      expect(yield* Ref.get(harness.pullRequestCalls)).toEqual([
+        { method: "readiness", input: REF },
+      ]);
+    }),
+  );
+
+  it.effect("lists review threads without avatars or page cursors", () =>
     Effect.gen(function* () {
       const harness = yield* makeHarness({
         activity: {
           ...NO_ACTIVITY,
+          reviewThreadsTruncated: true,
           reviewThreads: [
             {
               id: "comment-7",
@@ -867,10 +890,11 @@ describe("pull request host tools", () => {
               side: "right",
               isResolved: false,
               isOutdated: false,
+              nextCommentsCursor: "page-2",
               comments: [
                 {
                   id: "comment-7",
-                  author: { login: "reviewer", name: null, avatarUrl: null },
+                  author: { login: "reviewer", name: null, avatarUrl: "https://a/b.png" },
                   body: "Why?",
                   createdAt: "2026-10-18T01:00:00.000Z",
                   url: null,
@@ -880,125 +904,79 @@ describe("pull request host tools", () => {
           ],
         },
       });
-      const result = yield* harness.call("read_pull_request", TARGET);
-      expect(result).toMatchObject({
-        number: 35,
-        provider: "forgegraph",
-        headSha: "5421326abc",
-        autoMergeEnabled: null,
-        checks: [
-          { name: "preflight", status: "success", required: true },
-          { name: "lint", status: "pending", required: null },
-        ],
-        allowed: {
-          // revert is the user's to run, and close is not this viewer's.
-          actions: ["merge", "enable-auto-merge"],
-          mergeMethods: ["merge", "squash"],
-          verdicts: ["approve", "comment"],
-          comment: true,
-          replyToThreads: true,
-          resolveThreads: false,
-        },
+      expect(yield* harness.call("list_review_threads", TARGET)).toEqual({
+        ...IDENTITY,
+        truncated: true,
         reviewThreads: [
           {
             id: "comment-7",
             path: "src/a.ts",
             line: 4,
-            comments: [{ id: "comment-7", author: "reviewer", body: "Why?" }],
+            isResolved: false,
+            isOutdated: false,
+            comments: [
+              {
+                id: "comment-7",
+                author: "reviewer",
+                body: "Why?",
+                createdAt: "2026-10-18T01:00:00.000Z",
+              },
+            ],
           },
         ],
       });
-      const calls = yield* Ref.get(harness.pullRequestCalls);
-      expect(calls.map((call) => call.method)).toEqual(
-        expect.arrayContaining(["invalidate", "detail", "activity"]),
-      );
-      expect(calls.findIndex((call) => call.method === "invalidate")).toBeLessThan(
-        calls.findIndex((call) => call.method === "detail"),
-      );
-      expect(calls.find((call) => call.method === "detail")?.input).toEqual(REF);
     }),
   );
 
-  it.effect("approves only while the head is still the commit the agent checked", () =>
+  it.effect("hands the expected head to the service with the verdict and the action", () =>
     Effect.gen(function* () {
       const harness = yield* makeHarness();
-      const approved = yield* harness.call("review_pull_request", {
-        ...TARGET,
-        verdict: "approve",
-        expectedHeadSha: "5421326ABC",
-      });
-      expect(approved).toMatchObject({ number: 35, headSha: "5421326abc" });
       yield* harness.call("review_pull_request", {
         ...TARGET,
-        verdict: "comment",
-        body: "Checked at the short SHA.",
+        verdict: "approve",
         expectedHeadSha: "5421326",
       });
-      const tooShort = yield* harness
-        .call("review_pull_request", { ...TARGET, verdict: "approve", expectedHeadSha: "542" })
-        .pipe(Effect.flip);
-      expect(tooShort._tag).toBe("PullRequestHeadMovedError");
-
-      const moved = yield* harness
-        .call("review_pull_request", { ...TARGET, verdict: "approve", expectedHeadSha: "0000000" })
-        .pipe(Effect.flip);
-      expect(moved).toMatchObject({
-        _tag: "PullRequestHeadMovedError",
-        expected: "0000000",
-        actual: "5421326abc",
-      });
-      expect(writes(yield* Ref.get(harness.pullRequestCalls))).toEqual([
-        {
-          method: "submitReview",
-          input: { ...REF, verdict: "approve", body: "", comments: [] },
-        },
-        {
-          method: "submitReview",
-          input: { ...REF, verdict: "comment", body: "Checked at the short SHA.", comments: [] },
-        },
-      ]);
-    }),
-  );
-
-  it.effect("refuses a head check on a host that does not report the head", () =>
-    Effect.gen(function* () {
-      const { headSha: _headSha, ...withoutHead } = makeDetail();
-      const harness = yield* makeHarness({ detail: withoutHead });
-      const error = yield* harness
-        .call("run_pull_request_action", { ...TARGET, action: "merge", expectedHeadSha: "abc" })
-        .pipe(Effect.flip);
-      expect(error._tag).toBe("PullRequestHeadUnknownError");
-      expect(writes(yield* Ref.get(harness.pullRequestCalls))).toEqual([]);
-    }),
-  );
-
-  it.effect("arms auto-merge with the chosen strategy and reports the host's refusal", () =>
-    Effect.gen(function* () {
-      const harness = yield* makeHarness();
       yield* harness.call("run_pull_request_action", {
         ...TARGET,
         action: "enable-auto-merge",
         mergeMethod: "squash",
+        expectedHeadSha: "5421326",
       });
+      yield* harness.call("run_pull_request_action", { ...TARGET, action: "disable-auto-merge" });
       expect(writes(yield* Ref.get(harness.pullRequestCalls))).toEqual([
         {
-          method: "runAction",
-          input: { ...REF, action: "enable-auto-merge", mergeMethod: "squash" },
+          method: "submitReview",
+          input: { ...REF, verdict: "approve", body: "", comments: [], expectedHeadSha: "5421326" },
         },
+        {
+          method: "runAction",
+          input: {
+            ...REF,
+            action: "enable-auto-merge",
+            mergeMethod: "squash",
+            expectedHeadSha: "5421326",
+          },
+        },
+        { method: "runAction", input: { ...REF, action: "disable-auto-merge" } },
       ]);
+    }),
+  );
 
-      const refused = yield* makeHarness({
+  it.effect("reports the service's refusal in its own words", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness({
         writeFailure: new PullRequestOperationError({
           operation: "runAction",
-          detail: "This host cannot close a change request.",
+          reason: "head-moved",
+          detail: "The head is now 9999999, not 5421326. Check the new head before acting.",
         }),
       });
-      const error = yield* refused
-        .call("run_pull_request_action", { ...TARGET, action: "close" })
+      const error = yield* harness
+        .call("run_pull_request_action", { ...TARGET, action: "merge", expectedHeadSha: "5421326" })
         .pipe(Effect.flip);
       expect(error).toMatchObject({
         _tag: "PullRequestHostOperationFailedError",
-        detail: "This host cannot close a change request.",
+        detail: "The head is now 9999999, not 5421326. Check the new head before acting.",
       });
     }),
   );
