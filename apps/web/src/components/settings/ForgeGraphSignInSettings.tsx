@@ -4,11 +4,12 @@ import type {
   ForgeGraphSignInState,
   SourceControlProviderAuth,
 } from "@t3tools/contracts";
-import { readForgeGraphSettings } from "@t3tools/client-runtime/source-control-clients";
 import {
-  isAtomCommandInterrupted,
-  squashAtomCommandFailure,
-} from "@t3tools/client-runtime/state/runtime";
+  FORGEGRAPH_SIGN_IN_STATUS_INTERVAL_MS,
+  forgeGraphSignInFailure,
+  forgeGraphSignInView,
+} from "@t3tools/client-runtime/forgegraph-sign-in";
+import { readForgeGraphSettings } from "@t3tools/client-runtime/source-control-clients";
 import * as Option from "effect/Option";
 import { ExternalLinkIcon } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
@@ -17,9 +18,6 @@ import { useEnvironmentSettings } from "../../hooks/useSettings";
 import { sourceControlEnvironment } from "../../state/sourceControl";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { Button, InlineButton } from "../ui/button";
-
-/** How often a waiting sign-in asks the server whether the code was approved. */
-const STATUS_INTERVAL_MS = 3_000;
 
 /**
  * Signs the environment in to ForgeGraph. The server runs the device flow and keeps the token,
@@ -66,12 +64,7 @@ export function ForgeGraphSignInSettings({
       setError(null);
       const result = await command({ environmentId, input: {} });
       if (result._tag === "Success") setState(result.value);
-      else if (!isAtomCommandInterrupted(result)) {
-        const failure = squashAtomCommandFailure(result);
-        setError(
-          failure instanceof Error ? failure.message : "ForgeGraph did not answer. Try again.",
-        );
-      }
+      else setError(forgeGraphSignInFailure(result));
       return result;
     } finally {
       setBusy(false);
@@ -95,33 +88,37 @@ export function ForgeGraphSignInSettings({
         setState(result.value);
         if (result.value.phase === "succeeded") onChangedRef.current();
       });
-    }, STATUS_INTERVAL_MS);
+    }, FORGEGRAPH_SIGN_IN_STATUS_INTERVAL_MS);
     return () => clearInterval(timer);
   }, [waiting, environmentId, status]);
 
-  const signedIn = auth.status === "authenticated";
   const savedInT3 = token.length > 0;
+  const view = forgeGraphSignInView({
+    signedIn: auth.status === "authenticated",
+    host: Option.getOrNull(auth.host),
+    savedInT3,
+    state,
+  });
 
   return (
     <div className="grid gap-3">
       <p className="max-w-2xl text-xs leading-relaxed text-muted-foreground">
         {/* The account itself is shown, redactable, in the row above. */}
-        {signedIn
-          ? `Signed in${Option.isSome(auth.host) ? ` on ${auth.host.value}` : ""}.`
-          : "Not signed in. Sign in here, or set FG_API_TOKEN or run `forge login` on the server."}
-        {signedIn && !savedInT3 ? " The token comes from FG_API_TOKEN or the forge CLI." : null}
+        {view.summary}
       </p>
 
-      {waiting && state.userCode && state.verificationUrl ? (
+      {view.pending ? (
         <div className="grid gap-2 rounded-md border border-border p-3">
           <p className="text-xs text-muted-foreground">
             Approve this code in ForgeGraph. This page updates once you do.
           </p>
-          <code className="font-mono text-base tracking-widest">{state.userCode}</code>
+          <code className="font-mono text-base tracking-widest">{view.pending.userCode}</code>
           <InlineButton
-            render={<a href={state.verificationUrl} target="_blank" rel="noreferrer noopener" />}
+            render={
+              <a href={view.pending.verificationUrl} target="_blank" rel="noreferrer noopener" />
+            }
           >
-            Open {state.verificationUrl}
+            Open {view.pending.verificationUrl}
             <ExternalLinkIcon aria-hidden className="size-3" />
           </InlineButton>
         </div>
@@ -133,18 +130,18 @@ export function ForgeGraphSignInSettings({
         </p>
       ) : null}
 
-      {state?.message && !waiting ? (
-        <p className="max-w-2xl text-xs text-muted-foreground">{state.message}</p>
+      {view.message ? (
+        <p className="max-w-2xl text-xs text-muted-foreground">{view.message}</p>
       ) : null}
 
       <div className="flex justify-end gap-2">
-        {waiting ? (
+        {view.canCancel ? (
           <Button size="xs" variant="outline" disabled={busy} onClick={() => void run(cancel)}>
             Cancel
           </Button>
         ) : (
           <>
-            {savedInT3 ? (
+            {view.canSignOut ? (
               <Button
                 size="xs"
                 variant="outline"
@@ -159,7 +156,7 @@ export function ForgeGraphSignInSettings({
               </Button>
             ) : null}
             <Button size="xs" disabled={busy || !canSignIn} onClick={() => void run(start)}>
-              {savedInT3 ? "Sign in again" : "Sign in with ForgeGraph"}
+              {view.signInLabel}
             </Button>
           </>
         )}

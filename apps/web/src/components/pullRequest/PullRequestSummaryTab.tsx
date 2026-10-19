@@ -59,6 +59,7 @@ import {
   pullRequestReviewOutcome,
   visibleBody,
   type PullRequestFinding,
+  summaryRemarkPlacement,
 } from "./pullRequestDetail.logic";
 import {
   canEditPullRequestChangeRequest,
@@ -67,6 +68,7 @@ import {
 import { PullRequestMarkdown } from "./PullRequestMarkdown";
 import { PullRequestCommentBody } from "./PullRequestCommentBody";
 import { PullRequestMarkdownEditor } from "./PullRequestMarkdownEditor";
+import { PullRequestThreadConversation } from "./PullRequestThreadConversation";
 import { PullRequestReactionBar } from "./PullRequestReactions";
 import { PullRequestConversationGhost } from "./PullRequestGhosts";
 import { sectionCollapseAnchorScrollTop } from "./pullRequestSummaryScroll.logic";
@@ -564,6 +566,26 @@ export function PullRequestSummaryTab({
 
   const renderComment = (comment: PullRequestComment) => {
     const thread = threadByCommentId.get(comment.id);
+    // A host that serves no diff has no Code tab to answer a conversation in, so it is listed
+    // here whole, at its first remark, with reply and resolve; its later remarks fold into it.
+    const placement = summaryRemarkPlacement(comment.id, thread, detail.capabilities.diff);
+    if (placement === "folded") return null;
+    if (placement === "thread" && thread !== undefined) {
+      const threadFinding: PullRequestFinding = { kind: "thread", thread };
+      return (
+        <PullRequestThreadConversation
+          key={`${detail.url}:${thread.id}`}
+          thread={thread}
+          detail={detail}
+          environmentId={environmentId}
+          reference={reference}
+          onRefresh={onRefresh}
+          fixLabel={fixFindingLabel}
+          fixPending={pendingFinding === pullRequestFindingKey(threadFinding)}
+          {...(onFixFinding ? { onFix: () => onFixFinding(threadFinding) } : {})}
+        />
+      );
+    }
     const body = visibleBody(comment.body);
     if (isFinished(comment)) {
       return (

@@ -26,6 +26,7 @@ import {
   SettingsEnvironmentFilterHeader,
 } from "./components/SettingsEnvironmentFilterHeader";
 import { BranchNamingSettings } from "./components/BranchNamingSettings";
+import { ForgeGraphSignInSection } from "./components/ForgeGraphSignInSection";
 import { SettingsChoiceRow } from "./components/SettingsChoiceRow";
 import { SettingsSection } from "./components/SettingsSection";
 import { SettingsSwitchRow } from "./components/SettingsSwitchRow";
@@ -388,6 +389,16 @@ function ServerSettingsDetail(props: { readonly page: SettingsPage }) {
                       onValueChange={(value) => write({ newWorktreesStartFromOrigin: value })}
                     />
                   </SettingsSection>
+                  {/* Sign-in belongs to the environment, so a selected project hides it. */}
+                  {!projectSelected
+                    ? targets.map((target) => (
+                        <ForgeGraphSignInSection
+                          key={target.environment.environmentId}
+                          environment={target.environment}
+                          showEnvironmentLabel={targets.length > 1}
+                        />
+                      ))
+                    : null}
                 </>
               ) : null}
 

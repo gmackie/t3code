@@ -59,6 +59,7 @@ import {
   buildPullRequestTimeline,
   editPullRequestThreadComment,
   writePullRequestDetailSnapshot,
+  summaryRemarkPlacement,
 } from "./pullRequestDetail.logic";
 import type { ReviewCommentContext } from "~/reviewCommentContext";
 
@@ -2018,4 +2019,19 @@ describe("single-PR merge compatibility during stack discovery", () => {
       ).toBe(allowed);
     },
   );
+});
+
+describe("summaryRemarkPlacement", () => {
+  const thread = { comments: [{ id: "root" }, { id: "reply" }] };
+
+  it("keeps every remark in the timeline where the host serves a diff", () => {
+    expect(summaryRemarkPlacement("root", thread, true)).toBe("comment");
+    expect(summaryRemarkPlacement("reply", thread, true)).toBe("comment");
+  });
+
+  it("draws a diffless host's conversation once, at its first remark", () => {
+    expect(summaryRemarkPlacement("root", thread, false)).toBe("thread");
+    expect(summaryRemarkPlacement("reply", thread, false)).toBe("folded");
+    expect(summaryRemarkPlacement("loose", undefined, false)).toBe("comment");
+  });
 });
