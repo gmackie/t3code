@@ -7,6 +7,9 @@ import {
   pullRequestHostOf,
   type OrchestrationProjectShell,
   type OrchestrationV2ThreadShell,
+  type PullRequestActivity,
+  type PullRequestDetail,
+  type PullRequestRef,
   type SourceControlProviderKind,
   type ThreadId,
   type ThreadPullRequestLink,
@@ -27,11 +30,17 @@ import * as Option from "effect/Option";
 import * as Orchestrator from "../../../orchestration-v2/Orchestrator.ts";
 import * as ProjectService from "../../../project/ProjectService.ts";
 import * as PullRequestReviewGuideService from "../../../pullRequest/PullRequestReviewGuideService.ts";
+import * as PullRequestService from "../../../pullRequest/PullRequestService.ts";
 import { pullRequestSyncKey } from "../../../pullRequest/pullRequestSyncKey.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
 import * as McpToolAccess from "../../McpToolAccess.ts";
 import {
+  AgentPullRequestAction,
   type ListThreadPullRequestsResult,
+  PullRequestHeadMovedError,
+  PullRequestHeadUnknownError,
+  PullRequestHostOperationFailedError,
+  type ReadPullRequestResult,
   PullRequestLinkFailedError,
   PullRequestUrlInvalidError,
   PullRequestTargetIncompleteError,
@@ -197,8 +206,70 @@ function projectForPullRequest(
   return projects.find(matches);
 }
 
+const isAgentAction = (action: string): action is typeof AgentPullRequestAction.Type =>
+  (AgentPullRequestAction.literals as ReadonlyArray<string>).includes(action);
+
+/**
+ * What read_pull_request reports: the detail and its review threads, with what this account may
+ * do narrowed the same way the page narrows its controls (host capability and viewer permission).
+ */
+export function readPullRequestResult(
+  target: { readonly host: string; readonly repository: string; readonly number: number },
+  detail: PullRequestDetail,
+  activity: Pick<PullRequestActivity, "reviewThreads">,
+): ReadPullRequestResult {
+  const { capabilities, viewerPermissions: viewer } = detail;
+  return {
+    host: target.host,
+    repository: target.repository,
+    number: target.number,
+    url: detail.url,
+    provider: detail.provider,
+    title: detail.title,
+    body: detail.body,
+    author: detail.author?.login ?? null,
+    state: detail.state,
+    isDraft: detail.isDraft,
+    headBranch: detail.headBranch,
+    baseBranch: detail.baseBranch,
+    headSha: detail.headSha ?? null,
+    mergeability: detail.mergeability,
+    checks: detail.checks.map((check) => ({
+      name: check.name,
+      status: check.status,
+      required: check.required ?? null,
+      url: check.url,
+    })),
+    autoMergeEnabled: detail.autoMergeEnabled ?? null,
+    allowed: {
+      actions: capabilities.actions.filter(
+        (action) => isAgentAction(action) && viewer.actions.includes(action),
+      ),
+      mergeMethods: capabilities.mergeMethods.filter((method) => detail.mergeCapabilities[method]),
+      verdicts: capabilities.review.verdicts.filter((verdict) => viewer.verdicts.includes(verdict)),
+      comment: capabilities.comment && viewer.comment,
+      replyToThreads: capabilities.review.reply && viewer.comment,
+      resolveThreads: capabilities.review.resolve && viewer.resolve,
+    },
+    reviewThreads: activity.reviewThreads.map((thread) => ({
+      id: thread.id,
+      path: thread.path,
+      line: thread.line,
+      isResolved: thread.isResolved,
+      isOutdated: thread.isOutdated,
+      comments: thread.comments.map((comment) => ({
+        id: comment.id,
+        author: comment.author?.login ?? null,
+        body: comment.body,
+        createdAt: comment.createdAt,
+      })),
+    })),
+  };
+}
+
 const make = Effect.gen(function* () {
   const engine = yield* Orchestrator.OrchestratorV2;
+  const pullRequests = yield* PullRequestService.PullRequestService;
   const reviewGuides = yield* PullRequestReviewGuideService.PullRequestReviewGuideService;
 
   const projects = yield* ProjectService.ProjectService;
@@ -358,6 +429,79 @@ const make = Effect.gen(function* () {
   /** A host or service error, said as its own detail rather than its operation's wrapper. */
   const guideFailureDetail = (error: { readonly message: string }) =>
     "detail" in error && typeof error.detail === "string" ? error.detail : error.message;
+
+  /**
+   * One pull request on its host and the reference the service reads and writes it through. The
+   * same resolution as the guide tools, so a repository with no checkout here is refused.
+   */
+  const locateHost = Effect.fn("PullRequestsToolkit.locateHost")(function* (
+    input: Omit<PullRequestTargetInput, "threadId">,
+  ) {
+    const [entry] = yield* locateAll([input]);
+    if (entry !== undefined && entry.target === null) {
+      return yield* new PullRequestHostOperationFailedError({ detail: entry.failure ?? "" });
+    }
+    if (entry === undefined || entry.target === null || entry.project === undefined) {
+      return yield* new PullRequestProjectNotFoundError({
+        repository: entry?.target.repository ?? input.repository ?? "",
+      });
+    }
+    const target = entry.target;
+    const ref: PullRequestRef = guideReference(entry.project, target);
+    const identity = {
+      host: target.host,
+      repository: target.repository,
+      number: target.number,
+      url: target.url,
+    };
+    return { target, ref, identity };
+  });
+
+  const hostFailure = (error: { readonly message: string }) =>
+    new PullRequestHostOperationFailedError({ detail: guideFailureDetail(error), cause: error });
+
+  /** The detail as the host has it now, not as a reader cached it. */
+  const freshDetail = (ref: PullRequestRef) =>
+    pullRequests
+      .invalidate({ reference: ref })
+      .pipe(Effect.andThen(pullRequests.detail(ref)), Effect.mapError(hostFailure));
+
+  /**
+   * Refuses to act when the head moved past the commit the agent checked. The host may still move
+   * between this read and the write; where a provider pins its own writes to the head, it does too.
+   */
+  const checkHead = Effect.fn("PullRequestsToolkit.checkHead")(function* (
+    ref: PullRequestRef,
+    expected: string | undefined,
+  ) {
+    if (expected === undefined) return null;
+    const detail = yield* freshDetail(ref);
+    if (detail.headSha === undefined) return yield* new PullRequestHeadUnknownError();
+    // A short SHA is how agents usually quote a commit; seven characters is git's own minimum.
+    const head = detail.headSha.toLowerCase();
+    const wanted = expected.toLowerCase();
+    if (head !== wanted && !(wanted.length >= 7 && head.startsWith(wanted))) {
+      return yield* new PullRequestHeadMovedError({ expected, actual: detail.headSha });
+    }
+    return detail.headSha;
+  });
+
+  /** A host write behind an optional head check, reporting the head it checked. */
+  const hostWrite = <P extends Omit<PullRequestTargetInput, "threadId">>(
+    write: (
+      ref: PullRequestRef,
+      params: P,
+    ) => Effect.Effect<void, PullRequestService.PullRequestError>,
+    expectedHeadSha: (params: P) => string | undefined = () => undefined,
+  ) =>
+    McpToolAccess.writesWithCapability((params: P) =>
+      Effect.gen(function* () {
+        const { ref, identity } = yield* locateHost(params);
+        const headSha = yield* checkHead(ref, expectedHeadSha(params));
+        yield* write(ref, params).pipe(Effect.mapError(hostFailure));
+        return { ...identity, headSha };
+      }),
+    );
 
   /** A tool that changes `threadId`, or the caller's own thread when it is omitted. */
   const writesThread = <P extends { readonly threadId?: ThreadId | undefined }, A, E, R>(
@@ -524,6 +668,48 @@ const make = Effect.gen(function* () {
             result.guide.headSha !== result.currentHeadSha,
         };
       }),
+    ),
+    read_pull_request: McpToolAccess.reads((input) =>
+      Effect.gen(function* () {
+        const { target, ref } = yield* locateHost(input);
+        const [detail, activity] = yield* Effect.all(
+          [freshDetail(ref), pullRequests.activity(ref).pipe(Effect.mapError(hostFailure))],
+          { concurrency: 2 },
+        );
+        return readPullRequestResult(target, detail, activity);
+      }),
+    ),
+    comment_on_pull_request: hostWrite((ref, params) =>
+      pullRequests.comment({ ...ref, body: params.body }),
+    ),
+    review_pull_request: hostWrite(
+      (ref, params) =>
+        pullRequests.submitReview({
+          ...ref,
+          verdict: params.verdict,
+          body: params.body ?? "",
+          comments: [],
+        }),
+      (params) => params.expectedHeadSha,
+    ),
+    reply_to_review_thread: hostWrite((ref, params) =>
+      pullRequests.replyToThread({ ...ref, threadId: params.reviewThreadId, body: params.body }),
+    ),
+    resolve_review_thread: hostWrite((ref, params) =>
+      pullRequests.setThreadResolution({
+        ...ref,
+        threadId: params.reviewThreadId,
+        resolved: params.resolved ?? true,
+      }),
+    ),
+    run_pull_request_action: hostWrite(
+      (ref, params) =>
+        pullRequests.runAction({
+          ...ref,
+          action: params.action,
+          ...(params.mergeMethod === undefined ? {} : { mergeMethod: params.mergeMethod }),
+        }),
+      (params) => params.expectedHeadSha,
     ),
   } satisfies McpToolAccess.Handlers<typeof PullRequestsToolkit.tools>;
 });

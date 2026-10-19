@@ -28,6 +28,7 @@ import {
 
 import * as ProjectService from "../project/ProjectService.ts";
 import * as PullRequestReviewGuideService from "../pullRequest/PullRequestReviewGuideService.ts";
+import * as PullRequestService from "../pullRequest/PullRequestService.ts";
 import * as ServerConfig from "../config.ts";
 import * as McpHttpServer from "./McpHttpServer.ts";
 import * as McpToolAccess from "./McpToolAccess.ts";
@@ -79,6 +80,7 @@ const layerPullRequestsTest = McpHttpServer.layerPullRequestsToolkit.pipe(
     Layer.mergeAll(
       Layer.mock(ProjectService.ProjectService)({}),
       Layer.mock(PullRequestReviewGuideService.PullRequestReviewGuideService)({}),
+      Layer.mock(PullRequestService.PullRequestService)({}),
       Layer.mock(Orchestrator.OrchestratorV2)({}),
       Layer.mock(ProjectionStore.ProjectionStoreV2)({}),
       NodeServices.layer,
@@ -484,8 +486,15 @@ it.effect(
           "link_pull_request",
           "unlink_pull_request",
           "list_thread_pull_requests",
+          "read_pull_request",
+          "review_pull_request",
+          "run_pull_request_action",
         ]),
       );
+      const actionTool = server.tools.find(({ tool }) => tool.name === "run_pull_request_action");
+      expect(actionTool?.tool.annotations?.destructiveHint).toBe(true);
+      const readTool = server.tools.find(({ tool }) => tool.name === "read_pull_request");
+      expect(readTool?.tool.annotations?.readOnlyHint).toBe(true);
       const linkTool = server.tools.find(({ tool }) => tool.name === "link_pull_request");
       expect(linkTool?.tool.annotations?.idempotentHint).toBe(true);
       expect(linkTool?.tool.annotations?.openWorldHint).toBe(false);

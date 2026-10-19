@@ -2,10 +2,13 @@ import {
   EnvironmentId,
   ProjectId,
   ProviderInstanceId,
+  SourceControlProviderKind,
   ThreadId,
   type OrchestrationV2ServerCommand as OrchestrationCommand,
   PullRequestOperationError,
   type OrchestrationProjectShell,
+  type PullRequestActivity,
+  type PullRequestDetail,
   type PullRequestRef,
   type PullRequestReviewGuideResult,
   type ThreadPullRequestLink,
@@ -26,6 +29,7 @@ import {
 } from "../../../orchestration-v2/testkit/pullRequestFixtures.ts";
 import * as ProjectService from "../../../project/ProjectService.ts";
 import * as PullRequestReviewGuideService from "../../../pullRequest/PullRequestReviewGuideService.ts";
+import * as PullRequestService from "../../../pullRequest/PullRequestService.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
 import * as McpToolAccess from "../../McpToolAccess.ts";
 import * as McpToolAccessTestkit from "../../McpToolAccess.testkit.ts";
@@ -43,6 +47,7 @@ const testCrypto = Crypto.make({
 
 const invocation = (
   capabilities: ReadonlyArray<McpInvocationContext.McpCapability>,
+  client: McpInvocationContext.McpInvocationScope["client"] = undefined,
 ): McpInvocationContext.McpInvocationScope => ({
   environmentId: EnvironmentId.make("environment-1"),
   requestNamespace: "provider-session-1",
@@ -51,7 +56,7 @@ const invocation = (
     providerSessionId: "provider-session-1",
     providerInstanceId: ProviderInstanceId.make("codex"),
   },
-  client: undefined,
+  client,
   capabilities: new Set(capabilities),
   issuedAt: 1,
 });
@@ -148,6 +153,81 @@ interface HarnessOptions {
     PullRequestReviewGuideResult & { started: boolean },
     PullRequestOperationError
   >;
+  /** What the pull request service reads back for every pull request. */
+  readonly detail?: PullRequestDetail;
+  readonly activity?: PullRequestActivity;
+  /** A refusal the service gives every write. */
+  readonly writeFailure?: PullRequestOperationError;
+}
+
+function makeDetail(overrides: Partial<PullRequestDetail> = {}): PullRequestDetail {
+  return {
+    provider: SourceControlProviderKind.make("forgegraph"),
+    capabilities: {
+      diff: false,
+      comment: true,
+      actions: ["merge", "enable-auto-merge", "disable-auto-merge", "close", "revert"],
+      mergeMethods: ["merge", "squash", "rebase"],
+      search: false,
+      review: {
+        inlineComment: false,
+        reply: true,
+        resolve: true,
+        verdicts: ["approve", "comment"],
+      },
+      reviewers: { request: false, listCandidates: false },
+    },
+    viewerPermissions: {
+      actions: ["merge", "enable-auto-merge", "revert"],
+      comment: true,
+      resolve: false,
+      verdicts: ["approve", "comment", "request-changes"],
+      requestReviewers: false,
+    },
+    projectId: PROJECT_ID,
+    projectTitle: "Project",
+    workspaceRoot: "/workspace/project",
+    repository: "t3tools/t3code",
+    number: 35,
+    title: "ForgeGraph provider",
+    body: "Adds ForgeGraph.",
+    url: "https://github.com/t3tools/t3code/pull/35",
+    author: { login: "agent-user", name: null, avatarUrl: null },
+    state: "open",
+    isDraft: false,
+    mergeability: "mergeable",
+    additions: 1,
+    deletions: 0,
+    changedFiles: 1,
+    headBranch: "feature",
+    headSha: "5421326abc",
+    baseBranch: "main",
+    createdAt: "2026-10-18T00:00:00.000Z",
+    updatedAt: "2026-10-18T00:00:00.000Z",
+    mergedAt: null,
+    closedAt: null,
+    reviewers: [],
+    labels: [],
+    checks: [
+      { name: "preflight", status: "success", description: null, url: null, required: true },
+      { name: "lint", status: "pending", description: null, url: null },
+    ],
+    mergeCapabilities: { merge: true, squash: true, rebase: false },
+    ...overrides,
+  };
+}
+
+const NO_ACTIVITY: PullRequestActivity = {
+  comments: [],
+  commentCount: 0,
+  commentsTruncated: false,
+  reviewThreads: [],
+  commits: [],
+};
+
+interface PullRequestCall {
+  readonly method: string;
+  readonly input: unknown;
 }
 
 const NO_GUIDE: PullRequestReviewGuideResult = { guide: null, run: null, currentHeadSha: "head-1" };
@@ -157,6 +237,13 @@ const makeHarness = Effect.fn("makePullRequestsToolkitHarness")(function* (
 ) {
   const commands = yield* Ref.make<ReadonlyArray<OrchestrationCommand>>([]);
   const guideRequests = yield* Ref.make<ReadonlyArray<PullRequestRef>>([]);
+  const pullRequestCalls = yield* Ref.make<ReadonlyArray<PullRequestCall>>([]);
+  const record = (method: string) => (input: unknown) =>
+    Ref.update(pullRequestCalls, (recorded) => [...recorded, { method, input }]);
+  const write = (method: string) => (input: unknown) =>
+    record(method)(input).pipe(
+      Effect.andThen(options.writeFailure ? Effect.fail(options.writeFailure) : Effect.void),
+    );
   const thread = options.thread === undefined ? makeThread([]) : options.thread;
   const project = options.project === undefined ? makeProject() : options.project;
   const dispatch: Orchestrator.OrchestratorV2Shape["dispatch"] = (command) =>
@@ -199,6 +286,17 @@ const makeHarness = Effect.fn("makePullRequestsToolkitHarness")(function* (
         Effect.succeed(id === THREAD_ID && thread ? v2PullRequestThread(thread) : null),
       dispatch,
     }),
+    Layer.mock(PullRequestService.PullRequestService)({
+      invalidate: (input) => record("invalidate")(input),
+      detail: (input) => record("detail")(input).pipe(Effect.as(options.detail ?? makeDetail())),
+      activity: (input) =>
+        record("activity")(input).pipe(Effect.as(options.activity ?? NO_ACTIVITY)),
+      comment: write("comment"),
+      submitReview: write("submitReview"),
+      replyToThread: write("replyToThread"),
+      setThreadResolution: write("setThreadResolution"),
+      runAction: write("runAction"),
+    }),
     Layer.succeed(Crypto.Crypto, testCrypto),
     McpToolAccessTestkit.liveThreadsLayer,
   );
@@ -213,6 +311,7 @@ const makeHarness = Effect.fn("makePullRequestsToolkitHarness")(function* (
     name: Name,
     params: Parameters<typeof toolkit.handle<Name>>[1],
     capabilities: ReadonlyArray<McpInvocationContext.McpCapability> = ["pull-requests"],
+    client: McpInvocationContext.McpInvocationScope["client"] = undefined,
   ) =>
     toolkit.handle(name, params).pipe(
       Stream.unwrap,
@@ -221,10 +320,13 @@ const makeHarness = Effect.fn("makePullRequestsToolkitHarness")(function* (
       Effect.map(
         (chunk) => chunk.at(-1)!.result as Tool.Success<(typeof PullRequestsToolkit.tools)[Name]>,
       ),
-      Effect.provideService(McpInvocationContext.McpInvocationContext, invocation(capabilities)),
+      Effect.provideService(
+        McpInvocationContext.McpInvocationContext,
+        invocation(capabilities, client),
+      ),
       Effect.provide(layerDependencies),
     );
-  return { commands, guideRequests, call };
+  return { commands, guideRequests, pullRequestCalls, call };
 });
 
 describe("pull request toolkit handlers", () => {
@@ -739,4 +841,228 @@ it("keeps failure diagnostics as the cause rather than exposing them in the tool
   const failure = new PullRequestLinkFailedError({ cause });
   expect(failure.message).toBe("Could not link the pull request.");
   expect(failure.cause).toBe(cause);
+});
+
+describe("pull request host tools", () => {
+  const TARGET = { repository: "t3tools/t3code", number: 35 } as const;
+  const REF = {
+    projectId: PROJECT_ID,
+    host: "github.com",
+    repository: "t3tools/t3code",
+    number: 35,
+  };
+  const writes = (calls: ReadonlyArray<PullRequestCall>) =>
+    calls.filter((call) => !["invalidate", "detail", "activity"].includes(call.method));
+
+  it.effect("reads a fresh detail, its threads, and only what host and viewer both allow", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness({
+        activity: {
+          ...NO_ACTIVITY,
+          reviewThreads: [
+            {
+              id: "comment-7",
+              path: "src/a.ts",
+              line: 4,
+              side: "right",
+              isResolved: false,
+              isOutdated: false,
+              comments: [
+                {
+                  id: "comment-7",
+                  author: { login: "reviewer", name: null, avatarUrl: null },
+                  body: "Why?",
+                  createdAt: "2026-10-18T01:00:00.000Z",
+                  url: null,
+                },
+              ],
+            },
+          ],
+        },
+      });
+      const result = yield* harness.call("read_pull_request", TARGET);
+      expect(result).toMatchObject({
+        number: 35,
+        provider: "forgegraph",
+        headSha: "5421326abc",
+        autoMergeEnabled: null,
+        checks: [
+          { name: "preflight", status: "success", required: true },
+          { name: "lint", status: "pending", required: null },
+        ],
+        allowed: {
+          // revert is the user's to run, and close is not this viewer's.
+          actions: ["merge", "enable-auto-merge"],
+          mergeMethods: ["merge", "squash"],
+          verdicts: ["approve", "comment"],
+          comment: true,
+          replyToThreads: true,
+          resolveThreads: false,
+        },
+        reviewThreads: [
+          {
+            id: "comment-7",
+            path: "src/a.ts",
+            line: 4,
+            comments: [{ id: "comment-7", author: "reviewer", body: "Why?" }],
+          },
+        ],
+      });
+      const calls = yield* Ref.get(harness.pullRequestCalls);
+      expect(calls.map((call) => call.method)).toEqual(
+        expect.arrayContaining(["invalidate", "detail", "activity"]),
+      );
+      expect(calls.findIndex((call) => call.method === "invalidate")).toBeLessThan(
+        calls.findIndex((call) => call.method === "detail"),
+      );
+      expect(calls.find((call) => call.method === "detail")?.input).toEqual(REF);
+    }),
+  );
+
+  it.effect("approves only while the head is still the commit the agent checked", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness();
+      const approved = yield* harness.call("review_pull_request", {
+        ...TARGET,
+        verdict: "approve",
+        expectedHeadSha: "5421326ABC",
+      });
+      expect(approved).toMatchObject({ number: 35, headSha: "5421326abc" });
+      yield* harness.call("review_pull_request", {
+        ...TARGET,
+        verdict: "comment",
+        body: "Checked at the short SHA.",
+        expectedHeadSha: "5421326",
+      });
+      const tooShort = yield* harness
+        .call("review_pull_request", { ...TARGET, verdict: "approve", expectedHeadSha: "542" })
+        .pipe(Effect.flip);
+      expect(tooShort._tag).toBe("PullRequestHeadMovedError");
+
+      const moved = yield* harness
+        .call("review_pull_request", { ...TARGET, verdict: "approve", expectedHeadSha: "0000000" })
+        .pipe(Effect.flip);
+      expect(moved).toMatchObject({
+        _tag: "PullRequestHeadMovedError",
+        expected: "0000000",
+        actual: "5421326abc",
+      });
+      expect(writes(yield* Ref.get(harness.pullRequestCalls))).toEqual([
+        {
+          method: "submitReview",
+          input: { ...REF, verdict: "approve", body: "", comments: [] },
+        },
+        {
+          method: "submitReview",
+          input: { ...REF, verdict: "comment", body: "Checked at the short SHA.", comments: [] },
+        },
+      ]);
+    }),
+  );
+
+  it.effect("refuses a head check on a host that does not report the head", () =>
+    Effect.gen(function* () {
+      const { headSha: _headSha, ...withoutHead } = makeDetail();
+      const harness = yield* makeHarness({ detail: withoutHead });
+      const error = yield* harness
+        .call("run_pull_request_action", { ...TARGET, action: "merge", expectedHeadSha: "abc" })
+        .pipe(Effect.flip);
+      expect(error._tag).toBe("PullRequestHeadUnknownError");
+      expect(writes(yield* Ref.get(harness.pullRequestCalls))).toEqual([]);
+    }),
+  );
+
+  it.effect("arms auto-merge with the chosen strategy and reports the host's refusal", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness();
+      yield* harness.call("run_pull_request_action", {
+        ...TARGET,
+        action: "enable-auto-merge",
+        mergeMethod: "squash",
+      });
+      expect(writes(yield* Ref.get(harness.pullRequestCalls))).toEqual([
+        {
+          method: "runAction",
+          input: { ...REF, action: "enable-auto-merge", mergeMethod: "squash" },
+        },
+      ]);
+
+      const refused = yield* makeHarness({
+        writeFailure: new PullRequestOperationError({
+          operation: "runAction",
+          detail: "This host cannot close a change request.",
+        }),
+      });
+      const error = yield* refused
+        .call("run_pull_request_action", { ...TARGET, action: "close" })
+        .pipe(Effect.flip);
+      expect(error).toMatchObject({
+        _tag: "PullRequestHostOperationFailedError",
+        detail: "This host cannot close a change request.",
+      });
+    }),
+  );
+
+  it.effect("comments, replies in a review thread, and resolves it", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness();
+      yield* harness.call("comment_on_pull_request", { ...TARGET, body: "CI is green." });
+      yield* harness.call("reply_to_review_thread", {
+        ...TARGET,
+        reviewThreadId: "comment-7",
+        body: "Fixed.",
+      });
+      yield* harness.call("resolve_review_thread", { ...TARGET, reviewThreadId: "comment-7" });
+      yield* harness.call("resolve_review_thread", {
+        ...TARGET,
+        reviewThreadId: "comment-7",
+        resolved: false,
+      });
+      expect(writes(yield* Ref.get(harness.pullRequestCalls))).toEqual([
+        { method: "comment", input: { ...REF, body: "CI is green." } },
+        { method: "replyToThread", input: { ...REF, threadId: "comment-7", body: "Fixed." } },
+        { method: "setThreadResolution", input: { ...REF, threadId: "comment-7", resolved: true } },
+        {
+          method: "setThreadResolution",
+          input: { ...REF, threadId: "comment-7", resolved: false },
+        },
+      ]);
+    }),
+  );
+
+  it.effect("refuses writes from a read-only client but still lets it read", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness();
+      const readOnly = {
+        sessionId: "session-1",
+        label: "Claude Code",
+        access: "read-only" as const,
+      };
+      const error = yield* harness
+        .call(
+          "run_pull_request_action",
+          { ...TARGET, action: "merge" },
+          ["pull-requests"],
+          readOnly,
+        )
+        .pipe(Effect.flip);
+      expect(error).toMatchObject({ _tag: "OrchestratorMcpFailure", code: "capability_denied" });
+      yield* harness.call("read_pull_request", TARGET, ["pull-requests"], readOnly);
+      expect(writes(yield* Ref.get(harness.pullRequestCalls))).toEqual([]);
+    }),
+  );
+
+  it.effect("refuses a repository with no checkout in this environment", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness();
+      const error = yield* harness
+        .call("comment_on_pull_request", { repository: "other/repo", number: 1, body: "Hi" })
+        .pipe(Effect.flip);
+      expect(error).toMatchObject({
+        _tag: "PullRequestProjectNotFoundError",
+        repository: "other/repo",
+      });
+      expect(yield* Ref.get(harness.pullRequestCalls)).toEqual([]);
+    }),
+  );
 });
