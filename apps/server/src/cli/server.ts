@@ -7,6 +7,7 @@ import { Command, GlobalFlag } from "effect/cli";
 import * as CliError from "effect/cli/CliError";
 
 import * as ServerConfig from "../config.ts";
+import { configureNetworkFamilyAutoselection } from "../networkFamilyAutoselection.ts";
 import { runServer } from "../server.ts";
 import { type CliServerFlags, resolveServerConfig, sharedServerCommandFlags } from "./config.ts";
 
@@ -21,6 +22,9 @@ const runServerCommand = (
   },
 ) =>
   Effect.gen(function* () {
+    // Every server launch passes here: `npx t3`, `t3 start`/`serve`, and the
+    // desktop app's backend child process (bin.mjs with the default command).
+    yield* configureNetworkFamilyAutoselection;
     const logLevel = yield* GlobalFlag.LogLevel;
     const config = yield* resolveServerConfig(flags, logLevel, options);
     return yield* runServer.pipe(Effect.provideService(ServerConfig.ServerConfig, config));
