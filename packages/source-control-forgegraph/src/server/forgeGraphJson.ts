@@ -13,6 +13,8 @@ import type {
   PullRequestCheck,
   PullRequestChecksState,
   PullRequestComment,
+  PullRequestCommit,
+  PullRequestReviewCommentDraft,
   PullRequestMergeCapabilities,
   PullRequestMergeability,
   PullRequestReviewThread,
@@ -23,6 +25,8 @@ import type {
   ProviderChangeRequest,
   ProviderChangeRequestActivity,
 } from "@t3tools/source-control-core/server/PullRequestProvider";
+import * as DateTime from "effect/DateTime";
+import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
 import { forgeGraphChangesetUrl, forgeGraphCiRunUrl } from "./forgeGraphHosts.ts";
@@ -171,6 +175,82 @@ export const ForgeGraphMergeability = Schema.Struct({
 export type ForgeGraphMergeability = typeof ForgeGraphMergeability.Type;
 
 export const ForgeGraphMergeCancelled = Schema.Struct({ cancelled: Schema.Boolean });
+
+/**
+ * FORGE-147's diff and commit routes answer `pending` with 202 while a head is still being
+ * computed, and `ready` with the data. Failures (501 unavailable, 502 failed) arrive as errors.
+ */
+const DiffPending = Schema.Struct({
+  status: Schema.Literal("pending"),
+  retryAfter: Schema.optional(Schema.Number),
+});
+
+export const ForgeGraphDiffPage = Schema.Union([
+  DiffPending,
+  Schema.Struct({
+    status: Schema.Literal("ready"),
+    patch: Text,
+    truncated: Schema.optional(Schema.Boolean),
+    nextCursor: OptionalText,
+  }),
+]);
+
+const CommitPerson = Schema.Struct({
+  name: OptionalText,
+  email: OptionalText,
+  date: OptionalText,
+});
+
+export const ForgeGraphCommits = Schema.Union([
+  DiffPending,
+  Schema.Struct({
+    status: Schema.Literal("ready"),
+    commits: Schema.Array(
+      Schema.Struct({
+        sha: Text,
+        message: Text,
+        author: Schema.optional(Schema.NullOr(CommitPerson)),
+        committer: Schema.optional(Schema.NullOr(CommitPerson)),
+      }),
+    ),
+  }),
+]);
+export type ForgeGraphCommits = typeof ForgeGraphCommits.Type;
+
+/** Commits as the timeline lists them, oldest first, as ForgeGraph sends them. */
+export function toCommits(
+  commits: Extract<ForgeGraphCommits, { readonly status: "ready" }>["commits"],
+): Array<PullRequestCommit> {
+  return commits.flatMap((commit) => {
+    // ForgeGraph sends git's own offset form; the timeline wants one instant in UTC.
+    const date = commit.committer?.date ?? commit.author?.date;
+    const instant = date ? DateTime.make(date) : Option.none();
+    if (Option.isNone(instant)) return [];
+    const author = actor(commit.author?.name ?? undefined);
+    return [
+      {
+        oid: commit.sha,
+        messageHeadline: commit.message.split("\n", 1)[0] ?? "",
+        committedDate: DateTime.formatIso(instant.value),
+        ...(author === null ? {} : { authors: [author] }),
+      },
+    ];
+  });
+}
+
+/** Where a line comment in a review is anchored, in ForgeGraph's terms. */
+export function toInlineComment(draft: PullRequestReviewCommentDraft) {
+  const position = draft.position;
+  const anchor =
+    position.kind === "added"
+      ? { line: position.newLine, side: "new" as const }
+      : position.kind === "deleted"
+        ? { line: position.oldLine, side: "old" as const }
+        : position.side === "left"
+          ? { line: position.oldLine, side: "old" as const }
+          : { line: position.newLine, side: "new" as const };
+  return { body: draft.body, filePath: draft.path, ...anchor };
+}
 
 export const ForgeGraphCreated = Schema.Struct({
   id: Text,
