@@ -4,6 +4,7 @@ import {
   type PullRequestMergeMethod,
 } from "@t3tools/contracts";
 import * as Clock from "effect/Clock";
+import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import { randomUuidV4 } from "@t3tools/provider-core/server/randomUuid";
 import {
@@ -23,10 +24,11 @@ const KIND = SourceControlProviderKind.make("forgegraph");
 /**
  * What ForgeGraph can do at most. A server without review threads reports no thread to reply to
  * or resolve, and one without native merge-when-green offers it only on the Forgejo backend, both
- * through each pull request's own permissions. Diffs wait on FORGE-147, whose routes answer 404.
+ * through each pull request's own permissions. Diffs and commits are FORGE-147's; a server
+ * without those routes answers 404, and the Code tab says so.
  */
 const CAPABILITIES: PullRequestCapabilities = {
-  diff: false,
+  diff: true,
   comment: true,
   actions: [...definition.changeRequestActions],
   mergeMethods: ["merge", "squash", "rebase"],
@@ -34,8 +36,7 @@ const CAPABILITIES: PullRequestCapabilities = {
   reactions: false,
   labels: false,
   review: {
-    // Line comments need a diff to be placed on, which waits on FORGE-147.
-    inlineComment: false,
+    inlineComment: true,
     reply: true,
     resolve: true,
     verdicts: ["approve", "request-changes", "comment"],
@@ -48,6 +49,12 @@ const HEAD_SHA = /^[0-9a-f]{40}(?:[0-9a-f]{24})?$/u;
 const COMMENT_ID = /^[A-Za-z0-9_-]{1,128}$/u;
 /** How long a server that answered 404 for mergeability is not asked again. */
 const MERGEABILITY_RETRY_MS = 5 * 60_000;
+/** A diff ForgeGraph is still computing is asked for again this many times before giving up. */
+const DIFF_PENDING_ATTEMPTS = 10;
+/** The longest wait between those asks, whatever `retryAfter` says. */
+const DIFF_PENDING_MAX_WAIT_SECONDS = 5;
+/** One page of the whole diff; ForgeGraph's default, well under its 4 MiB ceiling. */
+const DIFF_PAGE_BYTES = 512 * 1024;
 
 type PullRef = ProviderRepositoryRef & { readonly number: number };
 
@@ -106,6 +113,43 @@ export const make = Effect.gen(function* () {
     api
       .request({ operation, method: "POST", path, body })
       .pipe(Effect.asVoid, Effect.mapError(fromApi));
+
+  /** A FORGE-147 route's 404 is a server without it; its 501 is a pull request without a diff. */
+  const fromDiffApi = (error: ForgeGraphApi.ForgeGraphApiError) =>
+    error.status === 404
+      ? failure(error.operation, "This ForgeGraph server does not serve pull request diffs yet.")
+      : error.status === 501
+        ? failure(error.operation, "ForgeGraph has no diff for this pull request.")
+        : fromApi(error);
+
+  /**
+   * A diff route's ready answer. A head ForgeGraph is still computing (a git job takes 30–90 s)
+   * is asked for again at its `retryAfter`, a bounded number of times.
+   */
+  const readDiffRoute = <S extends typeof Json.ForgeGraphDiffPage | typeof Json.ForgeGraphCommits>(
+    operation: string,
+    path: string,
+    schema: S,
+  ) => {
+    const attempt = (
+      remaining: number,
+    ): Effect.Effect<Extract<S["Type"], { readonly status: "ready" }>, PullRequestProviderError> =>
+      lookups.read({ operation, method: "GET", path }, schema).pipe(
+        Effect.mapError(fromDiffApi),
+        Effect.flatMap((answer) => {
+          const value = answer as S["Type"];
+          if (value.status === "ready")
+            return Effect.succeed(value as Extract<S["Type"], { readonly status: "ready" }>);
+          if (remaining <= 1)
+            return Effect.fail(
+              failure(operation, "ForgeGraph is still computing this diff. Try again shortly."),
+            );
+          const wait = Math.min(Math.max(value.retryAfter ?? 3, 1), DIFF_PENDING_MAX_WAIT_SECONDS);
+          return Effect.sleep(Duration.seconds(wait)).pipe(Effect.andThen(attempt(remaining - 1)));
+        }),
+      );
+    return attempt(DIFF_PENDING_ATTEMPTS);
+  };
 
   const checksFor = (operation: string, input: PullRef, pull: Json.NumberedPull) =>
     lookups.gate(operation, input.repository, pull.headSha).pipe(Effect.mapError(fromApi));
@@ -290,12 +334,51 @@ export const make = Effect.gen(function* () {
         };
       },
     ),
-    getChangeRequestActivity: (input) =>
-      readPull("getChangeRequestActivity", input).pipe(Effect.map(Json.toActivity)),
+    getChangeRequestActivity: Effect.fn("ForgeGraphPullRequestProvider.getChangeRequestActivity")(
+      function* (input) {
+        const pull = yield* readPull("getChangeRequestActivity", input);
+        // Commits ride along when ForgeGraph has them ready; the conversation never waits on a
+        // diff job, and a server without the route lists none.
+        const commits = yield* lookups
+          .read(
+            {
+              operation: "getChangeRequestActivity",
+              method: "GET",
+              path: `/fg/prs/${encodeURIComponent(pull.id)}/commits?limit=250`,
+            },
+            Json.ForgeGraphCommits,
+          )
+          .pipe(
+            Effect.map((answer) =>
+              answer.status === "ready" ? Json.toCommits(answer.commits) : [],
+            ),
+            Effect.orElseSucceed(() => []),
+          );
+        return { ...Json.toActivity(pull), commits };
+      },
+    ),
     getViewerPermissions: (input) =>
       readPull("getViewerPermissions", input).pipe(Effect.map(Json.toViewerPermissions)),
-    getDiff: () =>
-      Effect.fail(failure("getDiff", "ForgeGraph does not serve pull request diffs yet.")),
+    getDiff: Effect.fn("ForgeGraphPullRequestProvider.getDiff")(function* (input) {
+      if (input.commit !== undefined)
+        return yield* failure(
+          "getDiff",
+          "ForgeGraph does not show one commit's changes yet. Open the whole pull request's diff instead.",
+        );
+      const pull = yield* readPull("getDiff", input);
+      const query = new URLSearchParams({ maxBytes: String(DIFF_PAGE_BYTES) });
+      if (input.cursor) query.set("cursor", input.cursor);
+      const page = yield* readDiffRoute(
+        "getDiff",
+        `/fg/prs/${encodeURIComponent(pull.id)}/diff?${query}`,
+        Json.ForgeGraphDiffPage,
+      );
+      return {
+        patch: page.patch,
+        truncated: page.truncated === true,
+        nextCursor: page.nextCursor ?? null,
+      };
+    }),
     runAction: Effect.fn("ForgeGraphPullRequestProvider.runAction")(function* (input) {
       switch (input.action) {
         case "merge":
@@ -323,11 +406,6 @@ export const make = Effect.gen(function* () {
       });
     }),
     submitReview: Effect.fn("ForgeGraphPullRequestProvider.submitReview")(function* (input) {
-      if (input.comments.length > 0)
-        return yield* failure(
-          "submitReview",
-          "ForgeGraph line comments in reviews are not supported yet.",
-        );
       const pull = yield* readPull("submitReview", input);
       if (!pull.headSha)
         return yield* failure(
@@ -341,6 +419,15 @@ export const make = Effect.gen(function* () {
         verdict: Json.REVIEW_VERDICT[input.verdict],
         ...(input.body.length === 0 ? {} : { body: input.body }),
       });
+      // ForgeGraph has no pending review to hold them, so the line comments follow the verdict,
+      // which is the head-pinned write: a moved head refuses the review before any is posted.
+      for (const draft of input.comments) {
+        yield* post(
+          "submitReview",
+          `/fg/prs/${encodeURIComponent(pull.id)}/comments`,
+          Json.toInlineComment(draft),
+        );
+      }
     }),
     listReviewerCandidates: () =>
       Effect.fail(

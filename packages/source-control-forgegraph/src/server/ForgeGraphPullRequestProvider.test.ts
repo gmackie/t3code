@@ -1,5 +1,7 @@
 import { assert, describe, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
+import * as TestClock from "effect/testing/TestClock";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
@@ -844,5 +846,179 @@ describe("ForgeGraphPullRequestProvider merge-when-green and threads (FORGE-138 
         assert.match(error.detail, /does not support review threads/u);
         assert.deepStrictEqual(fake.writes(), []);
       }),
+  );
+});
+
+describe("ForgeGraph diffs and commits (FORGE-147)", () => {
+  const withPull = (routes: Record<string, Route>) => ({
+    ...repositoryRoutes,
+    ...byNumber,
+    "GET /fg/prs/cs-33": detail(),
+    ...routes,
+  });
+
+  it.effect("reads the whole diff a page at a time", () =>
+    Effect.gen(function* () {
+      const { result, fake } = yield* run(
+        withPull({
+          "GET /fg/prs/cs-33/diff": (request: SentRequest) =>
+            [
+              200,
+              request.query.get("cursor") === "bzo3"
+                ? { status: "ready", headSha: head, patch: "diff --git b\n", nextCursor: null }
+                : {
+                    status: "ready",
+                    headSha: head,
+                    patch: "diff --git a\n",
+                    truncated: false,
+                    nextCursor: "bzo3",
+                  },
+            ] as const,
+        }),
+        (provider) =>
+          Effect.all([provider.getDiff(target), provider.getDiff({ ...target, cursor: "bzo3" })]),
+      );
+      assert.deepStrictEqual(result, [
+        { patch: "diff --git a\n", truncated: false, nextCursor: "bzo3" },
+        { patch: "diff --git b\n", truncated: false, nextCursor: null },
+      ]);
+      const pages = fake.sent.filter((request) => request.path === "/fg/prs/cs-33/diff");
+      assert.strictEqual(pages[0]?.query.get("maxBytes"), String(512 * 1024));
+      assert.strictEqual(pages[1]?.query.get("cursor"), "bzo3");
+    }),
+  );
+
+  it.effect("waits for a diff ForgeGraph is still computing", () =>
+    Effect.gen(function* () {
+      let asked = 0;
+      const fiber = yield* run(
+        withPull({
+          "GET /fg/prs/cs-33/diff": () => {
+            asked += 1;
+            return asked < 3
+              ? ([202, { status: "pending", headSha: head, retryAfter: 3 }] as const)
+              : ([200, { status: "ready", headSha: head, patch: "p", nextCursor: null }] as const);
+          },
+        }),
+        (provider) => provider.getDiff(target),
+      ).pipe(Effect.forkChild);
+      yield* TestClock.adjust("10 seconds");
+      const { result } = yield* Fiber.join(fiber);
+      assert.strictEqual(result.patch, "p");
+      assert.strictEqual(asked, 3);
+    }),
+  );
+
+  it.effect("says what is missing: an older server, a pull request with no diff, one commit", () =>
+    Effect.gen(function* () {
+      const older = yield* run(withPull({}), (provider) =>
+        provider.getDiff(target).pipe(Effect.flip),
+      );
+      assert.match(older.result.detail, /does not serve pull request diffs yet/u);
+
+      const unavailable = yield* run(
+        withPull({
+          "GET /fg/prs/cs-33/diff": () =>
+            [501, { error: "No diff source", code: "diff_unavailable", reason: "merged" }] as const,
+        }),
+        (provider) => provider.getDiff(target).pipe(Effect.flip),
+      );
+      assert.match(unavailable.result.detail, /no diff for this pull request/u);
+
+      const oneCommit = yield* run(withPull({}), (provider) =>
+        provider.getDiff({ ...target, commit: head }).pipe(Effect.flip),
+      );
+      assert.match(oneCommit.result.detail, /one commit's changes/u);
+      // Refused before anything is asked.
+      assert.deepStrictEqual(oneCommit.fake.sent, []);
+    }),
+  );
+
+  it.effect("lists commits in the activity, and none where they are not ready", () =>
+    Effect.gen(function* () {
+      const ready = yield* run(
+        withPull({
+          "GET /fg/prs/cs-33/commits": {
+            status: "ready",
+            headSha: head,
+            totalCommits: 1,
+            truncated: false,
+            commits: [
+              {
+                sha: head,
+                parents: ["a"],
+                message: "feat: one\n\nbody",
+                author: { name: "gmackie", email: "g@x", date: "2026-10-18T23:53:59-04:00" },
+                committer: { name: "gmackie", email: "g@x", date: "2026-10-18T23:53:59-04:00" },
+              },
+            ],
+            nextCursor: null,
+          },
+        }),
+        (provider) => provider.getChangeRequestActivity(target),
+      );
+      assert.deepStrictEqual(ready.result.commits, [
+        {
+          oid: head,
+          messageHeadline: "feat: one",
+          committedDate: "2026-10-19T03:53:59.000Z",
+          authors: [{ login: "gmackie", name: null, avatarUrl: null }],
+        },
+      ]);
+
+      const pending = yield* run(
+        withPull({
+          "GET /fg/prs/cs-33/commits": () => [202, { status: "pending", retryAfter: 3 }] as const,
+        }),
+        (provider) => provider.getChangeRequestActivity(target),
+      );
+      assert.deepStrictEqual(pending.result.commits, []);
+      const older = yield* run(withPull({}), (provider) =>
+        provider.getChangeRequestActivity(target),
+      );
+      assert.deepStrictEqual(older.result.commits, []);
+    }),
+  );
+
+  it.effect("posts a review's line comments after its head-pinned verdict", () =>
+    Effect.gen(function* () {
+      const { fake } = yield* run(
+        withPull({
+          "POST /fg/prs/cs-33/review": { id: "rv-1", verdict: "changes_requested" },
+          "POST /fg/prs/cs-33/comments": { id: "c-1" },
+        }),
+        (provider) =>
+          provider.submitReview({
+            ...target,
+            verdict: "request-changes",
+            body: "Two things.",
+            comments: [
+              { path: "src/a.ts", position: { kind: "added", newLine: 4 }, body: "Why?" },
+              {
+                path: "src/b.ts",
+                position: { kind: "context", oldLine: 9, newLine: 10, side: "left" },
+                body: "Old one.",
+              },
+            ],
+          }),
+      );
+      const [review, ...lineComments] = fake.writes();
+      assert.strictEqual(review?.path, "/fg/prs/cs-33/review");
+      assert.deepInclude(review?.body as object, {
+        expectedHeadSha: head,
+        verdict: "changes_requested",
+        body: "Two things.",
+      });
+      assert.deepStrictEqual(
+        lineComments.map((write) => [write.path, write.body]),
+        [
+          ["/fg/prs/cs-33/comments", { body: "Why?", filePath: "src/a.ts", line: 4, side: "new" }],
+          [
+            "/fg/prs/cs-33/comments",
+            { body: "Old one.", filePath: "src/b.ts", line: 9, side: "old" },
+          ],
+        ],
+      );
+    }),
   );
 });

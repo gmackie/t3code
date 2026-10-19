@@ -135,9 +135,11 @@ is tied to the head you read, so a push in between is refused rather than approv
 when green waits for the checks and reviews ForgeGraph requires. While it is armed, the review says
 so and offers to cancel it. On a repository whose pull requests ForgeGraph keeps itself, a push
 cancels the request, so turn it on again for the new head. On a Forgejo-backed repository the
-request stays armed across pushes, and Forgejo merges whichever head passes. Line comments are
-shown as review threads you can reply to and resolve from the pull request's Summary tab. Diffs are
-not shown until ForgeGraph serves them.
+request stays armed across pushes, and Forgejo merges whichever head passes. The Code tab shows
+the diff and lets you comment on a line; the first view of a new head can take a few seconds while
+ForgeGraph computes it, and up to a minute and a half for repositories it stores itself. One
+commit's changes on their own are not shown yet. Review threads are answered and resolved in the
+Code tab, on their line.
 
 ## Start, clone, or publish a project
 
