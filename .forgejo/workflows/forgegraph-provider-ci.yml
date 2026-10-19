@@ -7,6 +7,8 @@ on:
   pull_request:
     branches:
       - custom-local
+      # Pull requests stacked on another T3CODE branch, such as the ones on T3CODE-27's.
+      - "T3CODE-*"
     paths:
       - packages/source-control-forgegraph/**
       - apps/server/src/sourceControl/**
