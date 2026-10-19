@@ -14,6 +14,10 @@ on:
       - apps/server/src/sourceControl/**
       - apps/server/src/pullRequest/**
       - apps/server/src/mcp/toolkits/pullRequests/**
+      # Every MCP tool needs a display definition; core.test.ts checks the whole catalog.
+      - apps/server/src/mcp/toolkits/core.test.ts
+      - packages/shared/src/t3McpToolPresentation.ts
+      - packages/client-runtime/src/t3ToolSummary.ts
       - apps/server/src/mcp/McpHttpServer.test.ts
       - apps/server/src/mcp/toolkits/worktree/registration.test.ts
       - apps/server/src/ws.ts
@@ -97,7 +101,7 @@ jobs:
           corepack prepare pnpm@11.10.0 --activate
           pnpm install --frozen-lockfile
       - name: Test the server's source control and pull request services
-        run: pnpm -C apps/server exec vp test run src/sourceControl/ForgeGraphSignIn.test.ts src/sourceControl/SourceControlDiscovery.test.ts src/sourceControl/SourceControlProviderRegistry.test.ts src/auth/RpcAuthorization.test.ts src/pullRequest/PullRequestService.test.ts src/mcp/toolkits/pullRequests src/mcp/McpHttpServer.test.ts src/mcp/toolkits/worktree/registration.test.ts
+        run: pnpm -C apps/server exec vp test run src/sourceControl/ForgeGraphSignIn.test.ts src/sourceControl/SourceControlDiscovery.test.ts src/sourceControl/SourceControlProviderRegistry.test.ts src/auth/RpcAuthorization.test.ts src/pullRequest/PullRequestService.test.ts src/mcp/toolkits/pullRequests src/mcp/McpHttpServer.test.ts src/mcp/toolkits/worktree/registration.test.ts src/mcp/toolkits/core.test.ts
 
   server-typecheck:
     runs-on: forgegraph-ci
