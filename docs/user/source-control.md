@@ -1,6 +1,6 @@
 # Source control
 
-T3 Code integrates with GitHub, GitLab, Forgejo, Gitea, Bitbucket, Azure DevOps, and GitCafe to clone
+T3 Code integrates with GitHub, GitLab, Forgejo, Gitea, Bitbucket, Azure DevOps, GitCafe, and ForgeGraph to clone
 and publish repositories, create pull requests, and review changes.
 
 ## Review turn changes
@@ -113,6 +113,25 @@ sent to `git.cafe`; `CAFE_TOKEN` follows `CAFE_HOST` if you set it. Repositories
 
 Line comments, reviewer requests, and labels are not available for GitCafe pull requests yet.
 Merging a stack lands it through GitCafe, and updating a branch restacks the layers above it.
+
+### ForgeGraph
+
+Repositories cloned from `git.forgegraf.com` or `gitgw.forgegraf.com` are read through
+ForgeGraph's own API, with no CLI required. If the server already has the `forge` CLI signed in,
+or `FG_API_TOKEN` set, there is nothing to do. Otherwise open **Settings → Source Control**, find
+**ForgeGraph**, and choose **Sign in with ForgeGraph**, then approve the code it shows in ForgeGraph.
+Sign-in runs on the server, so it works the same from a remote browser. You can also paste a token
+in the same section. A token is only sent to the server it was issued for: the one in Settings, then
+`FG_SERVER`, then the `forge` CLI's, then `https://forgegraf.com`.
+
+**Sign out** removes the token T3 Code saved. ForgeGraph cannot revoke tokens yet, so delete it in
+ForgeGraph too if you no longer want it to work.
+
+ForgeGraph pull requests show their ForgeGraph CI builds as checks. Approving or requesting changes
+is tied to the head you read, so a push in between is refused rather than approved unseen. Merge
+when green waits for the checks and reviews ForgeGraph requires at that head; a push past it cancels
+the request, so turn it on again for the new head. Line comments are shown as review threads you can
+reply to and resolve. Diffs are not shown until ForgeGraph serves them.
 
 ## Start, clone, or publish a project
 

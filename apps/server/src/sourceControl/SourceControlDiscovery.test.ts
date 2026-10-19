@@ -26,6 +26,7 @@ import * as GitHubPullRequestApi from "@t3tools/source-control-github/server/Git
 import * as GitLabCli from "@t3tools/source-control-gitlab/server/GitLabCli";
 import * as GitLabPullRequestCli from "@t3tools/source-control-gitlab/server/GitLabPullRequestCli";
 import * as ForgejoCli from "@t3tools/source-control-forgejo/server/ForgejoCli";
+import * as ForgeGraphApi from "@t3tools/source-control-forgegraph/server/ForgeGraphApi";
 import * as GitCafeApi from "@t3tools/source-control-gitcafe/server/GitCafeApi";
 import * as GitCafeCredentials from "@t3tools/source-control-gitcafe/server/GitCafeCredentials";
 import * as ForgejoSourceControlProvider from "@t3tools/source-control-forgejo/server/ForgejoSourceControlProvider";
@@ -34,6 +35,18 @@ import * as SourceControlDiscovery from "./SourceControlDiscovery.ts";
 import * as SourceControlProviderRegistry from "./SourceControlProviderRegistry.ts";
 import * as ServerSourceControlHost from "./ServerSourceControlHost.ts";
 import * as SourceControlHost from "@t3tools/source-control-core/server/SourceControlHost";
+import * as HostProcess from "@t3tools/shared/HostProcess";
+
+/**
+ * The machine's environment without its tokens. Each test says what the mocked CLIs and APIs
+ * report, so a GH_TOKEN, a CI runner's GITHUB_TOKEN or an FG_ variable on the machine running the
+ * suite must not sign a host in behind its back.
+ */
+const hermeticEnvironment: NodeJS.ProcessEnv = Object.fromEntries(
+  Object.entries(process.env).filter(
+    ([name]) => !name.endsWith("TOKEN") && !name.startsWith("FG_"),
+  ),
+);
 
 const layerSourceControlProviderRegistryTest = (input: {
   readonly bitbucket: Partial<BitbucketApi.BitbucketApi["Service"]>;
@@ -45,6 +58,7 @@ const layerSourceControlProviderRegistryTest = (input: {
         ServerConfig.layerTest(process.cwd(), {
           prefix: "t3-source-control-registry-test-",
         }).pipe(Layer.provide(NodeServices.layer)),
+        Layer.succeed(HostProcess.Environment, hermeticEnvironment),
         Layer.mock(AzureDevOpsCli.AzureDevOpsCli)({}),
         Layer.mock(AzureDevOpsPullRequestCli.AzureDevOpsPullRequestCli)({}),
         Layer.mock(BitbucketApi.BitbucketApi)(input.bitbucket),
@@ -56,6 +70,19 @@ const layerSourceControlProviderRegistryTest = (input: {
         Layer.mock(GitLabCli.GitLabCli)({}),
         Layer.mock(GitLabPullRequestCli.GitLabPullRequestCli)({}),
         Layer.mock(ForgejoCli.ForgejoCli)({ listLogins: () => Effect.succeed([]) }),
+        Layer.mock(ForgeGraphApi.ForgeGraphApi)({
+          server: Effect.succeed("https://forgegraf.com"),
+          request: (input) =>
+            Effect.fail(
+              new ForgeGraphApi.ForgeGraphApiError({
+                operation: input.operation,
+                status: null,
+                reason: "unauthenticated",
+                code: null,
+                detail: "Not signed in to ForgeGraph.",
+              }),
+            ),
+        }),
         Layer.mock(GitCafeApi.GitCafeApi)({}),
         Layer.mock(GitCafeCredentials.GitCafeCredentials)({
           cliEnv: () => Effect.succeed({}),
@@ -200,6 +227,12 @@ it.effect("reports implemented tools separately from locally available executabl
         },
         {
           kind: SourceControlProviderKind.make("bitbucket"),
+          status: "available",
+          auth: "unauthenticated",
+          account: Option.none(),
+        },
+        {
+          kind: SourceControlProviderKind.make("forgegraph"),
           status: "available",
           auth: "unauthenticated",
           account: Option.none(),
@@ -354,6 +387,12 @@ Logged in to gitlab.com as gitlab-user
           auth: "authenticated",
           account: Option.some("bitbucket-user"),
           detail: Option.none(),
+        },
+        {
+          kind: SourceControlProviderKind.make("forgegraph"),
+          auth: "unauthenticated",
+          account: Option.none(),
+          detail: Option.some("Not signed in to ForgeGraph."),
         },
         {
           kind: SourceControlProviderKind.make("forgejo"),

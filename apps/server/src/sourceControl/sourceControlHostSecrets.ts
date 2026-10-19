@@ -11,6 +11,7 @@ import { secretSettingsFields } from "@t3tools/contracts";
 import * as AzureDevOps from "@t3tools/source-control-azure-devops/client/definition";
 import * as Bitbucket from "@t3tools/source-control-bitbucket/client/definition";
 import type { SourceControlClientDefinition } from "@t3tools/source-control-core/client/definition";
+import * as ForgeGraph from "@t3tools/source-control-forgegraph/client/definition";
 import * as Forgejo from "@t3tools/source-control-forgejo/client/definition";
 import * as GitCafe from "@t3tools/source-control-gitcafe/client/definition";
 import * as GitHub from "@t3tools/source-control-github/client/definition";
@@ -21,6 +22,7 @@ const definitions: ReadonlyArray<SourceControlClientDefinition> = [
   GitLab.definition,
   AzureDevOps.definition,
   Bitbucket.definition,
+  ForgeGraph.definition,
   Forgejo.definition,
   GitCafe.definition,
 ];

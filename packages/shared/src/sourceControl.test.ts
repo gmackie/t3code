@@ -53,6 +53,19 @@ describe("source control presentation", () => {
 });
 
 describe("detectSourceControlProviderFromRemoteUrl", () => {
+  it("reads ForgeGraph's git hosts as ForgeGraph, not Forgejo", () => {
+    for (const remote of [
+      "https://git.forgegraf.com/gmackie/t3code.git",
+      "git@git.forgegraf.com:gmackie/t3code.git",
+      "https://gitgw.forgegraf.com/gmackie/t3code.git",
+    ])
+      expect(detectSourceControlProviderFromRemoteUrl(remote)).toEqual({
+        kind: "forgegraph",
+        name: "ForgeGraph",
+        baseUrl: "https://forgegraf.com",
+      });
+  });
+
   it("detects common source control hosts", () => {
     expect(detectSourceControlProviderFromRemoteUrl("git@github.com:owner/repo.git")?.kind).toBe(
       "github",

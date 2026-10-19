@@ -677,6 +677,9 @@ importers:
       '@t3tools/source-control-core':
         specifier: workspace:*
         version: link:../../packages/source-control-core
+      '@t3tools/source-control-forgegraph':
+        specifier: workspace:*
+        version: link:../../packages/source-control-forgegraph
       '@t3tools/source-control-forgejo':
         specifier: workspace:*
         version: link:../../packages/source-control-forgejo
@@ -1119,6 +1122,9 @@ importers:
       '@t3tools/source-control-core':
         specifier: workspace:*
         version: link:../source-control-core
+      '@t3tools/source-control-forgegraph':
+        specifier: workspace:*
+        version: link:../source-control-forgegraph
       '@t3tools/source-control-forgejo':
         specifier: workspace:*
         version: link:../source-control-forgejo
@@ -1677,6 +1683,37 @@ importers:
       '@effect/vitest':
         specifier: 4.0.2
         version: 4.0.2(patch_hash=595b7d26fb635caba9c3d39fcb189bb78a000192f8d3b60ead7174b310d1ade9)(@types/node@24.12.4)(@vitest/ui@5.0.1)(bufferutil@4.1.0)(effect@4.0.2(patch_hash=58dbbe662aec561eb6d8764ce2bf9552904ba0cca4970a9637476b64ae06a166))(esbuild@0.28.2)(jiti@2.7.0)(jsdom@30.1.0(@noble/hashes@1.8.0))(msw@2.12.11(@types/node@24.12.4)(typescript@7.0.2))(terser@5.48.0)(typescript@7.0.2)(unrun@0.2.39)(utf-8-validate@6.0.6)(yaml@2.9.0)
+      '@types/node':
+        specifier: 24.12.4
+        version: 24.12.4
+      vite-plus:
+        specifier: 1.0.0
+        version: 1.0.0(@types/node@24.12.4)(@vitest/ui@5.0.1(vitest@5.0.1))(bufferutil@4.1.0)(esbuild@0.28.2)(jiti@2.7.0)(jsdom@30.1.0(@noble/hashes@1.8.0))(msw@2.12.11(@types/node@24.12.4)(typescript@7.0.2))(terser@5.48.0)(typescript@7.0.2)(unrun@0.2.39)(utf-8-validate@6.0.6)(yaml@2.9.0)
+
+  packages/source-control-forgegraph:
+    dependencies:
+      '@t3tools/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      '@t3tools/provider-core':
+        specifier: workspace:*
+        version: link:../provider-core
+      '@t3tools/shared':
+        specifier: workspace:*
+        version: link:../shared
+      '@t3tools/source-control-core':
+        specifier: workspace:*
+        version: link:../source-control-core
+      effect:
+        specifier: 4.0.2
+        version: 4.0.2(patch_hash=58dbbe662aec561eb6d8764ce2bf9552904ba0cca4970a9637476b64ae06a166)
+    devDependencies:
+      '@effect/vitest':
+        specifier: 4.0.2
+        version: 4.0.2(patch_hash=595b7d26fb635caba9c3d39fcb189bb78a000192f8d3b60ead7174b310d1ade9)(@types/node@24.12.4)(@vitest/ui@5.0.1)(bufferutil@4.1.0)(effect@4.0.2(patch_hash=58dbbe662aec561eb6d8764ce2bf9552904ba0cca4970a9637476b64ae06a166))(esbuild@0.28.2)(jiti@2.7.0)(jsdom@30.1.0(@noble/hashes@1.8.0))(msw@2.12.11(@types/node@24.12.4)(typescript@7.0.2))(terser@5.48.0)(typescript@7.0.2)(unrun@0.2.39)(utf-8-validate@6.0.6)(yaml@2.9.0)
+      '@t3tools/source-control-testing':
+        specifier: workspace:*
+        version: link:../source-control-testing
       '@types/node':
         specifier: 24.12.4
         version: 24.12.4

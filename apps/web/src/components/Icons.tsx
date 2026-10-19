@@ -701,6 +701,24 @@ export const GitCafeIcon: Icon = (props) => (
   </svg>
 );
 
+// ForgeGraph's own mark, from forgegraf.com's app icon.
+export const ForgeGraphIcon: Icon = (props) => (
+  <svg viewBox="0 0 32 32" aria-hidden="true" {...props}>
+    <rect width="32" height="32" rx="6" fill="#1f2328" />
+    <text
+      x="16"
+      y="22"
+      fontFamily="serif"
+      fontSize="16"
+      fontWeight="600"
+      fill="#f4f1ea"
+      textAnchor="middle"
+    >
+      FG
+    </text>
+  </svg>
+);
+
 // macOS System Settings > Privacy & Security pane marks, so the SnapShot setup
 // step points at the same icon the user is about to look for.
 export const MacScreenRecordingIcon: Icon = (props) => {

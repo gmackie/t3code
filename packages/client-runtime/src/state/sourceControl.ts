@@ -71,6 +71,9 @@ export function createSourceControlEnvironmentAtoms<R, E>(
       label: "environment-data:source-control:project-clones",
       tag: WS_METHODS.subscribeProjectClones,
     }),
+    // ForgeGraph's device flow runs on the server; these start it, read where it stands, stop it,
+    // and forget the saved token. One queue per environment, so a double click cannot race them.
+    ...forgeGraphSignInCommands(runtime),
     publishRepository: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:source-control:publish-repository",
       tag: WS_METHODS.sourceControlPublishRepository,
@@ -81,6 +84,40 @@ export function createSourceControlEnvironmentAtoms<R, E>(
           environmentId: target.environmentId,
           cwd: target.input.cwd,
         }),
+    }),
+  };
+}
+
+function forgeGraphSignInCommands<R, E>(
+  runtime: Atom.AtomRuntime<EnvironmentRegistry | Persistence.EnvironmentCacheStore | R, E>,
+) {
+  const scheduler = createAtomCommandScheduler();
+  const concurrency = {
+    mode: "serial" as const,
+    key: ({ environmentId }: { readonly environmentId: string }) => environmentId,
+  };
+  return {
+    forgeGraphSignInStart: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:source-control:forgegraph-sign-in-start",
+      tag: WS_METHODS.sourceControlForgeGraphSignInStart,
+      scheduler,
+      concurrency,
+    }),
+    forgeGraphSignInStatus: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:source-control:forgegraph-sign-in-status",
+      tag: WS_METHODS.sourceControlForgeGraphSignInStatus,
+    }),
+    forgeGraphSignInCancel: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:source-control:forgegraph-sign-in-cancel",
+      tag: WS_METHODS.sourceControlForgeGraphSignInCancel,
+      scheduler,
+      concurrency,
+    }),
+    forgeGraphSignOut: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:source-control:forgegraph-sign-out",
+      tag: WS_METHODS.sourceControlForgeGraphSignOut,
+      scheduler,
+      concurrency,
     }),
   };
 }

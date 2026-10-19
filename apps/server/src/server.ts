@@ -168,6 +168,7 @@ import * as DesktopAppUpdate from "./desktopUpdate/DesktopAppUpdate.ts";
 import * as ServiceLauncherClient from "./cloud/serviceLauncherClient.ts";
 import * as ProcessDiagnostics from "./diagnostics/ProcessDiagnostics.ts";
 import * as GmackoChangelog from "./gmackoChangelog/GmackoChangelog.ts";
+import * as ForgeGraphSignIn from "./sourceControl/ForgeGraphSignIn.ts";
 import * as HostResources from "./resourceTelemetry/HostResources.ts";
 import * as ProcessResourceMonitor from "./diagnostics/ProcessResourceMonitor.ts";
 import * as TraceDiagnostics from "./diagnostics/TraceDiagnostics.ts";
@@ -395,6 +396,11 @@ const layerSourceControlRepositoryService = SourceControlRepositoryService.layer
   Layer.provideMerge(layerSourceControlProviderRegistry),
 );
 
+// Signs in through the drivers' own ForgeGraph API, so it shares their server and token.
+const layerForgeGraphSignIn = ForgeGraphSignIn.layer.pipe(
+  Layer.provide(layerSourceControlProviderRegistry),
+);
+
 const layerProjectCloneTracker = ProjectCloneTracker.layer.pipe(
   Layer.provide(layerSourceControlRepositoryService),
 );
@@ -612,6 +618,7 @@ const layerRuntimeCoreDependenciesBase = Layer.mergeAll(
   Layer.provideMerge(layerOrchestrationApplication),
   Layer.provideMerge(RuntimeLayer.layerEventInfrastructure),
   Layer.provideMerge(Layer.merge(ProjectStore.layer, ThreadSearch.layer)),
+  Layer.provideMerge(layerForgeGraphSignIn),
   Layer.provideMerge(layerServerSettings),
   // The asset route uses the registry's GitHub credential for private PR media, which the
   // built-in drivers' layer provides alongside the registry.
