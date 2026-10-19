@@ -623,6 +623,49 @@ describe("ForgeGraphPullRequestProvider merge-when-green and threads (FORGE-138 
     }),
   );
 
+  it.effect("reports a Forgejo-backed merge when green and offers to cancel it", () =>
+    Effect.gen(function* () {
+      // FORGE-150: scheduled through ForgeGraph, with the strategy and head it was asked for.
+      const throughForgeGraph = yield* run(
+        withNumber(
+          detail({
+            autoMerge: {
+              headSha: head,
+              strategy: "squash",
+              requestedAt: "2026-10-19T04:40:29Z",
+              backend: "forgejo",
+              source: "forgegraph",
+            },
+          }),
+        ),
+        (provider) => provider.getChangeRequest(target),
+      );
+      assert.isTrue(throughForgeGraph.result.autoMergeEnabled);
+      assert.strictEqual(throughForgeGraph.result.autoMergeMethod, "squash");
+      assert.include(throughForgeGraph.result.viewerPermissions.actions, "disable-auto-merge");
+      assert.notInclude(throughForgeGraph.result.viewerPermissions.actions, "enable-auto-merge");
+
+      // Scheduled in Forgejo's own UI: armed, but with no strategy or head to report.
+      const inForgejo = yield* run(
+        withNumber(
+          detail({
+            autoMerge: {
+              headSha: null,
+              strategy: null,
+              requestedAt: "2026-10-19T04:40:29Z",
+              backend: "forgejo",
+              source: "forgejo",
+            },
+          }),
+        ),
+        (provider) => provider.getChangeRequest(target),
+      );
+      assert.isTrue(inForgejo.result.autoMergeEnabled);
+      assert.isUndefined(inForgejo.result.autoMergeMethod);
+      assert.include(inForgejo.result.viewerPermissions.actions, "disable-auto-merge");
+    }),
+  );
+
   it.effect("says a running merge can no longer be cancelled", () =>
     Effect.gen(function* () {
       const fake = fakeForgeGraph({
