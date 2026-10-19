@@ -39,9 +39,10 @@ permissions:
   contents: read
 
 jobs:
-  server-and-packages:
+  # One job per concern, so a failure names the suite in its commit status.
+  provider-package:
     runs-on: forgegraph-ci
-    timeout-minutes: 30
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -52,18 +53,60 @@ jobs:
           corepack enable
           corepack prepare pnpm@11.10.0 --activate
           pnpm install --frozen-lockfile
-      - name: Verify the ForgeGraph provider package
+      - name: Test the ForgeGraph provider package
+        run: pnpm -C packages/source-control-forgegraph exec vp test run --config ../../vite.config.ts --dir . src
+      - name: Typecheck the ForgeGraph provider package
+        run: pnpm -C packages/source-control-forgegraph exec tsc --noEmit
+
+  shared-and-client-runtime:
+    runs-on: forgegraph-ci
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.14.0
+      - name: Install pinned dependencies
         run: |
-          pnpm -C packages/source-control-forgegraph exec vp test run --config ../../vite.config.ts --dir . src
-          pnpm -C packages/source-control-forgegraph exec tsc --noEmit
-      - name: Verify source control in shared and client-runtime
+          corepack enable
+          corepack prepare pnpm@11.10.0 --activate
+          pnpm install --frozen-lockfile
+      - name: Test source control in shared
+        run: pnpm -C packages/shared exec vp test run --config ../../vite.config.ts --dir . src/sourceControl.test.ts
+      - name: Test source control clients in client-runtime
+        run: pnpm -C packages/client-runtime exec vp test run src/sourceControlClients.test.ts
+
+  server-tests:
+    runs-on: forgegraph-ci
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.14.0
+      - name: Install pinned dependencies
         run: |
-          pnpm -C packages/shared exec vp test run --config ../../vite.config.ts --dir . src/sourceControl.test.ts
-          pnpm -C packages/client-runtime exec vp test run src/sourceControlClients.test.ts
-      - name: Verify the server's source control and pull request services
+          corepack enable
+          corepack prepare pnpm@11.10.0 --activate
+          pnpm install --frozen-lockfile
+      - name: Test the server's source control and pull request services
+        run: pnpm -C apps/server exec vp test run src/sourceControl/ForgeGraphSignIn.test.ts src/sourceControl/SourceControlDiscovery.test.ts src/sourceControl/SourceControlProviderRegistry.test.ts src/auth/RpcAuthorization.test.ts src/pullRequest/PullRequestService.test.ts src/mcp/toolkits/pullRequests src/mcp/McpHttpServer.test.ts
+
+  server-typecheck:
+    runs-on: forgegraph-ci
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.14.0
+      - name: Install pinned dependencies
         run: |
-          pnpm -C apps/server exec vp test run src/sourceControl/ForgeGraphSignIn.test.ts src/sourceControl/SourceControlDiscovery.test.ts src/sourceControl/SourceControlProviderRegistry.test.ts src/auth/RpcAuthorization.test.ts src/pullRequest/PullRequestService.test.ts src/mcp/toolkits/pullRequests src/mcp/McpHttpServer.test.ts
-          pnpm -C apps/server exec tsc --noEmit
+          corepack enable
+          corepack prepare pnpm@11.10.0 --activate
+          pnpm install --frozen-lockfile
+      - name: Typecheck the server
+        run: pnpm -C apps/server exec tsc --noEmit
 
   web:
     runs-on: forgegraph-ci
