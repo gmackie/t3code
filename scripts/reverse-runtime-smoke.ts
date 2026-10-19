@@ -1,3 +1,4 @@
+// @effect-diagnostics nodeBuiltinImport:off - Runs under node --test against real processes.
 import * as NodeTest from "node:test";
 import * as NodeAssert from "node:assert/strict";
 import * as NodeFSP from "node:fs/promises";

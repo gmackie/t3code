@@ -230,7 +230,7 @@ const make = Effect.gen(function* () {
         );
       if (catalog.generation !== bridge.generation || catalog.target !== input.target.kind)
         return yield* invalid();
-      const sessionId = yield* crypto.randomUUIDv4.pipe(Effect.orDie);
+      const sessionId = yield* crypto.randomUUIDv4().pipe(Effect.orDie);
       sessions.set(sessionId, { viewer: token, bridge, catalog });
       return { sessionId, catalog };
     }

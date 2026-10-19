@@ -1,3 +1,4 @@
+// @effect-diagnostics globalConsole:off nodeBuiltinImport:off - Builds the wallet bridge with Node subprocess and file APIs.
 /** Build the independently installable MetaMask adapter, without web or desktop builds. */
 import * as NodeChildProcess from "node:child_process";
 import * as NodeCrypto from "node:crypto";

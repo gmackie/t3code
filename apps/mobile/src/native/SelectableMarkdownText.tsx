@@ -6,7 +6,7 @@ import { MobileEnrichedMarkdownText } from "./EnrichedMarkdownText";
 import { MermaidCodeBlock } from "../features/threads/MermaidCodeBlock";
 import { splitMermaidMarkdown } from "../lib/mermaidMarkdownSegments";
 import { themeColorWithAlpha } from "../lib/mobileTheme";
-import { useUniwindTheme } from "../state/appearance/useUniwindTheme";
+import { useUniwindTheme } from "../lib/useUniwindTheme";
 
 export type {
   MarkdownFileContextMenu,

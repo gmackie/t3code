@@ -1,3 +1,4 @@
+// @effect-diagnostics globalConsole:off globalTimers:off nodeBuiltinImport:off - Smoke-tests the real Ghidra install with Node process and timing APIs.
 import * as NodeAssert from "node:assert/strict";
 import * as NodeFSP from "node:fs/promises";
 import * as NodeOS from "node:os";

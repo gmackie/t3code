@@ -5,5 +5,8 @@
     "types": ["node"],
     "lib": ["ESNext", "esnext.disposable"]
   },
-  "include": ["**/*.ts"]
+  "include": ["**/*.ts"],
+  // The reverse smoke scripts import apps/server modules, which this composite project cannot
+  // contain; reverse-workbench.yml runs them against the real tools instead.
+  "exclude": ["reverse-ghidra-smoke.ts", "reverse-runtime-smoke.ts"]
 }

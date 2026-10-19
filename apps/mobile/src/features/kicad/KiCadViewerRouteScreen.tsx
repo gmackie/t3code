@@ -17,11 +17,11 @@ import { ActivityIndicator, Linking, Pressable, View } from "react-native";
 import { WebView } from "react-native-webview";
 import { useNavigation, type StaticScreenProps } from "@react-navigation/native";
 
-import { AppText as Text } from "../../components/AppText";
-import { LoadingStrip } from "../../components/LoadingStrip";
+import { AppText as Text } from "../../components/ui/AppText";
+import { LoadingStrip } from "../../components/ui/LoadingStrip";
 import { NativeStackScreenOptions } from "../../native/StackHeader";
-import { useAppearancePreferences } from "../../state/appearance/AppearancePreferencesProvider";
-import { useUniwindTheme } from "../../state/appearance/useUniwindTheme";
+import { useAppearancePreferences } from "../settings/appearance/AppearancePreferencesProvider";
+import { useUniwindTheme } from "../../lib/useUniwindTheme";
 import { usePreparedConnection } from "../../state/session";
 
 type Props = StaticScreenProps<{

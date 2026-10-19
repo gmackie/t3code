@@ -5,6 +5,8 @@ import * as Exit from "effect/Exit";
 import * as SqlClient from "effect/sql/SqlClient";
 
 import { migrationManifest, reconcileMigrationLedger, runMigrations } from "./Migrations.ts";
+import BoundedShellLookups from "./Migrations/059_BoundedShellLookups.ts";
+import BobExecutionAdmission from "./Migrations/063_BobExecutionAdmission.ts";
 
 // Each case gets its own database: OrchestrationV2 is not re-runnable, so a
 // shared database would make later ledger rewinds re-run it.
@@ -150,6 +152,40 @@ describe("migration ledger reconciliation", () => {
           rows.find((row) => row.name === "ProjectionThreadsPinOrderKey")?.created_at,
           "2026-08-08 21:56:11",
         );
+      }),
+    ),
+  );
+
+  it.effect("upgrades a custom-local profile after upstream claimed 62 and 63", () =>
+    withFreshDatabase(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* runMigrations({ toMigrationInclusive: 61 });
+        // custom-local released its lane migrations as 62 and 63.
+        yield* BoundedShellLookups;
+        yield* BobExecutionAdmission;
+        yield* sql`INSERT INTO effect_sql_migrations (migration_id, name, created_at) VALUES
+          (62, 'BoundedShellLookups', '2026-10-12 08:00:00'),
+          (63, 'BobExecutionAdmission', '2026-10-18 08:00:00')`;
+
+        yield* runMigrations();
+
+        yield* assertLedgerMatchesManifest();
+        const rows = yield* readLedger;
+        assert.deepStrictEqual(
+          rows.find((row) => row.name === "BobExecutionAdmission")?.created_at,
+          "2026-10-18 08:00:00",
+        );
+        const indexes = yield* sql<{ readonly name: string }>`
+          SELECT name FROM sqlite_master
+          WHERE type = 'index' AND name = 'orchestration_v2_projection_turn_items_failed_error_idx'
+        `;
+        assert.strictEqual(indexes.length, 1);
+        const v1Activities = yield* sql<{ readonly name: string }>`
+          SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'projection_thread_activities'
+        `;
+        assert.deepStrictEqual(v1Activities, []);
+        assert.deepEqual(yield* sql`PRAGMA quick_check`, [{ quick_check: "ok" }]);
       }),
     ),
   );

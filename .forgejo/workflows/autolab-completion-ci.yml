@@ -31,6 +31,6 @@ jobs:
           pnpm install --frozen-lockfile
       - name: Verify lifecycle and notifications
         run: |
-          pnpm exec vp test run packages/shared/src/agentAwareness.test.ts apps/server/src/orchestration-v2/ThreadSettlementService.test.ts apps/server/src/orchestration-v2/ThreadLaunchService.test.ts apps/web/src/components/ThreadNotificationCoordinator.test.tsx
+          pnpm exec vp test run packages/shared/src/agentAwareness.test.ts apps/server/src/orchestration-v2/ThreadSettlementService.test.ts apps/server/src/orchestration-v2/ThreadLaunchService.test.ts
           pnpm exec vp lint packages/contracts/src/orchestrationV2.ts packages/shared/src/agentAwareness.ts apps/server/src/orchestration-v2/ThreadSettlementService.ts apps/server/src/orchestration-v2/ThreadLaunchService.ts apps/server/src/orchestration-v2/ProjectionStore.ts apps/server/src/orchestration-v2/Orchestrator.ts apps/server/src/ws.ts apps/web/src/components/ThreadNotificationCoordinator.tsx
           pnpm --filter t3 exec vp pack

@@ -3,8 +3,11 @@ import * as Cache from "effect/Cache";
 import * as Context from "effect/Context";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
+import * as Equal from "effect/Equal";
 import * as Exit from "effect/Exit";
+import * as Hash from "effect/Hash";
 import * as Layer from "effect/Layer";
+import * as Stream from "effect/Stream";
 import {
   SourceControlProviderError,
   type SourceControlProviderDiscoveryItem,
@@ -18,18 +21,18 @@ import {
   probeSourceControlProvider,
   refineUnknownRemoteProvider,
   type SourceControlProviderDiscoverySpec,
+  type UnknownRemoteVerdict,
 } from "@t3tools/source-control-core/server/discovery";
 import * as SourceControlHost from "@t3tools/source-control-core/server/SourceControlHost";
 
 import * as ServerConfig from "../config.ts";
+import * as ServerSettings from "../serverSettings.ts";
 import * as VcsDriverRegistry from "../vcs/VcsDriverRegistry.ts";
 
 const PROVIDER_DETECTION_CACHE_CAPACITY = 2_048;
-// Detection runs for every project on a shell snapshot, and a missing host CLI
-// still resolves as success ("unknown"). A few-second TTL re-spawns those
-// probes continuously and stalls the websocket loop.
-const PROVIDER_DETECTION_CACHE_TTL = Duration.minutes(15);
-const PROVIDER_DETECTION_FAILURE_TTL = Duration.minutes(1);
+const PROVIDER_DETECTION_CACHE_TTL = Duration.seconds(5);
+const UNKNOWN_REMOTE_CACHE_CAPACITY = 512;
+const UNKNOWN_REMOTE_CACHE_TTL = Duration.minutes(5);
 
 export interface SourceControlProviderRegistration {
   readonly kind: SourceControlProviderKind;
@@ -71,13 +74,18 @@ function unsupportedProvider(
 ): SourceControlProvider.SourceControlProvider["Service"] {
   return SourceControlProvider.SourceControlProvider.of({
     kind,
+    // A remote on a host no provider recognizes (or no remote at all) has no change
+    // requests T3 could know about. Answering with none keeps the status poller from
+    // failing, and warning, on every refresh of such a repository.
     listChangeRequests: (input) =>
-      new SourceControlProviderError({
-        provider: kind,
-        operation: "listChangeRequests",
-        cwd: input.cwd,
-        detail: `No ${kind} source control provider is registered.`,
-      }),
+      kind === "unknown"
+        ? Effect.succeed([])
+        : new SourceControlProviderError({
+            provider: kind,
+            operation: "listChangeRequests",
+            cwd: input.cwd,
+            detail: `No ${kind} source control provider is registered.`,
+          }),
     getChangeRequest: (input) =>
       new SourceControlProviderError({
         provider: kind,
@@ -154,6 +162,35 @@ function selectProviderContext(
   );
 }
 
+/**
+ * `cwd` is left out because it only matters when a probe fails there, and a failed probe
+ * is not kept. Equality ignores `lookup`, so this is not a `Data.Class`.
+ */
+class UnknownRemoteLookup {
+  readonly key: string;
+  readonly lookup: Effect.Effect<UnknownRemoteVerdict>;
+
+  constructor(
+    context: SourceControlProvider.SourceControlProviderContext,
+    lookup: Effect.Effect<UnknownRemoteVerdict>,
+  ) {
+    this.lookup = lookup;
+    this.key = [
+      context.provider.name,
+      context.provider.baseUrl,
+      context.remoteUrl.trim().replace(/(?<!\/\/[^/]*)[^/:]+\/[^/:]+\/?$/u, ""),
+      context.requestedHost ?? "",
+    ].join("\n");
+  }
+
+  [Equal.symbol](that: unknown): boolean {
+    return that instanceof UnknownRemoteLookup && that.key === this.key;
+  }
+  [Hash.symbol](): number {
+    return Hash.string(this.key);
+  }
+}
+
 function bindProviderContext(
   provider: SourceControlProvider.SourceControlProvider["Service"],
   context: SourceControlProvider.SourceControlProviderContext | null,
@@ -202,6 +239,7 @@ function bindProviderContext(
 export const makeWithProviders = Effect.fn("makeSourceControlProviderRegistryWithProviders")(
   function* (registrations: ReadonlyArray<SourceControlProviderRegistration>) {
     const config = yield* ServerConfig.ServerConfig;
+    const serverSettings = yield* ServerSettings.ServerSettingsService;
     const { process } = yield* SourceControlHost.SourceControlHost;
     const vcsRegistry = yield* VcsDriverRegistry.VcsDriverRegistry;
     const providers = new Map<
@@ -212,6 +250,33 @@ export const makeWithProviders = Effect.fn("makeSourceControlProviderRegistryWit
 
     const get: SourceControlProviderRegistry["Service"]["get"] = (kind) =>
       Effect.succeed(providers.get(kind) ?? unsupportedProvider(kind));
+
+    const unknownRemoteCache = yield* Cache.makeWith(
+      (request: UnknownRemoteLookup) => request.lookup,
+      {
+        capacity: UNKNOWN_REMOTE_CACHE_CAPACITY,
+        timeToLive: (exit) =>
+          Exit.isSuccess(exit) && exit.value.settled ? UNKNOWN_REMOTE_CACHE_TTL : Duration.zero,
+      },
+    );
+    const settingsChanges = yield* serverSettings.subscribeChanges;
+    yield* Stream.runForEach(settingsChanges, () => Cache.invalidateAll(unknownRemoteCache)).pipe(
+      Effect.forkScoped,
+    );
+
+    const refineContext = (
+      cwd: string,
+      context: SourceControlProvider.SourceControlProviderContext | null,
+    ): Effect.Effect<SourceControlProvider.SourceControlProviderContext | null> =>
+      context === null || context.provider.kind !== "unknown"
+        ? Effect.succeed(context)
+        : Cache.get(
+            unknownRemoteCache,
+            new UnknownRemoteLookup(
+              context,
+              refineUnknownRemoteProvider({ specs: discoverySpecs, process, cwd, context }),
+            ),
+          ).pipe(Effect.map(({ provider }) => (provider ? { ...context, provider } : context)));
 
     const detectProviderContext = Effect.fn("SourceControlProviderRegistry.detectProviderContext")(
       function* (cwd: string) {
@@ -239,14 +304,7 @@ export const makeWithProviders = Effect.fn("makeSourceControlProviderRegistryWit
               }),
           ),
         );
-        const context = selectProviderContext(remotes.remotes);
-
-        return yield* refineUnknownRemoteProvider({
-          specs: discoverySpecs,
-          process: cachedRefinementProcess,
-          cwd,
-          context,
-        });
+        return yield* refineContext(cwd, selectProviderContext(remotes.remotes));
       },
     );
 
@@ -256,113 +314,13 @@ export const makeWithProviders = Effect.fn("makeSourceControlProviderRegistryWit
       SourceControlProviderError
     >(detectProviderContext, {
       capacity: PROVIDER_DETECTION_CACHE_CAPACITY,
-      timeToLive: (exit) =>
-        Exit.isSuccess(exit) ? PROVIDER_DETECTION_CACHE_TTL : PROVIDER_DETECTION_FAILURE_TTL,
+      timeToLive: (exit) => (Exit.isSuccess(exit) ? PROVIDER_DETECTION_CACHE_TTL : Duration.zero),
     });
-
-    // `glab auth status` and the other refinement CLIs are machine-wide. Pull
-    // request listing passes an explicit context, which used to skip the cache
-    // and spawn one probe per project on every shell snapshot.
-    const remoteProbeCache = yield* Cache.makeWith(
-      (key: string) => {
-        const parsed = JSON.parse(key) as {
-          readonly command: string;
-          readonly args: ReadonlyArray<string>;
-          readonly allowNonZeroExit?: boolean | null;
-          readonly timeoutMs?: number | null;
-          readonly maxOutputBytes?: number | null;
-        };
-        return process.run({
-          operation: "source-control.discovery.refine-unknown-remote",
-          command: parsed.command,
-          args: parsed.args,
-          cwd: config.cwd,
-          ...(typeof parsed.allowNonZeroExit === "boolean"
-            ? { allowNonZeroExit: parsed.allowNonZeroExit }
-            : {}),
-          ...(typeof parsed.timeoutMs === "number" ? { timeoutMs: parsed.timeoutMs } : {}),
-          ...(typeof parsed.maxOutputBytes === "number"
-            ? { maxOutputBytes: parsed.maxOutputBytes }
-            : {}),
-          appendTruncationMarker: true,
-        });
-      },
-      {
-        capacity: 32,
-        timeToLive: (exit) =>
-          Exit.isSuccess(exit) ? PROVIDER_DETECTION_CACHE_TTL : PROVIDER_DETECTION_FAILURE_TTL,
-      },
-    );
-    const cachedRefinementProcess: SourceControlHost.SourceControlHost["Service"]["process"] = {
-      run: (input) => {
-        if (
-          input.operation !== "source-control.discovery.refine-unknown-remote" ||
-          input.stdin !== undefined ||
-          input.env !== undefined ||
-          input.onStdoutChunk !== undefined
-        ) {
-          return process.run(input);
-        }
-        return Cache.get(
-          remoteProbeCache,
-          JSON.stringify({
-            command: input.command,
-            args: input.args,
-            allowNonZeroExit: input.allowNonZeroExit ?? null,
-            timeoutMs: input.timeoutMs ?? null,
-            maxOutputBytes: input.maxOutputBytes ?? null,
-          }),
-        );
-      },
-    };
-    const providedContextKey = (input: {
-      readonly cwd: string;
-      readonly context: SourceControlProvider.SourceControlProviderContext;
-    }) =>
-      JSON.stringify([
-        input.cwd,
-        input.context.provider.kind,
-        input.context.provider.name,
-        input.context.provider.baseUrl,
-        input.context.remoteName,
-        input.context.remoteUrl,
-        input.context.requestedHost ?? null,
-      ]);
-    const providedContextCache = yield* Cache.makeWith<
-      string,
-      SourceControlProvider.SourceControlProviderContext | null,
-      SourceControlProviderError
-    >(
-      (key) => {
-        const [cwd, kind, name, baseUrl, remoteName, remoteUrl, requestedHost] = JSON.parse(
-          key,
-        ) as [string, SourceControlProviderKind, string, string, string, string, string | null];
-        return refineUnknownRemoteProvider({
-          specs: discoverySpecs,
-          process: cachedRefinementProcess,
-          cwd,
-          context: {
-            provider: { kind, name, baseUrl },
-            remoteName,
-            remoteUrl,
-            ...(requestedHost === null ? {} : { requestedHost }),
-          },
-        });
-      },
-      {
-        capacity: PROVIDER_DETECTION_CACHE_CAPACITY,
-        timeToLive: (exit) =>
-          Exit.isSuccess(exit) ? PROVIDER_DETECTION_CACHE_TTL : PROVIDER_DETECTION_FAILURE_TTL,
-      },
-    );
 
     const resolveHandle: SourceControlProviderRegistry["Service"]["resolveHandle"] = (input) =>
       (input.context === undefined
         ? Cache.get(providerContextCache, input.cwd)
-        : Cache.get(
-            providedContextCache,
-            providedContextKey({ cwd: input.cwd, context: input.context }),
-          )
+        : refineContext(input.cwd, input.context)
       ).pipe(
         Effect.map((context) => {
           const kind = context?.provider.kind ?? SourceControlProviderKind.make("unknown");

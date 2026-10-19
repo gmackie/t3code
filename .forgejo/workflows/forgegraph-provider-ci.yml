@@ -31,7 +31,7 @@ on:
       - apps/web/src/components/settings/SourceControlSettings.tsx
       - apps/web/src/components/pullRequest/**
       - apps/web/src/sourceControlPresentation.ts
-      - apps/mobile/src/components/SourceControlIcon.tsx
+      - apps/mobile/src/features/projects/SourceControlIcon.tsx
       - apps/mobile/src/features/settings/SettingsServerControlsRouteScreen.tsx
       - apps/mobile/src/features/settings/forgegraph-sign-in*.ts
       - apps/mobile/src/features/settings/components/ForgeGraphSignInSection.tsx
@@ -193,7 +193,7 @@ jobs:
             apps/web/src/components/settings/SourceControlSettings.tsx
             apps/web/src/components/settings/settingsSearch.ts
             apps/web/src/sourceControlPresentation.ts
-            apps/mobile/src/components/SourceControlIcon.tsx
+            apps/mobile/src/features/projects/SourceControlIcon.tsx
             apps/server/src/pullRequest/PullRequestService.ts
             apps/server/src/pullRequest/PullRequestService.test.ts
             apps/server/src/mcp/toolkits/pullRequests
