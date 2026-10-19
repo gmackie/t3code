@@ -195,6 +195,19 @@ export const ForgeGraphDiffPage = Schema.Union([
   }),
 ]);
 
+/** FORGE-147's file list, read only for its totals: the size a pull request's header shows. */
+export const ForgeGraphFileTotals = Schema.Union([
+  DiffPending,
+  Schema.Struct({
+    status: Schema.Literal("ready"),
+    totals: Schema.Struct({
+      files: Schema.Number,
+      additions: Schema.Number,
+      deletions: Schema.Number,
+    }),
+  }),
+]);
+
 const CommitPerson = Schema.Struct({
   name: OptionalText,
   email: OptionalText,

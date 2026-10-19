@@ -980,6 +980,38 @@ describe("ForgeGraph diffs and commits (FORGE-147)", () => {
     }),
   );
 
+  it.effect("sizes the pull request from the files ForgeGraph has ready, and never waits", () =>
+    Effect.gen(function* () {
+      const ready = yield* run(
+        withPull({
+          "GET /fg/prs/cs-33/files": {
+            status: "ready",
+            headSha: head,
+            totals: { files: 2, additions: 19, deletions: 3 },
+            truncated: false,
+            files: [],
+          },
+        }),
+        (provider) => provider.getChangeRequest(target),
+      );
+      assert.deepInclude(ready.result, { changedFiles: 2, additions: 19, deletions: 3 });
+
+      const pending = yield* run(
+        withPull({
+          "GET /fg/prs/cs-33/files": () => [202, { status: "pending", retryAfter: 3 }] as const,
+        }),
+        (provider) => provider.getChangeRequest(target),
+      );
+      assert.deepInclude(pending.result, { changedFiles: 0, additions: 0, deletions: 0 });
+      assert.lengthOf(
+        pending.fake.sent.filter((request) => request.path === "/fg/prs/cs-33/files"),
+        1,
+      );
+      const older = yield* run(withPull({}), (provider) => provider.getChangeRequest(target));
+      assert.deepInclude(older.result, { changedFiles: 0 });
+    }),
+  );
+
   it.effect("posts a review's line comments after its head-pinned verdict", () =>
     Effect.gen(function* () {
       const { fake } = yield* run(
