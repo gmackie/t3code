@@ -32,6 +32,11 @@ on:
       - apps/web/src/components/pullRequest/**
       - apps/web/src/sourceControlPresentation.ts
       - apps/mobile/src/components/SourceControlIcon.tsx
+      - apps/mobile/src/features/settings/SettingsServerControlsRouteScreen.tsx
+      - apps/mobile/src/features/settings/forgegraph-sign-in*.ts
+      - apps/mobile/src/features/settings/components/ForgeGraphSignInSection.tsx
+      - apps/web/src/components/CommandPalette.tsx
+      - packages/client-runtime/src/forgeGraphSignIn*.ts
       - .forgejo/workflows/forgegraph-provider-ci.yml
       - pnpm-lock.yaml
       - pnpm-workspace.yaml
@@ -76,7 +81,7 @@ jobs:
       - name: Test source control in shared
         run: pnpm -C packages/shared exec vp test run --config ../../vite.config.ts --dir . src/sourceControl.test.ts
       - name: Test source control clients in client-runtime
-        run: pnpm -C packages/client-runtime exec vp test run src/sourceControlClients.test.ts
+        run: pnpm -C packages/client-runtime exec vp test run src/sourceControlClients.test.ts src/forgeGraphSignIn.test.ts
 
   server-tests:
     runs-on: forgegraph-ci
@@ -123,8 +128,28 @@ jobs:
           corepack enable
           corepack prepare pnpm@11.10.0 --activate
           pnpm install --frozen-lockfile
+      - name: Test the pull request summary and command palette logic
+        run: pnpm -C apps/web exec vp test run src/components/pullRequest/pullRequestDetail.logic.test.ts src/components/CommandPalette.logic.test.ts --project unit
       - name: Typecheck the web app
         run: pnpm -C apps/web exec tsc --noEmit
+
+  mobile:
+    runs-on: forgegraph-ci
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.14.0
+      - name: Install pinned dependencies
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.10.0 --activate
+          pnpm install --frozen-lockfile
+      - name: Test the ForgeGraph sign-in settings logic
+        run: pnpm -C apps/mobile exec vp test run src/features/settings/forgegraph-sign-in.test.ts
+      - name: Typecheck the mobile app
+        run: pnpm -C apps/mobile exec tsc --noEmit
 
   # Lint from the root: oxlint resolves the repo's local plugin relative to it.
   lint:
@@ -174,6 +199,17 @@ jobs:
             apps/server/src/mcp/toolkits/pullRequests
             apps/server/src/mcp/McpHttpServer.test.ts
             apps/server/src/mcp/toolkits/worktree/registration.test.ts
+            apps/mobile/src/features/settings/SettingsServerControlsRouteScreen.tsx
+            apps/mobile/src/features/settings/forgegraph-sign-in.ts
+            apps/mobile/src/features/settings/forgegraph-sign-in.test.ts
+            apps/mobile/src/features/settings/components/ForgeGraphSignInSection.tsx
+            apps/web/src/components/CommandPalette.tsx
+            apps/web/src/components/pullRequest/PullRequestSummaryTab.tsx
+            apps/web/src/components/pullRequest/PullRequestThreadConversation.tsx
+            apps/web/src/components/pullRequest/pullRequestDetail.logic.ts
+            apps/web/src/components/pullRequest/pullRequestDetail.logic.test.ts
+            packages/client-runtime/src/forgeGraphSignIn.ts
+            packages/client-runtime/src/forgeGraphSignIn.test.ts
           "
           pnpm exec vp lint $FILES
           pnpm exec vp fmt --check $FILES .forgejo/workflows/forgegraph-provider-ci.yml

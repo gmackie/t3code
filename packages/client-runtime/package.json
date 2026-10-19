@@ -420,6 +420,10 @@
       "types": "./src/state/mcpApps.ts",
       "default": "./src/state/mcpApps.ts"
     },
+    "./forgegraph-sign-in": {
+      "types": "./src/forgeGraphSignIn.ts",
+      "default": "./src/forgeGraphSignIn.ts"
+    },
     "./source-control-clients": {
       "types": "./src/sourceControlClients.ts",
       "default": "./src/sourceControlClients.ts"

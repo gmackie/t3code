@@ -1447,3 +1447,18 @@ export function resolveDisplayedPullRequestDetail(input: {
     return null;
   }
 }
+
+/**
+ * Where the Summary tab draws a remark that may belong to a review conversation. A host that serves
+ * no diff has no Code tab to answer conversations in, so its conversation is drawn whole at its
+ * first remark (`thread`), and its later remarks fold into it (`folded`). Everything else stays a
+ * remark in the timeline (`comment`).
+ */
+export function summaryRemarkPlacement(
+  commentId: string,
+  thread: { readonly comments: ReadonlyArray<{ readonly id: string }> } | undefined,
+  hostServesDiff: boolean,
+): "thread" | "folded" | "comment" {
+  if (thread === undefined || hostServesDiff) return "comment";
+  return thread.comments[0]?.id === commentId ? "thread" : "folded";
+}

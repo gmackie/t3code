@@ -116,16 +116,19 @@ Merging a stack lands it through GitCafe, and updating a branch restacks the lay
 
 ### ForgeGraph
 
-Repositories cloned from `git.forgegraf.com` or `gitgw.forgegraf.com` are read through
-ForgeGraph's own API, with no CLI required. If the server already has the `forge` CLI signed in,
-or `FG_API_TOKEN` set, there is nothing to do. Otherwise open **Settings → Source Control**, find
-**ForgeGraph**, and choose **Sign in with ForgeGraph**, then approve the code it shows in ForgeGraph.
-Sign-in runs on the server, so it works the same from a remote browser. You can also paste a token
-in the same section. A token is only sent to the server it was issued for: the one in Settings, then
-`FG_SERVER`, then the `forge` CLI's, then `https://forgegraf.com`.
+Repositories cloned from `git.forgegraf.com` or `gitgw.forgegraf.com` are read through ForgeGraph's
+own API, with no CLI required. If the server already has the `forge` CLI signed in, or
+`FG_API_TOKEN` set, there is nothing to do. Otherwise open **Settings → Source Control**, find
+**ForgeGraph**, and choose **Sign in with ForgeGraph**, then approve the code it shows in
+ForgeGraph. The command palette's **Sign in to ForgeGraph** starts the same sign-in, and on mobile
+it is under **Settings → Source control**. Sign-in runs on the server, so it works the same from a
+remote browser or the phone. You can also paste a token in the same section. A token is only sent to
+the server it was issued for: the one in Settings, then `FG_SERVER`, then the `forge` CLI's, then
+`https://forgegraf.com`.
 
-**Sign out** removes the token T3 Code saved. ForgeGraph cannot revoke tokens yet, so delete it in
-ForgeGraph too if you no longer want it to work.
+**Sign out**, in the same section or the command palette, removes the token T3 Code saved.
+ForgeGraph cannot revoke tokens yet, so delete it in ForgeGraph too if you no longer want it to
+work.
 
 ForgeGraph pull requests show their ForgeGraph CI builds as checks. Approving or requesting changes
 is tied to the head you read, so a push in between is refused rather than approved unseen. Merge
@@ -133,8 +136,8 @@ when green waits for the checks and reviews ForgeGraph requires. While it is arm
 so and offers to cancel it. On a repository whose pull requests ForgeGraph keeps itself, a push
 cancels the request, so turn it on again for the new head. On a Forgejo-backed repository the
 request stays armed across pushes, and Forgejo merges whichever head passes. Line comments are
-shown as review threads you can reply to and resolve. Diffs are not shown until ForgeGraph serves
-them.
+shown as review threads you can reply to and resolve from the pull request's Summary tab. Diffs are
+not shown until ForgeGraph serves them.
 
 ## Start, clone, or publish a project
 

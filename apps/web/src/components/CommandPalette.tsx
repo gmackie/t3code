@@ -256,6 +256,11 @@ import {
 } from "../sidebarProjectGrouping";
 import type { Project } from "../types";
 import { PullRequestGlyph } from "~/components/pullRequest/pullRequestIcons";
+import { ForgeGraphIcon } from "./Icons";
+import {
+  forgeGraphSignInFailure,
+  forgeGraphSignInView,
+} from "@t3tools/client-runtime/forgegraph-sign-in";
 import { readPullRequestListPreferences } from "~/components/pullRequest/pullRequestListPreferences";
 
 const EMPTY_BROWSE_ENTRIES: FilesystemBrowseResult["entries"] = [];
@@ -1027,6 +1032,27 @@ function OpenCommandPaletteDialog(props: {
           input: {},
         }),
   );
+  // ForgeGraph sign-in acts on the environment the palette is working in.
+  const forgeGraphEnvironmentId =
+    activeThread?.environmentId ?? activeDraftThread?.environmentId ?? primaryEnvironmentId;
+  const forgeGraphDiscovery = useEnvironmentQuery(
+    forgeGraphEnvironmentId === null
+      ? null
+      : sourceControlEnvironment.discovery({ environmentId: forgeGraphEnvironmentId, input: {} }),
+  );
+  const forgeGraphProvider =
+    forgeGraphDiscovery.data?.sourceControlProviders.find(
+      (provider) => provider.kind === "forgegraph",
+    ) ?? null;
+  const canSignInToForgeGraph = useAtomValue(
+    sourceControlEnvironment.forgeGraphSignInStart.permissionAtom(forgeGraphEnvironmentId),
+  );
+  const startForgeGraphSignIn = useAtomCommand(sourceControlEnvironment.forgeGraphSignInStart, {
+    label: "start ForgeGraph sign-in",
+  });
+  const signOutOfForgeGraph = useAtomCommand(sourceControlEnvironment.forgeGraphSignOut, {
+    label: "sign out of ForgeGraph",
+  });
   const browseEnvironmentPlatform = getEnvironmentBrowsePlatform(
     browseEnvironment?.serverConfig?.environment.platform.os,
   );
@@ -2262,6 +2288,65 @@ function OpenCommandPaletteDialog(props: {
         await navigate({ to: "/pull-requests", search: readPullRequestListPreferences() });
       },
     });
+  }
+
+  if (forgeGraphEnvironmentId !== null && forgeGraphProvider !== null && canSignInToForgeGraph) {
+    const environmentId = forgeGraphEnvironmentId;
+    actionItems.push({
+      kind: "action",
+      value: "action:forgegraph-sign-in",
+      searchTerms: ["forgegraph", "sign in", "login", "log in", "token", "device code"],
+      title: "Sign in to ForgeGraph",
+      icon: <ForgeGraphIcon className={ITEM_ICON_CLASS} />,
+      // The server runs the device flow. Settings picks up the waiting attempt and shows the
+      // code with its link, so this only starts it and goes there.
+      run: async () => {
+        const started = await startForgeGraphSignIn({ environmentId, input: {} });
+        if (started._tag === "Failure") {
+          const message = forgeGraphSignInFailure(started);
+          if (message !== null) toastManager.add({ type: "error", title: message });
+          return;
+        }
+        const pending = forgeGraphSignInView({
+          signedIn: false,
+          host: null,
+          savedInT3: false,
+          state: started.value,
+        }).pending;
+        if (pending !== null) {
+          toastManager.add({
+            type: "info",
+            title: `Approve ${pending.userCode} in ForgeGraph`,
+            description: pending.verificationUrl,
+          });
+        }
+        await navigate({ to: "/settings/source-control" });
+      },
+    });
+    if (forgeGraphProvider.auth.status === "authenticated") {
+      actionItems.push({
+        kind: "action",
+        value: "action:forgegraph-sign-out",
+        searchTerms: ["forgegraph", "sign out", "logout", "log out", "token"],
+        title: "Sign out of ForgeGraph",
+        icon: <ForgeGraphIcon className={ITEM_ICON_CLASS} />,
+        run: async () => {
+          const result = await signOutOfForgeGraph({ environmentId, input: {} });
+          if (result._tag === "Failure") {
+            const message = forgeGraphSignInFailure(result);
+            if (message !== null) toastManager.add({ type: "error", title: message });
+            return;
+          }
+          forgeGraphDiscovery.refresh();
+          toastManager.add({
+            type: "success",
+            title: "Signed out of ForgeGraph",
+            description:
+              "T3 Code's saved token is removed. A token from FG_API_TOKEN or the forge CLI still applies.",
+          });
+        },
+      });
+    }
   }
 
   actionItems.push({
