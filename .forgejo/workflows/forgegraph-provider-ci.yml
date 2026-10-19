@@ -1,0 +1,127 @@
+name: ForgeGraph provider CI
+
+# ForgeGraph as a source control and pull request host (T3CODE-27) and the work stacked on it:
+# the provider package, the server's source control and pull request services, their MCP tools,
+# and the clients' sign-in and pull request surfaces.
+on:
+  pull_request:
+    branches:
+      - custom-local
+    paths:
+      - packages/source-control-forgegraph/**
+      - apps/server/src/sourceControl/**
+      - apps/server/src/pullRequest/**
+      - apps/server/src/mcp/toolkits/pullRequests/**
+      - apps/server/src/ws.ts
+      - apps/server/src/server.ts
+      - apps/server/src/observability/RpcInstrumentation.ts
+      - apps/server/src/auth/RpcAuthorization.test.ts
+      - packages/contracts/src/pullRequest.ts
+      - packages/contracts/src/rpc.ts
+      - packages/contracts/src/forgeGraphSignIn.ts
+      - packages/contracts/src/clientRpcPermissions.ts
+      - packages/shared/src/sourceControl*.ts
+      - packages/client-runtime/src/sourceControlClients*.ts
+      - packages/client-runtime/src/state/sourceControl.ts
+      - apps/web/src/components/settings/ForgeGraphSignInSettings.tsx
+      - apps/web/src/components/settings/SourceControlSettings.tsx
+      - apps/web/src/components/pullRequest/**
+      - apps/web/src/sourceControlPresentation.ts
+      - apps/mobile/src/components/SourceControlIcon.tsx
+      - .forgejo/workflows/forgegraph-provider-ci.yml
+      - pnpm-lock.yaml
+      - pnpm-workspace.yaml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  server-and-packages:
+    runs-on: forgegraph-ci
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.14.0
+      - name: Install pinned dependencies
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.10.0 --activate
+          pnpm install --frozen-lockfile
+      - name: Verify the ForgeGraph provider package
+        run: |
+          pnpm -C packages/source-control-forgegraph exec vp test run --config ../../vite.config.ts --dir . src
+          pnpm -C packages/source-control-forgegraph exec tsc --noEmit
+      - name: Verify source control in shared and client-runtime
+        run: |
+          pnpm -C packages/shared exec vp test run --config ../../vite.config.ts --dir . src/sourceControl.test.ts
+          pnpm -C packages/client-runtime exec vp test run src/sourceControlClients.test.ts
+      - name: Verify the server's source control and pull request services
+        run: |
+          pnpm -C apps/server exec vp test run src/sourceControl/ForgeGraphSignIn.test.ts src/sourceControl/SourceControlDiscovery.test.ts src/sourceControl/SourceControlProviderRegistry.test.ts src/auth/RpcAuthorization.test.ts src/pullRequest/PullRequestService.test.ts src/mcp/toolkits/pullRequests src/mcp/McpHttpServer.test.ts
+          pnpm -C apps/server exec tsc --noEmit
+
+  web:
+    runs-on: forgegraph-ci
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.14.0
+      - name: Install pinned dependencies
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.10.0 --activate
+          pnpm install --frozen-lockfile
+      - name: Typecheck the web app
+        run: pnpm -C apps/web exec tsc --noEmit
+
+  # Lint from the root: oxlint resolves the repo's local plugin relative to it.
+  lint:
+    runs-on: forgegraph-ci
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.14.0
+      - name: Install pinned dependencies
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.10.0 --activate
+          pnpm install --frozen-lockfile
+      - name: Lint and format the touched files
+        run: |
+          FILES="
+            packages/source-control-forgegraph/src
+            apps/server/src/sourceControl/ForgeGraphSignIn.ts
+            apps/server/src/sourceControl/ForgeGraphSignIn.test.ts
+            apps/server/src/sourceControl/SourceControlDiscovery.test.ts
+            apps/server/src/sourceControl/SourceControlProviderRegistry.test.ts
+            apps/server/src/sourceControl/builtInDrivers.ts
+            apps/server/src/sourceControl/sourceControlHostSecrets.ts
+            apps/server/src/auth/RpcAuthorization.test.ts
+            apps/server/src/observability/RpcInstrumentation.ts
+            apps/server/src/server.ts
+            apps/server/src/ws.ts
+            packages/contracts/src/clientRpcPermissions.ts
+            packages/contracts/src/forgeGraphSignIn.ts
+            packages/contracts/src/pullRequest.ts
+            packages/contracts/src/rpc.ts
+            packages/shared/src/sourceControl.ts
+            packages/shared/src/sourceControl.test.ts
+            packages/client-runtime/src/sourceControlClients.ts
+            packages/client-runtime/src/sourceControlClients.test.ts
+            packages/client-runtime/src/state/sourceControl.ts
+            apps/web/src/components/Icons.tsx
+            apps/web/src/components/settings/ForgeGraphSignInSettings.tsx
+            apps/web/src/components/settings/SourceControlSettings.tsx
+            apps/web/src/components/settings/settingsSearch.ts
+            apps/web/src/sourceControlPresentation.ts
+            apps/mobile/src/components/SourceControlIcon.tsx
+          "
+          pnpm exec vp lint $FILES
+          pnpm exec vp fmt --check $FILES .forgejo/workflows/forgegraph-provider-ci.yml
