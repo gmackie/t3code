@@ -378,8 +378,10 @@ import { vcsEnvironment } from "../state/vcs";
 import { sourceControlEnvironment } from "../state/sourceControl";
 import { useProjectClone } from "../state/projectClones";
 import { projectCloneDisplayName, projectCloneProgressSummary } from "@t3tools/contracts";
+import { dismissProjectFileCopy, useProjectFileCopy } from "../lib/addProjectToMachine";
 import {
   type EnvironmentPresentation,
+  useEnvironment,
   useEnvironmentProviders,
   useEnvironments,
   usePrimaryEnvironment,
@@ -1313,6 +1315,9 @@ export default function ChatView(props: ChatViewProps) {
   );
   const setComposerDraftReviewComments = useComposerDraftStore((store) => store.setReviewComments);
   const setComposerDraftThreadContexts = useComposerDraftStore((store) => store.setThreadContexts);
+  const setComposerDraftEnvironmentContexts = useComposerDraftStore(
+    (store) => store.setEnvironmentContexts,
+  );
   const setComposerDraftModelSelection = useComposerDraftStore((store) => store.setModelSelection);
   const setComposerDraftRuntimeMode = useComposerDraftStore((store) => store.setRuntimeMode);
   const setComposerDraftInteractionMode = useComposerDraftStore(
@@ -1595,7 +1600,47 @@ export default function ChatView(props: ChatViewProps) {
           messages: serverProjection.messages,
           parentSubagents: workflowOpeningParentProjection?.projection.subagents ?? null,
         });
-  const parentThreadLink =
+  // A linked environment's agent may have delegated this thread from there.
+  const delegatedFrom = activeThread?.delegatedFrom ?? null;
+  const delegatedFromEnvironment = useEnvironment(delegatedFrom?.environmentId ?? null);
+  const delegatedFromRef =
+    delegatedFrom === null
+      ? null
+      : scopeThreadRef(delegatedFrom.environmentId, delegatedFrom.threadId);
+  // The title it had at delegation, until this client sees the parent itself.
+  const delegatedFromThread = useQuietThreadShell(delegatedFromRef);
+  const parentThreadLink = (() => {
+    if (parentSubagentThreadRef !== null) {
+      return {
+        title: parentSubagentThread?.title ?? "Parent thread",
+        open: (): void => {
+          void navigate({
+            to: "/$environmentId/$threadId",
+            params: buildThreadRouteParams(parentSubagentThreadRef),
+          });
+        },
+      };
+    }
+    if (delegatedFrom === null || delegatedFromRef === null) return null;
+    const parentRef = delegatedFromRef;
+    return {
+      title: delegatedFromThread?.title ?? delegatedFrom.title,
+      environmentLabel: delegatedFromEnvironment?.label ?? activeThread?.linkOrigin?.label ?? "",
+      // Only an environment this client is connected to can open the parent.
+      ...(delegatedFromEnvironment === null
+        ? {}
+        : {
+            open: (): void => {
+              void navigate({
+                to: "/$environmentId/$threadId",
+                params: buildThreadRouteParams(parentRef),
+              });
+            },
+          }),
+    };
+  })();
+  // The header's breadcrumb opens a parent in this environment only.
+  const headerParentThreadLink =
     parentSubagentThreadRef === null
       ? null
       : {
@@ -1895,15 +1940,26 @@ export default function ChatView(props: ChatViewProps) {
     }
   };
   const runProjectCloneActionStable = useStableCallback(runProjectCloneAction);
+  const activeProjectFileCopy = useProjectFileCopy(activeProjectRef);
   const projectCloneSendBlockReason =
-    activeProjectClone === null
-      ? null
-      : activeProjectClone.phase === "running"
-        ? "Cloning repository"
-        : activeProjectClone.phase === "done"
-          ? null
-          : "Repository not cloned";
+    activeProjectClone?.phase === "running"
+      ? "Cloning repository"
+      : activeProjectClone !== null && activeProjectClone.phase !== "done"
+        ? "Repository not cloned"
+        : activeProjectFileCopy?.phase === "copying"
+          ? "Copying files"
+          : null;
   const projectCloneBannerItem = (() => {
+    if (activeProjectFileCopy?.phase === "failed" && activeProjectRef) {
+      return {
+        id: `project-file-copy:${activeProjectRef.projectId}`,
+        variant: "error",
+        icon: <DownloadIcon />,
+        title: activeProjectFileCopy.title,
+        description: activeProjectFileCopy.failures.join("\n"),
+        onDismiss: () => dismissProjectFileCopy(activeProjectRef),
+      };
+    }
     if (!activeProjectClone || !activeProjectRef || activeProjectClone.phase === "done") {
       return null;
     }
@@ -6340,6 +6396,7 @@ export default function ChatView(props: ChatViewProps) {
       previewAnnotations: sendContextPreviewAnnotations,
       reviewComments: composerReviewComments,
       threadContexts: composerThreadContexts,
+      environmentContexts: composerEnvironmentContexts,
       selectedProvider: ctxSelectedProvider,
       selectedModel: ctxSelectedModel,
       selectedProviderModels: ctxSelectedProviderModels,
@@ -6390,6 +6447,7 @@ export default function ChatView(props: ChatViewProps) {
           reviewComments: composerReviewComments,
           previewAnnotations: composerPreviewAnnotations,
           threadContexts: composerThreadContexts,
+          environmentContexts: composerEnvironmentContexts,
         },
         setThreadError,
       );
@@ -6407,7 +6465,8 @@ export default function ChatView(props: ChatViewProps) {
       elementContextCount:
         composerPreviewAnnotations.length +
         composerReviewComments.length +
-        composerThreadContexts.length,
+        composerThreadContexts.length +
+        composerEnvironmentContexts.length,
     });
     const feedbackCommand =
       ctxSelectedProvider === "codex" &&
@@ -6416,7 +6475,8 @@ export default function ChatView(props: ChatViewProps) {
       sendableComposerTerminalContexts.length === 0 &&
       composerPreviewAnnotations.length === 0 &&
       composerReviewComments.length === 0 &&
-      composerThreadContexts.length === 0
+      composerThreadContexts.length === 0 &&
+      composerEnvironmentContexts.length === 0
         ? parseCodexFeedbackCommand(trimmed)
         : null;
     if (feedbackCommand && multipleModelSelections === null) {
@@ -6492,6 +6552,7 @@ export default function ChatView(props: ChatViewProps) {
       const followUpReviewComments = [...composerReviewComments];
       const followUpPreviewAnnotations = [...composerPreviewAnnotations];
       const followUpThreadContexts = [...composerThreadContexts];
+      const followUpEnvironmentContexts = [...composerEnvironmentContexts];
       promptRef.current = "";
       clearComposerDraftContent(composerDraftTarget);
       composerRef.current?.resetCursorState();
@@ -6502,6 +6563,7 @@ export default function ChatView(props: ChatViewProps) {
           reviewComments: composerReviewComments,
           previewAnnotations: composerPreviewAnnotations,
           threadContexts: composerThreadContexts,
+          environmentContexts: composerEnvironmentContexts,
         }),
         interactionMode: followUp.interactionMode,
       });
@@ -6515,6 +6577,7 @@ export default function ChatView(props: ChatViewProps) {
             reviewComments: followUpReviewComments,
             previewAnnotations: followUpPreviewAnnotations,
             threadContexts: followUpThreadContexts,
+            environmentContexts: followUpEnvironmentContexts,
           },
           writePrompt: (prompt) => setComposerDraftPrompt(composerDraftTarget, prompt),
           writeTerminalContexts: (contexts) =>
@@ -6525,6 +6588,8 @@ export default function ChatView(props: ChatViewProps) {
             setComposerDraftPreviewAnnotations(composerDraftTarget, [...annotations]),
           writeThreadContexts: (records) =>
             setComposerDraftThreadContexts(composerDraftTarget, [...records]),
+          writeEnvironmentContexts: (records) =>
+            setComposerDraftEnvironmentContexts(composerDraftTarget, [...records]),
           resetCursor: (options) => composerRef.current?.resetCursorState(options),
         });
       } else if (
@@ -6542,7 +6607,8 @@ export default function ChatView(props: ChatViewProps) {
       sendableComposerTerminalContexts.length === 0 &&
       composerPreviewAnnotations.length === 0 &&
       composerReviewComments.length === 0 &&
-      composerThreadContexts.length === 0
+      composerThreadContexts.length === 0 &&
+      composerEnvironmentContexts.length === 0
         ? parseStandaloneComposerSlashCommand(trimmed)
         : null;
     if (standaloneSlashCommand && multipleModelSelections === null) {
@@ -6601,6 +6667,7 @@ export default function ChatView(props: ChatViewProps) {
     const composerPreviewAnnotationsSnapshot = [...composerPreviewAnnotations];
     const composerReviewCommentsSnapshot: ReviewCommentContext[] = [...composerReviewComments];
     const composerThreadContextsSnapshot = [...composerThreadContexts];
+    const composerEnvironmentContextsSnapshot = [...composerEnvironmentContexts];
     const messageTextForSend = composerTerminalContexts
       .filter((context) => !composerTerminalContextsSnapshot.includes(context))
       .reduce(
@@ -6618,6 +6685,7 @@ export default function ChatView(props: ChatViewProps) {
         reviewComments: composerReviewCommentsSnapshot,
         previewAnnotations: composerPreviewAnnotationsSnapshot,
         threadContexts: composerThreadContextsSnapshot,
+        environmentContexts: composerEnvironmentContextsSnapshot,
         attachments: composerAttachmentsSnapshot.map((attachment, index) => ({
           attachment,
           attachmentId: attachmentIds[index] ?? attachment.id,
@@ -6982,6 +7050,10 @@ export default function ChatView(props: ChatViewProps) {
           );
           setComposerDraftReviewComments(composerDraftTarget, composerReviewCommentsSnapshot);
           setComposerDraftThreadContexts(composerDraftTarget, composerThreadContextsSnapshot);
+          setComposerDraftEnvironmentContexts(
+            composerDraftTarget,
+            composerEnvironmentContextsSnapshot,
+          );
           if (composerRef.current && currentRouteThreadKeyRef.current === routeThreadKey) {
             promptRef.current = messageTextForSend;
             composerRef.current.resetCursorState({
@@ -7362,6 +7434,10 @@ export default function ChatView(props: ChatViewProps) {
         setComposerDraftPreviewAnnotations(composerDraftTarget, composerPreviewAnnotationsSnapshot);
         setComposerDraftReviewComments(composerDraftTarget, composerReviewCommentsSnapshot);
         setComposerDraftThreadContexts(composerDraftTarget, composerThreadContextsSnapshot);
+        setComposerDraftEnvironmentContexts(
+          composerDraftTarget,
+          composerEnvironmentContextsSnapshot,
+        );
         if (currentRouteThreadKeyRef.current === routeThreadKey) {
           promptRef.current = messageTextForSend;
           composerImagesRef.current = retryComposerImages;
@@ -8149,8 +8225,9 @@ export default function ChatView(props: ChatViewProps) {
             activeThreadId={activeThread.id}
             isServerThread={isServerThread}
             activeThreadTitle={activeThread.title}
+            activeThreadLinkOrigin={activeThreadShell?.linkOrigin?.label ?? null}
             activeProject={activeProject ?? null}
-            parentThreadLink={parentThreadLink}
+            parentThreadLink={headerParentThreadLink}
             onOpenThread={onOpenRelatedThreadStable}
             rightPanelOpen={inlineRightPanelOwnsTitleBar}
             onNewThreadInProject={handleNewThreadInActiveProjectStable}
@@ -8430,11 +8507,7 @@ export default function ChatView(props: ChatViewProps) {
                               modelLabel={providerSubagentModelLabel}
                               effortLabel={providerSubagentEffortLabel}
                               status={providerSubagentStatus}
-                              onOpenParent={
-                                parentThreadLink
-                                  ? () => onOpenRelatedThread(parentThreadLink.threadId)
-                                  : null
-                              }
+                              onOpenParent={parentThreadLink?.open ?? null}
                             />
                           ) : null}
                           {!composerMounted ? null : (

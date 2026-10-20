@@ -100,6 +100,9 @@ interface NativeComposerEditorProps extends ViewProps {
   readonly onComposerFocus?: () => void;
   readonly onComposerBlur?: () => void;
   readonly onComposerSubmit?: (event: NativeSyntheticEvent<{ alternate: boolean }>) => void;
+  readonly onComposerContentSizeChange?: (
+    event: NativeSyntheticEvent<{ readonly width: number; readonly height: number }>,
+  ) => void;
 }
 
 const NativeView = requireNativeView<NativeComposerEditorProps>(NATIVE_MODULE_NAME);
@@ -126,6 +129,7 @@ export function ComposerEditor({
   onFocus,
   onBlur,
   onSubmit,
+  onContentSizeChange,
   contentInsetVertical = 0,
   ...props
 }: ComposerEditorProps) {
@@ -362,6 +366,11 @@ export function ComposerEditor({
       }}
       onComposerFocus={onFocus}
       onComposerBlur={onBlur}
+      onComposerContentSizeChange={
+        onContentSizeChange === undefined
+          ? undefined
+          : (event) => onContentSizeChange(event.nativeEvent)
+      }
       onComposerSubmit={
         onSubmit === undefined
           ? undefined

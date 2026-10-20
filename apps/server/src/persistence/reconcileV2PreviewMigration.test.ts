@@ -46,8 +46,12 @@ describe("V2 preview upgrade", () => {
         [64, "CanonicalizeThreadPullRequestLinks"],
         [65, "CodexUsageNativeTurnIndex"],
         [66, "RepairClientSettlementTimestamps"],
-        [67, "BoundedShellLookups"],
-        [68, "BobExecutionAdmission"],
+        [67, "WebhookDedupe"],
+        [68, "PeerLinks"],
+        [69, "PeerLinkFence"],
+        [70, "WaitingLinkRequestIndex"],
+        [71, "BoundedShellLookups"],
+        [72, "BobExecutionAdmission"],
       ]);
       assert.deepStrictEqual(yield* runMigrations(), []);
       assert.deepStrictEqual(yield* sql`SELECT * FROM orchestration_v2_legacy_imports`, imports);
@@ -137,8 +141,12 @@ describe("V2 preview upgrade", () => {
         [64, "CanonicalizeThreadPullRequestLinks"],
         [65, "CodexUsageNativeTurnIndex"],
         [66, "RepairClientSettlementTimestamps"],
-        [67, "BoundedShellLookups"],
-        [68, "BobExecutionAdmission"],
+        [67, "WebhookDedupe"],
+        [68, "PeerLinks"],
+        [69, "PeerLinkFence"],
+        [70, "WaitingLinkRequestIndex"],
+        [71, "BoundedShellLookups"],
+        [72, "BobExecutionAdmission"],
       ]);
     }).pipe(Effect.provide(NodeSqliteClient.layer({ filename: ":memory:" }))),
   );

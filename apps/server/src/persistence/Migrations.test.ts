@@ -208,6 +208,10 @@ describe("migration ledger reconciliation", () => {
         assert.deepStrictEqual(executed, [
           [65, "CodexUsageNativeTurnIndex"],
           [66, "RepairClientSettlementTimestamps"],
+          [67, "WebhookDedupe"],
+          [68, "PeerLinks"],
+          [69, "PeerLinkFence"],
+          [70, "WaitingLinkRequestIndex"],
         ]);
         yield* assertLedgerMatchesManifest();
         const rows = yield* readLedger;
@@ -220,6 +224,38 @@ describe("migration ledger reconciliation", () => {
           WHERE type = 'index' AND name = 'orchestration_v2_provider_turns_codex_native_id_idx'
         `;
         assert.strictEqual(indexes.length, 1);
+        assert.deepEqual(yield* sql`PRAGMA quick_check`, [{ quick_check: "ok" }]);
+      }),
+    ),
+  );
+
+  it.effect("upgrades a custom-local profile after upstream claimed 67 and 68", () =>
+    withFreshDatabase(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* runMigrations({ toMigrationInclusive: 66 });
+        // custom-local released its lane migrations as 67 and 68.
+        yield* sql`DROP INDEX IF EXISTS orchestration_v2_projection_turn_items_failed_error_idx`;
+        yield* BoundedShellLookups;
+        yield* BobExecutionAdmission;
+        yield* sql`INSERT INTO effect_sql_migrations (migration_id, name, created_at) VALUES
+          (67, 'BoundedShellLookups', '2026-10-20 08:00:00'),
+          (68, 'BobExecutionAdmission', '2026-10-20 08:00:00')`;
+
+        const executed = yield* runMigrations();
+
+        assert.deepStrictEqual(executed, [
+          [67, "WebhookDedupe"],
+          [68, "PeerLinks"],
+          [69, "PeerLinkFence"],
+          [70, "WaitingLinkRequestIndex"],
+        ]);
+        yield* assertLedgerMatchesManifest();
+        const columns = yield* sql<{ readonly name: string }>`
+          SELECT name FROM pragma_table_info('peer_environment_links') WHERE name = 'fenced'
+        `;
+        assert.strictEqual(columns.length, 1);
+        assert.deepStrictEqual(yield* runMigrations(), []);
         assert.deepEqual(yield* sql`PRAGMA quick_check`, [{ quick_check: "ok" }]);
       }),
     ),
