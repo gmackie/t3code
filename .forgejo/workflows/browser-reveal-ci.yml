@@ -38,10 +38,10 @@ jobs:
       - name: Verify browser reveal behavior
         working-directory: apps/web
         run: |
-          pnpm exec vp test run src/previewRevealHydration.test.ts src/previewStateStore.test.ts src/components/preview/useServerPreviewReveal.test.tsx --project unit
+          pnpm exec vp test run src/previewRevealHydration.test.ts src/previewStateStore.test.ts --project unit
           pnpm exec tsc --noEmit
-          pnpm exec vp lint src/previewStateStore.ts src/previewRevealHydration.test.ts src/components/preview/useServerPreviewReveal.ts src/components/preview/useServerPreviewReveal.test.tsx
-          pnpm exec vp fmt --check src/components/ChatView.tsx src/previewStateStore.ts src/previewRevealHydration.test.ts src/components/preview/useServerPreviewReveal.ts src/components/preview/useServerPreviewReveal.test.tsx
+          pnpm exec vp lint src/previewStateStore.ts src/previewRevealHydration.test.ts src/components/preview/useServerPreviewReveal.ts src/components/preview/useServerPreviewReveal.browser.test.tsx
+          pnpm exec vp fmt --check src/components/ChatView.tsx src/previewStateStore.ts src/previewRevealHydration.test.ts src/components/preview/useServerPreviewReveal.ts src/components/preview/useServerPreviewReveal.browser.test.tsx
 
   desktop-profile:
     runs-on: forgegraph-ci

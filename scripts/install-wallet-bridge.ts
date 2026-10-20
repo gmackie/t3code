@@ -1,3 +1,4 @@
+// @effect-diagnostics globalConsole:off nodeBuiltinImport:off - Installs the wallet bridge with Node file APIs.
 /** Install a trusted locally built adapter; never alter the desktop app bundle. */
 import * as NodeCrypto from "node:crypto";
 import * as NodeFSP from "node:fs/promises";

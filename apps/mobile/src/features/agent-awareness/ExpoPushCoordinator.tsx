@@ -59,6 +59,83 @@ async function register(connection: ExpoPushConnection, token: string | null) {
   );
 }
 
+type ExpoPushState = {
+  readonly enabled: boolean | null;
+  readonly savedConnectionsById: Parameters<ReturnType<typeof createExpoPushRegistration>>[0];
+};
+
+/** Registers the device's push token with every saved connection whenever asked, one pass at a time. */
+function startExpoPushSync(readLatest: () => ExpoPushState) {
+  let disposed = false;
+  let running = false;
+  let again = false;
+  const synchronize = createExpoPushRegistration(register, {
+    read: () => SecureStore.getItemAsync("t3code.expo-push.registrations"),
+    write: (value) => SecureStore.setItemAsync("t3code.expo-push.registrations", value),
+  });
+  const synchronizeOnce = async (current: ExpoPushState & { readonly enabled: boolean }) => {
+    publishStatus({ pending: true, registered: 0, failed: 0 });
+    let token: string | null = null;
+    try {
+      if (current.enabled) {
+        const projectId = expoPushProjectId();
+        if (!projectId) throw new Error("This build has no GMACKO Expo project.");
+        if (Platform.OS === "android")
+          await Notifications.setNotificationChannelAsync("default", {
+            name: "Agent notifications",
+            importance: Notifications.AndroidImportance.DEFAULT,
+          });
+        const permission = await Notifications.getPermissionsAsync();
+        if (permission.granted)
+          token = (await Notifications.getExpoPushTokenAsync({ projectId })).data;
+      }
+      const result = await synchronize(current.savedConnectionsById, token);
+      if (!disposed) publishStatus({ pending: false, ...result });
+    } catch {
+      if (!disposed)
+        publishStatus({
+          pending: false,
+          registered: 0,
+          failed: Math.max(1, Object.keys(current.savedConnectionsById).length),
+        });
+    }
+  };
+  const drain = async () => {
+    while (again && !disposed) {
+      again = false;
+      const current = readLatest();
+      if (current.enabled === null) continue;
+      await synchronizeOnce({ ...current, enabled: current.enabled });
+    }
+  };
+  const refresh = () => {
+    again = true;
+    if (running) return;
+    running = true;
+    void drain().then(
+      () => {
+        running = false;
+      },
+      () => {
+        running = false;
+      },
+    );
+  };
+  refresh();
+  const foreground = AppState.addEventListener("change", (state) => {
+    if (state === "active") refresh();
+  });
+  const tokenChange = Notifications.addPushTokenListener(refresh);
+  return {
+    refresh,
+    dispose: () => {
+      disposed = true;
+      foreground.remove();
+      tokenChange.remove();
+    },
+  };
+}
+
 export function ExpoPushCoordinator() {
   const preferences = useAtomValue(mobilePreferencesAtom);
   const { savedConnectionsById, isLoadingSavedConnection } = useSavedRemoteConnections();
@@ -66,7 +143,7 @@ export function ExpoPushCoordinator() {
     !isLoadingSavedConnection && AsyncResult.isSuccess(preferences)
       ? preferences.value.expoPushEnabled === true
       : null;
-  const latest = useRef({ enabled, savedConnectionsById });
+  const latest = useRef<ExpoPushState>({ enabled, savedConnectionsById });
   const refreshRef = useRef<(() => void) | null>(null);
   useLayoutEffect(() => {
     latest.current = { enabled, savedConnectionsById };
@@ -75,68 +152,11 @@ export function ExpoPushCoordinator() {
 
   useEffect(() => {
     if (!usesExpoPush()) return;
-    let disposed = false;
-    let running = false;
-    let again = false;
-    const synchronize = createExpoPushRegistration(register, {
-      read: () => SecureStore.getItemAsync("t3code.expo-push.registrations"),
-      write: (value) => SecureStore.setItemAsync("t3code.expo-push.registrations", value),
-    });
-    const refresh = async () => {
-      again = true;
-      if (running) return;
-      running = true;
-      try {
-        while (again) {
-          if (disposed) break;
-          again = false;
-          const current = latest.current;
-          if (current.enabled === null) continue;
-          const enabled = current.enabled;
-          publishStatus({ pending: true, registered: 0, failed: 0 });
-          let token: string | null = null;
-          try {
-            if (enabled) {
-              const projectId = expoPushProjectId();
-              if (!projectId) throw new Error("This build has no GMACKO Expo project.");
-              if (Platform.OS === "android")
-                await Notifications.setNotificationChannelAsync("default", {
-                  name: "Agent notifications",
-                  importance: Notifications.AndroidImportance.DEFAULT,
-                });
-              const permission = await Notifications.getPermissionsAsync();
-              if (permission.granted)
-                token = (await Notifications.getExpoPushTokenAsync({ projectId })).data;
-            }
-            const result = await synchronize(current.savedConnectionsById, token);
-            if (!disposed) publishStatus({ pending: false, ...result });
-          } catch {
-            if (!disposed)
-              publishStatus({
-                pending: false,
-                registered: 0,
-                failed: Math.max(1, Object.keys(current.savedConnectionsById).length),
-              });
-          }
-        }
-      } finally {
-        running = false;
-      }
-    };
-    const trigger = () => {
-      void refresh();
-    };
-    refreshRef.current = trigger;
-    trigger();
-    const foreground = AppState.addEventListener("change", (state) => {
-      if (state === "active") trigger();
-    });
-    const tokenChange = Notifications.addPushTokenListener(trigger);
+    const sync = startExpoPushSync(() => latest.current);
+    refreshRef.current = sync.refresh;
     return () => {
-      disposed = true;
       refreshRef.current = null;
-      foreground.remove();
-      tokenChange.remove();
+      sync.dispose();
     };
   }, []);
   return null;

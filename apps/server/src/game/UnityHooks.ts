@@ -544,7 +544,7 @@ const make = Effect.gen(function* () {
     if (result.action === "job" && ["completed", "failed", "canceled"].includes(result.state)) {
       const file = yield* receiptPath(canonical, request.target, result.jobId);
       const directory = path.dirname(file);
-      const temporary = `${file}.${yield* crypto.randomUUIDv4.pipe(Effect.orDie)}.tmp`;
+      const temporary = `${file}.${yield* crypto.randomUUIDv4().pipe(Effect.orDie)}.tmp`;
       // Only persist observed terminal results; interrupted/queued work is never replayed.
       yield* Effect.gen(function* () {
         yield* fs.makeDirectory(directory, { recursive: true });

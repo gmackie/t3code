@@ -104,7 +104,16 @@ const validateRetainPerThread = (retainPerThread: number) => {
   }
 };
 
+// Upstream's DropUnusedV1Projections (migration 63) removes the table this prunes.
+const hasActivityProjection = (database: NodeSqlite.DatabaseSync) =>
+  database
+    .prepare(
+      "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'projection_thread_activities'",
+    )
+    .get() !== undefined;
+
 const countActivities = (database: NodeSqlite.DatabaseSync, retainPerThread: number) => {
+  if (!hasActivityProjection(database)) return { totalActivities: 0, candidateActivities: 0 };
   const total = database
     .prepare("SELECT COUNT(*) AS count FROM projection_thread_activities")
     .get()?.count;
@@ -188,6 +197,11 @@ export const applyActivityRetention = async ({
   try {
     database.exec("PRAGMA locking_mode = EXCLUSIVE; BEGIN EXCLUSIVE; COMMIT;");
     assertServerStopped(runtimeStatePath);
+    if (!hasActivityProjection(database)) {
+      throw new Error(
+        "This database no longer has V1 activity projections (migration 63 dropped them); there is nothing to prune.",
+      );
+    }
     const inspection = countActivities(database, retainPerThread);
 
     database.prepare("VACUUM INTO ?").run(backupPath);

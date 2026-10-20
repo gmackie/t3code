@@ -7,6 +7,7 @@ import {
   initialTargetSelection,
   isRetryableReason,
   formatSkippedDomains,
+  fullDiskAccessRecheckStep,
   outcomeToStep,
   refreshedSourceProfileDirectory,
   refreshedSourceStep,
@@ -49,6 +50,15 @@ describe("initialWizardStep", () => {
 
   it("opens on configure when the source is ready", () => {
     expect(initialWizardStep(source())).toEqual({ step: "configure" });
+  });
+
+  it("asks for Full Disk Access before choosing an import target", () => {
+    expect(initialWizardStep(source({ profiles: [], unavailable: "needsFullDiskAccess" }))).toEqual(
+      {
+        step: "fullDiskAccess",
+        resume: "configure",
+      },
+    );
   });
 
   it("blocks on a reason nothing local can fix", () => {
@@ -103,6 +113,14 @@ describe("outcomeToStep", () => {
     expect(outcomeToStep({ kind: "blocked", reason: "browserRunning" })).toEqual({ step: "quit" });
   });
 
+  it("routes a Full Disk Access refusal to its own screen", () => {
+    expect(outcomeToStep({ kind: "blocked", reason: "needsFullDiskAccess" })).toEqual({
+      step: "fullDiskAccess",
+      resume: "import",
+      checked: true,
+    });
+  });
+
   it("surfaces every other failure on the blocked screen", () => {
     expect(outcomeToStep({ kind: "blocked", reason: "readFailed" })).toEqual({
       step: "blocked",
@@ -134,6 +152,20 @@ describe("refreshedSourceStep", () => {
   });
 });
 
+describe("fullDiskAccessRecheckStep", () => {
+  it("marks a still-denied access check for visible feedback", () => {
+    expect(fullDiskAccessRecheckStep(source({ unavailable: "needsFullDiskAccess" }))).toEqual({
+      step: "fullDiskAccess",
+      resume: "configure",
+      checked: true,
+    });
+  });
+
+  it("moves on once access reveals the source profiles", () => {
+    expect(fullDiskAccessRecheckStep(source())).toEqual({ step: "configure" });
+  });
+});
+
 describe("refreshedSourceProfileDirectory", () => {
   const refreshed = source({
     profiles: [
@@ -155,13 +187,22 @@ describe("refreshedSourceProfileDirectory", () => {
 describe("isRetryableReason", () => {
   it("offers a retry for failures a second attempt can clear", () => {
     expect(isRetryableReason("needsKeychainApproval")).toBe(true);
+    expect(isRetryableReason("keychainUnavailable")).toBe(true);
     expect(isRetryableReason("readFailed")).toBe(true);
   });
 
   it("does not offer a retry for a permanent failure", () => {
     expect(isRetryableReason("unsupportedPlatform")).toBe(false);
-    expect(isRetryableReason("keychainItemMissing")).toBe(false);
     expect(isRetryableReason("unknownSourceProfile")).toBe(false);
+    expect(isRetryableReason("profileLimitReached")).toBe(false);
+  });
+
+  it("offers a retry once the user has signed in to create the missing key", () => {
+    expect(isRetryableReason("keychainItemMissing")).toBe(true);
+  });
+
+  it("offers a retry when the cookies landed but the new profile was not saved", () => {
+    expect(isRetryableReason("profileNotSaved")).toBe(true);
   });
 });
 

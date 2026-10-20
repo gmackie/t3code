@@ -1,3 +1,4 @@
+import { Toolbar } from "../../components/ui/Toolbar";
 import {
   DatePicker,
   Host,
@@ -31,10 +32,10 @@ import { useState, type ReactNode } from "react";
 import { NavigationContainer, NavigationIndependentTree } from "@react-navigation/native";
 import { createV5StackNavigator as createNativeStackNavigator } from "../../native/createV5StackNavigator";
 import { ScrollView, useWindowDimensions, View } from "react-native";
-import { useMobileNavigationTheme } from "../../state/appearance/useMobileNavigationTheme";
-import { NativeHeaderToolbar } from "../../native/StackHeader";
+import { useMobileNavigationTheme } from "../../lib/useMobileNavigationTheme";
+
 import { NATIVE_LIQUID_GLASS_SUPPORTED } from "../../native/native-glass";
-import { useAppearancePreferences } from "../../state/appearance/AppearancePreferencesProvider";
+import { useAppearancePreferences } from "../settings/appearance/AppearancePreferencesProvider";
 
 const durationAmounts = Array.from({ length: 99 }, (_, index) => index + 1);
 const SnoozeStack = createNativeStackNavigator<{ CustomSnooze: undefined }>();
@@ -214,7 +215,6 @@ export function CustomSnoozeSheet(props: {
   );
 }
 
-/** The popover owns a native navigation bar, just like the app's sheet screens. */
 function SnoozePopoverNavigation(props: {
   readonly width: number;
   readonly height: number;
@@ -249,16 +249,22 @@ function SnoozePopoverNavigation(props: {
                 <SnoozeStack.Screen name="CustomSnooze">
                   {() => (
                     <>
-                      <NativeHeaderToolbar placement="left">
-                        <NativeHeaderToolbar.Button
+                      <Toolbar placement="left">
+                        <Toolbar.Button
                           accessibilityLabel="Cancel custom snooze"
                           icon="xmark"
                           onPress={props.onClose}
                         />
-                      </NativeHeaderToolbar>
-                      <NativeHeaderToolbar placement="right">
-                        <NativeHeaderToolbar.Button label="Snooze" onPress={props.onSubmit} />
-                      </NativeHeaderToolbar>
+                      </Toolbar>
+                      <Toolbar placement="right">
+                        <Toolbar.Button
+                          accessibilityLabel="Snooze"
+                          icon="checkmark"
+                          variant="prominent"
+                          tintColor={colors["--color-prominent-action"]}
+                          onPress={props.onSubmit}
+                        />
+                      </Toolbar>
                       <ScrollView
                         contentInsetAdjustmentBehavior="automatic"
                         showsVerticalScrollIndicator={false}

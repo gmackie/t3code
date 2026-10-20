@@ -9,7 +9,6 @@ describe("sourceControlClients", () => {
   });
 
   it("gives a change request URL to the first host whose shape it has", () => {
-    // GitCafe, ForgeGraph, and Forgejo share `/pulls/`; the first two only claim their own hosts.
     const kindOf = (url: string) => sourceControlClients.findByChangeRequestUrl(url)?.kind;
     expect(kindOf("https://git.cafe/acme/web/pulls/7")).toBe("gitcafe");
     expect(kindOf("https://git.forgegraf.com/acme/web/pulls/7")).toBe("forgegraph");

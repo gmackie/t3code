@@ -1,3 +1,4 @@
+// @effect-diagnostics globalConsole:off globalDate:off globalFetch:off nodeBuiltinImport:off - Mints App Store profiles through the Apple API from a plain Node CLI.
 // Mint fresh App Store provisioning profiles for the GMACKO iOS targets through
 // the public App Store Connect API and install them for xcodebuild.
 //

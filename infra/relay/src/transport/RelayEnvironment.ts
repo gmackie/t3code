@@ -111,7 +111,7 @@ export default class RelayEnvironment extends Cloudflare.DurableObject<RelayEnvi
       yield* state.setWebSocketAutoResponse(
         new WebSocketRequestResponsePair(EFFECT_RPC_PING, EFFECT_RPC_PONG),
       );
-      const activationId = yield* crypto.randomUUIDv4.pipe(Effect.orDie);
+      const activationId = yield* crypto.randomUUIDv4().pipe(Effect.orDie);
       const clients = new Map<number, Cloudflare.WebSocket>();
       // Active HTTP requests keep a Durable Object invocation alive, so only
       // WebSocket identities need durable restoration across hibernation.
@@ -278,7 +278,7 @@ export default class RelayEnvironment extends Cloudflare.DurableObject<RelayEnvi
             ) {
               return HttpServerResponse.text("Invalid connector token", { status: 401 });
             }
-            const ticket = yield* crypto.randomUUIDv4.pipe(Effect.orDie);
+            const ticket = yield* crypto.randomUUIDv4().pipe(Effect.orDie);
             const now = yield* DateTime.now;
             const expiresAt = DateTime.add(now, {
               milliseconds: RELAY_CONNECTOR_TICKET_TTL_MILLIS,

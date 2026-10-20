@@ -1,16 +1,17 @@
 import { useAtomValue } from "@effect/atom-react";
+import { AsyncResult } from "effect/reactivity";
 import {
   FORGEGRAPH_SIGN_IN_STATUS_INTERVAL_MS,
   forgeGraphSignInFailure,
   forgeGraphSignInView,
 } from "@t3tools/client-runtime/forgegraph-sign-in";
 import { readForgeGraphSettings } from "@t3tools/client-runtime/source-control-clients";
-import type { AtomCommandResult } from "@t3tools/client-runtime/state/runtime";
+import { settlePromise, type AtomCommandResult } from "@t3tools/client-runtime/state/runtime";
 import type { ForgeGraphSignInState } from "@t3tools/contracts";
 import { useEffect, useRef, useState } from "react";
 import { Linking, View } from "react-native";
 
-import { AppText as Text } from "../../../components/AppText";
+import { AppText as Text } from "../../../components/ui/AppText";
 import { useEnvironmentQuery } from "../../../state/query";
 import { sourceControlEnvironment } from "../../../state/sourceControl";
 import { useAtomCommand } from "../../../state/use-atom-command";
@@ -82,20 +83,18 @@ function ForgeGraphSignIn(props: {
     busyRef.current = true;
     setBusy(true);
     setError(null);
-    try {
-      const result: AtomCommandResult<ForgeGraphSignInState, unknown> = await command({
-        environmentId,
-        input: {},
-      });
-      if (result._tag === "Success") {
-        setState(result.value);
-        onSuccess?.();
-      } else {
-        setError(forgeGraphSignInFailure(result));
-      }
-    } finally {
-      busyRef.current = false;
-      setBusy(false);
+    const settled = await settlePromise(
+      (): Promise<AtomCommandResult<ForgeGraphSignInState, unknown>> =>
+        command({ environmentId, input: {} }),
+    );
+    busyRef.current = false;
+    setBusy(false);
+    const result = AsyncResult.isSuccess(settled) ? settled.value : settled;
+    if (result._tag === "Success") {
+      setState(result.value);
+      onSuccess?.();
+    } else {
+      setError(forgeGraphSignInFailure(result));
     }
   };
 

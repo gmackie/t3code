@@ -4,25 +4,34 @@ import * as Schema from "effect/Schema";
 import * as CodexSchema from "./schema.ts";
 
 const isGetAccountResponse = Schema.is(CodexSchema.V2GetAccountResponse);
-const isServerNotificationCollabAgentTool = Schema.is(
-  CodexSchema.ServerNotification__CollabAgentTool,
-);
-const isResumeResponseCollabAgentTool = Schema.is(
-  CodexSchema.V2ThreadResumeResponse__CollabAgentTool,
-);
-const isServerNotificationCollabAgentToolCallStatus = Schema.is(
-  CodexSchema.ServerNotification__CollabAgentToolCallStatus,
-);
-const isResumeResponseCollabAgentToolCallStatus = Schema.is(
-  CodexSchema.V2ThreadResumeResponse__CollabAgentToolCallStatus,
-);
-const isResumeResponse = Schema.is(CodexSchema.V2ThreadResumeResponse);
-const isThreadResumeResponse = isResumeResponse;
 const isThreadReadResponse = Schema.is(CodexSchema.V2ThreadReadResponse);
-const isThreadRollbackResponse = Schema.is(CodexSchema.V2ThreadRollbackResponse);
+const isThreadResumeResponse = Schema.is(CodexSchema.V2ThreadResumeResponse);
 const isThreadForkResponse = Schema.is(CodexSchema.V2ThreadForkResponse);
-const decodeThreadResumeResponse = Schema.decodeUnknownSync(CodexSchema.V2ThreadResumeResponse);
 const isTurnCompletedNotification = Schema.is(CodexSchema.V2TurnCompletedNotification);
+const decodeThreadResumeResponse = Schema.decodeUnknownSync(CodexSchema.V2ThreadResumeResponse);
+
+it("keeps async questions in live notifications and thread history", () => {
+  const item = {
+    type: "agentMessage",
+    id: "question-1",
+    text: "Which package?\n- pnpm\n- npm\n\nWhat should it be named?",
+    phase: "final_answer",
+    delivery: "async",
+    questions: [
+      { title: "Which package manager?", options: ["pnpm", "npm"] },
+      { title: "What should it be named?" },
+    ],
+  } as const;
+  for (const schema of [
+    CodexSchema.ServerNotification__ThreadItem,
+    CodexSchema.V2ItemStartedNotification__ThreadItem,
+    CodexSchema.V2ItemCompletedNotification__ThreadItem,
+    CodexSchema.V2ThreadReadResponse__ThreadItem,
+    CodexSchema.V2ThreadResumeResponse__ThreadItem,
+  ]) {
+    assert.deepEqual(Schema.decodeSync(schema)(item), item);
+  }
+});
 
 it("accepts Codex 0.150 multi-agent values", () => {
   const schemas = [
@@ -38,12 +47,18 @@ it("accepts Codex 0.150 multi-agent values", () => {
   }
 
   for (const tool of ["sendMessage", "followupTask", "interruptAgent", "listAgents"]) {
-    assert.equal(isServerNotificationCollabAgentTool(tool), true);
-    assert.equal(isResumeResponseCollabAgentTool(tool), true);
+    assert.equal(Schema.is(CodexSchema.ServerNotification__CollabAgentTool)(tool), true);
+    assert.equal(Schema.is(CodexSchema.V2ThreadResumeResponse__CollabAgentTool)(tool), true);
   }
 
-  assert.equal(isServerNotificationCollabAgentToolCallStatus("interrupted"), true);
-  assert.equal(isResumeResponseCollabAgentToolCallStatus("interrupted"), true);
+  assert.equal(
+    Schema.is(CodexSchema.ServerNotification__CollabAgentToolCallStatus)("interrupted"),
+    true,
+  );
+  assert.equal(
+    Schema.is(CodexSchema.V2ThreadResumeResponse__CollabAgentToolCallStatus)("interrupted"),
+    true,
+  );
 
   const resumeResponse = {
     approvalPolicy: "never",
@@ -85,7 +100,7 @@ it("accepts Codex 0.150 multi-agent values", () => {
     },
   };
 
-  assert.equal(isResumeResponse(resumeResponse), true);
+  assert.equal(Schema.is(CodexSchema.V2ThreadResumeResponse)(resumeResponse), true);
 });
 
 it("accepts Codex rate limit errors for thread responses", () => {

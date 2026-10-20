@@ -3,10 +3,10 @@ import type { NativeSyntheticEvent } from "react-native";
 
 import { createNativeReviewDiffTheme, type NativeReviewDiffData } from "./nativeReviewDiffAdapter";
 import { useAppearanceCodeSurface } from "../settings/appearance/useAppearanceCodeSurface";
-import { useAppearancePreferences } from "../../state/appearance/AppearancePreferencesProvider";
+import { useAppearancePreferences } from "../settings/appearance/AppearancePreferencesProvider";
 import { useNativeReviewDiffHighlighting } from "./useNativeReviewDiffHighlighting";
 import { buildNativeReviewTokensResetKey } from "./reviewDiffBridgeKeys";
-import { useUniwindTheme } from "../../state/appearance/useUniwindTheme";
+import { useUniwindTheme } from "../../lib/useUniwindTheme";
 
 export { buildNativeReviewTokensResetKey } from "./reviewDiffBridgeKeys";
 

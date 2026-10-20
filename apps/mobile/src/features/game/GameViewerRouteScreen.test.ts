@@ -9,7 +9,7 @@ const fixture = vi.hoisted(() => ({
   mounts: 0,
   unmounts: 0,
 }));
-vi.mock("../../state/appearance/AppearancePreferencesProvider", () => ({
+vi.mock("../settings/appearance/AppearancePreferencesProvider", () => ({
   useAppearancePreferences: () => ({
     themeId: "default",
     themeAppearance: "dark",
@@ -43,8 +43,8 @@ vi.mock("react-native-webview", () => ({
   },
 }));
 vi.mock("@react-navigation/native", () => ({ useNavigation: () => ({ goBack() {} }) }));
-vi.mock("../../components/AppText", () => ({ AppText: () => null }));
-vi.mock("../../components/LoadingStrip", () => ({ LoadingStrip: () => null }));
+vi.mock("../../components/ui/AppText", () => ({ AppText: () => null }));
+vi.mock("../../components/ui/LoadingStrip", () => ({ LoadingStrip: () => null }));
 vi.mock("../../native/StackHeader", () => ({ NativeStackScreenOptions: () => null }));
 import { GameViewerRouteScreen } from "./GameViewerRouteScreen";
 

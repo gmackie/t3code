@@ -158,8 +158,6 @@ const parseStableTag = (tag: string): StableVersion | undefined => {
   if (!major || !minor || !patch) return undefined;
 
   const prereleaseIdentifiers = prerelease ? prerelease.split(".") : [];
-  // Channel-specific prerelease tags also start with `v`, but must not be
-  // considered stable candidates when resolving the previous stable tag.
   if (["nightly", "preview", "gmacko"].includes(prereleaseIdentifiers[0] ?? "")) {
     return undefined;
   }
@@ -184,8 +182,6 @@ const parseNightlyTag = (
   tag: string,
   channel: "nightly" | "preview" = "nightly",
 ): NightlyVersion | undefined => {
-  // Accept both the current `v<semver>` format and the legacy `nightly-v<semver>`
-  // format so release note diffs keep working across the tag-format transition.
   const match = new RegExp(
     `^(?:nightly-)?v(\\d+)\\.(\\d+)\\.(\\d+)-${channel}\\.(\\d{8})\\.(\\d+)$`,
   ).exec(tag);

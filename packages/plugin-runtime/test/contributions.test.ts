@@ -1,3 +1,4 @@
+// @effect-diagnostics nodeBuiltinImport:off - Races plugin promises against a real wall-clock timeout.
 import { it } from "@effect/vitest";
 import { describe, expect } from "vite-plus/test";
 import * as NodeTimersPromises from "node:timers/promises";

@@ -17,13 +17,13 @@ import { ActivityIndicator, AppState, PixelRatio, Platform, Pressable, View } fr
 import { WebView } from "react-native-webview";
 import { useNavigation, type StaticScreenProps } from "@react-navigation/native";
 
-import { AppText as Text } from "../../components/AppText";
-import { LoadingStrip } from "../../components/LoadingStrip";
+import { AppText as Text } from "../../components/ui/AppText";
+import { LoadingStrip } from "../../components/ui/LoadingStrip";
 import { NativeStackScreenOptions } from "../../native/StackHeader";
 import { usePreparedConnection } from "../../state/session";
 
 import { mobileHtmlRenderTheme } from "../../lib/htmlRenderTheme";
-import { useAppearancePreferences } from "../../state/appearance/AppearancePreferencesProvider";
+import { useAppearancePreferences } from "../settings/appearance/AppearancePreferencesProvider";
 
 type Props = StaticScreenProps<{
   readonly environmentId: string;

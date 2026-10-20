@@ -10,13 +10,15 @@ import {
   type BobOperationInput,
   type GetCapabilitiesOutput,
 } from "@t3tools/contracts/bobCoordination";
-import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
+import { settlePromise, squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
+import * as Cause from "effect/Cause";
+import { AsyncResult } from "effect/reactivity";
 import * as Schema from "effect/Schema";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ScrollView, View } from "react-native";
-import { AppText } from "../../components/AppText";
-import { MaterialButton } from "../../components/MaterialButton";
-import { ScreenHeader } from "../../components/ScreenHeader";
+import { AppText } from "../../components/ui/AppText";
+import { Button } from "../../components/ui/Button";
+import { AppBar } from "../../components/ui/AppBar";
 import { bobCoordination } from "../../state/bobCoordination";
 import { useThreadShell } from "../../state/entities";
 import { useEnvironmentQuery } from "../../state/query";
@@ -26,6 +28,71 @@ import { uuidv4 } from "../../lib/uuid";
 type Props = StaticScreenProps<{ environmentId: EnvironmentId; threadId: ThreadId }>;
 const decode = <A,>(operation: string, value: unknown): A =>
   Schema.decodeUnknownSync(bobOperationSchemas.get(operation)!.output)(value) as A;
+type BobRequest = (input: BobOperationInput) => Promise<unknown>;
+type ProjectBinding = Parameters<typeof planBelongsToProject>[1];
+
+function failureMessage(result: AsyncResult.Failure<unknown, unknown>, fallback: string): string {
+  const cause = Cause.squash(result.cause);
+  return cause instanceof Error ? cause.message : fallback;
+}
+
+/** Capabilities, this project's plans and, when asked for, one plan with its items. */
+async function loadWork(
+  request: BobRequest,
+  binding: ProjectBinding | null | undefined,
+  planId?: string,
+  afterPlanId?: string,
+) {
+  const caps = decode<GetCapabilitiesOutput>(
+    "GetCapabilities",
+    await request({ operation: "GetCapabilities", input: { contractVersion: "1" } }),
+  );
+  const page = decode<ListPlansOutput>(
+    "ListPlans",
+    await request({
+      operation: "ListPlans",
+      input: { contractVersion: "1", limit: 50, ...(afterPlanId ? { afterPlanId } : {}) },
+    }),
+  );
+  const snapshots = await Promise.all(
+    page.plans.map(async (entry) => ({
+      entry,
+      snapshot: decode<GetPlanOutput>(
+        "GetPlan",
+        await request({
+          operation: "GetPlan",
+          input: { contractVersion: "1", resourceId: entry.planId },
+        }),
+      ),
+    })),
+  );
+  const visible = snapshots
+    .filter(({ snapshot }) => binding && planBelongsToProject(snapshot.definition, binding))
+    .map(({ entry }) => entry);
+  const detail = planId
+    ? decode<GetPlanOutput>(
+        "GetPlan",
+        await request({
+          operation: "GetPlan",
+          input: { contractVersion: "1", resourceId: planId },
+        }),
+      )
+    : null;
+  if (detail && (!binding || !planBelongsToProject(detail.definition, binding)))
+    throw new Error("Plan belongs to another project.");
+  const children = detail
+    ? await Promise.all(
+        detail.items.map((item) =>
+          request({
+            operation: "GetItem",
+            input: { contractVersion: "1", resourceId: item.itemId },
+          }).then((value) => decode<GetItemOutput>("GetItem", value).item),
+        ),
+      )
+    : [];
+  return { caps, visible, nextPlanId: page.nextPlanId ?? null, detail, children };
+}
+
 export function WorkRouteScreen(props: Props) {
   const { environmentId, threadId } = props.route.params;
   const navigation = useNavigation();
@@ -55,67 +122,20 @@ export function WorkRouteScreen(props: Props) {
       const current = ++generation.current;
       setBusy(true);
       setError(null);
-      try {
-        const caps = decode<GetCapabilitiesOutput>(
-          "GetCapabilities",
-          await request({ operation: "GetCapabilities", input: { contractVersion: "1" } }),
-        );
-        const page = decode<ListPlansOutput>(
-          "ListPlans",
-          await request({
-            operation: "ListPlans",
-            input: { contractVersion: "1", limit: 50, ...(afterPlanId ? { afterPlanId } : {}) },
-          }),
-        );
-        const snapshots = await Promise.all(
-          page.plans.map(async (entry) => ({
-            entry,
-            snapshot: decode<GetPlanOutput>(
-              "GetPlan",
-              await request({
-                operation: "GetPlan",
-                input: { contractVersion: "1", resourceId: entry.planId },
-              }),
-            ),
-          })),
-        );
-        const visible = snapshots
-          .filter(({ snapshot }) => binding && planBelongsToProject(snapshot.definition, binding))
-          .map(({ entry }) => entry);
-        const detail = planId
-          ? decode<GetPlanOutput>(
-              "GetPlan",
-              await request({
-                operation: "GetPlan",
-                input: { contractVersion: "1", resourceId: planId },
-              }),
-            )
-          : null;
-        if (detail && (!binding || !planBelongsToProject(detail.definition, binding)))
-          throw new Error("Plan belongs to another project.");
-        const children = detail
-          ? await Promise.all(
-              detail.items.map((item) =>
-                request({
-                  operation: "GetItem",
-                  input: { contractVersion: "1", resourceId: item.itemId },
-                }).then((value) => decode<GetItemOutput>("GetItem", value).item),
-              ),
-            )
-          : [];
-        if (current !== generation.current) return;
-        setCapabilities(caps);
-        setPlans((previous) => (afterPlanId ? [...previous, ...visible] : visible));
-        setNext(page.nextPlanId ?? null);
-        if (detail) {
-          setPlan(detail);
-          setItems(children);
-        }
-      } catch (cause) {
-        if (current === generation.current)
-          setError(cause instanceof Error ? cause.message : "Could not load work.");
-      } finally {
-        if (current === generation.current) setBusy(false);
+      const loaded = await settlePromise(() => loadWork(request, binding, planId, afterPlanId));
+      if (current !== generation.current) return;
+      setBusy(false);
+      if (AsyncResult.isFailure(loaded)) {
+        setError(failureMessage(loaded, "Could not load work."));
+        return;
+      }
+      const { caps, visible, nextPlanId, detail, children } = loaded.value;
+      setCapabilities(caps);
+      setPlans((previous) => (afterPlanId ? [...previous, ...visible] : visible));
+      setNext(nextPlanId);
+      if (detail) {
+        setPlan(detail);
+        setItems(children);
       }
     },
     [binding, request],
@@ -134,19 +154,17 @@ export function WorkRouteScreen(props: Props) {
     setPending(command);
     setBusy(true);
     setError(null);
-    try {
-      await request(command);
-      setPending(null);
-      await refresh(plan?.planId);
-    } catch (cause) {
-      setError(
-        cause instanceof Error
-          ? cause.message
-          : "Request is awaiting confirmation. Retry with the same identifier.",
-      );
-    } finally {
+    const sent = await settlePromise(() => request(command));
+    if (AsyncResult.isFailure(sent)) {
       setBusy(false);
+      setError(
+        failureMessage(sent, "Request is awaiting confirmation. Retry with the same identifier."),
+      );
+      return;
     }
+    setPending(null);
+    await refresh(plan?.planId);
+    setBusy(false);
   };
   const actions =
     plan?.state === "draft"
@@ -158,7 +176,7 @@ export function WorkRouteScreen(props: Props) {
           : [];
   return (
     <View className="flex-1 bg-background">
-      <ScreenHeader title="Work" onBack={() => navigation.goBack()} />
+      <AppBar title="Work" onBack={() => navigation.goBack()} />
       <ScrollView contentContainerClassName="gap-4 p-4">
         <AppText>Plans and execution coordinated by Bob</AppText>
         {(error || connection.error) && (
@@ -167,20 +185,16 @@ export function WorkRouteScreen(props: Props) {
         {!connection.data?.configured && (
           <AppText>Connect this environment to Bob to manage work.</AppText>
         )}
-        <MaterialButton
+        <Button
           label="Refresh"
           disabled={busy || !connection.data?.configured}
           onPress={() => void refresh(plan?.planId)}
         />
         {pending && (
-          <MaterialButton
-            label="Retry same request"
-            disabled={busy}
-            onPress={() => void mutate(pending)}
-          />
+          <Button label="Retry same request" disabled={busy} onPress={() => void mutate(pending)} />
         )}
         {plans.map((entry) => (
-          <MaterialButton
+          <Button
             key={entry.planId}
             label={`${entry.itemCount} issues · ${entry.state} · ${entry.planId.slice(0, 8)}`}
             disabled={busy}
@@ -188,7 +202,7 @@ export function WorkRouteScreen(props: Props) {
           />
         ))}
         {next && (
-          <MaterialButton
+          <Button
             label="More plans"
             disabled={busy}
             onPress={() => void refresh(plan?.planId, next)}
@@ -201,7 +215,7 @@ export function WorkRouteScreen(props: Props) {
             </AppText>
             {capabilities?.operations.includes("ControlPlan") &&
               actions.map((action) => (
-                <MaterialButton
+                <Button
                   key={action}
                   label={action}
                   disabled={
@@ -241,7 +255,7 @@ export function WorkRouteScreen(props: Props) {
                 </AppText>
                 <AppText>{item.achievedMilestones.join(" → ") || "No milestone confirmed"}</AppText>
                 {item.execution && (
-                  <MaterialButton
+                  <Button
                     label="Open execution thread"
                     onPress={() =>
                       navigation.navigate("Thread", {

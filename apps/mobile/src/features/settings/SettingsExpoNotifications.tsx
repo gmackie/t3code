@@ -1,15 +1,26 @@
 import { useAtomSet, useAtomValue } from "@effect/atom-react";
 import { AsyncResult } from "effect/reactivity";
+import { settlePromise } from "@t3tools/client-runtime/state/runtime";
 import { useState } from "react";
 import { Alert, Platform } from "react-native";
 import * as Notifications from "expo-notifications";
-import { ScreenScrollView } from "../../components/ScreenScrollView";
-import { AppText } from "../../components/AppText";
+import { ScreenScrollView } from "../../components/ui/ScreenScrollView";
+import { AppText } from "../../components/ui/AppText";
 import { mobilePreferencesAtom, updateMobilePreferencesAtom } from "../../state/preferences";
 import { expoPushProjectId, useExpoPushStatus } from "../agent-awareness/ExpoPushCoordinator";
 import { SettingsScreen } from "./components/SettingsScreen";
 import { SettingsSection } from "./components/SettingsSection";
 import { SettingsSwitchRow } from "./components/SettingsSwitchRow";
+
+async function requestExpoPushPermission(): Promise<boolean> {
+  if (Platform.OS === "android")
+    await Notifications.setNotificationChannelAsync("default", {
+      name: "Agent notifications",
+      importance: Notifications.AndroidImportance.DEFAULT,
+    });
+  const permission = await Notifications.requestPermissionsAsync();
+  return permission.granted;
+}
 
 export function SettingsExpoNotifications() {
   const preferences = useAtomValue(mobilePreferencesAtom);
@@ -24,25 +35,17 @@ export function SettingsExpoNotifications() {
       return;
     }
     setRequesting(true);
-    try {
-      if (Platform.OS === "android")
-        await Notifications.setNotificationChannelAsync("default", {
-          name: "Agent notifications",
-          importance: Notifications.AndroidImportance.DEFAULT,
-        });
-      const permission = await Notifications.requestPermissionsAsync();
-      if (!permission.granted) {
-        Alert.alert(
-          "Notifications are disabled",
-          "Allow notifications for T3 Code in system Settings.",
-        );
-        return;
-      }
-      save({ expoPushEnabled: true });
-    } catch {
+    const granted = await settlePromise(requestExpoPushPermission);
+    setRequesting(false);
+    if (AsyncResult.isFailure(granted)) {
       Alert.alert("Could not enable notifications", "Please try again.");
-    } finally {
-      setRequesting(false);
+    } else if (!granted.value) {
+      Alert.alert(
+        "Notifications are disabled",
+        "Allow notifications for T3 Code in system Settings.",
+      );
+    } else {
+      save({ expoPushEnabled: true });
     }
   };
   return (
