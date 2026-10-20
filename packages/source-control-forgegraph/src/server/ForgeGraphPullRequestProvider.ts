@@ -123,6 +123,23 @@ export const make = Effect.gen(function* () {
         : fromApi(error);
 
   /**
+   * FORGE-171's one-commit route names a commit outside the pull request in its 404; any other
+   * 404 is a server without the route.
+   */
+  const fromCommitDiffApi = (error: ForgeGraphApi.ForgeGraphApiError) =>
+    error.status !== 404
+      ? fromDiffApi(error)
+      : error.detail === "Commit not in this PR"
+        ? failure(
+            error.operation,
+            "ForgeGraph does not list this commit in the pull request. It shows the newest 250.",
+          )
+        : failure(
+            error.operation,
+            "This ForgeGraph server does not show one commit's changes yet.",
+          );
+
+  /**
    * A diff route's ready answer. A head ForgeGraph is still computing (a git job takes 30–90 s)
    * is asked for again at its `retryAfter`, a bounded number of times.
    */
@@ -130,12 +147,13 @@ export const make = Effect.gen(function* () {
     operation: string,
     path: string,
     schema: S,
+    fromError: (error: ForgeGraphApi.ForgeGraphApiError) => PullRequestProviderError = fromDiffApi,
   ) => {
     const attempt = (
       remaining: number,
     ): Effect.Effect<Extract<S["Type"], { readonly status: "ready" }>, PullRequestProviderError> =>
       lookups.read({ operation, method: "GET", path }, schema).pipe(
-        Effect.mapError(fromDiffApi),
+        Effect.mapError(fromError),
         Effect.flatMap((answer) => {
           const value = answer as S["Type"];
           if (value.status === "ready")
@@ -153,6 +171,25 @@ export const make = Effect.gen(function* () {
 
   const checksFor = (operation: string, input: PullRef, pull: Json.NumberedPull) =>
     lookups.gate(operation, input.repository, pull.headSha).pipe(Effect.mapError(fromApi));
+
+  /**
+   * The size ForgeGraph has ready for the head. Reading a pull request never waits on a diff job,
+   * so a head still computing, a server without the route, or any failure leaves it unknown.
+   */
+  const fileTotalsOf = (pull: Json.NumberedPull) =>
+    lookups
+      .read(
+        {
+          operation: "getChangeRequest",
+          method: "GET",
+          path: `/fg/prs/${encodeURIComponent(pull.id)}/files`,
+        },
+        Json.ForgeGraphFileTotals,
+      )
+      .pipe(
+        Effect.map((answer) => (answer.status === "ready" ? answer.totals : null)),
+        Effect.orElseSucceed(() => null),
+      );
 
   const merge = Effect.fn("ForgeGraphPullRequestProvider.merge")(function* (
     input: PullRef & { readonly mergeMethod?: PullRequestMergeMethod; readonly whenGreen: boolean },
@@ -294,9 +331,9 @@ export const make = Effect.gen(function* () {
     getChangeRequest: Effect.fn("ForgeGraphPullRequestProvider.getChangeRequest")(
       function* (input) {
         const pull = yield* readPull("getChangeRequest", input);
-        const [gate, mergeability] = yield* Effect.all(
-          [checksFor("getChangeRequest", input, pull), readMergeability(pull)],
-          { concurrency: 2 },
+        const [gate, mergeability, totals] = yield* Effect.all(
+          [checksFor("getChangeRequest", input, pull), readMergeability(pull), fileTotalsOf(pull)],
+          { concurrency: 3 },
         );
         const server = yield* api.server;
         const autoMerge =
@@ -307,7 +344,8 @@ export const make = Effect.gen(function* () {
           ...Json.toChangeRequest(pull, server),
           headSha: pull.headSha ?? null,
           body: pull.body ?? "",
-          changedFiles: 0,
+          changedFiles: totals?.files ?? 0,
+          ...(totals === null ? {} : { additions: totals.additions, deletions: totals.deletions }),
           mergedAt: state === "merged" ? Json.lastActivityAt(pull) : null,
           closedAt: state === "open" ? null : Json.lastActivityAt(pull),
           reviewers: [...new Set((pull.reviews ?? []).map((review) => review.author))]
@@ -360,19 +398,22 @@ export const make = Effect.gen(function* () {
     getViewerPermissions: (input) =>
       readPull("getViewerPermissions", input).pipe(Effect.map(Json.toViewerPermissions)),
     getDiff: Effect.fn("ForgeGraphPullRequestProvider.getDiff")(function* (input) {
-      if (input.commit !== undefined)
-        return yield* failure(
-          "getDiff",
-          "ForgeGraph does not show one commit's changes yet. Open the whole pull request's diff instead.",
-        );
+      // FORGE-171 takes a commit by its full id, as the pull request's commit list gives it.
+      const commit = input.commit?.toLowerCase();
+      if (commit !== undefined && !HEAD_SHA.test(commit))
+        return yield* failure("getDiff", "ForgeGraph needs the commit's full id.");
       const pull = yield* readPull("getDiff", input);
       const query = new URLSearchParams({ maxBytes: String(DIFF_PAGE_BYTES) });
       if (input.cursor) query.set("cursor", input.cursor);
-      const page = yield* readDiffRoute(
-        "getDiff",
-        `/fg/prs/${encodeURIComponent(pull.id)}/diff?${query}`,
-        Json.ForgeGraphDiffPage,
-      );
+      const id = encodeURIComponent(pull.id);
+      const page = yield* commit === undefined
+        ? readDiffRoute("getDiff", `/fg/prs/${id}/diff?${query}`, Json.ForgeGraphDiffPage)
+        : readDiffRoute(
+            "getDiff",
+            `/fg/prs/${id}/commits/${commit}/diff?${query}`,
+            Json.ForgeGraphDiffPage,
+            fromCommitDiffApi,
+          );
       return {
         patch: page.patch,
         truncated: page.truncated === true,

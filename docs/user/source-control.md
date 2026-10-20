@@ -137,9 +137,9 @@ so and offers to cancel it. On a repository whose pull requests ForgeGraph keeps
 cancels the request, so turn it on again for the new head. On a Forgejo-backed repository the
 request stays armed across pushes, and Forgejo merges whichever head passes. The Code tab shows
 the diff and lets you comment on a line; the first view of a new head can take a few seconds while
-ForgeGraph computes it, and up to a minute and a half for repositories it stores itself. One
-commit's changes on their own are not shown yet. Review threads are answered and resolved in the
-Code tab, on their line.
+ForgeGraph computes it, and up to a minute and a half for repositories it stores itself. Pick a
+commit to see its changes on their own; ForgeGraph lists a pull request's newest 250. Review
+threads are answered and resolved in the Code tab, on their line.
 
 ## Start, clone, or publish a project
 
