@@ -226,15 +226,48 @@ const retiredLaneMigrations = new Set([
   // The fork's v1 external thread import, superseded by upstream's v2 importer.
   "ExternalThreadImports",
   "ExternalThreadImportEnvironments",
+  // Early lane migrations recorded at 19, and twice at 29/30, before upstream
+  // claimed those ids for index migrations (T3CODE-34).
+  "ProjectionThreadsWorktreeMetadata",
+  "CanonicalizeModelSelectionProviderInstanceIds",
 ]);
 
 /**
  * Migrations from the renumbering era onward are written re-runnable
  * (guarded column adds, CREATE INDEX IF NOT EXISTS), so the reconciler may
  * backfill them. Older migrations predate every renumbered ledger and must
- * never be re-executed.
+ * never be re-executed, except the ones below.
  */
 const firstRerunnableMigrationId = 33;
+
+/**
+ * Older migrations that only run CREATE INDEX IF NOT EXISTS, so re-running
+ * them is safe. Retired lane rows held their slots on GMACKO profiles, which
+ * left them unapplied by name. Each lists the tables it indexes: upstream's
+ * DropUnusedV1Projections (63) drops some of them, and an index on a dropped
+ * table has nothing left to cover, so the backfill records it without running.
+ */
+const rerunnableIndexMigrations = new Map<string, ReadonlyArray<string>>([
+  ["ProjectionSnapshotLookupIndexes", ["projection_projects", "projection_threads"]],
+  [
+    "ProjectionThreadDetailOrderingIndexes",
+    ["projection_thread_activities", "projection_thread_messages"],
+  ],
+  ["ProjectionThreadShellArchiveIndexes", ["projection_threads"]],
+]);
+
+const isRerunnable = (id: number, name: string) =>
+  id >= firstRerunnableMigrationId || rerunnableIndexMigrations.has(name);
+
+const indexedTablesExist = Effect.fn("indexedTablesExist")(function* (name: string) {
+  const tables = rerunnableIndexMigrations.get(name);
+  if (tables === undefined) return true;
+  const sql = yield* SqlClient.SqlClient;
+  const present = yield* sql<{ readonly name: string }>`
+    SELECT name FROM sqlite_master WHERE type = 'table' AND ${sql.in("name", tables)}
+  `;
+  return present.length === tables.length;
+});
 
 /**
  * The GMACKO lane rebases onto upstream, and upstream occasionally claims
@@ -293,7 +326,7 @@ export const reconcileMigrationLedger = Effect.fn("reconcileMigrationLedger")(fu
     0,
   );
   const wantsSlot = (id: number, name: string) =>
-    appliedAtByName.has(name) || (id >= firstRerunnableMigrationId && id < highestAppliedId);
+    appliedAtByName.has(name) || (isRerunnable(id, name) && id < highestAppliedId);
   if (migrationEntries.some(([id, name]) => wantsSlot(id, name) && foreignIds.has(id))) {
     yield* Effect.logWarning(
       "Migration ledger has foreign rows on manifest slots; leaving it untouched",
@@ -322,7 +355,14 @@ export const reconcileMigrationLedger = Effect.fn("reconcileMigrationLedger")(fu
             INSERT INTO effect_sql_migrations (migration_id, name, created_at)
             VALUES (${id}, ${name}, ${appliedAt})
           `;
-        } else if (id >= firstRerunnableMigrationId && id < highestAppliedId) {
+        } else if (isRerunnable(id, name) && id < highestAppliedId) {
+          if (!(yield* indexedTablesExist(name))) {
+            yield* sql`
+              INSERT INTO effect_sql_migrations (migration_id, name, created_at)
+              VALUES (${id}, ${name}, CURRENT_TIMESTAMP)
+            `;
+            continue;
+          }
           // Same failure contract as Migrator's own runner.
           yield* Effect.catch(migration, (cause) =>
             Effect.die(

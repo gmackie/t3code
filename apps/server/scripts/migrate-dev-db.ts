@@ -1,5 +1,33 @@
 #!/usr/bin/env node
 
+/**
+ * Rebuild an isolated dev database from a pruned snapshot of the real
+ * database (the active T3 home's, see `defaultSourceCandidates`), then run
+ * this checkout's migrations against it.
+ *
+ * `vp run migrate-dev-db` from a worktree:
+ *   1. Nukes `<worktree>/.t3/userdata/statev2.sqlite`.
+ *   2. Copies a slice of the real db (attached read-only): the schema, and every row except those of
+ *      deleted, archived, and settled threads, which are nearly all of a
+ *      long-lived database. It then prunes that to the most recently updated
+ *      projects and, per project, the most recent threads that have fully
+ *      stopped, with
+ *      their forks and subagents. Working, settled, and archived threads, and
+ *      threads with pending recovery, are skipped, and scheduled tasks and
+ *      queued effects are dropped, so the dev server never adopts live work.
+ *      Auth sessions, pairing links, command receipts, and provider
+ *      runtime rows are dropped — pair a fresh browser against dev.
+ *   3. Runs migrations on the result. Because the clone carries the real
+ *      `effect_sql_migrations` table, this proves a new migration applies
+ *      on top of the real applied set, and the slot check below catches
+ *      the silent failure where two branches claim the same
+ *      `Migrations/NNN_` id (the second one's CREATE TABLE is skipped).
+ *
+ * The event log (`orchestration_events`) is pruned per stream while
+ * `sqlite_sequence` and the projection cursors carry over untouched, so new events keep appending
+ * after the old high-water mark and projection cursors never rewind.
+ */
+
 import * as NodeRuntime from "@effect/platform-node/NodeRuntime";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import * as NodeOS from "node:os";
@@ -33,7 +61,7 @@ export class MigrateDevDbSharedHomeError extends Schema.TaggedError<MigrateDevDb
   {},
 ) {
   override get message(): string {
-    return "Refusing to rebuild the shared ~/.t3 database. Use an isolated --base-dir.";
+    return "Refusing to rebuild a real T3 home's database. Use an isolated --base-dir.";
   }
 }
 
@@ -116,6 +144,7 @@ export class MigrateDevDbPhaseError extends Schema.TaggedError<MigrateDevDbPhase
 
 export interface RunMigrateDevDbInput {
   readonly baseDir?: string | undefined;
+  /** Source database. Defaults to the active T3 home's (see `defaultSourceCandidates`). */
   readonly source?: string | undefined;
   readonly projects: number;
   readonly threadsPerProject: number;
@@ -124,7 +153,31 @@ export interface RunMigrateDevDbInput {
 export interface RunMigrateDevDbOptions {
   /** Overridable for tests; the directory writes must never target. */
   readonly sharedHome?: string | undefined;
+  /** Overridable for tests; the user's home, where installed T3 homes live. */
+  readonly homeDirectory?: string | undefined;
+  /** Overridable for tests; read for T3CODE_HOME and T3CODE_STATE_DIR_NAME. */
+  readonly env?: Readonly<Record<string, string | undefined>> | undefined;
 }
+
+/**
+ * Where the real database may be, in order: the T3 home this shell points at with T3CODE_HOME,
+ * else the GMACKO install's, else the upstream install's. The first that exists is the source;
+ * with none, the last is named in the error.
+ */
+const defaultSourceCandidates = (
+  homeDirectory: string,
+  env: Readonly<Record<string, string | undefined>>,
+  join: (...segments: ReadonlyArray<string>) => string,
+): ReadonlyArray<string> => {
+  const t3Home = env.T3CODE_HOME?.trim();
+  if (t3Home) {
+    return [join(t3Home, env.T3CODE_STATE_DIR_NAME?.trim() || "userdata", "statev2.sqlite")];
+  }
+  return [
+    join(homeDirectory, ".t3-gmacko", "userdata-gmacko", "statev2.sqlite"),
+    join(homeDirectory, ".t3", "userdata", "statev2.sqlite"),
+  ];
+};
 
 interface KeptProject {
   readonly title: string;
@@ -395,6 +448,11 @@ const pruneSnapshot = Effect.fn("pruneDevDbSnapshot")(function* (input: RunMigra
   };
 });
 
+/** Compare this checkout's migration registry against what the cloned
+ * database recorded: same slot under a different name means the migration
+ * was skipped, not applied. It runs after `runMigrations`, whose ledger
+ * reconciliation has already re-keyed, retired and backfilled what the server
+ * would, so it only fails on collisions the server cannot reconcile. */
 const verifyMigrationSlots = Effect.fn("verifyMigrationSlots")(function* () {
   const sql = yield* SqlClient.SqlClient;
   const applied = yield* sql<{ migration_id: number; name: string }>`
@@ -420,9 +478,23 @@ export const runMigrateDevDb = Effect.fn("runMigrateDevDb")(function* (
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
 
-  const sharedHome = path.resolve(options.sharedHome ?? path.join(NodeOS.homedir(), ".t3"));
+  const homeDirectory = options.homeDirectory ?? NodeOS.homedir();
+  const env = options.env ?? process.env;
+  // Every real T3 home on this machine; this command must never rebuild one.
+  const sharedHomes = [
+    options.sharedHome ?? path.join(homeDirectory, ".t3"),
+    path.join(homeDirectory, ".t3-gmacko"),
+    ...(env.T3CODE_HOME?.trim() ? [env.T3CODE_HOME.trim()] : []),
+  ].map((home) => path.resolve(home));
   const sourcePath = path.resolve(
-    input.source ?? path.join(sharedHome, "userdata", "statev2.sqlite"),
+    input.source ??
+      (yield* Effect.gen(function* () {
+        const candidates = defaultSourceCandidates(homeDirectory, env, path.join);
+        for (const candidate of candidates) {
+          if (yield* fs.exists(candidate)) return candidate;
+        }
+        return candidates[candidates.length - 1]!;
+      })),
   );
 
   const baseDir =
@@ -439,12 +511,14 @@ export const runMigrateDevDb = Effect.fn("runMigrateDevDb")(function* (
   if (!(yield* fs.exists(sourcePath))) {
     return yield* new MigrateDevDbSourceMissingError({ sourcePath });
   }
-  const [canonicalBaseDir, canonicalSharedHome] = yield* Effect.all([
-    fs.realPath(baseDir).pipe(Effect.orElseSucceed(() => baseDir)),
-    fs.realPath(sharedHome).pipe(Effect.orElseSucceed(() => sharedHome)),
-  ]);
-  if (canonicalBaseDir === canonicalSharedHome) {
-    return yield* new MigrateDevDbSharedHomeError();
+  const canonicalBaseDir = yield* fs.realPath(baseDir).pipe(Effect.orElseSucceed(() => baseDir));
+  for (const sharedHome of sharedHomes) {
+    const canonicalSharedHome = yield* fs
+      .realPath(sharedHome)
+      .pipe(Effect.orElseSucceed(() => sharedHome));
+    if (canonicalBaseDir === canonicalSharedHome) {
+      return yield* new MigrateDevDbSharedHomeError();
+    }
   }
   // The destination db and snapshot both get deleted below; a --source that
   // resolves to either (e.g. a leftover snapshot file) would be destroyed
@@ -579,7 +653,9 @@ export const migrateDevDbCommand = Command.make(
     ),
     source: Flag.String("source").pipe(
       Flag.optional,
-      Flag.withDescription("Source database. Defaults to ~/.t3/userdata/statev2.sqlite."),
+      Flag.withDescription(
+        "Source database. Defaults to $T3CODE_HOME's, else ~/.t3-gmacko/userdata-gmacko/statev2.sqlite, else ~/.t3/userdata/statev2.sqlite.",
+      ),
     ),
   },
   ({ projects, threadsPerProject, baseDir, source }) =>
@@ -606,7 +682,7 @@ export const migrateDevDbCommand = Command.make(
     }),
 ).pipe(
   Command.withDescription(
-    "Rebuild the worktree dev database from a pruned snapshot of the real ~/.t3 data, then run migrations.",
+    "Rebuild the worktree dev database from a pruned snapshot of the real T3 data, then run migrations.",
   ),
 );
 
