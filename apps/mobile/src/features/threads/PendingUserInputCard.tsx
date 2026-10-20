@@ -444,9 +444,9 @@ export function PendingUserInputCard(props: PendingUserInputCardProps) {
       <View className="flex-row gap-3">
         {paginated && questionCount > 1 ? (
           <View className="flex-1">
-            <RequestActionButton
+            <Button
               label="Back"
-              size="large"
+              fullWidth
               tone="secondary"
               disabled={activeQuestionIndex === 0 || isResponding}
               onPress={() => navigateToQuestion(activeQuestionIndex - 1)}
@@ -454,9 +454,9 @@ export function PendingUserInputCard(props: PendingUserInputCardProps) {
           </View>
         ) : null}
         <View className="flex-1">
-          <RequestActionButton
+          <Button
             label={isResponding ? "Submitting…" : showSubmit ? "Submit answers" : "Next"}
-            size="large"
+            fullWidth
             tone={showSubmit && props.answers === null ? "secondary" : "primary"}
             disabled={
               isResponding ||

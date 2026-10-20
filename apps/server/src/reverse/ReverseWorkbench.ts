@@ -306,19 +306,18 @@ const make = Effect.gen(function* () {
 
   return ReverseWorkbench.of({
     list: (input) => inProject(input.projectId, () => store.list(input.projectId)),
-    importFile: (input) =>
-      Effect.gen(function* () {
-        const project = yield* requireProject(input.projectId);
-        const environmentId = yield* serverEnvironment.getEnvironmentId;
-        return yield* attempt(() =>
-          store.importFile({
-            projectId: input.projectId,
-            workspaceRoot: project.workspaceRoot,
-            relativePath: input.relativePath,
-            environmentId,
-          }),
-        );
-      }),
+    importFile: Effect.fn("ReverseWorkbench.importFile")(function* (input) {
+      const project = yield* requireProject(input.projectId);
+      const environmentId = yield* serverEnvironment.getEnvironmentId;
+      return yield* attempt(() =>
+        store.importFile({
+          projectId: input.projectId,
+          workspaceRoot: project.workspaceRoot,
+          relativePath: input.relativePath,
+          environmentId,
+        }),
+      );
+    }),
     link: (input) =>
       inProject(input.projectId, () =>
         store.link(input.projectId, input.investigationId, {
@@ -332,18 +331,17 @@ const make = Effect.gen(function* () {
         ports: await serial.ports(),
         sessions: serial.list(input.projectId),
       })),
-    openSerial: (input) =>
-      Effect.gen(function* () {
-        yield* requireProject(input.projectId);
-        // Sessions whose project was deleted would otherwise hold their ports until a restart.
-        for (const owner of serial.owners()) {
-          const live = yield* projects
-            .getById(owner as ProjectId)
-            .pipe(Effect.orElseSucceed(() => Option.some(null)));
-          if (Option.isNone(live)) serial.closeProject(owner);
-        }
-        return yield* attempt(() => serial.open(input.projectId, input.port, input.baud));
-      }),
+    openSerial: Effect.fn("ReverseWorkbench.openSerial")(function* (input) {
+      yield* requireProject(input.projectId);
+      // Sessions whose project was deleted would otherwise hold their ports until a restart.
+      for (const owner of serial.owners()) {
+        const live = yield* projects
+          .getById(owner as ProjectId)
+          .pipe(Effect.orElseSucceed(() => Option.some(null)));
+        if (Option.isNone(live)) serial.closeProject(owner);
+      }
+      return yield* attempt(() => serial.open(input.projectId, input.port, input.baud));
+    }),
     writeSerial: (input) =>
       inProject(input.projectId, () =>
         serial.write(input.projectId, input.sessionId, Buffer.from(input.data, "base64")),
@@ -383,17 +381,16 @@ const make = Effect.gen(function* () {
           Effect.catch((error) => Queue.fail(queue, error)),
         ),
       ),
-    importCapture: (input) =>
-      Effect.gen(function* () {
-        const project = yield* requireProject(input.projectId);
-        return yield* attempt(() =>
-          store.importCapture({
-            projectId: input.projectId,
-            workspaceRoot: project.workspaceRoot,
-            relativePath: input.relativePath,
-          }),
-        );
-      }),
+    importCapture: Effect.fn("ReverseWorkbench.importCapture")(function* (input) {
+      const project = yield* requireProject(input.projectId);
+      return yield* attempt(() =>
+        store.importCapture({
+          projectId: input.projectId,
+          workspaceRoot: project.workspaceRoot,
+          relativePath: input.relativePath,
+        }),
+      );
+    }),
     viewCapture: (input) =>
       inProject(input.projectId, async () => {
         if (input.endNs <= input.startNs)
@@ -449,31 +446,30 @@ const make = Effect.gen(function* () {
       inProject(input.projectId, () =>
         analysis.diff(input.projectId, input.leftInvestigationId, input.rightInvestigationId),
       ),
-    importExtracted: (input) =>
-      Effect.gen(function* () {
-        yield* requireProject(input.projectId);
-        const environmentId = yield* serverEnvironment.getEnvironmentId;
-        return yield* attempt(async () => {
-          const parent = await store.getArtifact(input.projectId, input.investigationId);
-          const root = await analysis.extractedRoot(
-            input.projectId,
-            input.receiptId,
-            parent.artifact.sha256,
-          );
-          // Same containment and size checks as a workspace import, rooted at the extraction.
-          return store.importFile({
-            projectId: input.projectId,
-            workspaceRoot: root,
-            relativePath: input.path,
-            environmentId,
-            origin: {
-              parentInvestigationId: input.investigationId,
-              parentSha256: parent.artifact.sha256,
-              label: `${parent.artifact.filename} → ${input.path}`,
-            },
-          });
+    importExtracted: Effect.fn("ReverseWorkbench.importExtracted")(function* (input) {
+      yield* requireProject(input.projectId);
+      const environmentId = yield* serverEnvironment.getEnvironmentId;
+      return yield* attempt(async () => {
+        const parent = await store.getArtifact(input.projectId, input.investigationId);
+        const root = await analysis.extractedRoot(
+          input.projectId,
+          input.receiptId,
+          parent.artifact.sha256,
+        );
+        // Same containment and size checks as a workspace import, rooted at the extraction.
+        return store.importFile({
+          projectId: input.projectId,
+          workspaceRoot: root,
+          relativePath: input.path,
+          environmentId,
+          origin: {
+            parentInvestigationId: input.investigationId,
+            parentSha256: parent.artifact.sha256,
+            label: `${parent.artifact.filename} → ${input.path}`,
+          },
         });
-      }),
+      });
+    }),
     createFinding: (input, author) =>
       inProject(input.projectId, () => store.createFinding({ ...input, authorKind: author })),
     updateFinding: (input, actor) =>

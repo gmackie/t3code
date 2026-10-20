@@ -251,8 +251,9 @@ export const make = Effect.gen(function* () {
     Effect.tap((active) => Effect.sync(() => active?.session.close())),
   );
 
-  const superviseConnector = (connector: ActiveConnector) =>
-    Effect.gen(function* () {
+  // Lives until connector exit and starts replacements; avoid nested lifetime spans.
+  const superviseConnector = Effect.fnUntraced(
+    function* (connector: ActiveConnector) {
       const result = yield* Effect.result(connector.child.exitCode);
       const activeAtExit = yield* Ref.get(activeRef);
       if (

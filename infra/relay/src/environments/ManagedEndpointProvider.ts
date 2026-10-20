@@ -1,3 +1,4 @@
+import * as CloudflareRetry from "@distilled.cloud/cloudflare/Retry";
 import * as Base64Url from "effect/encoding/Base64Url";
 import * as Alchemy from "alchemy";
 import * as Cloudflare from "alchemy/Cloudflare";
@@ -31,6 +32,7 @@ import {
 } from "../deploymentConfig.ts";
 import { relayConnectorPath, relayEdgeEndpointHostname } from "../transport/routing.ts";
 import { T3RelayEndpointControl } from "../transport/T3RelayEndpointControl.ts";
+import * as CloudflareApiPause from "./CloudflareApiPause.ts";
 import * as ManagedEndpointAllocations from "./ManagedEndpointAllocations.ts";
 import * as ManagedTunnelLimits from "./ManagedTunnelLimits.ts";
 
@@ -166,6 +168,11 @@ export class ManagedEndpointProvider extends Context.Service<
       readonly origin: RelayManagedEndpointOrigin;
       readonly providerKind?: RelayManagedEndpointProvider;
       readonly connectorLeaseId?: string;
+      /**
+       * Return a ready tunnel that already serves this origin with only a
+       * liveness check and a fresh token, skipping ingress and DNS repair.
+       */
+      readonly reuseReadyTunnel?: boolean;
     }) => Effect.Effect<ManagedEndpointProvisioningResult, ManagedEndpointProviderError>;
     readonly reconcileOrigin: (input: {
       readonly userId: string;

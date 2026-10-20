@@ -17,85 +17,83 @@ const readFullAccessCaller = Effect.fn("mcp.unity.readFullAccessCaller")(functio
 });
 
 export const layer = UnityToolkit.toLayer({
-  unity_command: ({ request }) =>
-    Effect.gen(function* () {
-      const { scope } = yield* readFullAccessCaller(
-        "Unity commands require a full-access agent in default mode.",
-      );
-      yield* McpInvocationContext.requireThreadScope(scope, "unity_command");
-      const unity = yield* UnityHooks.UnityHooks;
-      return yield* unity.command(request).pipe(
-        Effect.mapError(
-          (error) =>
-            new OrchestratorMcpFailure({
-              code: "orchestration_error",
-              message: `${error.code}: ${error.message}${"diagnostics" in error && error.diagnostics ? `\n${JSON.stringify(error.diagnostics)}` : ""}`,
-            }),
-        ),
-      );
-    }),
-  unity_game: ({ request }) =>
-    Effect.gen(function* () {
-      const { scope } = yield* readFullAccessCaller(
-        "Unity gameplay requires a full-access agent in default mode.",
-      );
-      const thread = yield* McpInvocationContext.requireThreadScope(scope, "unity_game");
-      const games = yield* GameSessions.GameSessions;
-      return yield* games.agentRequest(thread.thread.threadId, request).pipe(
-        Effect.map((result) => {
-          if (
-            request.action === "report" &&
-            result !== null &&
-            typeof result === "object" &&
-            "htmlRender" in result
-          )
-            return { htmlRender: result.htmlRender };
-          return result;
-        }),
-        Effect.mapError(
-          (error) =>
-            new OrchestratorMcpFailure({
-              code: "orchestration_error",
-              message: `${error.code}: ${error.message}${"diagnostics" in error && error.diagnostics ? `\n${JSON.stringify(error.diagnostics)}` : ""}`,
-            }),
-        ),
-      );
-    }),
-  unity_hooks: ({ request }) =>
-    Effect.gen(function* () {
-      const { scope } = yield* readFullAccessCaller(
-        "Unity hooks require a full-access agent in default mode.",
-      );
-      yield* McpInvocationContext.requireThreadScope(scope, "unity_hooks");
-      const hooks = yield* UnityHooks.UnityHooks;
-      return yield* hooks.execute(request).pipe(
-        Effect.mapError(
-          (error) =>
-            new OrchestratorMcpFailure({
-              code: "orchestration_error",
-              message: `${error.code}: ${error.message}${"diagnostics" in error && error.diagnostics ? `\n${JSON.stringify(error.diagnostics)}` : ""}`,
-            }),
-        ),
-      );
-    }),
+  unity_command: Effect.fn("UnityToolkit.unity_command")(function* ({ request }) {
+    const { scope } = yield* readFullAccessCaller(
+      "Unity commands require a full-access agent in default mode.",
+    );
+    yield* McpInvocationContext.requireThreadScope(scope, "unity_command");
+    const unity = yield* UnityHooks.UnityHooks;
+    return yield* unity.command(request).pipe(
+      Effect.mapError(
+        (error) =>
+          new OrchestratorMcpFailure({
+            code: "orchestration_error",
+            message: `${error.code}: ${error.message}${"diagnostics" in error && error.diagnostics ? `\n${JSON.stringify(error.diagnostics)}` : ""}`,
+          }),
+      ),
+    );
+  }),
+  unity_game: Effect.fn("UnityToolkit.unity_game")(function* ({ request }) {
+    const { scope } = yield* readFullAccessCaller(
+      "Unity gameplay requires a full-access agent in default mode.",
+    );
+    const thread = yield* McpInvocationContext.requireThreadScope(scope, "unity_game");
+    const games = yield* GameSessions.GameSessions;
+    return yield* games.agentRequest(thread.thread.threadId, request).pipe(
+      Effect.map((result) => {
+        if (
+          request.action === "report" &&
+          result !== null &&
+          typeof result === "object" &&
+          "htmlRender" in result
+        )
+          return { htmlRender: result.htmlRender };
+        return result;
+      }),
+      Effect.mapError(
+        (error) =>
+          new OrchestratorMcpFailure({
+            code: "orchestration_error",
+            message: `${error.code}: ${error.message}${"diagnostics" in error && error.diagnostics ? `\n${JSON.stringify(error.diagnostics)}` : ""}`,
+          }),
+      ),
+    );
+  }),
+  unity_hooks: Effect.fn("UnityToolkit.unity_hooks")(function* ({ request }) {
+    const { scope } = yield* readFullAccessCaller(
+      "Unity hooks require a full-access agent in default mode.",
+    );
+    yield* McpInvocationContext.requireThreadScope(scope, "unity_hooks");
+    const hooks = yield* UnityHooks.UnityHooks;
+    return yield* hooks.execute(request).pipe(
+      Effect.mapError(
+        (error) =>
+          new OrchestratorMcpFailure({
+            code: "orchestration_error",
+            message: `${error.code}: ${error.message}${"diagnostics" in error && error.diagnostics ? `\n${JSON.stringify(error.diagnostics)}` : ""}`,
+          }),
+      ),
+    );
+  }),
 });
 
 export const layerSnapshot = UnitySnapshotToolkit.toLayer({
-  unity_game_snapshot: ({ sessionId }) =>
-    Effect.gen(function* () {
-      const { scope } = yield* readFullAccessCaller(
-        "Unity snapshots require an active full-access agent.",
-      );
-      const thread = yield* McpInvocationContext.requireThreadScope(scope, "unity_game_snapshot");
-      const games = yield* GameSessions.GameSessions;
-      return yield* games.agentSnapshot(thread.thread.threadId, sessionId).pipe(
-        Effect.mapError(
-          (error) =>
-            new OrchestratorMcpFailure({
-              code: "orchestration_error",
-              message: `${error.code}: ${error.message}${"diagnostics" in error && error.diagnostics ? `\n${JSON.stringify(error.diagnostics)}` : ""}`,
-            }),
-        ),
-      );
-    }),
+  unity_game_snapshot: Effect.fn("UnitySnapshotToolkit.unity_game_snapshot")(function* ({
+    sessionId,
+  }) {
+    const { scope } = yield* readFullAccessCaller(
+      "Unity snapshots require an active full-access agent.",
+    );
+    const thread = yield* McpInvocationContext.requireThreadScope(scope, "unity_game_snapshot");
+    const games = yield* GameSessions.GameSessions;
+    return yield* games.agentSnapshot(thread.thread.threadId, sessionId).pipe(
+      Effect.mapError(
+        (error) =>
+          new OrchestratorMcpFailure({
+            code: "orchestration_error",
+            message: `${error.code}: ${error.message}${"diagnostics" in error && error.diagnostics ? `\n${JSON.stringify(error.diagnostics)}` : ""}`,
+          }),
+      ),
+    );
+  }),
 });

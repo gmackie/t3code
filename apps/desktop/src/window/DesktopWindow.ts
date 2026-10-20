@@ -391,6 +391,7 @@ export const make = Effect.gen(function* () {
     if (persistedBounds !== null && initialBounds === DesktopAppSettings.DEFAULT_MAIN_WINDOW_SIZE) {
       yield* logWindowWarning("saved main window bounds could not be restored; using defaults");
     }
+    if (yield* Ref.get(desktopState.quitting)) return Option.none();
     yield* syncPersistedWindowOpacity.pipe(
       Effect.catchCause((cause) => logWindowWarning("failed to restore window opacity", { cause })),
     );
@@ -915,9 +916,15 @@ export const make = Effect.gen(function* () {
     if (Option.isSome(existingWindow)) return;
 
     const shouldUseDarkColors = yield* electronTheme.shouldUseDarkColors;
+    if (yield* Ref.get(desktopState.quitting)) return;
     yield* syncPersistedWindowOpacity.pipe(
       Effect.catchCause((cause) => logWindowWarning("failed to restore window opacity", { cause })),
     );
+    const settings = yield* desktopSettings.get;
+    const text =
+      settings.wslOnly === true && settings.wslBackendEnabled === true
+        ? "Connecting to WSL…"
+        : "Starting T3 Code…";
     const splash = yield* electronWindow.create({
       width: 360,
       height: 220,

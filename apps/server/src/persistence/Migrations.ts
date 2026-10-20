@@ -67,11 +67,13 @@ import Migration0061 from "./Migrations/061_PullRequestReviewGuides.ts";
 import Migration0062 from "./Migrations/062_ThreadFailureLookupIndex.ts";
 import Migration0063 from "./Migrations/063_DropUnusedV1Projections.ts";
 import Migration0064 from "./Migrations/064_CanonicalizeThreadPullRequestLinks.ts";
-// GMACKO lane migration, released as 59 and then 62 before upstream claimed those ids.
+import Migration0065 from "./Migrations/065_CodexUsageNativeTurnIndex.ts";
+import Migration0066 from "./Migrations/066_RepairClientSettlementTimestamps.ts";
+// GMACKO lane migration, released as 59, 62 and 65 before upstream claimed those ids.
 import BoundedShellLookups from "./Migrations/059_BoundedShellLookups.ts";
-// T3CODE-6 Bob admission; released as 59 on main and 63 on custom-local before upstream
-// claimed those ids.
-import Migration0066 from "./Migrations/063_BobExecutionAdmission.ts";
+// T3CODE-6 Bob admission; released as 59 on main and 63 and 66 on custom-local before
+// upstream claimed those ids.
+import Migration0068 from "./Migrations/063_BobExecutionAdmission.ts";
 
 /**
  * Upstream's ThreadFailureLookupIndex (62) and the lane's BoundedShellLookups
@@ -86,7 +88,7 @@ const dropSharedFailedErrorIndex = Effect.gen(function* () {
   yield* sql`DROP INDEX IF EXISTS orchestration_v2_projection_turn_items_failed_error_idx`;
 });
 const Migration0062Shared = Effect.andThen(dropSharedFailedErrorIndex, Migration0062);
-const Migration0065 = Effect.andThen(dropSharedFailedErrorIndex, BoundedShellLookups);
+const Migration0067 = Effect.andThen(dropSharedFailedErrorIndex, BoundedShellLookups);
 
 export const migrationEntries = [
   [1, "OrchestrationEvents", Migration0001],
@@ -154,10 +156,12 @@ export const migrationEntries = [
   [62, "ThreadFailureLookupIndex", Migration0062Shared],
   [63, "DropUnusedV1Projections", Migration0063],
   [64, "CanonicalizeThreadPullRequestLinks", Migration0064],
-  // Released as 59 and 62 on the GMACKO lane; reconcileMigrationLedger re-keys it by name.
-  [65, "BoundedShellLookups", Migration0065],
-  // Released as 59 on main and 63 on custom-local; re-keyed by name like the lane migration.
-  [66, "BobExecutionAdmission", Migration0066],
+  [65, "CodexUsageNativeTurnIndex", Migration0065],
+  [66, "RepairClientSettlementTimestamps", Migration0066],
+  // Released as 59, 62 and 65 on the GMACKO lane; reconcileMigrationLedger re-keys it by name.
+  [67, "BoundedShellLookups", Migration0067],
+  // Released as 59 on main and 63 and 66 on custom-local; re-keyed by name like the lane migration.
+  [68, "BobExecutionAdmission", Migration0068],
 ] as const;
 
 export const migrationManifest = migrationEntries.map(([id, name]) => [id, name] as const);

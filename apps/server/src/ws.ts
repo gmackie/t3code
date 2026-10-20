@@ -708,6 +708,28 @@ function readClientAnalyticsProps(request: HttpServerRequest.HttpServerRequest) 
   };
 }
 
+/**
+ * Owners a connecting client reports: its hashed T3 Connect account and its
+ * hashed device id. Only hashes are accepted, so a raw id never reaches analytics.
+ */
+function readClientOwners(
+  request: HttpServerRequest.HttpServerRequest,
+): ReadonlyArray<TelemetryOwner> {
+  const url = HttpServerRequest.toURL(request);
+  if (Option.isNone(url)) {
+    return [];
+  }
+  const params = url.value.searchParams;
+  return (
+    [
+      ["connect", params.get("clientOwner")],
+      ["device", params.get("clientDevice")],
+    ] as const
+  ).flatMap(([source, ownerId]) =>
+    ownerId !== null && isTelemetryIdHash(ownerId) ? [{ source, ownerId }] : [],
+  );
+}
+
 const enrichProjectShells = Effect.fn("ws.orchestrationV2.enrichProjectShells")(
   (projects: ReadonlyArray<OrchestrationProjectShell>) =>
     Effect.flatMap(ProjectEnrichmentService.ProjectEnrichmentService, (projectEnrichment) =>
@@ -1669,64 +1691,63 @@ export const layerWsRpc = (
           ),
         );
 
-      const loadServerConfig = (options: { readonly usageLimitsCommand: boolean }) =>
-        Effect.gen(function* () {
-          const keybindingsConfig = yield* keybindings.loadConfigState;
-          const currentProviders = yield* providerRegistry.getProviders;
-          const providers = options.usageLimitsCommand
-            ? withUsageLimitsCommands(currentProviders, yield* usageLimitSources.current)
-            : currentProviders;
-          const settings = ServerSettings.redactServerSettingsForClient(
-            yield* serverSettings.getSettings,
-          );
-          const environment = yield* serverEnvironment.getDescriptor;
-          const auth = yield* serverAuth.getDescriptor();
-          const scratchWorkspaceRoot = yield* managedFolders.scratchRoot;
-          const { availableEditors, fileManagerRevealKind, remoteOpenTargets } =
-            yield* configDiscovery.get;
-          const editorConfig = yield* resolveEditorConfig(
-            availableEditors,
-            Effect.succeed(fileManagerRevealKind),
-          );
+      const loadServerConfig = Effect.fn("ws.loadServerConfig")(function* (options: {
+        readonly usageLimitsCommand: boolean;
+      }) {
+        const keybindingsConfig = yield* keybindings.loadConfigState;
+        const currentProviders = yield* providerRegistry.getProviders;
+        const providers = options.usageLimitsCommand
+          ? withUsageLimitsCommands(currentProviders, yield* usageLimitSources.current)
+          : currentProviders;
+        const settings = ServerSettings.redactServerSettingsForClient(
+          yield* serverSettings.getSettings,
+        );
+        const environment = yield* serverEnvironment.getDescriptor;
+        const auth = yield* serverAuth.getDescriptor();
+        const scratchWorkspaceRoot = yield* managedFolders.scratchRoot;
+        const { availableEditors, fileManagerRevealKind, remoteOpenTargets } =
+          yield* configDiscovery.get;
+        const editorConfig = yield* resolveEditorConfig(
+          availableEditors,
+          Effect.succeed(fileManagerRevealKind),
+        );
 
-          return {
-            environment,
-            auth,
-            cwd: config.cwd,
-            keybindingsConfigPath: config.keybindingsConfigPath,
-            keybindings: keybindingsConfig.keybindings,
-            issues: keybindingsConfig.issues,
-            providers,
-            ...editorConfig,
-            remoteOpenTargets,
-            directEndpoints: yield* resolveAvailableEditorsForConfig(directEndpoints.resolve()),
-            observability: {
-              logsDirectoryPath: config.logsDir,
-              localTracingEnabled: true,
-              ...(config.otlpTracesUrl !== undefined
-                ? { otlpTracesUrl: config.otlpTracesUrl }
-                : {}),
-              otlpTracesEnabled: config.otlpTracesUrl !== undefined,
-              ...(config.otlpMetricsUrl !== undefined
-                ? { otlpMetricsUrl: config.otlpMetricsUrl }
-                : {}),
-              otlpMetricsEnabled: config.otlpMetricsUrl !== undefined,
-              ...(config.otlpLogsUrl !== undefined ? { otlpLogsUrl: config.otlpLogsUrl } : {}),
-              otlpLogsEnabled: config.otlpLogsUrl !== undefined,
-            },
-            settings,
-            shellResumeCompletionMarker: true,
-            threadResumeCompletionMarker: true,
-            threadSnapshotPagination: true,
-            threadFind: true,
-            threadFindProgressive: true,
-            ...Option.match(scratchWorkspaceRoot, {
-              onNone: () => ({}),
-              onSome: (root) => ({ scratchWorkspaceRoot: root }),
-            }),
-            newProjectsRoot: managedFolders.namedProjectsRoot,
-          };
-        });
+        return {
+          environment,
+          auth,
+          cwd: config.cwd,
+          keybindingsConfigPath: config.keybindingsConfigPath,
+          keybindings: keybindingsConfig.keybindings,
+          issues: keybindingsConfig.issues,
+          providers,
+          ...editorConfig,
+          remoteOpenTargets,
+          directEndpoints: yield* resolveAvailableEditorsForConfig(directEndpoints.resolve()),
+          observability: {
+            logsDirectoryPath: config.logsDir,
+            localTracingEnabled: true,
+            ...(config.otlpTracesUrl !== undefined ? { otlpTracesUrl: config.otlpTracesUrl } : {}),
+            otlpTracesEnabled: config.otlpTracesUrl !== undefined,
+            ...(config.otlpMetricsUrl !== undefined
+              ? { otlpMetricsUrl: config.otlpMetricsUrl }
+              : {}),
+            otlpMetricsEnabled: config.otlpMetricsUrl !== undefined,
+            ...(config.otlpLogsUrl !== undefined ? { otlpLogsUrl: config.otlpLogsUrl } : {}),
+            otlpLogsEnabled: config.otlpLogsUrl !== undefined,
+          },
+          settings,
+          shellResumeCompletionMarker: true,
+          threadResumeCompletionMarker: true,
+          threadSnapshotPagination: true,
+          threadFind: true,
+          threadFindProgressive: true,
+          ...Option.match(scratchWorkspaceRoot, {
+            onNone: () => ({}),
+            onSome: (root) => ({ scratchWorkspaceRoot: root }),
+          }),
+          newProjectsRoot: managedFolders.namedProjectsRoot,
+        };
+      });
 
       const refreshGitStatus = (cwd: string) =>
         vcsStatusBroadcaster
@@ -2386,8 +2407,9 @@ export const layerWsRpc = (
                 requiredScope: AuthOrchestrationOperateScope,
               }),
           }),
-        [WS_METHODS.serverRefreshProviders]: (input) =>
-          Effect.gen(function* () {
+        [WS_METHODS.serverRefreshProviders]:
+          /* Request instrumentation already owns the span; keep this helper in that context. */
+          Effect.fnUntraced(function* (input) {
             if (input.refreshModels) {
               yield* modelManifest.forceRefresh;
               const instances = yield* providerInstances.listInstances;

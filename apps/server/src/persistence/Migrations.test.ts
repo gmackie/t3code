@@ -190,6 +190,41 @@ describe("migration ledger reconciliation", () => {
     ),
   );
 
+  it.effect("upgrades a custom-local profile after upstream claimed 65 and 66", () =>
+    withFreshDatabase(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* runMigrations({ toMigrationInclusive: 64 });
+        // custom-local released its lane migrations as 65 and 66.
+        yield* sql`DROP INDEX IF EXISTS orchestration_v2_projection_turn_items_failed_error_idx`;
+        yield* BoundedShellLookups;
+        yield* BobExecutionAdmission;
+        yield* sql`INSERT INTO effect_sql_migrations (migration_id, name, created_at) VALUES
+          (65, 'BoundedShellLookups', '2026-10-19 08:00:00'),
+          (66, 'BobExecutionAdmission', '2026-10-18 08:00:00')`;
+
+        const executed = yield* runMigrations();
+
+        assert.deepStrictEqual(executed, [
+          [65, "CodexUsageNativeTurnIndex"],
+          [66, "RepairClientSettlementTimestamps"],
+        ]);
+        yield* assertLedgerMatchesManifest();
+        const rows = yield* readLedger;
+        assert.deepStrictEqual(
+          rows.find((row) => row.name === "BoundedShellLookups")?.created_at,
+          "2026-10-19 08:00:00",
+        );
+        const indexes = yield* sql<{ readonly name: string }>`
+          SELECT name FROM sqlite_master
+          WHERE type = 'index' AND name = 'orchestration_v2_provider_turns_codex_native_id_idx'
+        `;
+        assert.strictEqual(indexes.length, 1);
+        assert.deepEqual(yield* sql`PRAGMA quick_check`, [{ quick_check: "ok" }]);
+      }),
+    ),
+  );
+
   it.effect("repairs a ledger where lane migrations once claimed upstream ids", () =>
     withFreshDatabase(
       Effect.gen(function* () {

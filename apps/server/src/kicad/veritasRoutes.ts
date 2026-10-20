@@ -31,26 +31,25 @@ export const kicadVeritasRouteLayer = Layer.unwrap(
       config.stateDir,
       url && token ? { url, token, publicUrl } : null,
     );
-    const access = (operate: boolean) =>
-      Effect.gen(function* () {
-        const request = yield* HttpServerRequest.HttpServerRequest;
-        const requestUrl = HttpServerRequest.toURL(request);
-        if (Option.isNone(requestUrl)) return null;
-        const session = kicadViewerSession(requestUrl.value);
-        if (session) return operate && !session.canOperate ? null : session;
-        const authorization = yield* authenticateRawRouteWithScope(
-          operate ? AuthOrchestrationOperateScope : AuthOrchestrationReadScope,
-        );
-        const cwd = requestUrl.value.searchParams.get("cwd");
-        if (!cwd) return null;
-        const fs = yield* FileSystem.FileSystem;
-        return {
-          cwd: yield* fs.realPath(cwd),
-          canOperate: authorization.scopes.includes(AuthOrchestrationOperateScope),
-        };
-      });
-    const handle = (operate: boolean) =>
-      Effect.gen(function* () {
+    const access = Effect.fn("VeritasRoutes.access")(function* (operate: boolean) {
+      const request = yield* HttpServerRequest.HttpServerRequest;
+      const requestUrl = HttpServerRequest.toURL(request);
+      if (Option.isNone(requestUrl)) return null;
+      const session = kicadViewerSession(requestUrl.value);
+      if (session) return operate && !session.canOperate ? null : session;
+      const authorization = yield* authenticateRawRouteWithScope(
+        operate ? AuthOrchestrationOperateScope : AuthOrchestrationReadScope,
+      );
+      const cwd = requestUrl.value.searchParams.get("cwd");
+      if (!cwd) return null;
+      const fs = yield* FileSystem.FileSystem;
+      return {
+        cwd: yield* fs.realPath(cwd),
+        canOperate: authorization.scopes.includes(AuthOrchestrationOperateScope),
+      };
+    });
+    const handle = Effect.fn("VeritasRoutes.handle")(
+      function* (operate: boolean) {
         const session = yield* access(operate);
         if (!session)
           return HttpServerResponse.text(
@@ -68,24 +67,24 @@ export const kicadVeritasRouteLayer = Layer.unwrap(
           bridge.status(session.cwd, session.canOperate),
         );
         return yield* HttpServerResponse.json(status, { headers: { "Cache-Control": "no-store" } });
-      }).pipe(
-        Effect.catchTags({
-          EnvironmentAuthInvalidError: HttpServerRespondable.toResponse,
-          EnvironmentInternalError: HttpServerRespondable.toResponse,
-          EnvironmentScopeRequiredError: HttpServerRespondable.toResponse,
-        }),
-        Effect.catch((error) =>
-          HttpServerResponse.json(
-            {
-              error:
-                error._tag === "UnknownError" && error.cause instanceof Error
-                  ? error.cause.message
-                  : "Unable to complete the Veritas request. Check its connection and project settings.",
-            },
-            { status: 400, headers: { "Cache-Control": "no-store" } },
-          ),
+      },
+      Effect.catchTags({
+        EnvironmentAuthInvalidError: HttpServerRespondable.toResponse,
+        EnvironmentInternalError: HttpServerRespondable.toResponse,
+        EnvironmentScopeRequiredError: HttpServerRespondable.toResponse,
+      }),
+      Effect.catch((error) =>
+        HttpServerResponse.json(
+          {
+            error:
+              error._tag === "UnknownError" && error.cause instanceof Error
+                ? error.cause.message
+                : "Unable to complete the Veritas request. Check its connection and project settings.",
+          },
+          { status: 400, headers: { "Cache-Control": "no-store" } },
         ),
-      );
+      ),
+    );
     return Layer.mergeAll(
       HttpRouter.add("GET", "/api/kicad/veritas", handle(false)),
       HttpRouter.add("POST", "/api/kicad/veritas", handle(true)),

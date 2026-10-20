@@ -21,23 +21,22 @@ const runServerCommand = Effect.fn("server.runServerCommand")(function* (
     readonly forceAutoBootstrapProjectFromCwd?: boolean;
     readonly rejectRunningServer?: boolean;
   },
-) =>
-  Effect.gen(function* () {
-    // Every server launch passes here: `npx t3`, `t3 start`/`serve`, and the
-    // desktop app's backend child process (bin.mjs with the default command).
-    yield* configureNetworkFamilyAutoselection;
-    const logLevel = yield* GlobalFlag.LogLevel;
-    const config = yield* resolveServerConfig(flags, logLevel, options);
-    const run = runServer.pipe(Effect.provideService(ServerConfig.ServerConfig, config));
-    if (config.mode !== "desktop" || config.desktopBootstrapToken === undefined) return yield* run;
-    return yield* Effect.raceFirst(
-      run,
-      awaitLauncherLoss().pipe(
-        // End like SIGTERM does (interrupt-only exit, so the runtime forces process exit).
-        Effect.andThen(Effect.interrupt),
-      ),
-    );
-  });
+) {
+  // Every server launch passes here: `npx t3`, `t3 start`/`serve`, and the
+  // desktop app's backend child process (bin.mjs with the default command).
+  yield* configureNetworkFamilyAutoselection;
+  const logLevel = yield* GlobalFlag.LogLevel;
+  const config = yield* resolveServerConfig(flags, logLevel, options);
+  const run = runServer.pipe(Effect.provideService(ServerConfig.ServerConfig, config));
+  if (config.mode !== "desktop" || config.desktopBootstrapToken === undefined) return yield* run;
+  return yield* Effect.raceFirst(
+    run,
+    awaitLauncherLoss().pipe(
+      // End like SIGTERM does (interrupt-only exit, so the runtime forces process exit).
+      Effect.andThen(Effect.interrupt),
+    ),
+  );
+});
 
 export const runDefaultServerCommand = Effect.fn("server.runDefaultServerCommand")(function* (
   flags: CliServerFlags,

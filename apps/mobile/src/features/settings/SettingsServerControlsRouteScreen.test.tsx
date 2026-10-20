@@ -81,13 +81,30 @@ vi.mock("./components/SettingsEnvironmentFilterHeader", () => ({
 vi.mock("./components/DatabaseStorageNotice", () => ({ DatabaseStorageNotice: () => null }));
 vi.mock("./components/SettingsSection", () => ({ SettingsSection: Children }));
 vi.mock("./components/SettingsChoiceRow", () => ({ SettingsChoiceRow: () => null }));
-vi.mock("./components/SettingsSwitchRow", () => ({ SettingsSwitchRow: () => null }));
-vi.mock("./components/SettingsRow", () => ({ SettingsRow: () => null }));
-vi.mock("./components/ForgeGraphSignInSection", () => ({ ForgeGraphSignInSection: () => null }));
-vi.mock("./components/SettingsProjectOverridesSection", () => ({
-  SettingsProjectOverridesSection: () => null,
+vi.mock("./components/SettingsSwitchRow", () => ({
+  SettingsSwitchRow: ({
+    label,
+    value,
+    disabled,
+    onValueChange,
+  }: {
+    label: string;
+    value: boolean | null;
+    disabled?: boolean;
+    onValueChange: (value: boolean) => void;
+  }) => (
+    <button
+      role="switch"
+      aria-checked={value ?? "mixed"}
+      disabled={disabled}
+      onClick={() => onValueChange(!value)}
+    >
+      {label}
+    </button>
+  ),
 }));
 vi.mock("./components/SettingsRow", () => ({ SettingsRow: () => null }));
+vi.mock("./components/ForgeGraphSignInSection", () => ({ ForgeGraphSignInSection: () => null }));
 vi.mock("./components/BranchNamingSettings", () => ({
   BranchNamingSettings: (props: { onChange: (patch: ServerSettingsPatch) => void }) => {
     mocks.branchNaming.onChange = props.onChange;

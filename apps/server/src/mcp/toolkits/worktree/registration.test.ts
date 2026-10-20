@@ -73,6 +73,7 @@ const layerStubServices = Layer.mergeAll(
   Layer.mock(ReverseWorkbench.ReverseWorkbench)({}),
   Layer.mock(BobCoordination.BobCoordination)({}),
   Layer.mock(BobCoordination.BobConfiguration)({}),
+  McpProviderSessions.layer,
 );
 
 const ToolsListPayload = Schema.fromJsonString(

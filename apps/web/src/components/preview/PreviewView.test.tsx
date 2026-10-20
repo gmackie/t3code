@@ -163,6 +163,10 @@ vi.mock("~/state/use-atom-command", () => ({
   useAtomCommand: () => vi.fn(),
 }));
 
+vi.mock("~/browser/useBrowserLayoutZoomFactor", () => ({
+  useBrowserLayoutZoomFactor: (previewZoomFactor: number) => previewZoomFactor,
+}));
+
 vi.mock("~/browser/browserRecording", () => ({
   findActiveBrowserRecordingRuntimeTabId: () => mocks.recordingRuntimeTabId,
   isBrowserRecordingStartCancelledError: vi.fn(() => false),

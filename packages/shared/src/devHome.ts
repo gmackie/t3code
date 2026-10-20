@@ -39,29 +39,18 @@ export const resolveGitWorktreePath = Effect.fn("devHome.resolveGitWorktreePath"
   const fileSystem = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
 
-    let directory = path.resolve(cwd);
-    for (;;) {
-      // JJ linked workspaces have no .git marker: .jj/repo is a pointer file.
-      // A main JJ checkout owns a directory there and forms a repository boundary.
-      const jjRepo = yield* fileSystem
-        .stat(path.join(directory, ".jj", "repo"))
-        .pipe(Effect.option);
-      if (Option.isSome(jjRepo)) {
-        return jjRepo.value.type === "File" ? directory : undefined;
-      }
-      const gitPath = path.join(directory, ".git");
-      const info = yield* fileSystem.stat(gitPath).pipe(Effect.option);
-      if (Option.isSome(info)) {
-        if (info.value.type !== "File") {
-          return undefined;
-        }
-        const contents = yield* fileSystem
-          .readFileString(gitPath)
-          .pipe(Effect.orElseSucceed(() => ""));
-        return pointsAtLinkedWorktree(contents, path) ? directory : undefined;
-      }
-      const parent = path.dirname(directory);
-      if (parent === directory) {
+  let directory = path.resolve(cwd);
+  for (;;) {
+    // JJ linked workspaces have no .git marker: .jj/repo is a pointer file.
+    // A main JJ checkout owns a directory there and forms a repository boundary.
+    const jjRepo = yield* fileSystem.stat(path.join(directory, ".jj", "repo")).pipe(Effect.option);
+    if (Option.isSome(jjRepo)) {
+      return jjRepo.value.type === "File" ? directory : undefined;
+    }
+    const gitPath = path.join(directory, ".git");
+    const info = yield* fileSystem.stat(gitPath).pipe(Effect.option);
+    if (Option.isSome(info)) {
+      if (info.value.type !== "File") {
         return undefined;
       }
       const contents = yield* fileSystem

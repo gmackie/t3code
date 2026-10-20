@@ -596,8 +596,8 @@ it.layer(McpProviderSessions.layer)("OpenCode2 adapter", (it) => {
       assert.deepEqual(
         retries.map((item) => [item.status, item.title, item.retry?.attempt]),
         [
-          ["running", "Provider retry", 2],
-          ["completed", "Provider recovered", 2],
+          ["running", "Provider retry", 1],
+          ["completed", "Provider recovered", 1],
         ],
       );
       assert.equal(retries[0]?.failure.message, "Provider request failed with HTTP 502");

@@ -332,7 +332,7 @@ function layerTest(input: {
     prepareReveal: () => Effect.succeed(false),
     reveal: (window) => Effect.sync(() => input.onReveal?.(window)),
     sendAll: () => Effect.void,
-    destroyAll: Effect.void,
+    destroyAll: input.destroyAll ?? Effect.void,
     applyCurrentOpacity: () => Effect.void,
     setAllOpacity: () => Effect.void,
     syncAllAppearance: (sync) => sync(input.window),

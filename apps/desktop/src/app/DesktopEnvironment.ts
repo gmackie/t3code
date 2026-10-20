@@ -17,7 +17,11 @@ import * as DesktopAppSettings from "../settings/DesktopAppSettings.ts";
 import * as DesktopConfig from "./DesktopConfig.ts";
 import { resolveLinuxDesktopEntryName } from "./DesktopEarlyElectronStartup.ts";
 import { resolveDesktopBaseDir, resolveDesktopStateDir } from "./DesktopStatePaths.ts";
-import { isGmackoDesktopVersion, isNightlyDesktopVersion } from "../updates/updateChannels.ts";
+import {
+  isGmackoDesktopVersion,
+  isNightlyDesktopVersion,
+  resolveDefaultDesktopUpdateChannel,
+} from "../updates/updateChannels.ts";
 import type { OtlpProtocol } from "@t3tools/shared/observability";
 
 export interface MakeDesktopEnvironmentInput {
@@ -120,9 +124,10 @@ export function resolveDesktopAppBranding(input: {
 
 // Keep Chromium's encryption identity on the names shipped before branding changed.
 export function resolveDesktopSafeStorageName(appVersion: string): string {
-  return resolveDefaultDesktopUpdateChannel(appVersion) === "nightly"
-    ? "T3 Code (Nightly)"
-    : "T3 Code (Alpha)";
+  const channel = resolveDefaultDesktopUpdateChannel(appVersion);
+  if (channel === "nightly") return "T3 Code (Nightly)";
+  if (channel === "gmacko") return "T3 Code (gmacko)";
+  return "T3 Code (Alpha)";
 }
 
 function normalizeDesktopArch(arch: string): DesktopRuntimeArch {

@@ -1,4 +1,3 @@
-// @vitest-environment jsdom
 import { DESKTOP_PREVIEW_CAPTURE_ACTIVITY } from "@t3tools/contracts";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 

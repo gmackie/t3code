@@ -39,8 +39,8 @@ const STATUS_BY_REASON: Record<ReverseStoreError["reason"], number> = {
   operation_failed: 500,
 };
 
-const makeHandler = (workbench: ReverseWorkbench.ReverseWorkbench["Service"]) =>
-  Effect.gen(function* () {
+const makeHandler = Effect.fn("ReverseWorkbench.httpHandler")(
+  function* (workbench: ReverseWorkbench.ReverseWorkbench["Service"]) {
     yield* authenticateRawRouteWithScope(AuthOrchestrationReadScope);
     const request = yield* HttpServerRequest.HttpServerRequest;
     if (!request.headers["content-type"]?.toLowerCase().startsWith("application/json"))
@@ -62,23 +62,23 @@ const makeHandler = (workbench: ReverseWorkbench.ReverseWorkbench["Service"]) =>
       yield* authenticateRawRouteWithScope(AuthTerminalOperateScope);
     const result = yield* workbench.execute(input);
     return yield* HttpServerResponse.json(result, { headers: noStore });
-  }).pipe(
-    Effect.catchTags({
-      EnvironmentAuthInvalidError: HttpServerRespondable.toResponse,
-      EnvironmentInternalError: HttpServerRespondable.toResponse,
-      EnvironmentScopeRequiredError: HttpServerRespondable.toResponse,
-      ReverseStoreError: (error) =>
-        HttpServerResponse.json(
-          { error: error.message, reason: error.reason },
-          { status: STATUS_BY_REASON[error.reason], headers: noStore },
-        ),
-      SchemaError: () =>
-        HttpServerResponse.json(
-          { error: "Invalid reverse-workbench request." },
-          { status: 400, headers: noStore },
-        ),
-    }),
-  );
+  },
+  Effect.catchTags({
+    EnvironmentAuthInvalidError: HttpServerRespondable.toResponse,
+    EnvironmentInternalError: HttpServerRespondable.toResponse,
+    EnvironmentScopeRequiredError: HttpServerRespondable.toResponse,
+    ReverseStoreError: (error) =>
+      HttpServerResponse.json(
+        { error: error.message, reason: error.reason },
+        { status: STATUS_BY_REASON[error.reason], headers: noStore },
+      ),
+    SchemaError: () =>
+      HttpServerResponse.json(
+        { error: "Invalid reverse-workbench request." },
+        { status: 400, headers: noStore },
+      ),
+  }),
+);
 
 // Resolved once at build: route handlers only see the per-request context.
 export const reverseWorkbenchRouteLayer = Layer.unwrap(

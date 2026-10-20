@@ -215,8 +215,16 @@ export const make = Effect.gen(function* () {
     ) {
       return false;
     }
-    if (active.some((entry) => entry.link.snapshot?.state === "open")) return true;
-    return last === undefined || nowMs - last >= SLOW_SYNC_INTERVAL_MS;
+    const sinceLastMs = last === undefined ? Number.POSITIVE_INFINITY : nowMs - last;
+    const open = active.filter((entry) => entry.link.snapshot?.state === "open");
+    if (open.length > 0) {
+      const quiet = open.every((entry) => {
+        const updatedAt = entry.link.snapshot?.updatedAt;
+        return updatedAt != null && nowMs - Date.parse(updatedAt) >= QUIET_AFTER_MS;
+      });
+      return !quiet || sinceLastMs >= QUIET_SYNC_INTERVAL_MS;
+    }
+    return sinceLastMs >= SLOW_SYNC_INTERVAL_MS;
   };
 
   const logSkipped =

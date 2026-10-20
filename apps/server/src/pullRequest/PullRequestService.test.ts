@@ -8010,6 +8010,86 @@ it.effect("reads readiness fresh, narrowed by what the host can do and the viewe
   }),
 );
 
+it.effect("pauses uncached GitLab activity after only the reactions endpoint is rate limited", () =>
+  Effect.gen(function* () {
+    let commandCalls = 0;
+    const provider = yield* GitLabPullRequestProvider.make.pipe(
+      Effect.provide(
+        GitLabPullRequestCli.layer.pipe(
+          Layer.provide(GitLabCli.layer),
+          Layer.provide(
+            TestSourceControlHost.layer({
+              process: {
+                run: (input) =>
+                  Effect.suspend(() => {
+                    commandCalls += 1;
+                    return input.args[1] === "graphql"
+                      ? Effect.fail(
+                          new VcsProcessExitError({
+                            operation: input.operation,
+                            command: input.command,
+                            cwd: input.cwd,
+                            exitCode: 1,
+                            detail: "API rate limit exceeded.",
+                            failureKind: "rate-limited",
+                          }),
+                        )
+                      : Effect.succeed(TestSourceControlHost.processOutput("[]"));
+                  }),
+              },
+            }),
+          ),
+        ),
+      ),
+    );
+    const service = yield* makeService({
+      projects: [
+        project({
+          id: "p1",
+          title: "web",
+          workspaceRoot: "/repo",
+          repository: "acme/web",
+          provider: "gitlab",
+          host: "gitlab.example.test",
+        }),
+      ],
+      providers: [provider],
+    });
+    const reference = { projectId: "p1" as ProjectId, repository: "acme/web", number: 1 };
+
+    expect(yield* Effect.result(service.activity(reference))).toMatchObject({
+      _tag: "Failure",
+      failure: {
+        _tag: "PullRequestOperationError",
+        cause: {
+          _tag: "PullRequestProviderError",
+          reason: "rate-limited",
+          cause: { _tag: "GitLabCliRateLimitError" },
+        },
+      },
+    });
+    const firstCommandCalls = commandCalls;
+    assert.isAbove(firstCommandCalls, 0);
+
+    // A different merge request cannot reuse the first request's cached failure.
+    expect(yield* Effect.result(service.activity({ ...reference, number: 2 }))).toMatchObject({
+      _tag: "Failure",
+      failure: {
+        _tag: "PullRequestOperationError",
+        cause: {
+          _tag: "PullRequestProviderError",
+          reason: "rate-limited",
+          cause: {
+            _tag: "SourceControlRateLimitPausedError",
+            host: "gitlab.example.test",
+          },
+        },
+      },
+    });
+    assert.strictEqual(commandCalls, firstCommandCalls);
+  }),
+);
+
 it.effect("expands only files the change request changes, across every slice of its diff", () =>
   Effect.gen(function* () {
     const read: Array<string> = [];

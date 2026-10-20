@@ -60,6 +60,7 @@ const layerDesktopClerk = (
     copyText: () => Effect.void,
   },
   listeners = new Map<string, (...args: unknown[]) => void>(),
+  isPackaged = false,
   userDataDirectory?: string,
 ) => {
   const environment = DesktopEnvironment.DesktopEnvironment.of({
@@ -67,6 +68,9 @@ const layerDesktopClerk = (
     isDevelopment,
     appDataDirectory: "/tmp/app-data",
     userDataDirectory,
+    isPackaged,
+    dirname: platform === "win32" ? String.raw`C:\T3 Code\dist-electron` : "/tmp/dist-electron",
+    path: platform === "win32" ? NodePath.win32 : NodePath.posix,
     platform,
   } as unknown as DesktopEnvironment.DesktopEnvironment["Service"]);
 
@@ -131,6 +135,7 @@ describe("DesktopClerk", () => {
             undefined,
             undefined,
             undefined,
+            false,
             "/isolated/review-profile",
           ),
         ),
@@ -143,6 +148,67 @@ describe("DesktopClerk", () => {
       ]);
     });
   });
+
+  it.effect.each([
+    { platform: "win32", isPackaged: false, isDevelopment: false, registers: true },
+    { platform: "win32", isPackaged: false, isDevelopment: true, registers: false },
+    { platform: "win32", isPackaged: true, isDevelopment: false, registers: false },
+    { platform: "darwin", isPackaged: false, isDevelopment: false, registers: false },
+    { platform: "linux", isPackaged: false, isDevelopment: false, registers: false },
+  ] as const)(
+    "registers an entry point only for unpackaged non-development Windows ($platform, packaged=$isPackaged, development=$isDevelopment)",
+    ({ platform, isPackaged, isDevelopment, registers }) => {
+      const events: string[] = [];
+      storageMock.mockReturnValue(storageAdapter);
+      createClerkBridgeMock.mockImplementation(() => {
+        events.push("bridge");
+        return { cleanup: vi.fn() };
+      });
+      const setAsDefaultProtocolClient = vi.fn(() =>
+        Effect.sync(() => {
+          events.push("register");
+          return true;
+        }),
+      );
+      const electronApp = {
+        on: () => Effect.void,
+        setAsDefaultProtocolClient,
+      } as unknown as ElectronApp.ElectronApp["Service"];
+
+      return Effect.gen(function* () {
+        const clerk = yield* DesktopClerk.DesktopClerk;
+        yield* clerk.configure;
+
+        assert.deepEqual(
+          setAsDefaultProtocolClient.mock.calls,
+          registers
+            ? [["t3code", process.execPath, [String.raw`C:\T3 Code\dist-electron\main.cjs`]]]
+            : [],
+        );
+        assert.deepEqual(events, registers ? ["bridge", "register"] : ["bridge"]);
+      }).pipe(
+        Effect.scoped,
+        Effect.provide(
+          layerDesktopClerk(
+            isDevelopment,
+            [],
+            platform,
+            undefined,
+            undefined,
+            undefined,
+            isPackaged,
+          ),
+        ),
+        Effect.provideService(ElectronApp.ElectronApp, electronApp),
+        Effect.provideService(
+          ElectronWindow.ElectronWindow,
+          {} as ElectronWindow.ElectronWindow["Service"],
+        ),
+        Effect.provideService(DesktopWebLinks.DesktopWebLinks, ignoreWebLinks),
+        Effect.provideService(HostProcess.Arguments, ["electron"]),
+      );
+    },
+  );
 
   it.effect("acquires and releases the SDK bridge with the layer", () => {
     const cleanup = vi.fn();

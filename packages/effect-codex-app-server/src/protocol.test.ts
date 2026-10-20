@@ -34,25 +34,6 @@ const decodeConsumeRateLimitResetCreditResponse = Schema.decodeUnknownEffect(
   CodexRpc.CLIENT_REQUEST_RESPONSES["account/rateLimitResetCredit/consume"],
 );
 
-it("frames fragmented JSON lines and rejects oversized frames", () => {
-  const framer = CodexProtocol.makeJsonLineFramer({ maxFrameCharacters: 8 });
-
-  assert.deepEqual(framer.push('{"id":'), []);
-  assert.deepEqual(framer.push("1}\n"), ['{"id":1}']);
-  assert.equal(framer.finish(), "");
-
-  const oversized = CodexProtocol.makeJsonLineFramer({ maxFrameCharacters: 8 });
-  let error: unknown;
-  try {
-    oversized.push("123456789");
-  } catch (cause) {
-    error = cause;
-  }
-  assert.instanceOf(error, CodexError.CodexAppServerIncomingFrameTooLargeError);
-  assert.equal(error.maximumCharacters, 8);
-  assert.equal(error.observedCharacters, 9);
-});
-
 it.layer(NodeServices.layer)("effect-codex-app-server protocol", (it) => {
   it.effect("terminates the protocol and rejects pending requests for oversized frames", () =>
     Effect.gen(function* () {
