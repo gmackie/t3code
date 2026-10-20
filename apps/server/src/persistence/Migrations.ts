@@ -232,15 +232,33 @@ const retiredLaneMigrations = new Set([
   // The fork's v1 external thread import, superseded by upstream's v2 importer.
   "ExternalThreadImports",
   "ExternalThreadImportEnvironments",
+  // Early lane migrations recorded at 19, and twice at 29/30, before upstream
+  // claimed those ids for index migrations (T3CODE-34).
+  "ProjectionThreadsWorktreeMetadata",
+  "CanonicalizeModelSelectionProviderInstanceIds",
 ]);
 
 /**
  * Migrations from the renumbering era onward are written re-runnable
  * (guarded column adds, CREATE INDEX IF NOT EXISTS), so the reconciler may
  * backfill them. Older migrations predate every renumbered ledger and must
- * never be re-executed.
+ * never be re-executed, except the ones below.
  */
 const firstRerunnableMigrationId = 33;
+
+/**
+ * Older migrations that only run CREATE INDEX IF NOT EXISTS, so re-running
+ * them is safe. Retired lane rows held their slots on GMACKO profiles, which
+ * left them unapplied by name.
+ */
+const rerunnableIndexMigrations = new Set([
+  "ProjectionSnapshotLookupIndexes",
+  "ProjectionThreadDetailOrderingIndexes",
+  "ProjectionThreadShellArchiveIndexes",
+]);
+
+const isRerunnable = (id: number, name: string) =>
+  id >= firstRerunnableMigrationId || rerunnableIndexMigrations.has(name);
 
 /**
  * The GMACKO lane rebases onto upstream, and upstream occasionally claims
@@ -299,7 +317,7 @@ export const reconcileMigrationLedger = Effect.fn("reconcileMigrationLedger")(fu
     0,
   );
   const wantsSlot = (id: number, name: string) =>
-    appliedAtByName.has(name) || (id >= firstRerunnableMigrationId && id < highestAppliedId);
+    appliedAtByName.has(name) || (isRerunnable(id, name) && id < highestAppliedId);
   if (migrationEntries.some(([id, name]) => wantsSlot(id, name) && foreignIds.has(id))) {
     yield* Effect.logWarning(
       "Migration ledger has foreign rows on manifest slots; leaving it untouched",
@@ -328,7 +346,7 @@ export const reconcileMigrationLedger = Effect.fn("reconcileMigrationLedger")(fu
             INSERT INTO effect_sql_migrations (migration_id, name, created_at)
             VALUES (${id}, ${name}, ${appliedAt})
           `;
-        } else if (id >= firstRerunnableMigrationId && id < highestAppliedId) {
+        } else if (isRerunnable(id, name) && id < highestAppliedId) {
           // Same failure contract as Migrator's own runner.
           yield* Effect.catch(migration, (cause) =>
             Effect.die(

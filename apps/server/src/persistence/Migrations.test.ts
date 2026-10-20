@@ -176,6 +176,42 @@ describe("migration ledger reconciliation", () => {
     ),
   );
 
+  it.effect("re-runs the index migrations early lane rows held at 19, 29 and 30", () =>
+    withFreshDatabase(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* runMigrations();
+
+        // The GMACKO install's ledger: a lane migration at 19 and another
+        // recorded twice at 29/30, so upstream's index migrations there never
+        // ran by name. 29's and 30's indexes exist anyway; 19's are missing.
+        yield* sql`DELETE FROM effect_sql_migrations WHERE migration_id IN (19, 29, 30)`;
+        yield* sql`INSERT INTO effect_sql_migrations (migration_id, name, created_at) VALUES
+          (19, 'ProjectionThreadsWorktreeMetadata', '2026-03-29 00:00:00'),
+          (29, 'CanonicalizeModelSelectionProviderInstanceIds', '2026-05-02 00:00:00'),
+          (30, 'CanonicalizeModelSelectionProviderInstanceIds', '2026-05-08 00:00:00')`;
+        yield* sql`DROP INDEX idx_projection_projects_workspace_root_deleted_at`;
+        yield* sql`DROP INDEX idx_projection_threads_project_deleted_created`;
+
+        const executed = yield* runMigrations();
+
+        assert.deepStrictEqual(executed, [
+          [19, "ProjectionSnapshotLookupIndexes"],
+          [29, "ProjectionThreadDetailOrderingIndexes"],
+          [30, "ProjectionThreadShellArchiveIndexes"],
+        ]);
+        yield* assertLedgerMatchesManifest();
+        const indexes = yield* sql<{ readonly name: string }>`
+          SELECT name FROM sqlite_master WHERE type = 'index'
+        `;
+        const names = indexes.map((index) => index.name);
+        assert.include(names, "idx_projection_projects_workspace_root_deleted_at");
+        assert.include(names, "idx_projection_threads_project_deleted_created");
+        assert.include(names, "idx_projection_threads_shell_active");
+      }),
+    ),
+  );
+
   it.effect("leaves foreign rows in place so collision checks stay loud", () =>
     withFreshDatabase(
       Effect.gen(function* () {

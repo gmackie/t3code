@@ -18,10 +18,11 @@ const withDatabase = <A, E>(
  * `stopped-thread` and its fork qualify for the clone. */
 const createFixtureSource = Effect.fn("createMigrateDevDbFixtureSource")(function* (
   baseDir: string,
+  stateDirName = "userdata",
 ) {
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
-  const stateDir = path.join(baseDir, "userdata");
+  const stateDir = path.join(baseDir, stateDirName);
   const databasePath = path.join(stateDir, "statev2.sqlite");
   yield* fs.makeDirectory(stateDir, { recursive: true });
   yield* withDatabase(
@@ -274,6 +275,75 @@ it.layer(NodeServices.layer)("migrate-dev-db", (it) => {
       ).pipe(Effect.flip);
       assert.equal(error._tag, "MigrateDevDbSourceIsDestinationError");
       assert.equal(yield* fs.exists(leftoverSnapshot), true);
+    }),
+  );
+
+  it.effect("seeds from a GMACKO ledger whose early lane rows the server reconciles", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const sourceDir = yield* fs.makeTempDirectoryScoped({ prefix: "migrate-dev-db-lane-" });
+      const destDir = yield* fs.makeTempDirectoryScoped({ prefix: "migrate-dev-db-lane-dest-" });
+      const source = yield* createFixtureSource(sourceDir);
+      // The GMACKO install's ledger (T3CODE-34): lane rows at 19 and 29/30.
+      yield* withDatabase(
+        source,
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`UPDATE effect_sql_migrations
+            SET name = 'ProjectionThreadsWorktreeMetadata' WHERE migration_id = 19`;
+          yield* sql`UPDATE effect_sql_migrations
+            SET name = 'CanonicalizeModelSelectionProviderInstanceIds'
+            WHERE migration_id IN (29, 30)`;
+        }),
+      );
+
+      const result = yield* runMigrateDevDb(
+        { baseDir: destDir, source, projects: 5, threadsPerProject: 10 },
+        { sharedHome: sourceDir },
+      );
+      assert.includeMembers(result.executedMigrations, [
+        "19_ProjectionSnapshotLookupIndexes",
+        "29_ProjectionThreadDetailOrderingIndexes",
+        "30_ProjectionThreadShellArchiveIndexes",
+      ]);
+    }),
+  );
+
+  it.effect("reads the active T3 home's database when no source is given", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const homeDirectory = yield* fs.makeTempDirectoryScoped({ prefix: "migrate-dev-db-home-" });
+      const destDir = yield* fs.makeTempDirectoryScoped({ prefix: "migrate-dev-db-home-dest-" });
+      // A GMACKO install, and no upstream one.
+      yield* createFixtureSource(path.join(homeDirectory, ".t3-gmacko"), "userdata-gmacko");
+      const gmacko = yield* runMigrateDevDb(
+        { baseDir: destDir, projects: 5, threadsPerProject: 1 },
+        { homeDirectory, env: {} },
+      );
+      assert.equal(gmacko.projects.length, 1);
+
+      // T3CODE_HOME names the home outright, with its state directory.
+      const customHome = path.join(homeDirectory, "custom");
+      yield* createFixtureSource(customHome, "userdata-custom");
+      yield* runMigrateDevDb(
+        { baseDir: destDir, projects: 5, threadsPerProject: 1 },
+        {
+          homeDirectory,
+          env: { T3CODE_HOME: customHome, T3CODE_STATE_DIR_NAME: "userdata-custom" },
+        },
+      );
+      const missing = yield* runMigrateDevDb(
+        { baseDir: destDir, projects: 5, threadsPerProject: 1 },
+        { homeDirectory, env: { T3CODE_HOME: path.join(homeDirectory, "nowhere") } },
+      ).pipe(Effect.flip);
+      assert.equal(missing._tag, "MigrateDevDbSourceMissingError");
+      if (missing._tag === "MigrateDevDbSourceMissingError") {
+        assert.equal(
+          missing.sourcePath,
+          path.join(homeDirectory, "nowhere", "userdata", "statev2.sqlite"),
+        );
+      }
     }),
   );
 
