@@ -1,3 +1,5 @@
+// @effect-diagnostics-next-line nodeBuiltinImport:off -- isAlive is a synchronous probe of /proc for zombie servers.
+import * as NodeFS from "node:fs";
 import * as NodeNet from "node:net";
 
 import { assert, describe, it } from "@effect/vitest";
@@ -1191,12 +1193,18 @@ server.listen(Number(flag("--port")), "127.0.0.1", () => {
 });
 `;
 
+  // A killed server whose parent already exited is reparented to PID 1. CI containers run
+  // without an init that reaps it, so it lingers as a zombie that still answers signal 0.
   const isAlive = (pid: number) => {
     try {
       process.kill(pid, 0);
-      return true;
     } catch {
       return false;
+    }
+    try {
+      return !/^\d+ \(.*\) Z /.test(NodeFS.readFileSync(`/proc/${pid}/stat`, "utf8"));
+    } catch {
+      return true;
     }
   };
 
