@@ -275,7 +275,21 @@ export const resolvePreviousReleaseTag = (
       .toSorted((left, right) => compareGmackoVersions(right.parsed, left.parsed));
 
     return candidates[0]?.tag;
-  });
+  }
+
+  const current = parseNightlyTag(currentTag, channel);
+  if (!current) {
+    return yield* new InvalidReleaseTagError({ channel, currentTag });
+  }
+
+  const candidates = tags
+    .map((tag) => ({ tag, parsed: parseNightlyTag(tag, channel) }))
+    .filter((entry): entry is { tag: string; parsed: NightlyVersion } => entry.parsed !== undefined)
+    .filter((entry) => compareNightlyVersions(entry.parsed, current) < 0)
+    .toSorted((left, right) => compareNightlyVersions(right.parsed, left.parsed));
+
+  return candidates[0]?.tag;
+});
 
 const collectStreamAsString = <E>(stream: Stream.Stream<Uint8Array, E>): Effect.Effect<string, E> =>
   stream.pipe(

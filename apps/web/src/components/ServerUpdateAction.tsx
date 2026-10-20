@@ -18,7 +18,7 @@ import {
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
 import { CircleArrowUpIcon } from "lucide-react";
-import { type ComponentProps, useRef, useState } from "react";
+import { type ComponentProps, type ReactNode, useRef, useState } from "react";
 
 import { requestConfirmDialog } from "~/confirmDialog";
 import { useCopyToClipboard } from "~/hooks/useCopyToClipboard";
@@ -55,6 +55,16 @@ export interface ServerUpdateTarget {
   readonly threadContinuation?: boolean;
   readonly targetVersion: string;
   readonly continueThreadsAfterServerUpdate?: boolean;
+}
+
+export type PendingServerUpdate = Omit<ServerUpdateTarget, "continueThreadsAfterServerUpdate"> & {
+  readonly serverVersion: string;
+};
+
+export interface ServerUpdateControl {
+  readonly label: string;
+  readonly disabled: boolean;
+  readonly onClick: () => void;
 }
 
 type UpdateButtonProps = Pick<ComponentProps<typeof Button>, "variant" | "size" | "className"> & {
@@ -233,6 +243,7 @@ export function ServerUpdateAction({
   readonly appearance?: "button" | "icon";
 }) {
   const isDesktopAppUpdate = selfUpdate === "desktop-managed";
+  const unsupportedDesktopUpdate = isDesktopAppUpdate && !desktopAppUpdate;
   const sessionStateAtom = environmentSession.sessionStateAtom(environmentId);
   const canUpdate = canUpdateServer(useAtomValue(sessionStateAtom));
   const continueThreadsAfterServerUpdate = useEnvironmentSettings(
@@ -264,6 +275,7 @@ export function ServerUpdateAction({
 
   const handleUpdate = async () => {
     if (
+      unsupportedDesktopUpdate ||
       !canUpdateServer(appAtomRegistry.get(sessionStateAtom)) ||
       pendingUpdateEnvironmentIds.has(environmentId)
     ) {
@@ -290,18 +302,11 @@ export function ServerUpdateAction({
     });
   };
 
-  if (selfUpdate === "desktop-managed" && !desktopAppUpdate) {
-    return (
-      <span className="text-muted-foreground text-xs">
-        Update the desktop app on that machine to update this server.
-      </span>
-    );
-  }
-
   const manualCommand =
     selfUpdate === null ? manualServerUpdateCommand(targetVersion, installation) : null;
-  const actionLabel =
-    manualCommand !== null
+  const actionLabel = unsupportedDesktopUpdate
+    ? "Update the desktop app on"
+    : manualCommand !== null
       ? installation?.kind === "npm-global"
         ? "Copy update command"
         : "Copy relaunch command"
@@ -310,6 +315,17 @@ export function ServerUpdateAction({
     manualCommand !== null
       ? () => copyToClipboard(manualCommand, { command: manualCommand })
       : () => void handleUpdate();
+  const disabled = unsupportedDesktopUpdate || (manualCommand === null && !canUpdate);
+
+  if (render) return render({ label: actionLabel, disabled, onClick });
+
+  if (unsupportedDesktopUpdate) {
+    return (
+      <span className="text-muted-foreground text-xs">
+        Update the desktop app on that machine to update this server.
+      </span>
+    );
+  }
 
   if (appearance === "icon") {
     return (
@@ -321,7 +337,7 @@ export function ServerUpdateAction({
               variant="ghost-muted"
               className={className}
               aria-label={`${actionLabel} for ${serverLabel}`}
-              disabled={manualCommand === null && !canUpdate}
+              disabled={disabled}
               onClick={onClick}
             />
           }
@@ -338,7 +354,7 @@ export function ServerUpdateAction({
       size={size}
       variant={variant}
       className={className}
-      disabled={manualCommand === null && !canUpdate}
+      disabled={disabled}
       onClick={onClick}
     >
       {actionLabel}

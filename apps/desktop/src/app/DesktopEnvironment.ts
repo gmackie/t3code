@@ -118,6 +118,13 @@ export function resolveDesktopAppBranding(input: {
   };
 }
 
+// Keep Chromium's encryption identity on the names shipped before branding changed.
+export function resolveDesktopSafeStorageName(appVersion: string): string {
+  return resolveDefaultDesktopUpdateChannel(appVersion) === "nightly"
+    ? "T3 Code (Nightly)"
+    : "T3 Code (Alpha)";
+}
+
 function normalizeDesktopArch(arch: string): DesktopRuntimeArch {
   if (arch === "arm64") return "arm64";
   if (arch === "x64") return "x64";
