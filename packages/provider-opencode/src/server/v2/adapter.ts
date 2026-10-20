@@ -25,8 +25,6 @@ import {
   type OrchestrationV2ProviderRetry,
   type OrchestrationV2ProviderSession,
   type OrchestrationV2ProviderThread,
-  type OrchestrationV2ProviderFailure,
-  type OrchestrationV2ProviderRetry,
   type OrchestrationV2ProviderTurn,
   type OrchestrationV2RuntimeRequest,
   type OrchestrationV2Subagent,
@@ -220,9 +218,9 @@ interface ActiveTurn {
   /** OpenCode is retrying a failed model request; cleared once the turn makes progress. */
   retry:
     | {
-        readonly startedAt: DateTime.Utc;
-        readonly failure: OrchestrationV2ProviderFailure;
         readonly retry: OrchestrationV2ProviderRetry;
+        readonly failure: OrchestrationV2ProviderFailure;
+        readonly startedAt: DateTime.Utc;
       }
     | undefined;
   interrupted: boolean;
@@ -1086,11 +1084,11 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
     const emitRetry = Effect.fnUntraced(function* (
       state: ThreadState,
       turn: ActiveTurn,
-      status: "running" | "completed" | "interrupted",
+      status: "running" | TurnTerminal["status"],
+      failure?: OrchestrationV2ProviderFailure,
     ) {
       const retry = turn.retry;
       if (retry === undefined) return;
-      if (status !== "running") turn.retry = undefined;
       yield* emit({
         type: "turn_item.updated",
         driver,
@@ -1102,13 +1100,37 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
           providerThreadId: state.providerThread.id,
           providerTurnId: turn.providerTurn.id,
           itemOrdinal: ordinalOf(turn, `terminal-failure:${turn.providerTurn.id}`),
-          failure: retry.failure,
+          failure: failure ?? retry.failure,
           retry: retry.retry,
           status,
           startedAt: retry.startedAt,
           updatedAt: yield* DateTime.now,
         }),
       });
+    });
+
+    const updateRetry = Effect.fnUntraced(function* (
+      state: ThreadState,
+      turn: ActiveTurn,
+      { attempt, error }: Pick<EventOf<"session.retry.scheduled">["data"], "attempt" | "error">,
+      delayMs: number,
+    ) {
+      turn.retry = {
+        retry: {
+          // OpenCode counts the first request as attempt 1, so its first retry is attempt 2.
+          attempt: Math.max(1, attempt - 1),
+          maxAttempts: null,
+          retryDelayMs: Math.max(0, Math.trunc(delayMs)),
+        },
+        failure: makeProviderFailure({
+          message: error.message,
+          code: error.type,
+          class: "provider_error",
+          retryable: true,
+        }),
+        startedAt: turn.retry?.startedAt ?? (yield* DateTime.now),
+      };
+      yield* emitRetry(state, turn, "running");
     });
 
     const emitProviderTurn = (
@@ -1597,14 +1619,12 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
         });
       }
       yield* emitCompaction(state, turn, terminal.status === "failed" ? "failed" : "interrupted");
-      // A failed turn's terminal failure takes over the retry notice's item.
-      if (terminal.status !== "failed") {
-        yield* emitRetry(
-          state,
-          turn,
-          terminal.status === "completed" ? "completed" : "interrupted",
-        );
-      }
+      yield* emitRetry(
+        state,
+        turn,
+        terminal.status,
+        terminal.status === "failed" ? terminal.failure : undefined,
+      );
       const window = windowOf(turn.input.runtimePolicy.cwd, turn.input.modelSelection.model);
       const lastStep = turn.lastStep;
       yield* emitProviderTurn(state, turn, {
@@ -2054,7 +2074,7 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
       turn: ActiveTurn,
       event: OpenCode2Client.OpenCode2StreamEvent,
     ) {
-      // New output after a retry means the request went through.
+      // OpenCode sends nothing when a retry goes through; the provider's first output marks it.
       if (
         turn.retry !== undefined &&
         (event.type === "session.text.started" ||
@@ -2063,25 +2083,9 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
           event.type === "session.step.ended")
       ) {
         yield* emitRetry(state, turn, "completed");
+        turn.retry = undefined;
       }
       switch (event.type) {
-        case "session.retry.scheduled": {
-          const now = yield* DateTime.now;
-          turn.retry = {
-            startedAt: turn.retry?.startedAt ?? now,
-            failure: makeProviderFailure({
-              message: event.data.error.message,
-              code: event.data.error.type,
-              class: "provider_error",
-            }),
-            retry: {
-              attempt: event.data.attempt,
-              maxAttempts: null,
-              retryDelayMs: Math.max(0, event.data.at - DateTime.toEpochMillis(now)),
-            },
-          };
-          return yield* emitRetry(state, turn, "running");
-        }
         case "session.text.started":
         case "session.reasoning.started":
         case "session.text.delta":

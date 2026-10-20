@@ -141,37 +141,43 @@ export default class RelayEnvironment extends Cloudflare.DurableObject<RelayEnvi
         throw new Error("Relay transport has exhausted its stream identifiers.");
       };
 
-      const closeClient = (streamId: number, code: number, reason: string) =>
-        Effect.gen(function* () {
-          const client = clients.get(streamId);
-          clients.delete(streamId);
-          connectorMessages.delete(streamId);
-          if (client !== undefined) {
-            yield* client.close(code, reason);
-          }
-        });
+      const closeClient = Effect.fn("relay.environment.close_client")(function* (
+        streamId: number,
+        code: number,
+        reason: string,
+      ) {
+        const client = clients.get(streamId);
+        clients.delete(streamId);
+        connectorMessages.delete(streamId);
+        if (client !== undefined) {
+          yield* client.close(code, reason);
+        }
+      });
 
-      const failConnectorStreams = (reason: string) =>
-        Effect.gen(function* () {
-          for (const streamId of clients.keys()) {
-            yield* closeClient(streamId, 1013, reason);
-          }
-          for (const pending of pendingHttp.values()) {
-            pending.completed = true;
-            yield* Deferred.succeed(pending.metadata, null);
-            yield* Queue.offer(pending.body, { type: "abort", reason });
-          }
-        });
+      const failConnectorStreams = Effect.fn("relay.environment.fail_connector_streams")(function* (
+        reason: string,
+      ) {
+        for (const streamId of clients.keys()) {
+          yield* closeClient(streamId, 1013, reason);
+        }
+        for (const pending of pendingHttp.values()) {
+          pending.completed = true;
+          yield* Deferred.succeed(pending.metadata, null);
+          yield* Queue.offer(pending.body, { type: "abort", reason });
+        }
+      });
 
-      const disconnectConnector = (code: number, reason: string) =>
-        Effect.gen(function* () {
-          const activeConnector = connector;
-          connector = null;
-          if (activeConnector !== null) {
-            yield* activeConnector.close(code, reason);
-          }
-          yield* failConnectorStreams(reason);
-        });
+      const disconnectConnector = Effect.fn("relay.environment.disconnect_connector")(function* (
+        code: number,
+        reason: string,
+      ) {
+        const activeConnector = connector;
+        connector = null;
+        if (activeConnector !== null) {
+          yield* activeConnector.close(code, reason);
+        }
+        yield* failConnectorStreams(reason);
+      });
 
       const restoredConfiguration =
         yield* state.storage.get<StoredConnectorConfiguration>("connectorConfiguration");
@@ -220,8 +226,8 @@ export default class RelayEnvironment extends Cloudflare.DurableObject<RelayEnvi
             clientCount: clients.size,
             pendingHttpCount: pendingHttp.size,
           })),
-        setConnectorConfiguration: (token: string, leaseId: string) =>
-          Effect.gen(function* () {
+        setConnectorConfiguration: Effect.fn("relay.environment.set_connector_configuration")(
+          function* (token: string, leaseId: string) {
             const previous =
               yield* state.storage.get<StoredConnectorConfiguration>("connectorConfiguration");
             yield* state.storage.put("connectorConfiguration", { token, leaseId });
@@ -232,22 +238,24 @@ export default class RelayEnvironment extends Cloudflare.DurableObject<RelayEnvi
                 yield* disconnectConnector(4000, "Connector lease superseded");
               }
             }
-          }),
-        revokeConnector: (expectedLeaseId?: string) =>
-          Effect.gen(function* () {
-            const configuration =
-              yield* state.storage.get<StoredConnectorConfiguration>("connectorConfiguration");
-            if (!connectorLeaseCanBeRevoked(configuration?.leaseId, expectedLeaseId)) {
-              return false;
-            }
-            yield* state.storage.delete("connectorConfiguration");
-            yield* state.storage.delete("connectorTicket");
-            yield* state.storage.delete("activeConnectorSession");
-            if (connector !== null) {
-              yield* disconnectConnector(4001, "Connector revoked");
-            }
-            return true;
-          }),
+          },
+        ),
+        revokeConnector: Effect.fn("relay.environment.revoke_connector")(function* (
+          expectedLeaseId?: string,
+        ) {
+          const configuration =
+            yield* state.storage.get<StoredConnectorConfiguration>("connectorConfiguration");
+          if (!connectorLeaseCanBeRevoked(configuration?.leaseId, expectedLeaseId)) {
+            return false;
+          }
+          yield* state.storage.delete("connectorConfiguration");
+          yield* state.storage.delete("connectorTicket");
+          yield* state.storage.delete("activeConnectorSession");
+          if (connector !== null) {
+            yield* disconnectConnector(4001, "Connector revoked");
+          }
+          return true;
+        }),
         fetch: Effect.gen(function* () {
           const request = yield* HttpServerRequest.HttpServerRequest;
           const forwardedUrl = request.headers[PUBLIC_URL_HEADER];

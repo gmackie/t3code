@@ -142,10 +142,7 @@ export function ComposerEditor({
   const theme = useUniwindTheme();
   const fontFamily = FONT_FAMILIES.regular;
 
-  const skillLabels = useMemo(
-    () => new Map(skills.map((skill) => [skill.name, skill.displayName?.trim() || skill.name])),
-    [skills],
-  );
+  const skillLabels = useMemo(() => composerSkillLabels(skills), [skills]);
   const tokensJson = useMemo(() => {
     const tokens = collectComposerInlineTokens(props.value, {
       preserveTrailingFrom: confirmedTokensRef.current,

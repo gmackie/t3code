@@ -1665,6 +1665,15 @@ function SavedBackendListRow({
       }
       below={
         <>
+          {diagnosis ? (
+            <ConnectionDiagnosisSummary
+              diagnosis={diagnosis}
+              retryAt={connectionState.phase === "backoff" ? connectionState.retryAt : null}
+              attempt={connectionState.attempt}
+              expanded={diagnosisOpen}
+              onToggle={() => setDiagnosisOpen((open) => !open)}
+            />
+          ) : null}
           {serverUpdateState.status !== "idle" ? (
             <div className="mt-1 max-w-md">
               <ServerUpdateProgress state={serverUpdateState} />
@@ -1687,7 +1696,7 @@ function SavedBackendListRow({
               </TooltipPopup>
             </Tooltip>
           ) : null}
-          {enabled && environment.connection.error && !resumingServerUpdate ? (
+          {enabled && environment.connection.error && !resumingServerUpdate && !diagnosis ? (
             <p className="flex min-w-0 items-center gap-2 text-destructive text-xs">
               <span className="min-w-0 break-words">
                 {connectionStatusText(environment.connection)}
@@ -1763,10 +1772,11 @@ function SavedBackendListRow({
         <TooltipTrigger
           render={
             <Switch
-              aria-label={enabled ? "Switch off" : "Switch on"}
+              size="sm"
               checked={enabled}
-              disabled={isRemoving}
-              onCheckedChange={(next) => onSetEnabled(environmentId, next)}
+              disabled={isRemoving || blocked}
+              aria-label={`${enabled ? "Switch off" : "Switch on"} ${environment.label}`}
+              onCheckedChange={(checked) => onSetEnabled(environmentId, checked)}
             />
           }
         />

@@ -26,12 +26,20 @@ import * as PubSub from "effect/PubSub";
 import * as Queue from "effect/Queue";
 import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
-import { Headers } from "effect/http";
+import { FetchHttpClient, Headers } from "effect/http";
 import { RpcGroup, RpcMessage, RpcServer } from "effect/rpc";
 import { ChildProcessSpawner } from "effect/process";
 import * as SqlClient from "effect/sql/SqlClient";
 
 import * as PreviewAutomationBroker from "./mcp/PreviewAutomationBroker.ts";
+import * as PluginCommandCatalog from "./plugins/PluginCommandCatalog.ts";
+import * as BobCoordination from "./coordination/BobCoordination.ts";
+import * as ServerConfigDiscovery from "./environment/ServerConfigDiscovery.ts";
+import * as GmackoChangelog from "./gmackoChangelog/GmackoChangelog.ts";
+import * as ForgeGraphSignIn from "./sourceControl/ForgeGraphSignIn.ts";
+import * as PistacheSource from "./routing/PistacheSource.ts";
+import * as ReverseWorkbench from "./reverse/ReverseWorkbench.ts";
+import * as LegacyPluginPackageManager from "./plugins/PluginPackageManager.ts";
 import * as ServerBrowser from "./preview/ServerBrowser.ts";
 import * as AcpRegistryRuntimeCoordinator from "@t3tools/provider-acp-registry/server/AcpRegistryRuntimeCoordinator";
 import * as AcpRegistrySupport from "@t3tools/provider-acp-registry/server/AcpRegistrySupport";
@@ -598,6 +606,33 @@ it.effect(
           streamChanges: Stream.unwrap(settingsChanges),
           subscribeChanges: settingsChanges,
         }),
+        Layer.mock(BobCoordination.BobCoordination)({}),
+        Layer.mock(ForgeGraphSignIn.ForgeGraphSignIn)({}),
+        Layer.mock(GmackoChangelog.GmackoChangelog)({}),
+        Layer.mock(PistacheSource.PistacheSource)({}),
+        Layer.mock(ReverseWorkbench.ReverseWorkbench)({}),
+        FetchHttpClient.layer,
+      ).pipe((services) =>
+        Layer.merge(
+          services,
+          // The real discovery forks into its layer scope, which this harness closes once
+          // the RPC server is built; read the launcher directly instead.
+          Layer.effect(
+            ServerConfigDiscovery.ServerConfigDiscovery,
+            Effect.gen(function* () {
+              const launcher = yield* ExternalLauncher.ExternalLauncher;
+              return ServerConfigDiscovery.ServerConfigDiscovery.of({
+                get: launcher.resolveAvailableEditors().pipe(
+                  Effect.map((availableEditors) => ({
+                    availableEditors,
+                    remoteOpenTargets: [],
+                    fileManagerRevealKind: undefined,
+                  })),
+                ),
+              });
+            }),
+          ).pipe(Layer.provide(services)),
+        ),
       );
       const server = yield* RpcServer.makeNoSerialization(
         RpcGroup.make(WsSubscribeServerConfigRpc),
@@ -622,6 +657,8 @@ it.effect(
             {},
             {},
             yield* PreviewAutomationBroker.PreviewAutomationBroker,
+            yield* PluginCommandCatalog.PluginCommandCatalog,
+            yield* LegacyPluginPackageManager.PluginPackageManager,
             yield* ServerBrowser.ServerBrowser,
           ).pipe(Layer.provide(configRpcServices)),
         ),
@@ -684,6 +721,8 @@ it.effect(
         Layer.mergeAll(
           Layer.fresh(layerConfigSources),
           Layer.mock(PreviewAutomationBroker.PreviewAutomationBroker)({}),
+          Layer.mock(PluginCommandCatalog.PluginCommandCatalog)({}),
+          Layer.mock(LegacyPluginPackageManager.PluginPackageManager)({}),
           Layer.mock(ServerBrowser.ServerBrowser)({}),
         ),
       ),

@@ -225,23 +225,11 @@ export function ServerUpdateAction({
   size = "xs",
   className,
   appearance = "button",
-}: {
-  readonly environmentId: EnvironmentId;
-  readonly serverLabel: string;
-  readonly selfUpdate: ServerSelfUpdateCapability | null;
-  readonly installation?: ServerInstallation | undefined;
-  /** The desktop app supervising this server accepts remote update
-      requests (capabilities.desktopAppUpdate). */
-  readonly desktopAppUpdate?: boolean;
-  /** The server can durably continue running provider turns after updating. */
-  readonly threadContinuation?: boolean;
-  readonly targetVersion: string;
-  readonly label?: string;
-  readonly variant?: ComponentProps<typeof Button>["variant"];
-  readonly size?: ComponentProps<typeof Button>["size"];
-  readonly className?: string;
-  readonly appearance?: "button" | "icon";
-}) {
+  render,
+}: Omit<ServerUpdateTarget, "continueThreadsAfterServerUpdate"> &
+  UpdateButtonProps & {
+    readonly render?: (control: ServerUpdateControl) => ReactNode;
+  }) {
   const isDesktopAppUpdate = selfUpdate === "desktop-managed";
   const unsupportedDesktopUpdate = isDesktopAppUpdate && !desktopAppUpdate;
   const sessionStateAtom = environmentSession.sessionStateAtom(environmentId);

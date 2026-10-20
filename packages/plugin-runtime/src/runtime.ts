@@ -343,10 +343,10 @@ const snapshotOf = (
   });
 };
 
-const validateUniqueContributions = (
-  plugins: ReadonlyArray<LivePlugin>,
-): Effect.Effect<void, PluginDuplicateContributionError> =>
-  Effect.gen(function* () {
+const validateUniqueContributions = Effect.fn("PluginRuntime.validateUniqueContributions")(
+  function* (
+    plugins: ReadonlyArray<LivePlugin>,
+  ): Effect.fn.Return<void, PluginDuplicateContributionError> {
     const owners = new Map<string, Map<string, string>>();
     for (const plugin of plugins) {
       for (const [slot, registrations] of plugin.contributions) {
@@ -367,439 +367,434 @@ const validateUniqueContributions = (
         }
       }
     }
+  },
+);
+
+export const make = Effect.fn("PluginRuntime.make")(function* (options: PluginRuntimeOptions = {}) {
+  const parentScope = yield* Effect.scope;
+  const transitionSemaphore = yield* Semaphore.make(1);
+  const baseScheduler = yield* Scheduler.Scheduler;
+  const runtimeIdentity = {};
+  let current: LiveComposition = { generation: 0, plugins: [], snapshot: emptySnapshot() };
+  let disposalStarted = false;
+  let disposed = false;
+  const callbackContext = new NodeAsyncHooks.AsyncLocalStorage<PluginCallbackContext>();
+
+  const reportLifecycle = (
+    phase: "activate" | "deactivate",
+    pluginId: string,
+  ): Effect.Effect<void> =>
+    Effect.sync(() => {
+      try {
+        options.onLifecycle?.({ phase, pluginId });
+      } catch (error) {
+        try {
+          options.onLifecycleError?.({ phase, pluginId, error });
+        } catch {
+          // Observer error reporting must never interrupt a commit or cleanup.
+        }
+      }
+    });
+
+  const reportCleanupErrors = (
+    phase: "retire" | "rollback",
+    failures: ReadonlyArray<CleanupFailure>,
+  ): Effect.Effect<void> =>
+    Effect.sync(() => {
+      for (const { error } of failures) {
+        try {
+          options.onCleanupError?.({ phase, error });
+        } catch {
+          // Cleanup reporting must not replace activation errors or undo a committed snapshot.
+        }
+      }
+    });
+
+  const closePlugins = Effect.fn("PluginRuntime.closePlugins")(function* (
+    plugins: ReadonlyArray<LivePlugin>,
+    notifyDeactivation: boolean,
+  ): Effect.fn.Return<ReadonlyArray<CleanupFailure>> {
+    const failures: Array<CleanupFailure> = [];
+    for (const plugin of plugins.toReversed()) {
+      const closeExit = yield* Effect.exit(Scope.close(plugin.scope, Exit.void));
+      if (Exit.isFailure(closeExit)) {
+        failures.push({
+          error: Cause.squash(closeExit.cause),
+          pluginId: plugin.definition.id,
+        });
+      }
+      for (const error of plugin.cleanupErrors.splice(0)) {
+        failures.push({ error, pluginId: plugin.definition.id });
+      }
+      if (notifyDeactivation) {
+        yield* reportLifecycle("deactivate", plugin.definition.id);
+      }
+    }
+    return failures;
   });
 
-export const make = (options: PluginRuntimeOptions = {}) =>
-  Effect.gen(function* () {
-    const parentScope = yield* Effect.scope;
-    const transitionSemaphore = yield* Semaphore.make(1);
-    const baseScheduler = yield* Scheduler.Scheduler;
-    const runtimeIdentity = {};
-    let current: LiveComposition = { generation: 0, plugins: [], snapshot: emptySnapshot() };
-    let disposalStarted = false;
-    let disposed = false;
-    const callbackContext = new NodeAsyncHooks.AsyncLocalStorage<PluginCallbackContext>();
-
-    const reportLifecycle = (
-      phase: "activate" | "deactivate",
-      pluginId: string,
-    ): Effect.Effect<void> =>
-      Effect.sync(() => {
-        try {
-          options.onLifecycle?.({ phase, pluginId });
-        } catch (error) {
-          try {
-            options.onLifecycleError?.({ phase, pluginId, error });
-          } catch {
-            // Observer error reporting must never interrupt a commit or cleanup.
-          }
-        }
-      });
-
-    const reportCleanupErrors = (
-      phase: "retire" | "rollback",
-      failures: ReadonlyArray<CleanupFailure>,
-    ): Effect.Effect<void> =>
-      Effect.sync(() => {
-        for (const { error } of failures) {
-          try {
-            options.onCleanupError?.({ phase, error });
-          } catch {
-            // Cleanup reporting must not replace activation errors or undo a committed snapshot.
-          }
-        }
-      });
-
-    const closePlugins = (
-      plugins: ReadonlyArray<LivePlugin>,
-      notifyDeactivation: boolean,
-    ): Effect.Effect<ReadonlyArray<CleanupFailure>> =>
-      Effect.gen(function* () {
-        const failures: Array<CleanupFailure> = [];
-        for (const plugin of plugins.toReversed()) {
-          const closeExit = yield* Effect.exit(Scope.close(plugin.scope, Exit.void));
-          if (Exit.isFailure(closeExit)) {
-            failures.push({
-              error: Cause.squash(closeExit.cause),
-              pluginId: plugin.definition.id,
-            });
-          }
-          for (const error of plugin.cleanupErrors.splice(0)) {
-            failures.push({ error, pluginId: plugin.definition.id });
-          }
-          if (notifyDeactivation) {
-            yield* reportLifecycle("deactivate", plugin.definition.id);
-          }
-        }
-        return failures;
-      });
-
-    const invokePluginCallback = <Result>(
-      callback: PluginLifecycleCallback,
-      pluginId: string,
-      invoke: () => Result | PromiseLike<Result>,
-      onSettled?: () => void,
-    ): Effect.Effect<Result, PluginCallbackError> => {
-      const callbackState: PluginCallbackContext = { active: true, callback, pluginId };
-      let expired = false;
-      const expire = () => {
-        if (expired) return;
-        expired = true;
-        onSettled?.();
-      };
-      const settleCallback = () => {
-        callbackState.active = false;
-        expire();
-      };
-
-      return Effect.tryPromise({
-        try: async () => {
-          try {
-            const result = callbackContext.run(callbackState, invoke);
-            if (typeof result === "object" && result !== null && "then" in result) {
-              return await Promise.resolve(result).finally(settleCallback);
-            }
-            settleCallback();
-            return result;
-          } catch (error) {
-            settleCallback();
-            throw error;
-          }
-        },
-        catch: (cause) => new PluginCallbackError({ callback, cause, pluginId }),
-      }).pipe(Effect.ensuring(Effect.sync(expire)));
+  const invokePluginCallback = <Result>(
+    callback: PluginLifecycleCallback,
+    pluginId: string,
+    invoke: () => Result | PromiseLike<Result>,
+    onSettled?: () => void,
+  ): Effect.Effect<Result, PluginCallbackError> => {
+    const callbackState: PluginCallbackContext = { active: true, callback, pluginId };
+    let expired = false;
+    const expire = () => {
+      if (expired) return;
+      expired = true;
+      onSettled?.();
+    };
+    const settleCallback = () => {
+      callbackState.active = false;
+      expire();
     };
 
-    const activatePlugin = (
-      definition: PluginDefinition,
-      capabilities: ReadonlyMap<string, unknown>,
-    ): Effect.Effect<LivePlugin, PluginCallbackError> =>
-      Effect.uninterruptibleMask((restore) =>
-        Effect.gen(function* () {
-          const scope = yield* Scope.fork(parentScope, "sequential");
-          const contributions = new Map<string, Array<LiveContribution>>();
-          const cleanupErrors: Array<unknown> = [];
-          const finalizers: Array<() => void | Promise<void>> = [];
-          const plugin: LivePlugin = { definition, scope, contributions, cleanupErrors };
-          let activating = true;
-          const assertActivating = (method: "resolve" | "register" | "onDispose") => {
-            if (!activating) {
-              throw new PluginActivationContextExpiredError({ method, pluginId: definition.id });
+    return Effect.tryPromise({
+      try: async () => {
+        try {
+          const result = callbackContext.run(callbackState, invoke);
+          if (typeof result === "object" && result !== null && "then" in result) {
+            return await Promise.resolve(result).finally(settleCallback);
+          }
+          settleCallback();
+          return result;
+        } catch (error) {
+          settleCallback();
+          throw error;
+        }
+      },
+      catch: (cause) => new PluginCallbackError({ callback, cause, pluginId }),
+    }).pipe(Effect.ensuring(Effect.sync(expire)));
+  };
+
+  const activatePlugin = (
+    definition: PluginDefinition,
+    capabilities: ReadonlyMap<string, unknown>,
+  ): Effect.Effect<LivePlugin, PluginCallbackError> =>
+    Effect.uninterruptibleMask((restore) =>
+      Effect.gen(function* () {
+        const scope = yield* Scope.fork(parentScope, "sequential");
+        const contributions = new Map<string, Array<LiveContribution>>();
+        const cleanupErrors: Array<unknown> = [];
+        const finalizers: Array<() => void | Promise<void>> = [];
+        const plugin: LivePlugin = { definition, scope, contributions, cleanupErrors };
+        let activating = true;
+        const assertActivating = (method: "resolve" | "register" | "onDispose") => {
+          if (!activating) {
+            throw new PluginActivationContextExpiredError({ method, pluginId: definition.id });
+          }
+        };
+
+        const context: PluginActivationContext = {
+          resolve: <Service>(capability: string): Service => {
+            assertActivating("resolve");
+            if (!(definition.requires ?? []).includes(capability)) {
+              throw new PluginUndeclaredCapabilityError({ capability, pluginId: definition.id });
             }
-          };
+            if (!capabilities.has(capability)) {
+              throw new PluginResolutionError({ capability, pluginId: definition.id });
+            }
+            return capabilities.get(capability) as Service;
+          },
+          register: (
+            slot: string,
+            contribution: Contribution,
+            ...registeredValues: [] | [unknown]
+          ) => {
+            assertActivating("register");
+            const values = contributions.get(slot) ?? [];
+            const detachedContribution = detachContribution(contribution);
+            values.push({
+              contribution: detachedContribution,
+              value: registeredValues.length === 0 ? detachedContribution : registeredValues[0],
+            });
+            contributions.set(slot, values);
+          },
+          onDispose: (finalizer) => {
+            assertActivating("onDispose");
+            finalizers.push(finalizer);
+          },
+        };
 
-          const context: PluginActivationContext = {
-            resolve: <Service>(capability: string): Service => {
-              assertActivating("resolve");
-              if (!(definition.requires ?? []).includes(capability)) {
-                throw new PluginUndeclaredCapabilityError({ capability, pluginId: definition.id });
-              }
-              if (!capabilities.has(capability)) {
-                throw new PluginResolutionError({ capability, pluginId: definition.id });
-              }
-              return capabilities.get(capability) as Service;
-            },
-            register: (
-              slot: string,
-              contribution: Contribution,
-              ...registeredValues: [] | [unknown]
-            ) => {
-              assertActivating("register");
-              const values = contributions.get(slot) ?? [];
-              const detachedContribution = detachContribution(contribution);
-              values.push({
-                contribution: detachedContribution,
-                value: registeredValues.length === 0 ? detachedContribution : registeredValues[0],
-              });
-              contributions.set(slot, values);
-            },
-            onDispose: (finalizer) => {
-              assertActivating("onDispose");
-              finalizers.push(finalizer);
-            },
-          };
-
-          const activationExit = yield* Effect.exit(
-            restore(
-              invokePluginCallback(
-                "activate",
-                definition.id,
-                () => definition.activate(context),
-                () => {
-                  activating = false;
-                },
-              ),
+        const activationExit = yield* Effect.exit(
+          restore(
+            invokePluginCallback(
+              "activate",
+              definition.id,
+              () => definition.activate(context),
+              () => {
+                activating = false;
+              },
+            ),
+          ),
+        );
+        for (const finalizer of finalizers) {
+          const finalizerEffect = invokePluginCallback("finalizer", definition.id, finalizer).pipe(
+            Effect.catch((error) =>
+              Effect.sync(() => {
+                cleanupErrors.push(error);
+              }),
             ),
           );
-          for (const finalizer of finalizers) {
-            const finalizerEffect = invokePluginCallback(
-              "finalizer",
-              definition.id,
-              finalizer,
-            ).pipe(
-              Effect.catch((error) =>
-                Effect.sync(() => {
-                  cleanupErrors.push(error);
-                }),
-              ),
-            );
-            yield* Scope.addFinalizer(scope, finalizerEffect);
-          }
-
-          if (Exit.isFailure(activationExit)) {
-            const failures = yield* closePlugins([plugin], false);
-            yield* reportCleanupErrors("rollback", failures);
-            return yield* Effect.failCause(activationExit.cause);
-          }
-          return plugin;
-        }),
-      );
-
-    const reconcileEffect = (
-      definitions: ReadonlyArray<PluginDefinition>,
-    ): Effect.Effect<PluginRuntimeSnapshot, PluginRuntimeReconcileError> =>
-      Effect.gen(function* () {
-        if (disposalStarted) {
-          return yield* new PluginRuntimeDisposedError({ operation: "reconcile" });
+          yield* Scope.addFinalizer(scope, finalizerEffect);
         }
 
-        const plan = yield* Effect.try({
-          try: () => planComposition(definitions),
-          catch: (error) => {
-            if (!isPluginPlanningError(error)) throw error;
-            return error;
-          },
-        });
-        const affected = affectedPluginIds(
-          current.plugins.map((plugin) => plugin.definition),
-          plan.definitions,
-        );
-        if (affected.size === 0 && sameStringRecord(current.snapshot.blocked, plan.blocked)) {
-          return current.snapshot;
+        if (Exit.isFailure(activationExit)) {
+          const failures = yield* closePlugins([plugin], false);
+          yield* reportCleanupErrors("rollback", failures);
+          return yield* Effect.failCause(activationExit.cause);
         }
-        const currentById = new Map(
-          current.plugins.map((plugin) => [plugin.definition.id, plugin]),
-        );
-        const capabilities = new Map<string, unknown>();
-        for (const plugin of current.plugins) {
-          if (affected.has(plugin.definition.id)) continue;
-          for (const [capability, service] of Object.entries(plugin.definition.provides ?? {})) {
-            capabilities.set(capability, service);
-          }
-        }
-
-        return yield* Effect.uninterruptibleMask((restore) =>
-          Effect.gen(function* () {
-            const staged = new Map<string, LivePlugin>();
-            const candidateExit = yield* Effect.exit(
-              restore(
-                Effect.gen(function* () {
-                  for (const definition of plan.definitions) {
-                    if (!affected.has(definition.id)) continue;
-                    const plugin = yield* activatePlugin(definition, capabilities);
-                    staged.set(definition.id, plugin);
-                    for (const [capability, service] of Object.entries(definition.provides ?? {})) {
-                      capabilities.set(capability, service);
-                    }
-                  }
-
-                  const nextPlugins: Array<LivePlugin> = [];
-                  for (const definition of plan.definitions) {
-                    const plugin = staged.get(definition.id) ?? currentById.get(definition.id);
-                    if (plugin === undefined) {
-                      return yield* new PluginStagingError({ pluginId: definition.id });
-                    }
-                    nextPlugins.push(plugin);
-                  }
-                  yield* validateUniqueContributions(nextPlugins);
-                  const snapshot = snapshotOf(nextPlugins, plan.blocked);
-                  yield* Effect.try({
-                    try: () => options.validateSnapshot?.(snapshot),
-                    catch: (cause) => new PluginSnapshotValidationError({ cause }),
-                  });
-                  return {
-                    generation: current.generation + 1,
-                    plugins: nextPlugins,
-                    snapshot,
-                  };
-                }),
-              ),
-            );
-            if (Exit.isFailure(candidateExit)) {
-              const failures = yield* closePlugins([...staged.values()], false);
-              yield* reportCleanupErrors("rollback", failures);
-              return yield* Effect.failCause(candidateExit.cause);
-            }
-
-            const previous = current.plugins.filter((plugin) => affected.has(plugin.definition.id));
-            current = candidateExit.value;
-            for (const plugin of staged.values()) {
-              yield* reportLifecycle("activate", plugin.definition.id);
-            }
-            const failures = yield* closePlugins(previous, true);
-            yield* reportCleanupErrors("retire", failures);
-            return current.snapshot;
-          }),
-        );
-      });
-
-    const disposeEffect = (): Effect.Effect<void, PluginRuntimeCleanupError> =>
-      Effect.uninterruptible(
-        Effect.gen(function* () {
-          if (disposed) return;
-          disposalStarted = true;
-          const previous = current.plugins;
-          const failures = [...(yield* closePlugins(previous, true))];
-          current = {
-            generation: current.generation + 1,
-            plugins: [],
-            snapshot: emptySnapshot(),
-          };
-          disposed = true;
-          if (failures.length > 0) {
-            return yield* new PluginRuntimeCleanupError({
-              failures: failures.map(({ error, pluginId }) => ({ cause: error, pluginId })),
-            });
-          }
-        }),
-      );
-
-    const runTransition = <Result, Failure, Requirements>(
-      operation: RuntimeOperation,
-      effect: () => Effect.Effect<Result, Failure, Requirements>,
-    ): Effect.Effect<Result, Failure | PluginRuntimeReentrancyError, Requirements> =>
-      Effect.gen(function* () {
-        const effectCallback = yield* PluginEffectCallback;
-        return yield* Effect.suspend<Result, Failure | PluginRuntimeReentrancyError, Requirements>(
-          () => {
-            const asyncCallback = callbackContext.getStore();
-            const callback =
-              effectCallback?.runtime === runtimeIdentity ? effectCallback : asyncCallback;
-            if (callback?.active === true) {
-              return Effect.fail(
-                new PluginRuntimeReentrancyError({
-                  callback: callback.callback,
-                  operation,
-                  pluginId: callback.pluginId,
-                }),
-              );
-            }
-            return transitionSemaphore.withPermits(1)(effect());
-          },
-        );
-      });
-
-    const useContribution = <Value, Success, Failure, Requirements>(
-      slot: string,
-      id: string,
-      generation: number,
-      use: (value: Value) => Effect.Effect<Success, Failure, Requirements>,
-    ): Effect.Effect<Success, Failure | PluginRuntimeContributionError, Requirements> =>
-      runTransition("invoke", () =>
-        Effect.suspend<
-          Success,
-          | Failure
-          | PluginContributionGenerationError
-          | PluginContributionNotFoundError
-          | PluginRuntimeDisposedError,
-          Requirements
-        >(() => {
-          if (disposalStarted) {
-            return Effect.fail(new PluginRuntimeDisposedError({ operation: "invoke" }));
-          }
-          if (current.generation !== generation) {
-            return Effect.fail(
-              new PluginContributionGenerationError({
-                actual: current.generation,
-                expected: generation,
-              }),
-            );
-          }
-          for (const plugin of current.plugins) {
-            const registration = (plugin.contributions.get(slot) ?? []).find(
-              (candidate) => candidate.contribution.id === id,
-            );
-            if (registration !== undefined) {
-              const contributionState: PluginEffectCallbackContext = {
-                active: true,
-                callback: "contribution",
-                pluginId: plugin.definition.id,
-                runtime: runtimeIdentity,
-              };
-              const contributionScheduler: Scheduler.Scheduler = {
-                executionMode: baseScheduler.executionMode,
-                shouldYield: (fiber) => baseScheduler.shouldYield(fiber),
-                makeDispatcher: () => {
-                  const dispatcher = baseScheduler.makeDispatcher();
-                  return {
-                    flush: () => dispatcher.flush(),
-                    scheduleTask: (task, priority) =>
-                      dispatcher.scheduleTask(
-                        () => callbackContext.run(contributionState, task),
-                        priority,
-                      ),
-                  };
-                },
-              };
-              return Effect.yieldNow.pipe(
-                Effect.andThen(Effect.suspend(() => use(registration.value as Value))),
-                Effect.provideService(PluginEffectCallback, contributionState),
-                Effect.provideService(Scheduler.Scheduler, contributionScheduler),
-                Effect.onExit((exit) =>
-                  Effect.sync(() => {
-                    if (!(Exit.isFailure(exit) && Cause.hasInterrupts(exit.cause))) {
-                      contributionState.active = false;
-                    }
-                  }),
-                ),
-              );
-            }
-          }
-          return Effect.fail(new PluginContributionNotFoundError({ id, slot }));
-        }),
-      );
-
-    yield* Effect.addFinalizer(() =>
-      runTransition("dispose", disposeEffect).pipe(
-        Effect.catchTags({
-          PluginRuntimeCleanupError: (error) =>
-            reportCleanupErrors(
-              "retire",
-              error.failures.map(({ cause, pluginId }) => ({ error: cause, pluginId })),
-            ),
-          PluginRuntimeReentrancyError: () => Effect.void,
-        }),
-      ),
+        return plugin;
+      }),
     );
 
-    return {
-      reconcile: (definitions) => {
-        let desired: ReadonlyArray<PluginDefinition>;
-        try {
-          desired = snapshotDefinitions(definitions);
-        } catch (error) {
-          return Effect.die(error);
-        }
-        return runTransition("reconcile", () => reconcileEffect(desired));
+  const reconcileEffect = Effect.fn("PluginRuntime.reconcile")(function* (
+    definitions: ReadonlyArray<PluginDefinition>,
+  ): Effect.fn.Return<PluginRuntimeSnapshot, PluginRuntimeReconcileError> {
+    if (disposalStarted) {
+      return yield* new PluginRuntimeDisposedError({ operation: "reconcile" });
+    }
+
+    const plan = yield* Effect.try({
+      try: () => planComposition(definitions),
+      catch: (error) => {
+        if (!isPluginPlanningError(error)) throw error;
+        return error;
       },
-      snapshot: Effect.sync(() => current.snapshot),
-      contributions: (slot) =>
-        Effect.sync(() =>
-          Object.freeze({
-            generation: current.generation,
-            entries: Object.freeze(
-              current.plugins.flatMap((plugin) =>
-                (plugin.contributions.get(slot) ?? []).map(
-                  (registration) => registration.contribution,
-                ),
+    });
+    const affected = affectedPluginIds(
+      current.plugins.map((plugin) => plugin.definition),
+      plan.definitions,
+    );
+    if (affected.size === 0 && sameStringRecord(current.snapshot.blocked, plan.blocked)) {
+      return current.snapshot;
+    }
+    const currentById = new Map(current.plugins.map((plugin) => [plugin.definition.id, plugin]));
+    const capabilities = new Map<string, unknown>();
+    for (const plugin of current.plugins) {
+      if (affected.has(plugin.definition.id)) continue;
+      for (const [capability, service] of Object.entries(plugin.definition.provides ?? {})) {
+        capabilities.set(capability, service);
+      }
+    }
+
+    return yield* Effect.uninterruptibleMask((restore) =>
+      Effect.gen(function* () {
+        const staged = new Map<string, LivePlugin>();
+        const candidateExit = yield* Effect.exit(
+          restore(
+            Effect.gen(function* () {
+              for (const definition of plan.definitions) {
+                if (!affected.has(definition.id)) continue;
+                const plugin = yield* activatePlugin(definition, capabilities);
+                staged.set(definition.id, plugin);
+                for (const [capability, service] of Object.entries(definition.provides ?? {})) {
+                  capabilities.set(capability, service);
+                }
+              }
+
+              const nextPlugins: Array<LivePlugin> = [];
+              for (const definition of plan.definitions) {
+                const plugin = staged.get(definition.id) ?? currentById.get(definition.id);
+                if (plugin === undefined) {
+                  return yield* new PluginStagingError({ pluginId: definition.id });
+                }
+                nextPlugins.push(plugin);
+              }
+              yield* validateUniqueContributions(nextPlugins);
+              const snapshot = snapshotOf(nextPlugins, plan.blocked);
+              yield* Effect.try({
+                try: () => options.validateSnapshot?.(snapshot),
+                catch: (cause) => new PluginSnapshotValidationError({ cause }),
+              });
+              return {
+                generation: current.generation + 1,
+                plugins: nextPlugins,
+                snapshot,
+              };
+            }),
+          ),
+        );
+        if (Exit.isFailure(candidateExit)) {
+          const failures = yield* closePlugins([...staged.values()], false);
+          yield* reportCleanupErrors("rollback", failures);
+          return yield* Effect.failCause(candidateExit.cause);
+        }
+
+        const previous = current.plugins.filter((plugin) => affected.has(plugin.definition.id));
+        current = candidateExit.value;
+        for (const plugin of staged.values()) {
+          yield* reportLifecycle("activate", plugin.definition.id);
+        }
+        const failures = yield* closePlugins(previous, true);
+        yield* reportCleanupErrors("retire", failures);
+        return current.snapshot;
+      }),
+    );
+  });
+
+  const disposeEffect = (): Effect.Effect<void, PluginRuntimeCleanupError> =>
+    Effect.uninterruptible(
+      Effect.gen(function* () {
+        if (disposed) return;
+        disposalStarted = true;
+        const previous = current.plugins;
+        const failures = [...(yield* closePlugins(previous, true))];
+        current = {
+          generation: current.generation + 1,
+          plugins: [],
+          snapshot: emptySnapshot(),
+        };
+        disposed = true;
+        if (failures.length > 0) {
+          return yield* new PluginRuntimeCleanupError({
+            failures: failures.map(({ error, pluginId }) => ({ cause: error, pluginId })),
+          });
+        }
+      }),
+    );
+
+  const runTransition = Effect.fn("PluginRuntime.runTransition")(function* <
+    Result,
+    Failure,
+    Requirements,
+  >(
+    operation: RuntimeOperation,
+    effect: () => Effect.Effect<Result, Failure, Requirements>,
+  ): Effect.fn.Return<Result, Failure | PluginRuntimeReentrancyError, Requirements> {
+    const effectCallback = yield* PluginEffectCallback;
+    return yield* Effect.suspend<Result, Failure | PluginRuntimeReentrancyError, Requirements>(
+      () => {
+        const asyncCallback = callbackContext.getStore();
+        const callback =
+          effectCallback?.runtime === runtimeIdentity ? effectCallback : asyncCallback;
+        if (callback?.active === true) {
+          return Effect.fail(
+            new PluginRuntimeReentrancyError({
+              callback: callback.callback,
+              operation,
+              pluginId: callback.pluginId,
+            }),
+          );
+        }
+        return transitionSemaphore.withPermits(1)(effect());
+      },
+    );
+  });
+
+  const useContribution = <Value, Success, Failure, Requirements>(
+    slot: string,
+    id: string,
+    generation: number,
+    use: (value: Value) => Effect.Effect<Success, Failure, Requirements>,
+  ): Effect.Effect<Success, Failure | PluginRuntimeContributionError, Requirements> =>
+    runTransition("invoke", () =>
+      Effect.suspend<
+        Success,
+        | Failure
+        | PluginContributionGenerationError
+        | PluginContributionNotFoundError
+        | PluginRuntimeDisposedError,
+        Requirements
+      >(() => {
+        if (disposalStarted) {
+          return Effect.fail(new PluginRuntimeDisposedError({ operation: "invoke" }));
+        }
+        if (current.generation !== generation) {
+          return Effect.fail(
+            new PluginContributionGenerationError({
+              actual: current.generation,
+              expected: generation,
+            }),
+          );
+        }
+        for (const plugin of current.plugins) {
+          const registration = (plugin.contributions.get(slot) ?? []).find(
+            (candidate) => candidate.contribution.id === id,
+          );
+          if (registration !== undefined) {
+            const contributionState: PluginEffectCallbackContext = {
+              active: true,
+              callback: "contribution",
+              pluginId: plugin.definition.id,
+              runtime: runtimeIdentity,
+            };
+            const contributionScheduler: Scheduler.Scheduler = {
+              executionMode: baseScheduler.executionMode,
+              shouldYield: (fiber) => baseScheduler.shouldYield(fiber),
+              makeDispatcher: () => {
+                const dispatcher = baseScheduler.makeDispatcher();
+                return {
+                  flush: () => dispatcher.flush(),
+                  scheduleTask: (task, priority) =>
+                    dispatcher.scheduleTask(
+                      () => callbackContext.run(contributionState, task),
+                      priority,
+                    ),
+                };
+              },
+            };
+            return Effect.yieldNow.pipe(
+              Effect.andThen(Effect.suspend(() => use(registration.value as Value))),
+              Effect.provideService(PluginEffectCallback, contributionState),
+              Effect.provideService(Scheduler.Scheduler, contributionScheduler),
+              Effect.onExit((exit) =>
+                Effect.sync(() => {
+                  if (!(Exit.isFailure(exit) && Cause.hasInterrupts(exit.cause))) {
+                    contributionState.active = false;
+                  }
+                }),
+              ),
+            );
+          }
+        }
+        return Effect.fail(new PluginContributionNotFoundError({ id, slot }));
+      }),
+    );
+
+  yield* Effect.addFinalizer(() =>
+    runTransition("dispose", disposeEffect).pipe(
+      Effect.catchTags({
+        PluginRuntimeCleanupError: (error) =>
+          reportCleanupErrors(
+            "retire",
+            error.failures.map(({ cause, pluginId }) => ({ error: cause, pluginId })),
+          ),
+        PluginRuntimeReentrancyError: () => Effect.void,
+      }),
+    ),
+  );
+
+  return {
+    reconcile: (definitions) => {
+      let desired: ReadonlyArray<PluginDefinition>;
+      try {
+        desired = snapshotDefinitions(definitions);
+      } catch (error) {
+        return Effect.die(error);
+      }
+      return runTransition("reconcile", () => reconcileEffect(desired));
+    },
+    snapshot: Effect.sync(() => current.snapshot),
+    contributions: (slot) =>
+      Effect.sync(() =>
+        Object.freeze({
+          generation: current.generation,
+          entries: Object.freeze(
+            current.plugins.flatMap((plugin) =>
+              (plugin.contributions.get(slot) ?? []).map(
+                (registration) => registration.contribution,
               ),
             ),
-          }),
-        ),
-      useContribution,
-      dispose: runTransition("dispose", disposeEffect),
-    } satisfies PluginRuntime["Service"];
-  });
+          ),
+        }),
+      ),
+    useContribution,
+    dispose: runTransition("dispose", disposeEffect),
+  } satisfies PluginRuntime["Service"];
+});
 
 export const layer = (options: PluginRuntimeOptions = {}) =>
   Layer.effect(PluginRuntime, make(options));

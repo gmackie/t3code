@@ -11,6 +11,7 @@ const legacyTable =
   /\bprojection_(?:threads|thread_messages|thread_activities|thread_proposed_plans|thread_pull_requests|thread_sessions|turns|pending_approvals|state)\b/;
 const legacyReaders = ["orchestration-v2/legacy/", "persistence/Migrations/"] as const;
 const legacyReaderFiles: Record<string, string> = {
+  "persistence/Migrations.ts": "ledger backfill skips index migrations on dropped V1 tables",
   "serverSettings.ts": "one-time provider history for settings migration",
   "stateMaintenance.ts": "offline retention maintenance for existing V1 databases",
 };

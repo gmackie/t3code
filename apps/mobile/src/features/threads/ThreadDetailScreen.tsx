@@ -138,6 +138,7 @@ import {
 import { connectionFloatingStatus, type FloatingWorkingStatus } from "./floating-working-status";
 import {
   derivePendingUserInputMaxHeight,
+  ESTIMATED_KEYBOARD_HEIGHT,
   USER_INPUT_TOGGLE_DURATION_MS,
 } from "./pendingUserInputLayout";
 import {
@@ -661,6 +662,18 @@ export const ThreadDetailScreen = function ThreadDetailScreen(props: ThreadDetai
     );
   const userInputCollapsed =
     activeUserInputRequestId !== null && collapsedUserInputRequestId === activeUserInputRequestId;
+  // The usage panel's height RESERVES keyboard space at all times instead of tracking the
+  // keyboard: transforms (the sticky translation) apply same-frame on the UI thread while layout
+  // props lag a Yoga pass behind, so any height that follows the keyboard flashes the panel over
+  // the nav header on the way up. The question card tracks the keyboard itself on the UI thread.
+  const [lastKnownKeyboardHeight, setLastKnownKeyboardHeight] = useState(0);
+  useEffect(() => {
+    if (liveKeyboardHeight > 0 && liveKeyboardHeight !== lastKnownKeyboardHeight) {
+      setLastKnownKeyboardHeight(liveKeyboardHeight);
+    }
+  }, [lastKnownKeyboardHeight, liveKeyboardHeight]);
+  const reservedKeyboardHeight =
+    lastKnownKeyboardHeight > 0 ? lastKnownKeyboardHeight : ESTIMATED_KEYBOARD_HEIGHT;
   const pendingUserInputMaxHeight = derivePendingUserInputMaxHeight({
     windowHeight,
     keyboardHeight: 0,
@@ -683,6 +696,51 @@ export const ThreadDetailScreen = function ThreadDetailScreen(props: ThreadDetai
     Math.max(0, estimatedOverlayHeight - nativeInsetOvercount),
     -nativeInsetOvercount,
     Platform.OS === "ios" ? COMPOSER_TRANSITION_DURATION_MS : 0,
+  );
+  // Android lays the screen out below its opaque header and reports a zero
+  // header height, so the window height overstates the room by the header.
+  const [screenHeight, setScreenHeight] = useState<number | null>(null);
+  const handleScreenLayout = useCallback((event: LayoutChangeEvent) => {
+    setScreenHeight(event.nativeEvent.layout.height);
+  }, []);
+  const screenAreaHeight = screenHeight ?? windowHeight;
+  // The usage panel stacks with the composer and any approval card, so it gets
+  // whatever room they leave below the header. Measured only while it is open
+  // so typing in the composer does not re-render the screen.
+  const usageLimitsOpen = usageLimitsReport !== null && activeUserInputRequestId === null;
+  const [usageLimitsLayout, setUsageLimitsLayout] = useState({ overlay: 0, panel: 0 });
+  const handleComposerOverlayLayout = useCallback(
+    (event: LayoutChangeEvent) => {
+      onComposerLayout(event);
+      if (!usageLimitsOpen) return;
+      const overlay = event.nativeEvent.layout.height;
+      setUsageLimitsLayout((current) =>
+        current.overlay === overlay ? current : { ...current, overlay },
+      );
+    },
+    [onComposerLayout, usageLimitsOpen],
+  );
+  const handleUsageLimitsLayout = useCallback((event: LayoutChangeEvent) => {
+    const panel = event.nativeEvent.layout.height;
+    setUsageLimitsLayout((current) => (current.panel === panel ? current : { ...current, panel }));
+  }, []);
+  const overlayBesideUsageLimits =
+    usageLimitsLayout.overlay > 0
+      ? usageLimitsLayout.overlay - usageLimitsLayout.panel
+      : composerOverlapHeight;
+  // The keyboard is reserved even while closed, so the
+  // panel never grows over the header while the keyboard animates. The floor
+  // keeps the close row on screen when the stack below leaves no room at all.
+  const usageLimitsMaxHeight = Math.max(
+    USAGE_LIMITS_PANEL_MIN_HEIGHT,
+    Math.min(
+      Math.round(screenAreaHeight * 0.4),
+      screenAreaHeight -
+        navigationHeaderHeight -
+        reservedKeyboardHeight -
+        overlayBesideUsageLimits -
+        USAGE_LIMITS_PANEL_GAP * 2,
+    ),
   );
   // The expanded questionnaire is an absolute overlay on iOS, so it never
   // changes the measured overlay height (that constancy is what keeps the

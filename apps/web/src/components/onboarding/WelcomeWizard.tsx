@@ -408,6 +408,13 @@ function ConnectionStep({
                       {environment.displayUrl}
                     </span>
                   ) : null}
+                  {status.kind !== "failed" &&
+                  environment.connection.phase === "unsupported" &&
+                  environment.connection.error ? (
+                    <span className="mt-0.5 block text-xs text-muted-foreground">
+                      {environment.connection.error}
+                    </span>
+                  ) : null}
                   {status.kind === "off" &&
                   turnOnError?.environmentId === environment.environmentId ? (
                     <span role="alert" className="mt-1 block text-xs text-destructive">

@@ -30,8 +30,8 @@ const object = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null;
 const make = Effect.gen(function* () {
   const client = yield* HttpClient.HttpClient;
-  const request = (bridge: UnityBridgeConnection, input?: unknown, media = "frame") =>
-    Effect.gen(function* () {
+  const request = Effect.fn("GameTransport.request")(
+    function* (bridge: UnityBridgeConnection, input?: unknown, media = "frame") {
       const url = `http://127.0.0.1:${bridge.port}/${input === undefined ? media : "command"}`;
       const outgoing =
         input === undefined
@@ -76,26 +76,26 @@ const make = Effect.gen(function* () {
         offset += chunk.byteLength;
       }
       return bytes;
-    }).pipe(
-      Effect.mapError((error) =>
-        isUnityHookError(error)
-          ? error
-          : new UnityHookError({
-              code: "bridge_unavailable",
-              reason: "Unity bridge is unavailable. Reconnect to the running target.",
-            }),
-      ),
-      Effect.timeout("4 seconds"),
-      Effect.mapError((error) =>
-        isUnityHookError(error)
-          ? error
-          : new UnityHookError({
-              code: "bridge_timeout",
-              reason:
-                "Unity stopped responding. Input expires automatically; reconnect before retrying.",
-            }),
-      ),
-    );
+    },
+    Effect.mapError((error) =>
+      isUnityHookError(error)
+        ? error
+        : new UnityHookError({
+            code: "bridge_unavailable",
+            reason: "Unity bridge is unavailable. Reconnect to the running target.",
+          }),
+    ),
+    Effect.timeout("4 seconds"),
+    Effect.mapError((error) =>
+      isUnityHookError(error)
+        ? error
+        : new UnityHookError({
+            code: "bridge_timeout",
+            reason:
+              "Unity stopped responding. Input expires automatically; reconnect before retrying.",
+          }),
+    ),
+  );
   const command = Effect.fn("GameTransport.command")(function* (
     bridge: UnityBridgeConnection,
     input: unknown,

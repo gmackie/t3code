@@ -520,50 +520,50 @@ function firstGraphqlError(response: {
   return stringOrNull(response.errors?.find((error) => stringOrNull(error.message))?.message);
 }
 
-function executeLinearGraphql<S extends Schema.Top>(input: {
+const executeLinearGraphql = Effect.fn("issue.linear.executeGraphql")(function* <
+  S extends Schema.Top,
+>(input: {
   readonly settings: ServerSettings;
   readonly operation: string;
   readonly query: string;
   readonly variables?: Record<string, unknown>;
   readonly schema: S;
-}): Effect.Effect<S["Type"], IssueProviderError, HttpClient.HttpClient | S["DecodingServices"]> {
-  return Effect.gen(function* () {
-    const httpClient = yield* HttpClient.HttpClient;
-    const linearSettings = assertLinearEnabled(input.settings, input.operation);
-    const response = yield* HttpClientRequest.post(linearGraphqlUrl(linearSettings.domain)).pipe(
-      HttpClientRequest.setHeader("authorization", linearSettings.apiToken),
-      HttpClientRequest.bodyJson({
-        query: input.query,
-        ...(input.variables ? { variables: input.variables } : {}),
-      }),
-      Effect.flatMap(httpClient.execute),
-      Effect.mapError((cause) =>
-        issueProviderError({
-          operation: input.operation,
-          detail: cause instanceof Error ? cause.message : "Failed to reach Linear.",
-          cause,
-        }),
-      ),
-    );
-
-    if (response.status < 200 || response.status >= 300) {
-      throw issueProviderError({
+}): Effect.fn.Return<S["Type"], IssueProviderError, HttpClient.HttpClient | S["DecodingServices"]> {
+  const httpClient = yield* HttpClient.HttpClient;
+  const linearSettings = assertLinearEnabled(input.settings, input.operation);
+  const response = yield* HttpClientRequest.post(linearGraphqlUrl(linearSettings.domain)).pipe(
+    HttpClientRequest.setHeader("authorization", linearSettings.apiToken),
+    HttpClientRequest.bodyJson({
+      query: input.query,
+      ...(input.variables ? { variables: input.variables } : {}),
+    }),
+    Effect.flatMap(httpClient.execute),
+    Effect.mapError((cause) =>
+      issueProviderError({
         operation: input.operation,
-        detail: `Linear returned HTTP ${response.status}.`,
-      });
-    }
+        detail: cause instanceof Error ? cause.message : "Failed to reach Linear.",
+        cause,
+      }),
+    ),
+  );
 
-    return yield* HttpClientResponse.schemaBodyJson(input.schema)(response).pipe(
-      Effect.mapError((cause) =>
-        issueProviderError({
-          operation: input.operation,
-          detail: "Linear returned invalid JSON.",
-          cause,
-        }),
-      ),
-    );
-  });
-}
+  if (response.status < 200 || response.status >= 300) {
+    throw issueProviderError({
+      operation: input.operation,
+      detail: `Linear returned HTTP ${response.status}.`,
+    });
+  }
+
+  return yield* HttpClientResponse.schemaBodyJson(input.schema)(response).pipe(
+    Effect.mapError((cause) =>
+      issueProviderError({
+        operation: input.operation,
+        detail: "Linear returned invalid JSON.",
+        cause,
+      }),
+    ),
+  );
+});
 
 function assertNoGraphqlError(
   response: { readonly errors?: readonly { readonly message?: unknown }[] | undefined },

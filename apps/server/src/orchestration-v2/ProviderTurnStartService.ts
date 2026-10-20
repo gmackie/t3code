@@ -79,7 +79,16 @@ const parentLineage = (thread: {
   return parentThreadId == null ? {} : { parentThreadId };
 };
 
-/** Claude refuses to replace a process running background work before it reads the prompt. */
+/**
+ * Claude refuses these before it reads the prompt: replacing a process running background work,
+ * or launch arguments whose appended system prompt cannot be read.
+ */
+const PROMPT_REFUSAL_TAGS = [
+  "ClaudeBackgroundWorkBlocksQueryReplacementError",
+  "ClaudeAppendSystemPromptFileError",
+  "ClaudeAppendSystemPromptMissingValueError",
+] as const;
+
 const refusedBeforePrompt = (error: unknown): boolean =>
   PROMPT_REFUSAL_TAGS.some((tag) => Predicate.isTagged(error, tag)) ||
   (Predicate.hasProperty(error, "cause") && refusedBeforePrompt(error.cause));
@@ -537,6 +546,7 @@ export const layer: Layer.Layer<
         thread: projection.thread,
         modelSelection: run.modelSelection,
       });
+      if (!(yield* isCurrentAttemptInStatus("starting"))) return;
       const openSession = (providerSessionId: ProviderSessionId) => {
         const existingSessionProjection = projection.providerSessions.find(
           (candidate) => candidate.id === providerSessionId,
@@ -578,12 +588,12 @@ export const layer: Layer.Layer<
         });
         sessionResult = yield* openSession(providerSessionId);
       }
-      const settleStartFailure = (failed: {
-        readonly signal: string;
-        readonly title: string;
-        readonly error: Error;
-      }) =>
-        Effect.gen(function* () {
+      const settleStartFailure = Effect.fn("ProviderTurnStartService.settleStartFailure")(
+        function* (failed: {
+          readonly signal: string;
+          readonly title: string;
+          readonly error: Error;
+        }) {
           const nestedCause = "cause" in failed.error ? failed.error.cause : undefined;
           yield* settleRunBeforeStart({
             signal: failed.signal,

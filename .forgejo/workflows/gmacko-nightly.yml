@@ -153,10 +153,17 @@ jobs:
             echo "start_sha=$START_SHA" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          # Merge the final lane tree, preserving its customizations on overlap.
-          # Replaying history resurrects temporary .jjconflict-side-* trees
-          # from resolved historical conflicts and fails rename detection.
-          git merge --no-edit -X ours upstream/main
+          # Merge the final lane tree. Replaying history resurrects temporary
+          # .jjconflict-side-* trees from resolved historical conflicts and
+          # fails rename detection. Conflicts stop the sync before anything is
+          # mirrored: `-X ours` settled them hunk by hunk and shipped files that
+          # no longer parsed, so they need a person to resolve them in a PR.
+          if ! git merge --no-edit upstream/main; then
+            echo "::error::Merging upstream/main conflicts with custom-local; resolve it in a PR to custom-local."
+            git diff --name-only --diff-filter=U | sed 's/^/  conflict: /'
+            git merge --abort
+            exit 1
+          fi
           echo "has_changes=true" >> "$GITHUB_OUTPUT"
           echo "start_sha=$START_SHA" >> "$GITHUB_OUTPUT"
 

@@ -544,28 +544,23 @@ export function PullRequestSummaryTab({
     },
   };
 
-  const renderComment = (comment: PullRequestComment) => {
-    const thread = threadByCommentId.get(comment.id);
-    // A host that serves no diff has no Code tab to answer a conversation in, so it is listed
-    // here whole, at its first remark, with reply and resolve; its later remarks fold into it.
-    const placement = summaryRemarkPlacement(comment.id, thread, detail.capabilities.diff);
-    if (placement === "folded") return null;
-    if (placement === "thread" && thread !== undefined) {
-      const threadFinding: PullRequestFinding = { kind: "thread", thread };
-      return (
-        <PullRequestThreadConversation
-          key={`${detail.url}:${thread.id}`}
-          thread={thread}
-          detail={detail}
-          environmentId={environmentId}
-          reference={reference}
-          onRefresh={onRefresh}
-          fixLabel={fixFindingLabel}
-          fixPending={pendingFinding === pullRequestFindingKey(threadFinding)}
-          {...(onFixFinding ? { onFix: () => onFixFinding(threadFinding) } : {})}
-        />
-      );
-    }
+  const reactionBarFor = (comment: PullRequestComment) => (
+    <PullRequestReactionBar
+      className="ml-auto justify-end"
+      reactions={comment.reactions ?? []}
+      canReact={detail.capabilities.reactions === true}
+      subjectId={comment.id}
+      environmentId={environmentId}
+      reference={reference}
+      onRefresh={onRefresh}
+    />
+  );
+
+  const renderCommentCard = (
+    comment: PullRequestComment,
+    thread: PullRequestReviewThread | undefined,
+    { reply = false }: { reply?: boolean } = {},
+  ) => {
     const body = visibleBody(comment.body);
     const outcome = pullRequestReviewOutcome(comment.reviewState);
     const finding: PullRequestFinding | null =
@@ -628,6 +623,27 @@ export function PullRequestSummaryTab({
   };
 
   const renderItem = (item: PullRequestConversationItem) => {
+    // A host that serves no diff has no Code tab to answer a conversation in, so it is listed
+    // here whole, with reply and resolve.
+    if (
+      item.kind === "thread" &&
+      summaryRemarkPlacement(item.root.id, item.thread, detail.capabilities.diff) !== "comment"
+    ) {
+      const threadFinding: PullRequestFinding = { kind: "thread", thread: item.thread };
+      return (
+        <PullRequestThreadConversation
+          key={`${detail.url}:${item.thread.id}`}
+          thread={item.thread}
+          detail={detail}
+          environmentId={environmentId}
+          reference={reference}
+          onRefresh={onRefresh}
+          fixLabel={fixFindingLabel}
+          fixPending={pendingFinding === pullRequestFindingKey(threadFinding)}
+          {...(onFixFinding ? { onFix: () => onFixFinding(threadFinding) } : {})}
+        />
+      );
+    }
     const comment = item.kind === "comment" ? item.comment : item.root;
     const thread = item.kind === "thread" ? item.thread : undefined;
     const replies =

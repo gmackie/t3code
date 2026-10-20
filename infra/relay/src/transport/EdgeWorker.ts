@@ -30,80 +30,77 @@ export type EdgeShape = {
   ) => Effect.Effect<RelayEnvironmentDiagnostics, never, RuntimeContext>;
 };
 
-export function makeRelayEdgeRuntime(
+export const makeRelayEdgeRuntime = Effect.fn("relay.edge.make_runtime")(function* (
   resolveRoute: (
     url: URL,
   ) => { readonly kind: "connector" | "public"; readonly endpointKey: string } | null,
 ) {
-  return Effect.gen(function* () {
-    const environments = yield* RelayEnvironment;
+  const environments = yield* RelayEnvironment;
 
-    return {
-      configureEndpoint: (endpointKey: string, connectorToken: string, connectorLeaseId: string) =>
-        environments
-          .getByName(endpointKey)
-          .setConnectorConfiguration(connectorToken, connectorLeaseId),
-      revokeEndpoint: (endpointKey: string, connectorLeaseId?: string) =>
-        environments.getByName(endpointKey).revokeConnector(connectorLeaseId),
-      diagnosticsEndpoint: (endpointKey: string) =>
-        environments.getByName(endpointKey).diagnostics(),
-      fetch: Effect.gen(function* () {
-        const request = yield* HttpServerRequest.HttpServerRequest;
-        const source = request.source;
-        if (!(source instanceof Request)) {
-          return HttpServerResponse.text("Unsupported relay request", { status: 500 });
-        }
+  return {
+    configureEndpoint: (endpointKey: string, connectorToken: string, connectorLeaseId: string) =>
+      environments
+        .getByName(endpointKey)
+        .setConnectorConfiguration(connectorToken, connectorLeaseId),
+    revokeEndpoint: (endpointKey: string, connectorLeaseId?: string) =>
+      environments.getByName(endpointKey).revokeConnector(connectorLeaseId),
+    diagnosticsEndpoint: (endpointKey: string) => environments.getByName(endpointKey).diagnostics(),
+    fetch: Effect.gen(function* () {
+      const request = yield* HttpServerRequest.HttpServerRequest;
+      const source = request.source;
+      if (!(source instanceof Request)) {
+        return HttpServerResponse.text("Unsupported relay request", { status: 500 });
+      }
 
-        const url = new URL(source.url);
-        const route = resolveRoute(url);
-        if (route === null) {
-          return HttpServerResponse.text("Unknown relay endpoint", { status: 404 });
-        }
-        const headers = new Headers(source.headers);
-        headers.delete(relayConnectionRoleHeader);
-        headers.delete(relayConnectorTicketHeader);
-        headers.delete(relayConnectorTokenHeader);
-        headers.delete(relayPublicUrlHeader);
-        const isWebSocket = request.headers.upgrade?.toLowerCase() === "websocket";
-        if (route.kind === "connector") {
-          if (isWebSocket) {
-            const connectorTicket = url.searchParams.get("ticket");
-            if (!connectorTicket) {
-              return HttpServerResponse.text("Missing connector ticket", { status: 401 });
-            }
-            headers.set(relayConnectionRoleHeader, "connector");
-            headers.set(relayConnectorTicketHeader, connectorTicket);
-            url.searchParams.delete("ticket");
-          } else if (request.method === "POST") {
-            const authorization = headers.get("authorization");
-            if (!authorization?.startsWith("Bearer ")) {
-              return HttpServerResponse.text("Missing connector authorization", { status: 401 });
-            }
-            headers.set(relayConnectionRoleHeader, "connector_ticket");
-            headers.set(relayConnectorTokenHeader, authorization.slice("Bearer ".length));
-            headers.delete("authorization");
-          } else {
-            return HttpServerResponse.text("Expected connector ticket request", { status: 405 });
+      const url = new URL(source.url);
+      const route = resolveRoute(url);
+      if (route === null) {
+        return HttpServerResponse.text("Unknown relay endpoint", { status: 404 });
+      }
+      const headers = new Headers(source.headers);
+      headers.delete(relayConnectionRoleHeader);
+      headers.delete(relayConnectorTicketHeader);
+      headers.delete(relayConnectorTokenHeader);
+      headers.delete(relayPublicUrlHeader);
+      const isWebSocket = request.headers.upgrade?.toLowerCase() === "websocket";
+      if (route.kind === "connector") {
+        if (isWebSocket) {
+          const connectorTicket = url.searchParams.get("ticket");
+          if (!connectorTicket) {
+            return HttpServerResponse.text("Missing connector ticket", { status: 401 });
           }
+          headers.set(relayConnectionRoleHeader, "connector");
+          headers.set(relayConnectorTicketHeader, connectorTicket);
+          url.searchParams.delete("ticket");
+        } else if (request.method === "POST") {
+          const authorization = headers.get("authorization");
+          if (!authorization?.startsWith("Bearer ")) {
+            return HttpServerResponse.text("Missing connector authorization", { status: 401 });
+          }
+          headers.set(relayConnectionRoleHeader, "connector_ticket");
+          headers.set(relayConnectorTokenHeader, authorization.slice("Bearer ".length));
+          headers.delete("authorization");
         } else {
-          headers.set(relayPublicUrlHeader, url.href);
-          headers.set(relayConnectionRoleHeader, isWebSocket ? "client" : "http");
+          return HttpServerResponse.text("Expected connector ticket request", { status: 405 });
         }
+      } else {
+        headers.set(relayPublicUrlHeader, url.href);
+        headers.set(relayConnectionRoleHeader, isWebSocket ? "client" : "http");
+      }
 
-        const forwarded = HttpServerRequest.fromWeb(
-          new Request(url, {
-            method: source.method,
-            headers,
-            ...(source.method === "GET" || source.method === "HEAD" || source.body === null
-              ? {}
-              : { body: source.body }),
-          }),
-        );
-        return yield* environments.getByName(route.endpointKey).fetch(forwarded);
-      }),
-    };
-  });
-}
+      const forwarded = HttpServerRequest.fromWeb(
+        new Request(url, {
+          method: source.method,
+          headers,
+          ...(source.method === "GET" || source.method === "HEAD" || source.body === null
+            ? {}
+            : { body: source.body }),
+        }),
+      );
+      return yield* environments.getByName(route.endpointKey).fetch(forwarded);
+    }),
+  };
+});
 
 export class Edge extends Cloudflare.Worker<Edge, EdgeShape>()("RelayEdge") {}
 
