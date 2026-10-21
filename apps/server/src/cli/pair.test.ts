@@ -29,7 +29,12 @@ import {
   persistServerRuntimeState,
   type PersistedServerRuntimeState,
 } from "../serverRuntimeState.ts";
-import { DevServerNotProxiableError, resolveTailscaleLocalTarget } from "./pair.ts";
+import {
+  DevServerNotProxiableError,
+  ExternalUrlInvalidError,
+  resolveExternalPairingBaseUrl,
+  resolveTailscaleLocalTarget,
+} from "./pair.ts";
 
 import packageJson from "../../package.json" with { type: "json" };
 
@@ -66,6 +71,37 @@ describe("pair tailscale local target", () => {
   });
 });
 
+describe("pair external URL", () => {
+  it("accepts a bare HTTPS origin and normalizes it", () => {
+    expect(resolveExternalPairingBaseUrl("https://t3.example.com")).toBe("https://t3.example.com");
+    expect(resolveExternalPairingBaseUrl(" https://T3.example.com:8443/ ")).toBe(
+      "https://t3.example.com:8443",
+    );
+  });
+
+  it("allows plain HTTP only for loopback", () => {
+    expect(resolveExternalPairingBaseUrl("http://127.0.0.1:3773")).toBe("http://127.0.0.1:3773");
+    expect(resolveExternalPairingBaseUrl("http://t3.example.com")).toBeInstanceOf(
+      ExternalUrlInvalidError,
+    );
+  });
+
+  it("rejects URLs clients cannot pair through", () => {
+    for (const externalUrl of [
+      "t3.example.com",
+      "wss://t3.example.com",
+      "https://user:secret@t3.example.com",
+      "https://t3.example.com/t3",
+      "https://t3.example.com/?token=abc",
+      "https://t3.example.com/#token=abc",
+    ]) {
+      expect(resolveExternalPairingBaseUrl(externalUrl), externalUrl).toBeInstanceOf(
+        ExternalUrlInvalidError,
+      );
+    }
+  });
+});
+
 const runCli = (args: ReadonlyArray<string>) => Command.runWith(cli, { version: "0.0.0" })(args);
 
 const provideCliTestLayers = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
@@ -94,13 +130,14 @@ const testDescriptor = {
 const withDescriptorServer = <A, E, R>(
   run: (origin: string) => Effect.Effect<A, E, R>,
   host = "127.0.0.1",
+  descriptor: typeof testDescriptor = testDescriptor,
 ) =>
   Effect.acquireUseRelease(
     Effect.callback<NodeHttp.Server>((resume) => {
       const server = NodeHttp.createServer((request, response) => {
         if (request.url === "/.well-known/t3/environment") {
           response.writeHead(200, { "content-type": "application/json" });
-          response.end(JSON.stringify(testDescriptor));
+          response.end(JSON.stringify(descriptor));
           return;
         }
         response.writeHead(404);
@@ -259,6 +296,123 @@ describe("t3 pair", () => {
         assert.include(output, "Pairing URL: http://localhost:5733/pair#token=");
       }),
     ).pipe(Effect.provide(NodeServices.layer)),
+  );
+
+  const persistLiveState = (origin: string) =>
+    Effect.gen(function* () {
+      const baseDir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "t3-pair-external-test-"));
+      yield* persistServerRuntimeState({
+        path: NodePath.join(baseDir, "userdata", "server-runtime.json"),
+        state: yield* makePersistedServerRuntimeState({
+          config: { host: "127.0.0.1", devUrl: undefined },
+          port: Number(new URL(origin).port),
+        }),
+      });
+      return baseDir;
+    });
+
+  const renderFailure = (error: unknown) =>
+    String(typeof error === "object" && error !== null && "cause" in error ? error.cause : error);
+
+  it.effect("pairs through an external URL that fronts this server", () =>
+    withDescriptorServer((origin) =>
+      Effect.gen(function* () {
+        const baseDir = yield* persistLiveState(origin);
+
+        const output = yield* captureStdout(
+          runCli(["pair", "--base-dir", baseDir, "--external-url", `${origin}/`]),
+        );
+
+        assert.include(output, `Pairing URL: ${origin}/pair#token=`);
+        assert.notInclude(output, "only reachable from this machine");
+        assert.notInclude(output, "Could not confirm");
+      }),
+    ).pipe(Effect.provide(NodeServices.layer)),
+  );
+
+  it.effect("pairs with a note when the external URL cannot be verified", () =>
+    withDescriptorServer((origin) =>
+      Effect.gen(function* () {
+        const baseDir = yield* persistLiveState(origin);
+
+        // Nothing listens on port 1, standing in for an access gate the CLI
+        // cannot pass.
+        const output = yield* captureStdout(
+          runCli(["pair", "--base-dir", baseDir, "--external-url", "http://127.0.0.1:1"]),
+        );
+
+        assert.include(output, "Pairing URL: http://127.0.0.1:1/pair#token=");
+        assert.include(output, "Could not confirm http://127.0.0.1:1 reaches this server");
+      }),
+    ).pipe(Effect.provide(NodeServices.layer)),
+  );
+
+  it.effect("refuses an external URL that fronts a different server", () =>
+    withDescriptorServer((origin) =>
+      withDescriptorServer(
+        (otherOrigin) =>
+          Effect.gen(function* () {
+            const baseDir = yield* persistLiveState(origin);
+
+            const error = yield* provideCliTestLayers(
+              runCli(["pair", "--base-dir", baseDir, "--external-url", otherOrigin]).pipe(
+                Effect.flip,
+              ),
+            );
+
+            assert.include(renderFailure(error), "fronts a different T3 Code server");
+            // No token may be minted for a QR code that points elsewhere.
+            const listed = yield* captureStdout(
+              runCli(["auth", "pairing", "list", "--base-dir", baseDir, "--json"]),
+            );
+            assert.equal(listed.trim(), "[]");
+          }),
+        "127.0.0.1",
+        { ...testDescriptor, environmentId: "other-environment" },
+      ),
+    ).pipe(Effect.provide(NodeServices.layer)),
+  );
+
+  it.effect("rejects invalid external URLs and the Tailscale combination", () =>
+    Effect.gen(function* () {
+      const baseDir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "t3-pair-flags-test-"));
+
+      const invalid = yield* provideCliTestLayers(
+        runCli(["pair", "--base-dir", baseDir, "--external-url", "http://t3.example.com"]).pipe(
+          Effect.flip,
+        ),
+      );
+      assert.include(renderFailure(invalid), "must use https://");
+
+      const combined = yield* provideCliTestLayers(
+        runCli([
+          "pair",
+          "--base-dir",
+          baseDir,
+          "--tailscale",
+          "--external-url",
+          "https://t3.example.com",
+        ]).pipe(Effect.flip),
+      );
+      assert.include(renderFailure(combined), "Pass only one.");
+    }).pipe(Effect.provide(NodeServices.layer)),
+  );
+
+  it.effect("directs to t3 serve or t3 connect when no server is running", () =>
+    Effect.gen(function* () {
+      const baseDir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "t3-pair-none-test-"));
+
+      const error = yield* provideCliTestLayers(
+        runCli(["pair", "--base-dir", baseDir]).pipe(Effect.flip),
+      );
+
+      const rendered = String(
+        typeof error === "object" && error !== null && "cause" in error ? error.cause : error,
+      );
+      assert.include(rendered, "No running T3 Code server found.");
+      assert.include(rendered, "npx t3 serve");
+      assert.include(rendered, "npx t3 connect");
+    }).pipe(Effect.provide(NodeServices.layer)),
   );
 
   it.effect("ignores runtime state whose recorded pid is no longer alive", () =>

@@ -149,6 +149,22 @@ tailscale serve --https=443 off
 If that port is already in use, choose another with
 `--tailscale-serve-port`. See `t3 pair --help` for other pairing options.
 
+### Your own HTTPS endpoint
+
+If you already publish the server through your own tunnel or reverse proxy, such
+as a Cloudflare Tunnel hostname, pair through that address:
+
+```bash
+t3 pair --external-url https://t3.example.com
+```
+
+The endpoint must forward the whole origin, including WebSockets, to this server
+at the root path. T3 Code checks that the address reaches this server and stops if it
+reaches a different one. If it cannot check, for example because a sign-in gate
+answers first, it still prints the link with a note. The connecting app must be
+able to reach the server through that address directly; apps cannot yet sign in
+through a gate such as Cloudflare Access.
+
 ### Hosted web app
 
 [app.t3.codes](https://app.t3.codes) needs an HTTPS endpoint. It connects directly

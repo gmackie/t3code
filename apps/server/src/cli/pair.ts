@@ -126,6 +126,62 @@ export class ServePortOccupiedError extends Schema.TaggedError<ServePortOccupied
   }
 }
 
+export class ExternalUrlInvalidError extends Schema.TaggedError<ExternalUrlInvalidError>()(
+  "ExternalUrlInvalidError",
+  { externalUrl: Schema.String, reason: Schema.String },
+) {
+  override get message(): string {
+    return `--external-url ${this.externalUrl} is not usable: ${this.reason}`;
+  }
+}
+
+export class ExternalUrlWithTailscaleError extends Schema.TaggedError<ExternalUrlWithTailscaleError>()(
+  "ExternalUrlWithTailscaleError",
+  {},
+) {
+  override get message(): string {
+    return "--external-url and --tailscale each choose the pairing URL. Pass only one.";
+  }
+}
+
+/**
+ * Validates an operator-supplied public origin (for example a Cloudflare
+ * Tunnel hostname) and returns it as a pairing base URL. Clients reset the
+ * path to `/` when they derive HTTP and WebSocket endpoints, so only a bare
+ * origin is accepted. Plain HTTP is allowed for loopback only, because a
+ * pairing token travels in the URL.
+ */
+export const resolveExternalPairingBaseUrl = (
+  externalUrl: string,
+): string | ExternalUrlInvalidError => {
+  const invalid = (reason: string) => new ExternalUrlInvalidError({ externalUrl, reason });
+  let url: URL;
+  try {
+    url = new URL(externalUrl.trim());
+  } catch {
+    return invalid("it is not an absolute URL, for example https://t3.example.com.");
+  }
+  if (url.protocol !== "https:" && !(url.protocol === "http:" && isLoopbackHost(url.hostname))) {
+    return invalid("it must use https:// (plain http:// is allowed only for loopback hosts).");
+  }
+  if (url.username.length > 0 || url.password.length > 0) {
+    return invalid("it must not contain credentials.");
+  }
+  if (url.pathname !== "/" || url.search.length > 0 || url.hash.length > 0) {
+    return invalid("it must be a bare origin; T3 Code is served from the root path.");
+  }
+  return url.origin;
+};
+
+export class ExternalUrlServesOtherEnvironmentError extends Schema.TaggedError<ExternalUrlServesOtherEnvironmentError>()(
+  "ExternalUrlServesOtherEnvironmentError",
+  { externalUrl: Schema.String },
+) {
+  override get message(): string {
+    return `${this.externalUrl} fronts a different T3 Code server than the one running here. Point the tunnel at this server, or pass the right --external-url.`;
+  }
+}
+
 const resolveDirectPairingBaseUrl = (state: PersistedServerRuntimeState): string =>
   state.devUrl ?? resolveHeadlessConnectionString(state.host, state.port);
 
@@ -417,6 +473,28 @@ const resolveTailscalePairingBase = Effect.fn("pair.resolveTailscalePairingBase"
   },
 );
 
+/**
+ * The external origin usually sits behind a proxy the CLI cannot see through
+ * (Cloudflare Access answers before the server does), so only a positive
+ * mismatch is fatal: that would print a QR code for a different server than
+ * the one the token was minted in.
+ */
+const verifyExternalPairingBase = Effect.fn("pair.verifyExternalPairingBase")(function* (input: {
+  readonly target: DiscoveredPairTarget;
+  readonly baseUrl: string;
+}) {
+  const probed = yield* probeEnvironmentDescriptor(input.baseUrl);
+  if (probed._tag === "descriptor") {
+    if (probed.descriptor.environmentId !== input.target.descriptor.environmentId) {
+      return yield* new ExternalUrlServesOtherEnvironmentError({ externalUrl: input.baseUrl });
+    }
+    return [];
+  }
+  return [
+    `Could not confirm ${input.baseUrl} reaches this server${probed._tag === "unreachable" ? " (no answer)" : " (it answered, but not with this server's descriptor)"}. That is expected when an access gate such as Cloudflare Access sits in front of it; otherwise check the tunnel.`,
+  ];
+});
+
 const mintPairingLink = Effect.fn("pair.mintPairingLink")(function* (input: {
   readonly config: ServerConfig.ServerConfig["Service"];
   readonly scopes: ReadonlyArray<AuthEnvironmentScope>;
@@ -467,6 +545,13 @@ const tailscaleServePortFlag = Flag.Int("tailscale-serve-port").pipe(
   Flag.withDefault(DEFAULT_TAILSCALE_SERVE_PORT),
 );
 
+const externalUrlFlag = Flag.String("external-url").pipe(
+  Flag.withDescription(
+    "Public HTTPS origin that already fronts this server, such as a Cloudflare Tunnel hostname. Pair through it instead of the local address.",
+  ),
+  Flag.optional,
+);
+
 export const pairCommand = Command.make("pair", {
   baseDir: baseDirFlag,
   scopes: authScopesFlag(AuthStandardClientScopes),
@@ -474,6 +559,7 @@ export const pairCommand = Command.make("pair", {
   label: labelFlag,
   tailscale: tailscaleFlag,
   tailscaleServePort: tailscaleServePortFlag,
+  externalUrl: externalUrlFlag,
 }).pipe(
   Command.withDescription(
     "Mint a pairing token for a running T3 Code server and print it as a QR code.",
@@ -483,11 +569,27 @@ export const pairCommand = Command.make("pair", {
       const cliLogLevel = yield* GlobalFlag.LogLevel;
       const logLevel = Option.getOrElse(cliLogLevel, () => "Warn" as const);
 
+      // Validate before discovery so a typo fails fast and touches nothing.
+      let externalBaseUrl: string | undefined;
+      if (Option.isSome(flags.externalUrl)) {
+        if (flags.tailscale) {
+          return yield* new ExternalUrlWithTailscaleError();
+        }
+        const resolved = resolveExternalPairingBaseUrl(flags.externalUrl.value);
+        if (typeof resolved !== "string") {
+          return yield* resolved;
+        }
+        externalBaseUrl = resolved;
+      }
+
       const target = yield* discoverPairTarget(Option.getOrUndefined(flags.baseDir));
 
       const notes: Array<string> = [];
       let pairingBaseUrl: string;
-      if (flags.tailscale) {
+      if (externalBaseUrl !== undefined) {
+        pairingBaseUrl = externalBaseUrl;
+        notes.push(...(yield* verifyExternalPairingBase({ target, baseUrl: externalBaseUrl })));
+      } else if (flags.tailscale) {
         const resolved = yield* resolveTailscalePairingBase({
           target,
           servePort: flags.tailscaleServePort,
