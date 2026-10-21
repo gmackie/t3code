@@ -7,6 +7,7 @@ on:
     paths:
       - packages/engine/**
       - apps/server/src/engine/**
+      - apps/server/scripts/engine-contention-bench.ts
       - vite.config.ts
       - .forgejo/workflows/engine-ci.yml
   workflow_dispatch:
@@ -30,6 +31,8 @@ jobs:
           pnpm install --frozen-lockfile
       - name: Verify engine package and import boundary
         run: |
-          pnpm exec vp test run packages/engine
+          pnpm exec vp test run packages/engine apps/server/src/engine
           pnpm --filter @t3tools/engine run typecheck
-          pnpm exec vp lint packages/engine vite.config.ts
+          pnpm exec vp lint packages/engine apps/server/src/engine apps/server/scripts/engine-contention-bench.ts vite.config.ts
+      - name: Contention gate (engine writes vs V2 commits)
+        run: node apps/server/scripts/engine-contention-bench.ts --commits 1000 --reps 3

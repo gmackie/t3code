@@ -46,6 +46,34 @@ const engineMigrations: ReadonlyArray<
       )`;
     }),
   ],
+  [
+    2,
+    "EffectLane",
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`CREATE TABLE IF NOT EXISTS engine_effects (
+        effect_id TEXT PRIMARY KEY,
+        tenant_id TEXT NOT NULL,
+        lane_key TEXT NOT NULL,
+        effect_type TEXT NOT NULL,
+        retry_class TEXT NOT NULL,
+        payload_json TEXT NOT NULL,
+        status TEXT NOT NULL,
+        attempt_count INTEGER NOT NULL DEFAULT 0,
+        claim_epoch INTEGER NOT NULL DEFAULT 0,
+        available_at TEXT NOT NULL,
+        lease_owner TEXT,
+        lease_expires_at TEXT,
+        last_error TEXT,
+        created_at TEXT NOT NULL,
+        completed_at TEXT
+      )`;
+      yield* sql`CREATE INDEX IF NOT EXISTS idx_engine_effects_claimable
+        ON engine_effects (status, available_at)`;
+      yield* sql`CREATE INDEX IF NOT EXISTS idx_engine_effects_lane
+        ON engine_effects (lane_key, status)`;
+    }),
+  ],
 ];
 
 export const runEngineMigrations = Effect.fn("runEngineMigrations")(
