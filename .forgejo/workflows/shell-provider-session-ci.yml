@@ -28,7 +28,7 @@ jobs:
       - name: Install pinned dependencies
         run: |
           corepack enable
-          corepack prepare pnpm@11.10.0 --activate
+          corepack prepare pnpm@12.14.0 --activate
           pnpm install --frozen-lockfile
       - name: Verify shell provider session lookup
         run: |

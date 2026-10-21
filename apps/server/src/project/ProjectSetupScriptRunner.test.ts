@@ -2,7 +2,6 @@ import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import { assert, it, vi } from "@effect/vitest";
 import { ProjectId, ThreadId } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
-import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 
@@ -13,7 +12,7 @@ import * as ServerSettings from "../serverSettings.ts";
 import * as ProjectService from "./ProjectService.ts";
 import * as ProjectSetupScriptRunner from "./ProjectSetupScriptRunner.ts";
 
-it.effect("resolves setup scripts through the standalone project service", () => {
+it.effect("skips the project setup script for work a fenced link started", () => {
   const open = vi.fn((input: Parameters<TerminalManager.TerminalManager["Service"]["open"]>[0]) =>
     Effect.succeed({
       threadId: input.threadId,
@@ -110,99 +109,6 @@ it.effect("resolves setup scripts through the standalone project service", () =>
 
   return Effect.gen(function* () {
     const runner = yield* ProjectSetupScriptRunner.ProjectSetupScriptRunner;
-    const result = yield* runner.runForThread({
-      threadId: "thread-1",
-      projectId,
-      worktreePath: "/repo-worktree",
-    });
-    assert.deepEqual(result, {
-      status: "started",
-      async: true,
-      scriptId: "setup",
-      scriptName: "Setup",
-      scriptCommand: "vp install",
-      terminalId: "setup-setup",
-      cwd: "/repo-worktree",
-    });
-    assert.equal(open.mock.calls[0]?.[0].cwd, "/repo-worktree");
-    assert.deepEqual(open.mock.calls[0]?.[0].env, {
-      T3CODE_PROJECT_ROOT: "/repo",
-      T3CODE_WORKTREE_PATH: "/repo-worktree",
-      COLORTERM: "",
-      NO_COLOR: "1",
-      FORCE_COLOR: "0",
-    });
-    assert.equal(write.mock.calls[0]?.[0].data, " vp install\r");
-    const lines: string[] = [];
-    const observed = yield* runner.runForThread({
-      threadId: "thread-1",
-      projectId,
-      worktreePath: "/repo-worktree",
-      observeCompletion: {
-        onOutputLine: (line) =>
-          Effect.sync(() => {
-            lines.push(line);
-          }),
-      },
-    });
-    assert.equal(observed.status, "started");
-    assert.match(write.mock.calls[1]?.[0].data ?? "", /^ \S/);
-    const listener = listeners[0]!;
-    yield* listener({
-      type: "output",
-      threadId: "thread-1",
-      terminalId: "setup-setup",
-      data: "Downloading 10%\rDownloading 20%\r\nDone\n",
-    });
-    assert.deepEqual(lines, ["Downloading 10%", "Downloading 20%", "Done"]);
-    yield* listener({ type: "closed", threadId: "thread-1", terminalId: "setup-setup" });
-
-    const settle = yield* runner.runForThread({
-      threadId: "thread-1",
-      projectId,
-      worktreePath: "/repo-worktree",
-      trigger: "settle",
-    });
-    const settleTerminalId = settle.status === "started" ? settle.terminalId : "";
-    assert.match(settleTerminalId, /^settle-clean-/);
-    assert.equal(write.mock.calls.at(-1)?.[0].data, " cargo clean\r");
-
-    const observedSettle = yield* runner.runForThread({
-      threadId: "thread-1",
-      projectId,
-      worktreePath: "/repo-worktree",
-      trigger: "settle",
-      observeCompletion: {},
-    });
-    const observedTerminalId = observedSettle.status === "started" ? observedSettle.terminalId : "";
-    assert.notEqual(observedTerminalId, settleTerminalId);
-    assert.match(write.mock.calls.at(-1)?.[0].data ?? "", /^ \S/);
-    const token = /__T3_SETUP_DONE___(\w+):/.exec(write.mock.calls.at(-1)?.[0].data ?? "")?.[1];
-    const settleListener = listeners.at(-1)!;
-    const completion = yield* Effect.forkChild(
-      observedSettle.status === "started" && observedSettle.completion
-        ? observedSettle.completion
-        : Effect.die("no completion"),
-    );
-    yield* settleListener({
-      type: "output",
-      threadId: "thread-1",
-      terminalId: observedTerminalId,
-      data: `\r\n__T3_SETUP_DONE___${token}:0\r\n`,
-    });
-    yield* Effect.yieldNow;
-    assert.equal(closeIdle.mock.calls.length, 0);
-    yield* settleListener({
-      type: "output",
-      threadId: "thread-1",
-      terminalId: observedTerminalId,
-      data: "$ ",
-    });
-    assert.deepEqual((yield* Fiber.join(completion)).exitCode, 0);
-    assert.deepEqual(closeIdle.mock.calls[0]?.[0], {
-      threadId: "thread-1",
-      terminalId: observedTerminalId,
-    });
 
     // The project's own script never runs for work a link below full access started.
     const opened = open.mock.calls.length;

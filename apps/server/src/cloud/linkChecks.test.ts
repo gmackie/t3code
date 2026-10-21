@@ -2,9 +2,9 @@ import { describe, expect, it } from "@effect/vitest";
 import type { RelayLinkProofRequest } from "@t3tools/contracts/relay";
 
 import {
-  isSupportedLinkProviderKind,
   linkProofScopes,
   parseManagedEndpointLocalOrigin,
+  isSupportedLinkProviderKind,
 } from "./linkChecks.ts";
 
 describe("parseManagedEndpointLocalOrigin", () => {

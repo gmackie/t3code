@@ -94,7 +94,7 @@ const dropSharedFailedErrorIndex = Effect.gen(function* () {
 const Migration0062Shared = Effect.andThen(dropSharedFailedErrorIndex, Migration0062);
 const Migration0071 = Effect.andThen(dropSharedFailedErrorIndex, BoundedShellLookups);
 
-export const migrationEntries = [
+const migrationEntries = [
   [1, "OrchestrationEvents", Migration0001],
   [2, "OrchestrationCommandReceipts", Migration0002],
   [3, "CheckpointDiffBlobs", Migration0003],

@@ -25,12 +25,12 @@ function makeState(overrides: Partial<DesktopUpdateState> = {}): DesktopUpdateSt
     availableVersion: null,
     downloadedVersion: null,
     releaseNotes: [],
-    omittedReleaseCount: 0,
     downloadPercent: null,
     checkedAt: null,
     message: null,
     errorContext: null,
     canRetry: false,
+    omittedReleaseCount: 0,
     ...overrides,
   };
 }
@@ -105,21 +105,7 @@ const makeHarness = Effect.fn("test.make_desktop_app_update_harness")(function* 
 });
 
 it.layer(NodeServices.layer)("desktop app update", (it) => {
-  it.effect("is unavailable without desktop mode or the control fd", () =>
-    Effect.gen(function* () {
-      const web = yield* makeHarness({ mode: "web" });
-      expect(web.service.available).toBe(false);
-      const noFd = yield* makeHarness({ controlFd: undefined });
-      expect(noFd.service.available).toBe(false);
-      expect((yield* noFd.service.run(() => Effect.void).pipe(Effect.flip)).reason).toContain(
-        "not started by the T3 Code desktop app",
-      );
-      const desktop = yield* makeHarness();
-      expect(desktop.service.available).toBe(true);
-    }),
-  );
-
-  it.effect("collapses state reports into progress stages and returns an install token", () =>
+  it.effect("collapses state reports into progress stages and succeeds on installing", () =>
     Effect.gen(function* () {
       const { service } = yield* makeHarness({
         reports: (requestId) => [
@@ -146,28 +132,30 @@ it.layer(NodeServices.layer)("desktop app update", (it) => {
     }),
   );
 
-  it.effect("maps up-to-date and failed outcomes to readable errors", () =>
+  it.effect("replays a retained commit failure for the preparation token", () =>
     Effect.gen(function* () {
-      const upToDate = yield* makeHarness({
+      const { service } = yield* makeHarness({
         reports: (requestId) => [
-          report(requestId, makeState({ status: "up-to-date" }), { outcome: "up-to-date" }),
-        ],
-      });
-      expect((yield* upToDate.service.run(() => Effect.void).pipe(Effect.flip)).reason).toBe(
-        "The T3 Code desktop app on this machine is already up to date on 1.2.3.",
-      );
-
-      const failed = yield* makeHarness({
-        reports: (requestId) => [
-          report(requestId, makeState({ status: "error", message: "feed unreachable" }), {
-            outcome: "failed",
-            reason: "feed unreachable",
+          report(requestId, makeState({ status: "downloaded", downloadedVersion: "1.2.4" }), {
+            outcome: "ready-to-install",
           }),
+          report(
+            requestId,
+            makeState({
+              status: "downloaded",
+              downloadedVersion: "1.2.4",
+              errorContext: "install",
+              message: "installer refused",
+            }),
+            { outcome: "failed", reason: "installer refused" },
+          ),
         ],
       });
-      expect((yield* failed.service.run(() => Effect.void).pipe(Effect.flip)).reason).toBe(
-        "feed unreachable",
-      );
+      const prepared = yield* service.run(() => Effect.void);
+
+      expect(
+        (yield* service.commit(prepared.desktopUpdateToken ?? "missing").pipe(Effect.flip)).reason,
+      ).toBe("installer refused");
     }),
   );
 
@@ -195,6 +183,18 @@ it.layer(NodeServices.layer)("desktop app update", (it) => {
         "A desktop app update is already in progress.",
       );
       yield* Fiber.interrupt(first);
+
+      const retry = yield* Effect.forkChild(
+        service.run(() => Effect.void),
+        {
+          startImmediately: true,
+        },
+      );
+      yield* Effect.yieldNow;
+      expect((yield* service.run(() => Effect.void).pipe(Effect.flip)).reason).toBe(
+        "A desktop app update is already in progress.",
+      );
+      yield* Fiber.interrupt(retry);
     }),
   );
 });

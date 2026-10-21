@@ -28,7 +28,7 @@ jobs:
       - name: Prepare the release package manager
         run: |
           corepack enable
-          corepack prepare pnpm@11.10.0 --activate
+          corepack prepare pnpm@12.14.0 --activate
       - name: Verify storage rejection and preservation
         env:
           PYTHONDONTWRITEBYTECODE: "1"

@@ -62,7 +62,7 @@ jobs:
       - name: Install pinned dependencies
         run: |
           corepack enable
-          corepack prepare pnpm@11.10.0 --activate
+          corepack prepare pnpm@12.14.0 --activate
           pnpm install --frozen-lockfile
       - name: Test the ForgeGraph provider package
         run: pnpm -C packages/source-control-forgegraph exec vp test run --config ../../vite.config.ts --dir . src
@@ -80,7 +80,7 @@ jobs:
       - name: Install pinned dependencies
         run: |
           corepack enable
-          corepack prepare pnpm@11.10.0 --activate
+          corepack prepare pnpm@12.14.0 --activate
           pnpm install --frozen-lockfile
       - name: Test source control in shared
         run: pnpm -C packages/shared exec vp test run --config ../../vite.config.ts --dir . src/sourceControl.test.ts
@@ -98,7 +98,7 @@ jobs:
       - name: Install pinned dependencies
         run: |
           corepack enable
-          corepack prepare pnpm@11.10.0 --activate
+          corepack prepare pnpm@12.14.0 --activate
           pnpm install --frozen-lockfile
       - name: Test the server's source control and pull request services
         run: pnpm -C apps/server exec vp test run src/sourceControl/ForgeGraphSignIn.test.ts src/sourceControl/SourceControlDiscovery.test.ts src/sourceControl/SourceControlProviderRegistry.test.ts src/auth/RpcAuthorization.test.ts src/pullRequest/PullRequestService.test.ts src/mcp/toolkits/pullRequests src/mcp/McpHttpServer.test.ts src/mcp/toolkits/worktree/registration.test.ts src/mcp/toolkits/core.test.ts
@@ -114,7 +114,7 @@ jobs:
       - name: Install pinned dependencies
         run: |
           corepack enable
-          corepack prepare pnpm@11.10.0 --activate
+          corepack prepare pnpm@12.14.0 --activate
           pnpm install --frozen-lockfile
       - name: Typecheck the server
         run: pnpm -C apps/server exec tsc --noEmit
@@ -130,7 +130,7 @@ jobs:
       - name: Install pinned dependencies
         run: |
           corepack enable
-          corepack prepare pnpm@11.10.0 --activate
+          corepack prepare pnpm@12.14.0 --activate
           pnpm install --frozen-lockfile
       - name: Test the pull request summary and command palette logic
         run: pnpm -C apps/web exec vp test run src/components/pullRequest/pullRequestDetail.logic.test.ts src/components/CommandPalette.logic.test.ts --project unit
@@ -148,7 +148,7 @@ jobs:
       - name: Install pinned dependencies
         run: |
           corepack enable
-          corepack prepare pnpm@11.10.0 --activate
+          corepack prepare pnpm@12.14.0 --activate
           pnpm install --frozen-lockfile
       - name: Test the ForgeGraph sign-in settings logic
         run: pnpm -C apps/mobile exec vp test run src/features/settings/forgegraph-sign-in.test.ts
@@ -167,7 +167,7 @@ jobs:
       - name: Install pinned dependencies
         run: |
           corepack enable
-          corepack prepare pnpm@11.10.0 --activate
+          corepack prepare pnpm@12.14.0 --activate
           pnpm install --frozen-lockfile
       - name: Lint and format the touched files
         run: |
