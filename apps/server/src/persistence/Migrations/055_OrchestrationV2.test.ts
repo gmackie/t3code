@@ -15,7 +15,7 @@ layer("055_OrchestrationV2", (it) => {
     Effect.sync(() => {
       assert.deepStrictEqual(
         migrationEntries.map(([id]) => id),
-        Array.from({ length: 68 }, (_, index) => index + 1),
+        Array.from({ length: 72 }, (_, index) => index + 1),
       );
     }),
   );
@@ -40,8 +40,12 @@ layer("055_OrchestrationV2", (it) => {
         [64, "CanonicalizeThreadPullRequestLinks"],
         [65, "CodexUsageNativeTurnIndex"],
         [66, "RepairClientSettlementTimestamps"],
-        [67, "BoundedShellLookups"],
-        [68, "BobExecutionAdmission"],
+        [67, "WebhookDedupe"],
+        [68, "PeerLinks"],
+        [69, "PeerLinkFence"],
+        [70, "WaitingLinkRequestIndex"],
+        [71, "BoundedShellLookups"],
+        [72, "BobExecutionAdmission"],
       ]);
       assert.deepStrictEqual(yield* runMigrations(), []);
 
@@ -74,8 +78,12 @@ layer("055_OrchestrationV2", (it) => {
         { migration_id: 64, name: "CanonicalizeThreadPullRequestLinks" },
         { migration_id: 65, name: "CodexUsageNativeTurnIndex" },
         { migration_id: 66, name: "RepairClientSettlementTimestamps" },
-        { migration_id: 67, name: "BoundedShellLookups" },
-        { migration_id: 68, name: "BobExecutionAdmission" },
+        { migration_id: 67, name: "WebhookDedupe" },
+        { migration_id: 68, name: "PeerLinks" },
+        { migration_id: 69, name: "PeerLinkFence" },
+        { migration_id: 70, name: "WaitingLinkRequestIndex" },
+        { migration_id: 71, name: "BoundedShellLookups" },
+        { migration_id: 72, name: "BobExecutionAdmission" },
       ]);
 
       const tables = yield* sql<{ readonly name: string }>`
