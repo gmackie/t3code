@@ -41,6 +41,26 @@ const RESTRICTED_IMPORT_PATHS = [
   },
 ];
 
+// packages/engine is the domain-neutral kernel: coding, UI and process
+// modules stay out of it so any domain app can depend on it.
+const RESTRICTED_ENGINE_IMPORT_PATTERNS = [
+  {
+    group: [
+      "@t3tools/*",
+      "!@t3tools/engine",
+      "!@t3tools/engine/*",
+      "**/apps/**",
+      "electron",
+      "react",
+      "react-dom",
+      "node:child_process",
+      "child_process",
+    ],
+    message:
+      "packages/engine is domain-neutral: no coding contracts, apps, UI or process APIs. Depend on effect only.",
+  },
+];
+
 const RESTRICTED_UI_VARIANT_PATTERNS = [
   {
     group: ["**/components/ui/*", "**/ui/*", "./ui/*"],
@@ -321,6 +341,15 @@ export default defineConfig({
         rules: {
           "t3code/no-global-process-runtime": "off",
           "t3code/namespace-node-imports": "off",
+        },
+      },
+      {
+        files: ["packages/engine/**"],
+        rules: {
+          "eslint/no-restricted-imports": [
+            "error",
+            { paths: RESTRICTED_IMPORT_PATHS, patterns: RESTRICTED_ENGINE_IMPORT_PATTERNS },
+          ],
         },
       },
       {

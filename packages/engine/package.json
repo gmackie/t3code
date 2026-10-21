@@ -1,0 +1,21 @@
+{
+  "name": "@t3tools/engine",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./contracts": {
+      "types": "./src/contracts.ts",
+      "import": "./src/contracts.ts"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc-rs --noEmit",
+    "test": "vp test run --config ../../vite.config.ts --dir ."
+  },
+  "dependencies": {
+    "effect": "catalog:"
+  },
+  "devDependencies": {
+    "vite-plus": "catalog:"
+  }
+}
