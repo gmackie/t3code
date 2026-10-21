@@ -1,0 +1,42 @@
+name: Pair CI
+
+on:
+  pull_request:
+    branches:
+      - custom-local
+    paths:
+      - apps/server/src/cli/pair.ts
+      - apps/server/src/cli/pair.test.ts
+      - apps/server/src/startupAccess.ts
+      - .forgejo/workflows/pair-ci.yml
+      - pnpm-lock.yaml
+      - pnpm-workspace.yaml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  server-pair:
+    runs-on: forgegraph-ci
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.14.0
+      - name: Install pinned dependencies
+        run: |
+          corepack enable
+          corepack prepare pnpm@12.14.0 --activate
+          pnpm install --frozen-lockfile
+      - name: Verify t3 pair
+        working-directory: apps/server
+        run: |
+          pnpm exec vp test run src/cli/pair.test.ts
+          pnpm exec tsc --noEmit
+      # Lint from the root: oxlint resolves the repo's local plugin relative to it.
+      - name: Lint t3 pair
+        run: |
+          pnpm exec vp lint apps/server/src/cli/pair.ts apps/server/src/cli/pair.test.ts
+          pnpm exec vp fmt --check apps/server/src/cli/pair.ts apps/server/src/cli/pair.test.ts
