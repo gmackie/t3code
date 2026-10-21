@@ -4,6 +4,8 @@ on:
   pull_request:
     branches:
       - custom-local
+      # Stacked engine PRs target the layer below them.
+      - "T3CODE-41-**"
     paths:
       - packages/engine/**
       - apps/server/src/engine/**
