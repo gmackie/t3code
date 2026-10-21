@@ -12,6 +12,7 @@ import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import * as SqlClient from "effect/sql/SqlClient";
 
@@ -55,6 +56,12 @@ export class EngineCommitTooLarge extends Schema.TaggedError<EngineCommitTooLarg
   { rows: Schema.Int, maxRows: Schema.Int },
 ) {}
 
+export interface EngineJournalReceipt {
+  readonly commandType: string;
+  readonly streamId: string;
+  readonly resultVersion: number;
+}
+
 export type EngineJournalCommitError =
   | EngineRevisionConflict
   | EngineIdempotencyConflict
@@ -70,6 +77,11 @@ export interface EngineJournalShape {
   readonly commit: (
     input: EngineJournalCommitInput,
   ) => Effect.Effect<EngineJournalCommitResult, EngineJournalCommitError>;
+  /** The committed receipt for an idempotency key, if any. */
+  readonly findReceipt: (input: {
+    readonly tenantId: TenantId;
+    readonly idempotencyKey: string;
+  }) => Effect.Effect<Option.Option<EngineJournalReceipt>, PersistenceSqlError>;
   readonly read: (input: {
     readonly tenantId: TenantId;
     readonly streamId: string;
@@ -187,6 +199,16 @@ const make = Effect.gen(function* () {
     );
   };
 
+  const findReceipt: EngineJournalShape["findReceipt"] = ({ tenantId, idempotencyKey }) =>
+    sql<EngineJournalReceipt>`
+      SELECT command_type AS "commandType", stream_id AS "streamId", result_version AS "resultVersion"
+      FROM engine_command_receipts
+      WHERE tenant_id = ${tenantId} AND idempotency_key = ${idempotencyKey}
+    `.pipe(
+      Effect.map((rows) => Option.fromNullishOr(rows[0])),
+      Effect.mapError(toPersistenceSqlError("EngineJournal.findReceipt")),
+    );
+
   const read: EngineJournalShape["read"] = (input) =>
     sql`
       SELECT
@@ -223,7 +245,7 @@ const make = Effect.gen(function* () {
       Effect.mapError(toPersistenceSqlError("EngineJournal.read")),
     );
 
-  return EngineJournal.of({ commit, read });
+  return EngineJournal.of({ commit, findReceipt, read });
 });
 
 /** Runs the engine's own migrations on construction, after the main migrator. */

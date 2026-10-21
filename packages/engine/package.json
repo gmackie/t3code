@@ -6,6 +6,10 @@
     "./contracts": {
       "types": "./src/contracts.ts",
       "import": "./src/contracts.ts"
+    },
+    "./runs": {
+      "types": "./src/runs.ts",
+      "import": "./src/runs.ts"
     }
   },
   "scripts": {
