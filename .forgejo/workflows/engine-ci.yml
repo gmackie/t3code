@@ -1,0 +1,35 @@
+name: Engine CI
+
+on:
+  pull_request:
+    branches:
+      - custom-local
+    paths:
+      - packages/engine/**
+      - apps/server/src/engine/**
+      - vite.config.ts
+      - .forgejo/workflows/engine-ci.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  engine:
+    runs-on: forgegraph-ci
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.14.0
+      - name: Install pinned dependencies
+        run: |
+          corepack enable
+          corepack prepare pnpm@12.14.0 --activate
+          pnpm install --frozen-lockfile
+      - name: Verify engine package and import boundary
+        run: |
+          pnpm exec vp test run packages/engine
+          pnpm --filter @t3tools/engine run typecheck
+          pnpm exec vp lint packages/engine vite.config.ts
