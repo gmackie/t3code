@@ -114,10 +114,6 @@ vi.mock(import("../../onboarding/useProjectScans"), async (original) => ({
       };
     }),
 }));
-vi.mock(import("../../connection/catalog"), async (original) => ({
-  ...(await original()),
-  environmentCatalog: { setEnabled: "setEnabled" } as never,
-}));
 vi.mock(import("../../connection/onboarding"), async (original) => ({
   ...(await original()),
   connectPairing: "connectPairing" as never,

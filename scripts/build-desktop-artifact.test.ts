@@ -1468,14 +1468,20 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
           fixture.packagedAppDir,
           "resources/resource-monitor/t3-resource-monitor.exe",
         );
-        yield* fs.remove(resourceMonitorPath, { recursive: true });
-        const withoutResourceMonitor = yield* validateWindowsPackagedPayload({
+        yield* fs.remove(resourceMonitorPath);
+        yield* fs.makeDirectory(resourceMonitorPath);
+
+        const resourceMonitorError = yield* validateWindowsPackagedPayload({
           stageDistDir: fixture.stageDistDir,
           appExecutableName: fixture.appExecutableName,
           targetArch: "x64",
           appVersion: WINDOWS_PAYLOAD_FIXTURE_VERSION,
-        });
-        assert.isDefined(withoutResourceMonitor);
+        }).pipe(Effect.flip);
+        assert.instanceOf(resourceMonitorError, WindowsPackagedPayloadValidationError);
+        assert.equal(resourceMonitorError.reason, "resource-monitor-missing");
+        assert.deepStrictEqual(resourceMonitorError.missingFiles, [
+          "resource-monitor/t3-resource-monitor.exe",
+        ]);
       }),
     ),
   );

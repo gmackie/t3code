@@ -280,7 +280,6 @@ export type DesktopHostTelemetryHello = typeof DesktopHostTelemetryHello.Type;
 
 export const DesktopUpdateRemoteOutcome = Schema.Literals([
   "ready-to-install",
-  "installing",
   "up-to-date",
   "failed",
 ]);

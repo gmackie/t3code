@@ -2419,53 +2419,48 @@ export const stageResourceMonitor = Effect.fn("stageResourceMonitor")(function* 
   );
   const builtBinaries: string[] = [];
 
-  // Windows release artifacts are cross-built on macOS, where the MSVC
-  // monitor target cannot link. The server already degrades cleanly when the
-  // optional monitor is absent.
-  if (input.platform !== "win") {
-    for (const rustTarget of rustTargets) {
-      if (!reuseResourceMonitor) {
-        const spawnCommand = yield* resolveSpawnCommand("cargo", [
-          "build",
-          "--locked",
-          "--release",
-          "--manifest-path",
-          manifestPath,
-          "--target",
-          rustTarget,
-        ]);
-        yield* runCommand(
-          ChildProcess.make(spawnCommand.command, spawnCommand.args, {
-            cwd: input.repoRoot,
-            shell: spawnCommand.shell,
-          }),
-          {
-            label: `cargo build resource monitor (${rustTarget})`,
-            verbose: input.verbose,
-          },
-        );
-      }
-
-      const binaryPath = path.join(
-        input.repoRoot,
-        "native/resource-monitor/target",
+  for (const rustTarget of rustTargets) {
+    if (!reuseResourceMonitor) {
+      const spawnCommand = yield* resolveSpawnCommand("cargo", [
+        "build",
+        "--locked",
+        "--release",
+        "--manifest-path",
+        manifestPath,
+        "--target",
         rustTarget,
-        "release",
-        executableName,
+      ]);
+      yield* runCommand(
+        ChildProcess.make(spawnCommand.command, spawnCommand.args, {
+          cwd: input.repoRoot,
+          shell: spawnCommand.shell,
+        }),
+        {
+          label: `cargo build resource monitor (${rustTarget})`,
+          verbose: input.verbose,
+        },
       );
-      if (!(yield* fs.exists(binaryPath))) {
-        return yield* new ResourceMonitorBuildOutputMissingError({
-          binaryPath,
-          rustTarget,
-          platform: input.platform,
-          arch: input.arch,
-        });
-      }
-      if (reuseResourceMonitor) {
-        yield* Effect.log(`[desktop-artifact] Reusing cached resource monitor (${rustTarget}).`);
-      }
-      builtBinaries.push(binaryPath);
     }
+
+    const binaryPath = path.join(
+      input.repoRoot,
+      "native/resource-monitor/target",
+      rustTarget,
+      "release",
+      executableName,
+    );
+    if (!(yield* fs.exists(binaryPath))) {
+      return yield* new ResourceMonitorBuildOutputMissingError({
+        binaryPath,
+        rustTarget,
+        platform: input.platform,
+        arch: input.arch,
+      });
+    }
+    if (reuseResourceMonitor) {
+      yield* Effect.log(`[desktop-artifact] Reusing cached resource monitor (${rustTarget}).`);
+    }
+    builtBinaries.push(binaryPath);
   }
 
   const destinationDirectory = path.join(input.stageResourcesDir, "resource-monitor");
@@ -2475,7 +2470,7 @@ export const stageResourceMonitor = Effect.fn("stageResourceMonitor")(function* 
 
   if (builtBinaries.length === 1) {
     yield* fs.copyFile(builtBinaries[0]!, destinationPath);
-  } else if (builtBinaries.length > 1) {
+  } else {
     yield* runCommand(
       ChildProcess.make("lipo", ["-create", ...builtBinaries, "-output", destinationPath]),
       {
@@ -3508,6 +3503,19 @@ export const validateWindowsPackagedPayload = Effect.fn(
       reason: "unpacked-native-missing",
       packagedAppDir,
       missingFiles,
+    });
+  }
+
+  const resourceMonitorPath = path.join(
+    resourcesDir,
+    "resource-monitor",
+    resourceMonitorExecutableName("win"),
+  );
+  if (!(yield* isFile(resourceMonitorPath))) {
+    return yield* new WindowsPackagedPayloadValidationError({
+      reason: "resource-monitor-missing",
+      packagedAppDir,
+      missingFiles: ["resource-monitor/t3-resource-monitor.exe"],
     });
   }
 

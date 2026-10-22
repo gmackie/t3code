@@ -18,7 +18,6 @@ const isCodexAppServerError = Schema.is(CodexError.CodexAppServerError);
 const MAX_BUFFERED_RAW_MESSAGES = 32;
 // Bound JSONL lines before joining and parsing; the LF delimiter is excluded.
 const MAX_INCOMING_MESSAGE_BYTES = 128 * 1024 * 1024;
-const DEFAULT_MAX_INCOMING_FRAME_CHARACTERS = 64 * 1024 * 1024;
 
 export interface CodexAppServerProtocolLogEvent {
   readonly direction: "incoming" | "outgoing";
@@ -39,7 +38,6 @@ export interface CodexAppServerIncomingRequest {
 
 export interface CodexAppServerPatchedProtocolOptions {
   readonly stdio: Stdio.Stdio;
-  readonly maxIncomingFrameCharacters?: number;
   readonly terminationError?: Effect.Effect<CodexError.CodexAppServerError>;
   readonly logIncoming?: boolean;
   readonly logOutgoing?: boolean;
@@ -170,13 +168,8 @@ export const makeCodexAppServerPatchedProtocol = Effect.fn("makeCodexAppServerPa
       yield* Queue.sliding<CodexAppServerIncomingRequest>(MAX_BUFFERED_RAW_MESSAGES);
     const pending = yield* Ref.make(new Map<string, CodexAppServerPendingRequest>());
     const nextRequestId = yield* Ref.make(1);
-    const maxIncomingFrameCharacters = Math.max(
-      1,
-      Math.floor(options.maxIncomingFrameCharacters ?? DEFAULT_MAX_INCOMING_FRAME_CHARACTERS),
-    );
     const maxIncomingMessageBytes = options.maxIncomingMessageBytes ?? MAX_INCOMING_MESSAGE_BYTES;
     const remainder: Array<string> = [];
-    let remainderCharacters = 0;
     let remainderBytes = 0;
     const terminationHandled = yield* Ref.make(false);
     const terminationFailure = yield* Ref.make(Option.none<CodexError.CodexAppServerError>());
@@ -418,15 +411,6 @@ export const makeCodexAppServerPatchedProtocol = Effect.fn("makeCodexAppServerPa
           while (start < chunk.length) {
             const newline = chunk.indexOf("\n", start);
             const fragment = chunk.slice(start, newline === -1 ? chunk.length : newline);
-            const observedCharacters = remainderCharacters + fragment.length;
-            if (observedCharacters > maxIncomingFrameCharacters) {
-              remainder.length = 0;
-              return yield* new CodexError.CodexAppServerIncomingFrameTooLargeError({
-                maximumCharacters: maxIncomingFrameCharacters,
-                observedCharacters,
-              });
-            }
-            remainderCharacters = observedCharacters;
             // decodeText holds back split UTF-8 sequences, so fragment byte sums are exact.
             remainderBytes += Buffer.byteLength(fragment, "utf8");
             if (remainderBytes > maxIncomingMessageBytes) {
@@ -440,7 +424,6 @@ export const makeCodexAppServerPatchedProtocol = Effect.fn("makeCodexAppServerPa
             if (newline === -1) break;
             const line = remainder.join("").replace(/\r$/, "");
             remainder.length = 0;
-            remainderCharacters = 0;
             remainderBytes = 0;
             yield* handleLine(line);
             start = newline + 1;
