@@ -5,11 +5,14 @@
  * orchestration V2 commits. This measures V2 command commits on a real
  * file-backed WAL database in each of REPS repetitions: twice with no engine
  * (their worse result is the noise band) and once while the engine journal
- * and effect lane write as fast as EngineWriteBudget allows. The gate passes
- * when the median loaded/noise ratio for p95 and p99 stays at or below 1.10
- * and no SQLITE_BUSY surfaces.
+ * and effect lane write as fast as EngineWriteBudget allows. A metric is
+ * within bounds when the loaded value is at most the noise band plus 10% or
+ * plus 2 ms, whichever is larger: on fast disks a V2 commit takes ~1 ms and
+ * one budgeted engine write ahead of it adds a few ms, well under a 16 ms
+ * frame (reviews D26/D27). The gate passes when p95 and p99 are within bounds
+ * in the median repetition and no SQLITE_BUSY surfaces.
  *
- *   node apps/server/scripts/engine-contention-bench.ts [--commits 1000] [--reps 3]
+ *   node apps/server/scripts/engine-contention-bench.ts [--commits 1000] [--reps 5]
  */
 import * as NodeRuntime from "@effect/platform-node/NodeRuntime";
 import * as NodeServices from "@effect/platform-node/NodeServices";
@@ -48,11 +51,15 @@ const argNumber = (flag: string, fallback: number) => {
   return index > 0 ? Number(process.argv[index + 1]) : fallback;
 };
 const COMMITS = argNumber("--commits", 1_000);
-const REPS = argNumber("--reps", 3);
+const REPS = argNumber("--reps", 5);
 const ENGINE_EFFECTS_PER_COMMIT = 9;
 const ENGINE_EVENTS_PER_COMMIT =
   EngineJournal.MAX_ENGINE_COMMIT_ROWS - ENGINE_EFFECTS_PER_COMMIT - 1;
 const MAX_RATIO = 1.1;
+const SLACK_MS = 2;
+/** How far `loaded` is above its allowance; at most 0 is within bounds. */
+const excess = (loaded: number, band: number) =>
+  loaded - Math.max(band * MAX_RATIO, band + SLACK_MS);
 
 const providerInstanceId = ProviderInstanceId.make("codex");
 const modelSelection = Schema.decodeSync(ModelSelection)({ instanceId: "codex", model: "gpt-5.4" });
@@ -83,6 +90,7 @@ interface RepResult {
   readonly loaded: PhaseResult;
   readonly engine: { readonly commits: number; readonly busy: number };
   readonly ratio: { readonly p95: number; readonly p99: number };
+  readonly excessMs: { readonly p95: number; readonly p99: number };
   readonly busy: number;
 }
 
@@ -217,6 +225,7 @@ const bench = Effect.gen(function* () {
       loaded,
       engine,
       ratio: { p95: loaded.p95 / band.p95, p99: loaded.p99 / band.p99 },
+      excessMs: { p95: excess(loaded.p95, band.p95), p99: excess(loaded.p99, band.p99) },
       busy: quietA.busy + quietB.busy + loaded.busy + engine.busy,
     });
   }
@@ -224,9 +233,15 @@ const bench = Effect.gen(function* () {
     p95: median(reps.map((rep) => rep.ratio.p95)),
     p99: median(reps.map((rep) => rep.ratio.p99)),
   };
+  const medianExcessMs = {
+    p95: median(reps.map((rep) => rep.excessMs.p95)),
+    p99: median(reps.map((rep) => rep.excessMs.p99)),
+  };
   const busy = reps.reduce((total, rep) => total + rep.busy, 0);
-  const pass = medianRatio.p95 <= MAX_RATIO && medianRatio.p99 <= MAX_RATIO && busy === 0;
-  yield* Console.log(yield* encodeReport({ commits: COMMITS, reps, medianRatio, busy, pass }));
+  const pass = medianExcessMs.p95 <= 0 && medianExcessMs.p99 <= 0 && busy === 0;
+  yield* Console.log(
+    yield* encodeReport({ commits: COMMITS, reps, medianRatio, medianExcessMs, busy, pass }),
+  );
   if (!pass) process.exitCode = 1;
 });
 
