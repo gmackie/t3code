@@ -16,7 +16,9 @@ import * as Schema from "effect/Schema";
 import * as SqlClient from "effect/sql/SqlClient";
 
 import { type PersistenceSqlError, toPersistenceSqlError } from "../persistence/Errors.ts";
+import { type EngineEffectInput, insertEngineEffects } from "./EngineEffectLane.ts";
 import { runEngineMigrations } from "./EngineMigrations.ts";
+import { EngineWriteBudget } from "./EngineWriteBudget.ts";
 
 export interface EngineJournalEventInput {
   readonly eventId: EngineEventId;
@@ -35,6 +37,8 @@ export interface EngineJournalCommitInput {
   readonly idempotencyKey: string;
   readonly commandType: string;
   readonly events: ReadonlyArray<EngineJournalEventInput>;
+  /** Side effects to run after commit; enqueued in the same transaction. */
+  readonly effects?: ReadonlyArray<EngineEffectInput>;
 }
 
 export interface EngineJournalCommitResult {
@@ -43,15 +47,24 @@ export interface EngineJournalCommitResult {
   readonly replayed: boolean;
 }
 
+/** Rows one commit may write (events + effects + receipt); keeps each write short. */
+export const MAX_ENGINE_COMMIT_ROWS = 50;
+
+export class EngineCommitTooLarge extends Schema.TaggedError<EngineCommitTooLarge>()(
+  "EngineCommitTooLarge",
+  { rows: Schema.Int, maxRows: Schema.Int },
+) {}
+
 export type EngineJournalCommitError =
   | EngineRevisionConflict
   | EngineIdempotencyConflict
+  | EngineCommitTooLarge
   | PersistenceSqlError;
 
 export interface EngineJournalShape {
   /**
    * Appends events to one stream if it is still at `expectedVersion`, and
-   * records the idempotency receipt, in one transaction. Repeating a committed
+   * records the idempotency receipt and enqueues its effects, in one transaction. Repeating a committed
    * key returns its original result without writing again.
    */
   readonly commit: (
@@ -91,6 +104,7 @@ const decodeEvent = Schema.decodeUnknownEffect(EngineEvent);
 
 const make = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
+  const budget = yield* EngineWriteBudget;
   yield* runEngineMigrations();
 
   const commitInTransaction = Effect.fn("EngineJournal.commit")(function* (
@@ -153,17 +167,25 @@ const make = Effect.gen(function* () {
         ${input.streamId}, ${version}, ${acceptedAt}
       )
     `;
+    yield* insertEngineEffects(input.tenantId, input.effects ?? []).pipe(
+      Effect.provideService(SqlClient.SqlClient, sql),
+    );
     return { streamVersion: version, replayed: false };
   });
 
-  const commit: EngineJournalShape["commit"] = (input) =>
-    sql.withTransaction(commitInTransaction(input)).pipe(
+  const commit: EngineJournalShape["commit"] = (input) => {
+    const rows = input.events.length + (input.effects?.length ?? 0) + 1;
+    if (rows > MAX_ENGINE_COMMIT_ROWS) {
+      return Effect.fail(new EngineCommitTooLarge({ rows, maxRows: MAX_ENGINE_COMMIT_ROWS }));
+    }
+    return budget.run(sql.withTransaction(commitInTransaction(input))).pipe(
       Effect.catchTags({
         SqlError: (cause) => Effect.fail(toPersistenceSqlError("EngineJournal.commit")(cause)),
         SchemaError: (cause) =>
           Effect.fail(toPersistenceSqlError("EngineJournal.commit:encode")(cause)),
       }),
     );
+  };
 
   const read: EngineJournalShape["read"] = (input) =>
     sql`

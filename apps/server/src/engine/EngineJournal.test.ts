@@ -14,6 +14,7 @@ import * as SqlClient from "effect/sql/SqlClient";
 
 import * as EngineJournal from "./EngineJournal.ts";
 import { runEngineMigrations } from "./EngineMigrations.ts";
+import * as EngineWriteBudget from "./EngineWriteBudget.ts";
 
 const tenant = Schema.decodeSync(TenantId)("local");
 const otherTenant = Schema.decodeSync(TenantId)("other");
@@ -34,6 +35,7 @@ const event = (id: string, payload: unknown = { id }) => ({
 });
 
 const TestLayer = EngineJournal.layer.pipe(
+  Layer.provide(EngineWriteBudget.layer),
   Layer.provideMerge(NodeSqliteClient.layer({ filename: ":memory:" })),
 );
 
@@ -186,17 +188,39 @@ it.layer(TestLayer)("EngineJournal", (it) => {
     }),
   );
 
+  it.effect("refuses a commit larger than the per-transaction row cap", () =>
+    Effect.gen(function* () {
+      const journal = yield* EngineJournal.EngineJournal;
+      const error = yield* journal
+        .commit({
+          tenantId: tenant,
+          streamId: "run-large",
+          expectedVersion: 0,
+          idempotencyKey: "large",
+          commandType: "run.create",
+          events: Array.from({ length: EngineJournal.MAX_ENGINE_COMMIT_ROWS }, (_, n) =>
+            event(`large-${n}`),
+          ),
+        })
+        .pipe(Effect.flip);
+      assert.strictEqual(error._tag, "EngineCommitTooLarge");
+    }),
+  );
+
   it.effect("re-running engine migrations is a no-op", () =>
     Effect.gen(function* () {
-      yield* runEngineMigrations();
       const sql = yield* SqlClient.SqlClient;
-      const rows = yield* sql<{ readonly id: number; readonly name: string }>`
-        SELECT id, name FROM engine_schema_migrations ORDER BY id
+      const ledger = sql<{
+        readonly id: number;
+        readonly name: string;
+        readonly appliedAt: string;
+      }>`
+        SELECT id, name, applied_at AS "appliedAt" FROM engine_schema_migrations ORDER BY id
       `;
-      assert.deepStrictEqual(
-        rows.map((row) => [row.id, row.name]),
-        [[1, "Journal"]],
-      );
+      const before = yield* ledger;
+      yield* runEngineMigrations();
+      assert.isAbove(before.length, 0);
+      assert.deepStrictEqual(yield* ledger, before);
     }),
   );
 });
