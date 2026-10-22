@@ -165,6 +165,12 @@ export class EngineRevisionConflict extends Schema.TaggedError<EngineRevisionCon
   { streamId: NonBlankString, expectedVersion: NonNegativeInt, actualVersion: NonNegativeInt },
 ) {}
 
+/** An idempotency key was reused for a different command or stream. */
+export class EngineIdempotencyConflict extends Schema.TaggedError<EngineIdempotencyConflict>()(
+  "EngineIdempotencyConflict",
+  { idempotencyKey: NonBlankString },
+) {}
+
 export class EngineNotFound extends Schema.TaggedError<EngineNotFound>()("EngineNotFound", {
   kind: EngineName,
   id: NonBlankString,
@@ -173,6 +179,7 @@ export class EngineNotFound extends Schema.TaggedError<EngineNotFound>()("Engine
 export const EngineError = Schema.Union([
   EngineAuthorizationDenied,
   EngineRevisionConflict,
+  EngineIdempotencyConflict,
   EngineNotFound,
 ]);
 export type EngineError = typeof EngineError.Type;
