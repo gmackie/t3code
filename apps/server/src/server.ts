@@ -198,6 +198,7 @@ import * as CursorUsageAccounts from "@t3tools/provider-cursor/server/CursorUsag
 import * as UsageService from "./usage/UsageService.ts";
 import * as CodexUsageHistory from "./usage/CodexUsageHistory.ts";
 import * as RuntimeLayer from "./orchestration-v2/runtimeLayer.ts";
+import * as EngineGateway from "./engine/EngineGateway.ts";
 import * as ProjectStore from "./orchestration-v2/ProjectStore.ts";
 import * as ThreadSearch from "./orchestration-v2/ThreadSearch.ts";
 import * as ThreadSettlementService from "./orchestration-v2/ThreadSettlementService.ts";
@@ -710,6 +711,7 @@ const layerRuntimeCoreDependencies = layerRuntimeCoreDependenciesBase.pipe(
 
 const layerCoordinationDependencies = Layer.mergeAll(
   BobCoordination.layer,
+  EngineGateway.layer,
   ExecutionAdmission.layer,
   ExecutionReceipts.layer.pipe(Layer.provide(ProcessRunner.layer)),
 ).pipe(

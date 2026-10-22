@@ -171,6 +171,12 @@ export class EngineIdempotencyConflict extends Schema.TaggedError<EngineIdempote
   { idempotencyKey: NonBlankString },
 ) {}
 
+/** The engine cannot serve the request right now (disabled, storage, or size limits). */
+export class EngineUnavailable extends Schema.TaggedError<EngineUnavailable>()(
+  "EngineUnavailable",
+  { reason: EngineName },
+) {}
+
 export class EngineNotFound extends Schema.TaggedError<EngineNotFound>()("EngineNotFound", {
   kind: EngineName,
   id: NonBlankString,
@@ -180,6 +186,7 @@ export const EngineError = Schema.Union([
   EngineAuthorizationDenied,
   EngineRevisionConflict,
   EngineIdempotencyConflict,
+  EngineUnavailable,
   EngineNotFound,
 ]);
 export type EngineError = typeof EngineError.Type;

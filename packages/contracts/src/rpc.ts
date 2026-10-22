@@ -48,6 +48,12 @@ import {
 } from "./pluginCommands.ts";
 import * as Schema from "effect/Schema";
 import {
+  ENGINE_WS_METHODS,
+  WsEngineRunsCancelRpc,
+  WsEngineRunsCreateRpc,
+  WsEngineRunsGetRpc,
+} from "./engineRpc.ts";
+import {
   ReverseListInput,
   ReverseListResult,
   ReverseImportInput,
@@ -489,6 +495,7 @@ import { VcsError } from "./vcs.ts";
 import { Project, ProjectMutation, ProjectMutationError } from "./project.ts";
 
 export const WS_METHODS = {
+  ...ENGINE_WS_METHODS,
   projectsList: "projects.list",
   projectsAdd: "projects.add",
   projectsRemove: "projects.remove",
@@ -2432,6 +2439,9 @@ export class RpcScopeAuthorization extends RpcMiddleware.Service<RpcScopeAuthori
 ) {}
 
 export const WsRpcGroup = RpcGroup.make(
+  WsEngineRunsCreateRpc,
+  WsEngineRunsGetRpc,
+  WsEngineRunsCancelRpc,
   WsReverseListRpc,
   WsReverseImportRpc,
   WsReverseLinkRpc,

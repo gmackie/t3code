@@ -1392,6 +1392,9 @@ importers:
 
   packages/contracts:
     dependencies:
+      '@t3tools/engine':
+        specifier: workspace:*
+        version: link:../engine
       effect:
         specifier: 4.0.5
         version: 4.0.5(patch_hash=992d106ac1b98fe0d8401b477794a6e50c3c7c25c2cd876f5cb3d4fbb11393dd)

@@ -277,6 +277,9 @@ const RPC_AGGREGATES = {
   [WS_METHODS.reverseSerialRecent]: "reverse",
   [WS_METHODS.reverseSerialObserve]: "reverse",
   [WS_METHODS.reverseFindingUpdate]: "reverse",
+  [WS_METHODS.engineRunsCreate]: "engine",
+  [WS_METHODS.engineRunsGet]: "engine",
+  [WS_METHODS.engineRunsCancel]: "engine",
 } as const satisfies Readonly<Record<WsRpcMethod, string>>;
 
 const RPC_SPAN_PREFIX = "ws.rpc";
