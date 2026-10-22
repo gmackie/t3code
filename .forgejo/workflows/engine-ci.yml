@@ -10,6 +10,7 @@ on:
       - packages/engine/**
       - apps/server/src/engine/**
       - apps/server/scripts/engine-contention-bench.ts
+      - packages/contracts/src/engineRpc.ts
       - vite.config.ts
       - .forgejo/workflows/engine-ci.yml
   workflow_dispatch:
@@ -35,6 +36,8 @@ jobs:
         run: |
           pnpm exec vp test run packages/engine apps/server/src/engine
           pnpm --filter @t3tools/engine run typecheck
+          pnpm --filter t3 run typecheck
+          pnpm --filter @t3tools/contracts run typecheck
           pnpm exec vp lint packages/engine apps/server/src/engine apps/server/scripts/engine-contention-bench.ts vite.config.ts
       - name: Contention gate (engine writes vs V2 commits)
         run: node apps/server/scripts/engine-contention-bench.ts --commits 1000 --reps 5

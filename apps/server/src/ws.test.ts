@@ -25,6 +25,7 @@ import * as SqlClient from "effect/sql/SqlClient";
 import * as PreviewAutomationBroker from "./mcp/PreviewAutomationBroker.ts";
 import * as PluginCommandCatalog from "./plugins/PluginCommandCatalog.ts";
 import * as BobCoordination from "./coordination/BobCoordination.ts";
+import * as EngineGateway from "./engine/EngineGateway.ts";
 import * as ServerConfigDiscovery from "./environment/ServerConfigDiscovery.ts";
 import * as GmackoChangelog from "./gmackoChangelog/GmackoChangelog.ts";
 import * as ForgeGraphSignIn from "./sourceControl/ForgeGraphSignIn.ts";
@@ -454,6 +455,7 @@ it.effect(
           subscribeChanges: settingsChanges,
         }),
         Layer.mock(BobCoordination.BobCoordination)({}),
+        Layer.mock(EngineGateway.EngineGateway)({}),
         Layer.mock(ForgeGraphSignIn.ForgeGraphSignIn)({}),
         Layer.mock(GmackoChangelog.GmackoChangelog)({}),
         Layer.mock(PistacheSource.PistacheSource)({}),

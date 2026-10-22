@@ -126,6 +126,7 @@ import * as BobCoordination from "./coordination/BobCoordination.ts";
 import * as ThreadMessageIntake from "./orchestration-v2/ThreadMessageIntake.ts";
 import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
 import * as ScheduledTasks from "./scheduledTasks/ScheduledTaskService.ts";
+import * as EngineGateway from "./engine/EngineGateway.ts";
 import * as SecretRequests from "./secrets/SecretRequests.ts";
 import {
   archivedShellStreamItemFromThreadShell,
@@ -1231,6 +1232,7 @@ export const layerWsRpc = (
       const commandOutputHub = yield* CommandOutputHub.CommandOutputHub;
       const providerSessionManager = yield* ProviderSessionManager.ProviderSessionManagerV2;
       const scheduledTasks = yield* ScheduledTasks.ScheduledTaskService;
+      const engine = yield* EngineGateway.EngineGateway;
       const secretRequests = yield* SecretRequests.SecretRequests;
       const pullRequests = yield* PullRequestService.PullRequestService;
       const reviewGuides = yield* PullRequestReviewGuideService.PullRequestReviewGuideService;
@@ -2101,6 +2103,14 @@ export const layerWsRpc = (
             Effect.annotateCurrentSpan({ "orchestration_v2.thread_id": input.threadId }).pipe(
               Effect.as(commandOutputHub.subscribe(input)),
             ),
+          ),
+        [WS_METHODS.engineRunsCreate]: (input) =>
+          engine.runs((runs, caller) => runs.create(caller, input.spec)),
+        [WS_METHODS.engineRunsGet]: (input) =>
+          engine.runs((runs, caller) => runs.get(caller, input.runId)),
+        [WS_METHODS.engineRunsCancel]: (input) =>
+          engine.runs((runs, caller) =>
+            runs.cancel({ caller, runId: input.runId, idempotencyKey: input.idempotencyKey }),
           ),
         [WS_METHODS.scheduledTasksList]: (_input) =>
           scheduledTasks.list().pipe(Effect.map(withVisibleWebhookUrls)),
