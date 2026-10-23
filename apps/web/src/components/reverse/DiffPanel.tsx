@@ -117,10 +117,10 @@ export function DiffPanel({
               >
                 <span className="w-20 shrink-0">{row.status}</span>
                 <span className="min-w-0 flex-1 truncate">
-                  {row.left ? `${row.left.name} ${row.left.address}` : "—"}
+                  {row.left ? `${row.left.name} ${row.left.address}` : "Missing"}
                 </span>
                 <span className="min-w-0 flex-1 truncate">
-                  {row.right ? `${row.right.name} ${row.right.address}` : "—"}
+                  {row.right ? `${row.right.name} ${row.right.address}` : "Missing"}
                 </span>
               </div>
             ))}

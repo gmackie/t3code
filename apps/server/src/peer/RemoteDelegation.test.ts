@@ -23,6 +23,7 @@ import * as DateTime from "effect/DateTime";
 import * as Deferred from "effect/Deferred";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
+import * as Schedule from "effect/Schedule";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Ref from "effect/Ref";
@@ -480,6 +481,8 @@ const boxToolkitLayer = (thread: BoxThread) => {
     Layer.provide(Layer.mock(ScheduledTaskService.ScheduledTaskService)({})),
     Layer.provide(
       Layer.mock(ProjectService.ProjectService)({
+        getById: (projectId) =>
+          Effect.succeed(Option.fromUndefinedOr(boxProjects.find(({ id }) => id === projectId))),
         // More than a page, so finding the project with this repository pages.
         listPage: ({ cursor, limit }) =>
           Effect.succeed({
@@ -1571,11 +1574,14 @@ it.effect("a parent stopped while the box is unreachable still stops its task th
       // The box sleeps as soon as the task is there, so its follower backs off.
       const delegated = yield* delegateToBox(a);
       yield* Ref.set(b.descriptor, descriptorOf("environment-elsewhere", "Elsewhere"));
-      for (let attempt = 0; attempt < 50; attempt += 1) {
-        const [link] = yield* a.links.list;
-        if (link?.lastError !== null && link?.lastError !== undefined) break;
-        yield* Effect.sleep(Duration.millis(20)).pipe(TestClock.withLive);
-      }
+      yield* a.links.list.pipe(
+        Effect.repeat({
+          schedule: Schedule.spaced("20 millis"),
+          until: ([link]) => typeof link?.lastError === "string",
+        }),
+        Effect.timeout("1 second"),
+        TestClock.withLive,
+      );
       // The parent is stopped meanwhile.
       yield* a.threads.stopDelegatedTasks({
         threadId: parentThreadId,
@@ -1585,6 +1591,9 @@ it.effect("a parent stopped while the box is unreachable still stops its task th
 
       // Once the box is back, the follower's next attempt stops the task there.
       yield* Ref.set(b.descriptor, box);
+      // The follower sleeps on the test clock with no milestone to await, so advance it
+      // until the stop lands (T3CODE-52).
+      // oxlint-disable-next-line t3code/no-polling-loop-in-tests -- follower backoff exposes no milestone
       for (let attempt = 0; attempt < 12; attempt += 1) {
         if (yield* Deferred.isDone(thread.interruptedOnce)) break;
         yield* TestClock.adjust(Duration.minutes(5));
@@ -1626,13 +1635,16 @@ it.effect("a task cancelled while the box is unreachable is stopped there after 
       yield* after.remote.start();
       yield* Deferred.await(thread.interruptedOnce);
       // Once the stop is recorded, nothing is owed there any more.
-      for (let attempt = 0; attempt < 50; attempt += 1) {
-        const task = (yield* after.orchestrator.getThreadProjection(parentThreadId)).subagents.find(
-          (candidate) => candidate.id === delegated.taskId,
-        );
-        if (task?.remoteChild?.stoppedThere === true) break;
-        yield* Effect.sleep(Duration.millis(20)).pipe(TestClock.withLive);
-      }
+      yield* after.orchestrator.getThreadProjection(parentThreadId).pipe(
+        Effect.repeat({
+          schedule: Schedule.spaced("20 millis"),
+          until: ({ subagents }) =>
+            subagents.find((candidate) => candidate.id === delegated.taskId)?.remoteChild
+              ?.stoppedThere === true,
+        }),
+        Effect.timeout("1 second"),
+        TestClock.withLive,
+      );
       expect(yield* after.projections.getOpenRemoteDelegatedTasks).toEqual([]);
       expect(yield* Ref.get(thread.stops)).toEqual(["thread.stop", "delegated-tasks"]);
       // The result here is still the cancel's.
