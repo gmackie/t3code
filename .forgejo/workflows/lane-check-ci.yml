@@ -1,0 +1,30 @@
+name: Lane check CI
+
+# The nightly preflight runs `vp check` after merge, so a pull request that breaks
+# lint or formatting stops every release until someone repairs the lane. This runs
+# the same check before merge.
+on:
+  pull_request:
+    branches:
+      - custom-local
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: forgegraph-ci
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.14.0
+      - name: Install pinned dependencies
+        run: |
+          corepack enable
+          corepack prepare pnpm@12.14.0 --activate
+          pnpm install --frozen-lockfile
+      - name: Check
+        run: pnpm vp check

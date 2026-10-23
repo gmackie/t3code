@@ -182,6 +182,9 @@ describe("plugin runtime live contributions", () => {
                 exit,
                 kind: "nested" as const,
               }));
+              // A nested reconcile that waits on the outer one deadlocks; the probe turns that into a
+              // fast failure. It currently fires: T3CODE-48.
+              // oxlint-disable-next-line t3code/no-real-time-wait-in-tests -- bounded deadlock probe
               const timeout = NodeTimersPromises.setTimeout(50, { kind: "timeout" as const });
               return Promise.race([nested, timeout]);
             }),
@@ -246,6 +249,8 @@ describe("plugin runtime live contributions", () => {
             exit,
             kind: "nested" as const,
           }));
+          // Deadlock probe as above; it currently fires: T3CODE-48.
+          // oxlint-disable-next-line t3code/no-real-time-wait-in-tests -- bounded deadlock probe
           const timeout = NodeTimersPromises.setTimeout(50, { kind: "timeout" as const });
           return Effect.promise(() => Promise.race([nested, timeout]));
         },

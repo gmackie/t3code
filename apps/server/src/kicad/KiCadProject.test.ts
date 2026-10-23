@@ -55,14 +55,14 @@ it.effect(
         NodePath.join(outside, "outside.kicad_pcb"),
         NodePath.join(root, "link.kicad_pcb"),
       );
+      // The manifest is cached for 300 ms of Date.now().
+      const now = vi.spyOn(Date, "now").mockReturnValue(1_000_000);
       const first = await discoverKiCadProject(root);
-      NodeFS.utimesSync(
-        NodePath.join(root, "board.kicad_pcb"),
-        new Date(),
-        new Date(Date.now() + 1000),
-      );
       NodeFS.writeFileSync(NodePath.join(root, "board.kicad_pcb"), "two");
-      vi.spyOn(Date, "now").mockReturnValue(Date.now() + 350);
+      // Same size, so pin a modification time the first scan cannot have seen.
+      const later = new Date("2099-01-01T00:00:00.000Z");
+      NodeFS.utimesSync(NodePath.join(root, "board.kicad_pcb"), later, later);
+      now.mockReturnValue(1_000_350);
       expect((await discoverKiCadProject(root)).revision).not.toBe(first.revision);
       expect(await resolveKiCadProjectFile(root, "../outside.kicad_pcb")).toBeUndefined();
       expect(await resolveKiCadProjectFile(root, "link.kicad_pcb")).toBeUndefined();
