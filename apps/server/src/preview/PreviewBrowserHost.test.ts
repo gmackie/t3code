@@ -61,7 +61,7 @@ const diagnose = (input: {
     version: input.version ?? LOADER_ERROR,
   });
   return PreviewBrowserHost.diagnoseLaunchFailure({
-    executable: "/home/me/.t3/tools/chrome-headless-shell/linux64/154/chrome-headless-shell",
+    executable: "/home/me/.t3/tools/chrome-for-testing/linux64/154/chrome",
     output: input.output,
     setupCommand: "sudo t3 browser setup",
   }).pipe(

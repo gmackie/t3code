@@ -1,0 +1,44 @@
+name: Server browser CI
+
+on:
+  pull_request:
+    branches:
+      - custom-local
+    paths:
+      - apps/server/src/preview/PreviewBrowser*
+      - apps/server/src/preview/ServerBrowser*
+      - apps/server/src/cli/browser.ts
+      - apps/server/src/htmlRender/headlessChrome.ts
+      - apps/server/src/zipArchive.ts
+      - .forgejo/workflows/server-browser-ci.yml
+      - pnpm-lock.yaml
+      - pnpm-workspace.yaml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  server-browser:
+    runs-on: forgegraph-ci
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.14.0
+      - name: Install pinned dependencies
+        run: |
+          corepack enable
+          corepack prepare pnpm@12.14.0 --activate
+          pnpm install --frozen-lockfile
+      - name: Verify the server browser
+        working-directory: apps/server
+        run: |
+          pnpm exec vp test run src/preview/PreviewBrowser.test.ts src/preview/PreviewBrowserHost.test.ts src/preview/ServerBrowserContexts.test.ts src/preview/ServerBrowser.test.ts
+          pnpm exec tsc --noEmit
+      # Lint from the root: oxlint resolves the repo's local plugin relative to it.
+      - name: Lint the server browser
+        run: |
+          pnpm exec vp lint apps/server/src/preview apps/server/src/cli/browser.ts apps/server/src/htmlRender/headlessChrome.ts
+          pnpm exec vp fmt --check apps/server/src/preview apps/server/src/cli/browser.ts apps/server/src/htmlRender/headlessChrome.ts
