@@ -18,7 +18,8 @@ export function ThreadHeader(
     readonly onToggleInspector: () => void;
     readonly onOpenGitInspector: () => void;
     readonly onOpenFilesInspector: () => void;
-    readonly onOpenWork: () => void;
+    /** Omitted for a draft, which has no work yet. */
+    readonly onOpenWork?: () => void;
   },
 ) {
   const goBack = useWorkspaceBackNavigation("threads");
@@ -64,11 +65,13 @@ export function ThreadHeader(
         onPress: () => onOpenTerminal(null),
       });
     }
-    actions.push({
-      accessibilityLabel: "Open Work",
-      icon: "list.number",
-      onPress: props.onOpenWork,
-    });
+    if (props.onOpenWork) {
+      actions.push({
+        accessibilityLabel: "Open Work",
+        icon: "list.number",
+        onPress: props.onOpenWork,
+      });
+    }
     actions.push({
       accessibilityLabel: "Open git controls",
       icon: "point.topleft.down.curvedto.point.bottomright.up",
@@ -109,11 +112,13 @@ export function ThreadHeader(
         optionsVersion={native.optionsVersion}
         trailing={
           <View className="flex-row">
-            <ScreenHeaderButton
-              accessibilityLabel="Open Work"
-              icon="list.number"
-              onPress={props.onOpenWork}
-            />
+            {props.onOpenWork ? (
+              <ScreenHeaderButton
+                accessibilityLabel="Open Work"
+                icon="list.number"
+                onPress={props.onOpenWork}
+              />
+            ) : null}
             {props.fileInspectorSupported && props.hasThreadCwd ? (
               <ScreenHeaderButton
                 accessibilityLabel={

@@ -47,11 +47,12 @@ describe("V2 preview upgrade", () => {
         [65, "CodexUsageNativeTurnIndex"],
         [66, "RepairClientSettlementTimestamps"],
         [67, "WebhookDedupe"],
-        [68, "PeerLinks"],
-        [69, "PeerLinkFence"],
-        [70, "WaitingLinkRequestIndex"],
-        [71, "BoundedShellLookups"],
-        [72, "BobExecutionAdmission"],
+        [68, "ShellStopRequestIndex"],
+        [69, "PeerLinks"],
+        [70, "PeerLinkFence"],
+        [71, "WaitingLinkRequestIndex"],
+        [72, "BoundedShellLookups"],
+        [73, "BobExecutionAdmission"],
       ]);
       assert.deepStrictEqual(yield* runMigrations(), []);
       assert.deepStrictEqual(yield* sql`SELECT * FROM orchestration_v2_legacy_imports`, imports);
@@ -142,11 +143,12 @@ describe("V2 preview upgrade", () => {
         [65, "CodexUsageNativeTurnIndex"],
         [66, "RepairClientSettlementTimestamps"],
         [67, "WebhookDedupe"],
-        [68, "PeerLinks"],
-        [69, "PeerLinkFence"],
-        [70, "WaitingLinkRequestIndex"],
-        [71, "BoundedShellLookups"],
-        [72, "BobExecutionAdmission"],
+        [68, "ShellStopRequestIndex"],
+        [69, "PeerLinks"],
+        [70, "PeerLinkFence"],
+        [71, "WaitingLinkRequestIndex"],
+        [72, "BoundedShellLookups"],
+        [73, "BobExecutionAdmission"],
       ]);
     }).pipe(Effect.provide(NodeSqliteClient.layer({ filename: ":memory:" }))),
   );

@@ -107,6 +107,47 @@ export type ShellApplicationEvent =
       readonly event: Pick<OrchestrationV2StoredEvent["event"], "threadId">;
     };
 
+/** Focused subagents receive these updates through their thread subscription. */
+export function shouldPublishShellApplicationEvent(
+  stored: ApplicationStoredEvent,
+  subagentThreadIds: Set<string>,
+): boolean {
+  if ("aggregateKind" in stored) return true;
+  const { event } = stored;
+  if (event.type === "thread.created") {
+    if (event.payload.lineage.relationshipToParent === "subagent") {
+      subagentThreadIds.add(event.threadId);
+    }
+    return true;
+  }
+  if (event.type === "thread.deleted") {
+    // Replay and the live tail overlap; keep known IDs so late events stay filtered.
+    return true;
+  }
+  return !(subagentThreadIds.has(event.threadId) && isTranscriptEventType(event.type));
+}
+
+const isTranscriptEventType = (type: string) =>
+  type === "node.updated" ||
+  type === "turn-item.updated" ||
+  type === "provider-turn.updated" ||
+  type === "message.updated";
+
+/**
+ * Resume replay reads references without payloads, so it can only drop
+ * transcript updates of threads already known to be subagents.
+ */
+export function shouldPublishShellEventReference(
+  reference: ApplicationEventReference,
+  subagentThreadIds: ReadonlySet<string>,
+): boolean {
+  return !(
+    reference.aggregateKind === "thread" &&
+    subagentThreadIds.has(reference.aggregateId) &&
+    isTranscriptEventType(reference.type)
+  );
+}
+
 /** Shell updates refetch an aggregate; drop transcript bodies before retaining an event. */
 export function toShellApplicationEvent(
   stored: ApplicationStoredEvent | ApplicationEventReference,

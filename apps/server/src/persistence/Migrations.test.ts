@@ -7,6 +7,9 @@ import * as SqlClient from "effect/sql/SqlClient";
 import { migrationManifest, reconcileMigrationLedger, runMigrations } from "./Migrations.ts";
 import BoundedShellLookups from "./Migrations/059_BoundedShellLookups.ts";
 import BobExecutionAdmission from "./Migrations/063_BobExecutionAdmission.ts";
+import PeerLinks from "./Migrations/068_PeerLinks.ts";
+import PeerLinkFence from "./Migrations/069_PeerLinkFence.ts";
+import WaitingLinkRequestIndex from "./Migrations/070_WaitingLinkRequestIndex.ts";
 
 // Each case gets its own database: OrchestrationV2 is not re-runnable, so a
 // shared database would make later ledger rewinds re-run it.
@@ -209,9 +212,10 @@ describe("migration ledger reconciliation", () => {
           [65, "CodexUsageNativeTurnIndex"],
           [66, "RepairClientSettlementTimestamps"],
           [67, "WebhookDedupe"],
-          [68, "PeerLinks"],
-          [69, "PeerLinkFence"],
-          [70, "WaitingLinkRequestIndex"],
+          [68, "ShellStopRequestIndex"],
+          [69, "PeerLinks"],
+          [70, "PeerLinkFence"],
+          [71, "WaitingLinkRequestIndex"],
         ]);
         yield* assertLedgerMatchesManifest();
         const rows = yield* readLedger;
@@ -246,15 +250,55 @@ describe("migration ledger reconciliation", () => {
 
         assert.deepStrictEqual(executed, [
           [67, "WebhookDedupe"],
-          [68, "PeerLinks"],
-          [69, "PeerLinkFence"],
-          [70, "WaitingLinkRequestIndex"],
+          [68, "ShellStopRequestIndex"],
+          [69, "PeerLinks"],
+          [70, "PeerLinkFence"],
+          [71, "WaitingLinkRequestIndex"],
         ]);
         yield* assertLedgerMatchesManifest();
         const columns = yield* sql<{ readonly name: string }>`
           SELECT name FROM pragma_table_info('peer_environment_links') WHERE name = 'fenced'
         `;
         assert.strictEqual(columns.length, 1);
+        assert.deepStrictEqual(yield* runMigrations(), []);
+        assert.deepEqual(yield* sql`PRAGMA quick_check`, [{ quick_check: "ok" }]);
+      }),
+    ),
+  );
+
+  it.effect("upgrades a custom-local profile after upstream claimed 68", () =>
+    withFreshDatabase(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* runMigrations({ toMigrationInclusive: 67 });
+        // custom-local released its lane migrations as 68 through 72.
+        yield* PeerLinks;
+        yield* PeerLinkFence;
+        yield* WaitingLinkRequestIndex;
+        yield* sql`DROP INDEX IF EXISTS orchestration_v2_projection_turn_items_failed_error_idx`;
+        yield* BoundedShellLookups;
+        yield* BobExecutionAdmission;
+        yield* sql`INSERT INTO effect_sql_migrations (migration_id, name, created_at) VALUES
+          (68, 'PeerLinks', '2026-10-21 08:00:00'),
+          (69, 'PeerLinkFence', '2026-10-21 08:00:00'),
+          (70, 'WaitingLinkRequestIndex', '2026-10-21 08:00:00'),
+          (71, 'BoundedShellLookups', '2026-10-21 08:00:00'),
+          (72, 'BobExecutionAdmission', '2026-10-21 08:00:00')`;
+
+        const executed = yield* runMigrations();
+
+        assert.deepStrictEqual(executed, [[68, "ShellStopRequestIndex"]]);
+        yield* assertLedgerMatchesManifest();
+        const rows = yield* readLedger;
+        assert.deepStrictEqual(
+          rows.find((row) => row.name === "PeerLinks")?.created_at,
+          "2026-10-21 08:00:00",
+        );
+        const indexes = yield* sql<{ readonly name: string }>`
+          SELECT name FROM sqlite_master
+          WHERE type = 'index' AND name = 'orchestration_v2_projection_turn_items_stop_request_idx'
+        `;
+        assert.strictEqual(indexes.length, 1);
         assert.deepStrictEqual(yield* runMigrations(), []);
         assert.deepEqual(yield* sql`PRAGMA quick_check`, [{ quick_check: "ok" }]);
       }),

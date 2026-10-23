@@ -348,7 +348,16 @@ type ReplayLiveInput<A extends { readonly sequence: number }, E, R> = {
 export const replayAndBufferLiveEvents = <A extends { readonly sequence: number }, E, R>(
   input: ReplayLiveInput<A, E, R>,
   limits?: LiveStreamLimits,
-) => replayAndBufferProjectedLiveEvents({ ...input, project: (event: A) => event }, limits);
+) =>
+  replayAndBufferProjectedLiveEvents(
+    {
+      ...input,
+      project: (event: A) => event,
+      replay: (throughSequence) =>
+        input.replay(throughSequence).pipe(Stream.filter((event) => input.filter?.(event) ?? true)),
+    },
+    limits,
+  );
 
 export const replayAndBufferProjectedLiveEvents = <
   A extends { readonly sequence: number },
@@ -358,7 +367,10 @@ export const replayAndBufferProjectedLiveEvents = <
 >(
   input: Omit<ReplayLiveInput<A, E, R>, "replay"> & {
     readonly project: (event: A) => B;
-    /** Database replay already projected so it need not load full event bodies. */
+    /**
+     * Database replay already projected so it need not load full event bodies;
+     * it applies `filter` itself, before projecting.
+     */
     readonly replay: (throughSequence: number) => Stream.Stream<B, E, R>;
   },
   limits?: LiveStreamLimits,

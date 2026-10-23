@@ -25,6 +25,7 @@ import {
   shellStreamItemFromThreadShell,
   shellStreamItemFromEnrichmentRefresh,
   shellStreamItemsFromInitialSnapshot,
+  shouldPublishShellApplicationEvent,
   skipUnchangedThreadShells,
 } from "./ShellStream.ts";
 
@@ -42,6 +43,49 @@ const emptyShellSnapshot = {
   threads: [],
   archivedThreads: [],
 } as OrchestrationV2ShellSnapshot;
+
+describe("subagent shell events", () => {
+  const stored = (threadId: string, type: string) =>
+    ({ event: { threadId, type } }) as ApplicationStoredEvent;
+
+  it("keeps regular threads and subagent state changes while omitting subagent transcript updates", () => {
+    const subagents = new Set(["child"]);
+    expect(
+      shouldPublishShellApplicationEvent(stored("parent", "turn-item.updated"), subagents),
+    ).toBe(true);
+    expect(
+      shouldPublishShellApplicationEvent(stored("child", "turn-item.updated"), subagents),
+    ).toBe(false);
+    expect(shouldPublishShellApplicationEvent(stored("child", "node.updated"), subagents)).toBe(
+      false,
+    );
+    expect(
+      shouldPublishShellApplicationEvent(stored("child", "runtime-request.updated"), subagents),
+    ).toBe(true);
+    expect(shouldPublishShellApplicationEvent(stored("child", "run.updated"), subagents)).toBe(
+      true,
+    );
+  });
+
+  it("tracks subagents created after the subscription starts", () => {
+    const subagents = new Set<string>();
+    const created = {
+      event: {
+        threadId: "new-child",
+        type: "thread.created",
+        payload: { lineage: { relationshipToParent: "subagent" } },
+      },
+    } as ApplicationStoredEvent;
+    expect(shouldPublishShellApplicationEvent(created, subagents)).toBe(true);
+    expect(
+      shouldPublishShellApplicationEvent(stored("new-child", "message.updated"), subagents),
+    ).toBe(false);
+    expect(
+      shouldPublishShellApplicationEvent(stored("new-child", "thread.deleted"), subagents),
+    ).toBe(true);
+    expect(subagents.has("new-child")).toBe(true);
+  });
+});
 
 it.effect("coalesces a slow shell subscriber by identity and location in sequence order", () =>
   Effect.scoped(
