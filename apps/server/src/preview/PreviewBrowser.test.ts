@@ -18,9 +18,8 @@ import * as PreviewBrowser from "./PreviewBrowser.ts";
 // POSIX modes cannot be checked on NTFS, so follow the host like the Antigravity suite.
 const hostPlatform: NodeJS.Platform =
   HostProcess.Platform.defaultValue() === "win32" ? "win32" : "linux";
-const executableName =
-  hostPlatform === "win32" ? "chrome-headless-shell.exe" : "chrome-headless-shell";
-const ROOT = "chrome-headless-shell-fixture/";
+const executableName = PreviewBrowser.browserExecutable(hostPlatform);
+const ROOT = "chrome-fixture/";
 
 const makeZip = (
   entries: ReadonlyArray<{ readonly name: string; readonly data?: string; readonly mode: number }>,
@@ -95,7 +94,7 @@ const makeHarness = Effect.fn("test.makePreviewBrowser")(function* (
       : {
           version: "1.2.3",
           platform: "fixture",
-          url: "https://storage.googleapis.com/chrome-headless-shell-fixture.zip",
+          url: "https://storage.googleapis.com/chrome-fixture.zip",
           bytes: archive.byteLength,
           sha256,
         },
@@ -116,7 +115,7 @@ const makeHarness = Effect.fn("test.makePreviewBrowser")(function* (
       ),
     ),
   );
-  const installRoot = path.join(baseDir, "tools", "chrome-headless-shell", "fixture");
+  const installRoot = path.join(baseDir, "tools", "chrome-for-testing", "fixture");
   return { browser, fs, path, baseDir, installRoot, requests };
 });
 
@@ -152,6 +151,57 @@ it.layer(NodeServices.layer)("PreviewBrowser", (it) => {
       expect(yield* browser.executable).toBe(executable);
       expect(yield* browser.installed).toEqual(Option.some(executable));
       expect(requests).toHaveLength(1);
+    }),
+  );
+
+  it.effect.skipIf(hostPlatform === "win32")(
+    "installs links that stay inside the browser and removes the old headless shell",
+    () =>
+      Effect.gen(function* () {
+        const { browser, fs, path, baseDir, installRoot } = yield* makeHarness({
+          archive: makeZip([
+            { name: `${ROOT}${executableName}`, data: "#!/bin/sh\n", mode: 0o100755 },
+            { name: `${ROOT}Versions/A/library`, data: "library", mode: 0o100644 },
+            { name: `${ROOT}Versions/Current`, data: "A", mode: 0o120755 },
+          ]),
+        });
+        const oldShell = path.join(baseDir, "tools", "chrome-headless-shell", "linux64");
+        yield* fs.makeDirectory(oldShell, { recursive: true });
+
+        yield* browser.executable;
+
+        const current = path.join(installRoot, "1.2.3", "Versions", "Current");
+        expect(yield* fs.readLink(current)).toBe("A");
+        expect(yield* fs.readFileString(path.join(current, "library"))).toBe("library");
+        expect(yield* fs.exists(path.join(baseDir, "tools", "chrome-headless-shell"))).toBe(false);
+      }),
+  );
+
+  it.effect.each([
+    { name: "a link out of the browser", entries: [{ name: "out", target: "../../escape" }] },
+    { name: "an absolute link", entries: [{ name: "out", target: "/tmp" }] },
+    {
+      name: "an entry through a link",
+      entries: [{ name: "here", target: "." }, { name: "here/file" }],
+    },
+  ])("rejects an archive with $name", (testCase) =>
+    Effect.gen(function* () {
+      if (hostPlatform === "win32") return;
+      const { browser, fs, installRoot } = yield* makeHarness({
+        archive: makeZip([
+          { name: `${ROOT}${executableName}`, data: "#!/bin/sh\n", mode: 0o100755 },
+          ...testCase.entries.map((entry) =>
+            "target" in entry
+              ? { name: `${ROOT}${entry.name}`, data: entry.target, mode: 0o120755 }
+              : { name: `${ROOT}${entry.name}`, data: "escaped", mode: 0o100644 },
+          ),
+        ]),
+      });
+
+      const error = yield* browser.executable.pipe(Effect.flip);
+
+      expect(error._tag).toBe("PreviewBrowserInstallError");
+      expect(yield* fs.readDirectory(installRoot)).toEqual([]);
     }),
   );
 
@@ -193,7 +243,7 @@ it.layer(NodeServices.layer)("PreviewBrowser", (it) => {
 
       expect(error._tag).toBe("PreviewBrowserInstallError");
       expect(yield* fs.readDirectory(installRoot)).toEqual([]);
-      expect(yield* fs.exists(path.join(baseDir, "tools", "chrome-headless-shell", "escape"))).toBe(
+      expect(yield* fs.exists(path.join(baseDir, "tools", "chrome-for-testing", "escape"))).toBe(
         false,
       );
     }),

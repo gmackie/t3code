@@ -175,7 +175,7 @@ interface PageEvents {
 }
 
 /**
- * Starts the headless shell for the life of the scope, speaking CDP over
+ * Starts headless Chrome for the life of the scope, speaking CDP over
  * `--remote-debugging-pipe` (fd 3 in, fd 4 out, NUL-delimited JSON).
  */
 const launchBrowser = Effect.fnUntraced(function* (input: {

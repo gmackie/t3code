@@ -1,7 +1,7 @@
 # Configure server MetaMask
 
-MetaMask needs full extension-capable Chromium; the default Chrome headless shell stays in use for
-ordinary browsing. Install a Chrome for Testing / Playwright Chromium executable and unpack the
+MetaMask needs full extension-capable Chromium; the default headless Chrome for Testing stays in use
+for ordinary browsing. Install a Chrome for Testing / Playwright Chromium executable and unpack the
 [official MetaMask 13.5.0 Chrome release](https://github.com/MetaMask/metamask-extension/releases/tag/v13.5.0)
 on the environment host. The approval adapter is version-pinned and leaves other versions disabled.
 Keep the executable and extension outside the wallet profile storage directory.
@@ -58,7 +58,7 @@ Desktop clients stream wallet tabs from the server instead of rendering another 
 Mobile uses the existing browser stream; no native wallet or local signing keys are installed on the
 phone. Chromium's sandbox remains enabled. On Linux, ensure the chosen full Chromium executable has
 its required libraries and host sandbox permission; `t3 browser setup` configures the default
-headless shell, not arbitrary external executables.
+browser, not arbitrary external executables.
 
 For agent-driven Sepolia setup, grant `wallet_switchEthereumChain` on chain `0xaa36a7`
 for the connected account and thread. If the network is absent, separately grant
