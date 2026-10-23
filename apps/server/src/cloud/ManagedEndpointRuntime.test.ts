@@ -533,15 +533,20 @@ describe("CloudManagedEndpointRuntime", () => {
   it.effect("starts, rotates, deduplicates, and stops the built-in T3 relay connector", () => {
     const configs: Array<T3RelayConnector.T3RelayConnectorConfig> = [];
     const closed: Array<number> = [];
-    const socket = (index: number): T3RelayConnector.RelayConnectorSocket => ({
-      binaryType: "arraybuffer",
-      readyState: 1,
-      send: () => undefined,
-      close: () => {
-        closed.push(index);
-      },
-      addEventListener: () => undefined,
-    });
+    // Each connector opens its socket after fetching a ticket; rotation must close that socket.
+    const opened = [Promise.withResolvers<void>(), Promise.withResolvers<void>()];
+    const socket = (index: number): T3RelayConnector.RelayConnectorSocket => {
+      opened[index - 1]?.resolve();
+      return {
+        binaryType: "arraybuffer",
+        readyState: 1,
+        send: () => undefined,
+        close: () => {
+          closed.push(index);
+        },
+        addEventListener: () => undefined,
+      };
+    };
     const factoryLayer = Layer.succeed(
       T3RelayConnector.T3RelayConnectorFactory,
       T3RelayConnector.T3RelayConnectorFactory.of({
@@ -577,10 +582,10 @@ describe("CloudManagedEndpointRuntime", () => {
         status: "running",
         providerKind: "t3_relay",
       });
-      yield* Effect.promise(() => new Promise<void>((resolve) => setImmediate(resolve)));
+      yield* Effect.promise(() => opened[0]!.promise);
       yield* runtime.applyConfig(first);
       yield* runtime.applyConfig({ ...first, connectorToken: "token-2" });
-      yield* Effect.promise(() => new Promise<void>((resolve) => setImmediate(resolve)));
+      yield* Effect.promise(() => opened[1]!.promise);
       yield* runtime.applyConfig(null);
 
       expect(configs.map((config) => config.connectorToken)).toEqual(["token-1", "token-2"]);

@@ -47,6 +47,11 @@ class TestSocket implements RelayConnectorSocket {
     this.#listeners.set(type, listeners);
   }
 
+  /** True once the session has attached its listeners, which it does when it connects. */
+  get listening(): boolean {
+    return this.#listeners.size > 0;
+  }
+
   send(data: string | ArrayBuffer | Uint8Array): void {
     this.sent.push(data);
   }
@@ -98,7 +103,18 @@ const connectorTicketResponse = () =>
     ),
   );
 
-const waitForConnector = () => new Promise<void>((resolve) => setImmediate(resolve));
+const waitForConnector = (socket: () => TestSocket | undefined) =>
+  expect.poll(() => socket()?.listening ?? false).toBe(true);
+
+// Control frames the connector sent back, without its readiness announcement.
+const sentControls = (socket: TestSocket) =>
+  socket.sent
+    .filter((value) => {
+      const frame = decodeRelayTransportFrame(value as Uint8Array);
+      return Result.isSuccess(frame) && frame.success.kind === RelayTransportFrameKind.control;
+    })
+    .map((value) => decodedControl(value))
+    .filter((message) => message.type !== "connector_ready");
 
 function readyConnector(socket: TestSocket): void {
   if (socket.readyState !== 1) socket.open();
@@ -184,7 +200,7 @@ describe("T3RelayConnectorSession", () => {
     );
 
     session.start();
-    await waitForConnector();
+    await waitForConnector(() => sockets[0]?.socket);
     expect(ticketRequests).toHaveLength(1);
     expect(ticketRequests[0]!.url).toBe("https://endpoint.edge.test/.well-known/t3-relay/connect");
     expect(ticketRequests[0]!.headers.get("authorization")).toBe("Bearer secret token");
@@ -224,7 +240,7 @@ describe("T3RelayConnectorSession", () => {
     );
 
     session.start();
-    await waitForConnector();
+    await waitForConnector(() => socket);
     socket.open();
     expect(events).toEqual(["connecting"]);
     readyConnector(socket);
@@ -249,7 +265,7 @@ describe("T3RelayConnectorSession", () => {
     );
 
     session.start();
-    await waitForConnector();
+    await waitForConnector(() => sockets[0]);
     sockets[0]!.open();
     const openLocal = encodeRelayTransportControlFrame(3, {
       type: "websocket_open",
@@ -286,7 +302,7 @@ describe("T3RelayConnectorSession", () => {
     );
 
     session.start();
-    await waitForConnector();
+    await waitForConnector(() => sockets[0]);
     readyConnector(sockets[0]!);
     sockets[0]!.message(
       encodeRelayTransportControlFrame(3, {
@@ -315,7 +331,7 @@ describe("T3RelayConnectorSession", () => {
       connectorTicketResponse,
     );
     stoppingSession.start();
-    await waitForConnector();
+    await waitForConnector(() => stoppingSocket);
     stoppingSocket.throwOnClose = true;
     expect(() => stoppingSession.close()).not.toThrow();
   });
@@ -334,7 +350,7 @@ describe("T3RelayConnectorSession", () => {
     );
 
     session.start();
-    await waitForConnector();
+    await expect.poll(() => events).toHaveLength(2);
     expect(events).toEqual([
       { type: "connecting" },
       expect.objectContaining({ type: "retry_scheduled", reason: "ticket_http_401" }),
@@ -359,7 +375,7 @@ describe("T3RelayConnectorSession", () => {
       connectorTicketResponse,
     );
     session.start();
-    await waitForConnector();
+    await waitForConnector(() => sockets[0]);
     readyConnector(sockets[0]!);
     sockets[0]!.message(
       encodeRelayTransportControlFrame(4, {
@@ -404,7 +420,7 @@ describe("T3RelayConnectorSession", () => {
       connectorTicketResponse,
     );
     session.start();
-    await waitForConnector();
+    await waitForConnector(() => sockets[0]);
     readyConnector(sockets[0]!);
     sockets[0]!.message(
       encodeRelayTransportControlFrame(14, {
@@ -445,7 +461,7 @@ describe("T3RelayConnectorSession", () => {
       connectorTicketResponse,
     );
     session.start();
-    await waitForConnector();
+    await waitForConnector(() => sockets[0]);
     readyConnector(sockets[0]!);
     sockets[0]!.message(
       encodeRelayTransportControlFrame(6, {
@@ -516,7 +532,7 @@ describe("T3RelayConnectorSession", () => {
       connectorTicketResponse,
     );
     session.start();
-    await waitForConnector();
+    await waitForConnector(() => sockets[0]);
     readyConnector(sockets[0]!);
     sockets[0]!.message(
       encodeRelayTransportControlFrame(5, {
@@ -584,7 +600,7 @@ describe("T3RelayConnectorSession", () => {
       },
     );
     session.start();
-    await waitForConnector();
+    await waitForConnector(() => sockets[0]);
     readyConnector(sockets[0]!);
     sockets[0]!.message(
       encodeRelayTransportControlFrame(12, {
@@ -606,7 +622,7 @@ describe("T3RelayConnectorSession", () => {
       }),
     );
     sockets[0]!.message(encodeRelayTransportControlFrame(12, { type: "http_request_end" }));
-    await new Promise<void>((resolve) => setImmediate(resolve));
+    await expect.poll(() => requests).toHaveLength(1);
 
     expect(requests).toHaveLength(1);
     expect(requests[0]!.url).toBe("http://127.0.0.1:7331/oauth/token?attempt=1");
@@ -626,14 +642,10 @@ describe("T3RelayConnectorSession", () => {
         creditBytes: 64 * 1024,
       }),
     );
-    await new Promise<void>((resolve) => setImmediate(resolve));
-    const controls = sockets[0]!.sent
-      .filter((value) => {
-        const frame = decodeRelayTransportFrame(value as Uint8Array);
-        return Result.isSuccess(frame) && frame.success.kind === RelayTransportFrameKind.control;
-      })
-      .map((value) => decodedControl(value))
-      .filter((message) => message.type !== "connector_ready");
+    await expect
+      .poll(() => sentControls(sockets[0]!).at(-1))
+      .toEqual({ type: "http_response_end" });
+    const controls = sentControls(sockets[0]!);
     expect(controls[0]).toMatchObject({ type: "http_response_start", status: 201 });
     expect(controls[0]).toMatchObject({
       headers: expect.arrayContaining([
@@ -681,7 +693,7 @@ describe("T3RelayConnectorSession", () => {
       );
       try {
         session.start();
-        await waitForConnector();
+        await waitForConnector(() => socket);
         readyConnector(socket);
         socket.message(
           encodeRelayTransportControlFrame(12, {
@@ -707,7 +719,7 @@ describe("T3RelayConnectorSession", () => {
         socket.message(
           encodeRelayTransportControlFrame(12, { type: "window_update", creditBytes: 65536 }),
         );
-        await new Promise<void>((resolve) => setImmediate(resolve));
+        await expect.poll(() => sentControls(socket).at(-1)).toEqual({ type: "http_response_end" });
         expect(received?.url).toBe("http://127.0.0.1:7331/api/game/" + path);
         expect(received?.headers.get("x-t3-game-ticket")).toBe("viewer-ticket");
         if (path === "command") expect(await received?.text()).toBe(input);
