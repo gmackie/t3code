@@ -262,11 +262,9 @@ const make = Effect.fn("desktop.environment.make")(function* (
           ? "com.gmacko.t3code"
           : "com.t3tools.t3code",
     ),
-    linuxDesktopEntryName: isDevelopment
-      ? "t3code-dev.desktop"
-      : isGmacko
-        ? "t3code-gmacko.desktop"
-        : "t3code.desktop",
+    linuxDesktopEntryName: isGmacko
+      ? "t3code-gmacko.desktop"
+      : resolveLinuxDesktopEntryName(isDevelopment),
     linuxWmClass: isDevelopment ? "t3code-dev" : isGmacko ? "t3code-gmacko" : "t3code",
     linuxApplicationsDir,
     appImagePath: config.appImagePath,

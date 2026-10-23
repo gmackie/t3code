@@ -308,8 +308,16 @@ const pluginManifest = (
   return plugin.manifest;
 };
 
-const resolveDiscoveryForConfig = <A, E, R>(discovery: Effect.Effect<A, E, R>, fallback: () => A) =>
-  discovery.pipe(Effect.timeoutOption("5 seconds"), Effect.map(Option.getOrElse(fallback)));
+const CONFIG_DISCOVERY_TIMEOUT = Duration.seconds(5);
+
+const resolveDiscoveryForConfig = <A, E, R>(
+  discovery: Effect.Effect<A, E, R>,
+  onTimeout: () => A,
+) =>
+  discovery.pipe(
+    Effect.timeoutOption(CONFIG_DISCOVERY_TIMEOUT),
+    Effect.map(Option.getOrElse(onTimeout)),
+  );
 
 const resolveAvailableEditorsForConfig = <A, E, R>(
   discovery: Effect.Effect<ReadonlyArray<A>, E, R>,
