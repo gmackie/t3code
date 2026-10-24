@@ -4,9 +4,9 @@ import * as Cause from "effect/Cause";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
+import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
-import * as Scheduler from "effect/Scheduler";
 import * as Semaphore from "effect/Semaphore";
 import * as Scope from "effect/Scope";
 
@@ -373,7 +373,6 @@ const validateUniqueContributions = Effect.fn("PluginRuntime.validateUniqueContr
 export const make = Effect.fn("PluginRuntime.make")(function* (options: PluginRuntimeOptions = {}) {
   const parentScope = yield* Effect.scope;
   const transitionSemaphore = yield* Semaphore.make(1);
-  const baseScheduler = yield* Scheduler.Scheduler;
   const runtimeIdentity = {};
   let current: LiveComposition = { generation: 0, plugins: [], snapshot: emptySnapshot() };
   let disposalStarted = false;
@@ -721,25 +720,20 @@ export const make = Effect.fn("PluginRuntime.make")(function* (options: PluginRu
               pluginId: plugin.definition.id,
               runtime: runtimeIdentity,
             };
-            const contributionScheduler: Scheduler.Scheduler = {
-              executionMode: baseScheduler.executionMode,
-              shouldYield: (fiber) => baseScheduler.shouldYield(fiber),
-              makeDispatcher: () => {
-                const dispatcher = baseScheduler.makeDispatcher();
-                return {
-                  flush: () => dispatcher.flush(),
-                  scheduleTask: (task, priority) =>
-                    dispatcher.scheduleTask(
-                      () => callbackContext.run(contributionState, task),
-                      priority,
+            // Effect captures the async context when a fiber forks and restores it on every
+            // resume, so the contribution fiber starts inside the callback context and keeps it
+            // across yields, including in fibers it forks and in fresh runtimes it starts.
+            return Effect.context<Requirements>().pipe(
+              Effect.flatMap((context) => {
+                const fiber = callbackContext.run(contributionState, () =>
+                  Effect.runForkWith(context)(
+                    Effect.suspend(() => use(registration.value as Value)).pipe(
+                      Effect.provideService(PluginEffectCallback, contributionState),
                     ),
-                };
-              },
-            };
-            return Effect.yieldNow.pipe(
-              Effect.andThen(Effect.suspend(() => use(registration.value as Value))),
-              Effect.provideService(PluginEffectCallback, contributionState),
-              Effect.provideService(Scheduler.Scheduler, contributionScheduler),
+                  ),
+                );
+                return Fiber.join(fiber).pipe(Effect.onInterrupt(() => Fiber.interrupt(fiber)));
+              }),
               Effect.onExit((exit) =>
                 Effect.sync(() => {
                   if (!(Exit.isFailure(exit) && Cause.hasInterrupts(exit.cause))) {
