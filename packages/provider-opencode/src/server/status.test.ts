@@ -10,6 +10,7 @@ import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Logger from "effect/Logger";
 import * as Schema from "effect/Schema";
+import * as TestClock from "effect/testing/TestClock";
 import * as Tracer from "effect/Tracer";
 import * as HttpClient from "effect/http/HttpClient";
 import * as HttpClientResponse from "effect/http/HttpClientResponse";
@@ -21,6 +22,7 @@ import * as OpenCodeServerOwner from "./OpenCodeServerOwner.ts";
 import {
   checkOpenCodeProviderStatus,
   loadOpenCode2Workspace,
+  makeOpenCode2ModelLoader,
   type OpenCode2Model,
   type OpenCode2Workspace,
 } from "./status.ts";
@@ -1018,4 +1020,45 @@ it.effect("reads a fresh OpenCode 2 directory again once its scan has ended", ()
     yield* Deferred.succeed(scanEnded, undefined);
     NodeAssert.deepEqual(yield* Fiber.join(load), scanned);
   }),
+);
+
+it.effect("waits beyond two bundled-only catalogs for configured OpenCode providers", () =>
+  Effect.gen(function* () {
+    const bundled: OpenCode2Model = {
+      providerID: "opencode",
+      id: "bundled",
+      name: "Bundled",
+      variants: [],
+    };
+    const configured: OpenCode2Model = {
+      providerID: "configured",
+      id: "custom",
+      name: "Custom",
+      variants: [],
+    };
+    const replies: Array<ReadonlyArray<OpenCode2Model>> = [[], [bundled], [bundled]];
+    const load = yield* makeOpenCode2ModelLoader(
+      Effect.sync(() => replies.shift() ?? [bundled, configured]),
+    );
+    const fiber = yield* load.pipe(Effect.forkChild);
+    yield* TestClock.adjust("2 seconds");
+    NodeAssert.deepEqual(yield* Fiber.join(fiber), [bundled, configured]);
+  }).pipe(Effect.provide(TestClock.layer())),
+);
+
+it.effect("accepts a stable bundled-only OpenCode catalog after its settling window", () =>
+  Effect.gen(function* () {
+    const bundled: OpenCode2Model = {
+      providerID: "opencode",
+      id: "bundled",
+      name: "Bundled",
+      variants: [],
+    };
+    const load = yield* makeOpenCode2ModelLoader(Effect.succeed([bundled]));
+    const fiber = yield* load.pipe(Effect.forkChild);
+    yield* TestClock.adjust("2 seconds");
+    NodeAssert.equal(fiber.pollUnsafe(), undefined);
+    yield* TestClock.adjust("2 seconds");
+    NodeAssert.deepEqual(yield* Fiber.join(fiber), [bundled]);
+  }).pipe(Effect.provide(TestClock.layer())),
 );
