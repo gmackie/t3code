@@ -484,7 +484,7 @@ const catalogFingerprint = (models: ReadonlyArray<OpenCode2Model>) =>
     .toSorted()
     .join("\n");
 
-/** A cold server can list a partial catalog; two agreeing reads reduce that startup race. */
+/** A cold server lists bundled models first; allow configured providers time to load. */
 export const makeOpenCode2ModelLoader = <E>(
   list: Effect.Effect<ReadonlyArray<OpenCode2Model>, E>,
 ) =>
@@ -492,15 +492,17 @@ export const makeOpenCode2ModelLoader = <E>(
     let lastLoaded: ReadonlyArray<OpenCode2Model> = [];
     return Effect.suspend(() => {
       let previous: string | undefined;
+      let unchanged = 0;
       let latest: ReadonlyArray<OpenCode2Model> = [];
       return list.pipe(
         Effect.repeat({
           until: (models) => {
             if (models.length > 0) latest = models;
             const fingerprint = models.length > 0 ? catalogFingerprint(models) : undefined;
-            const settled = fingerprint !== undefined && fingerprint === previous;
+            unchanged = fingerprint !== undefined && fingerprint === previous ? unchanged + 1 : 0;
             previous = fingerprint;
-            return settled;
+            const bundledOnly = models.every((model) => model.providerID === "opencode");
+            return fingerprint !== undefined && unchanged >= (bundledOnly ? 12 : 1);
           },
           schedule: Schedule.spaced("250 millis"),
         }),
