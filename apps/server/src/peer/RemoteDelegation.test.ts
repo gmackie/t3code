@@ -21,11 +21,11 @@ import { expect, it } from "@effect/vitest";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
 import * as Deferred from "effect/Deferred";
-import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Schedule from "effect/Schedule";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as Queue from "effect/Queue";
 import * as Ref from "effect/Ref";
 import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
@@ -1568,7 +1568,14 @@ it.effect("a parent stopped while the box is unreachable still stops its task th
         ReadonlyArray<ProviderContinuationRequests.ProviderContinuationRequest>
       >([]);
       const database = yield* SqlitePersistence.layerMemory.pipe(Layer.build);
-      const a = yield* makeLaptop(database, offers);
+      // The follower tries the box again only when this test releases a retry.
+      const retries = yield* Queue.unbounded<void>();
+      const a = yield* makeLaptop(database, offers).pipe(
+        Effect.provideService(
+          RemoteDelegation.FollowRetrySchedule,
+          Schedule.forever.pipe(Schedule.tap(() => Queue.take(retries))),
+        ),
+      );
       yield* linkTo(a.links, b, "full-access");
       yield* seedParent(a);
       // The box sleeps as soon as the task is there, so its follower backs off.
@@ -1591,14 +1598,8 @@ it.effect("a parent stopped while the box is unreachable still stops its task th
 
       // Once the box is back, the follower's next attempt stops the task there.
       yield* Ref.set(b.descriptor, box);
-      // The follower sleeps on the test clock with no milestone to await, so advance it
-      // until the stop lands (T3CODE-52).
-      // oxlint-disable-next-line t3code/no-polling-loop-in-tests -- follower backoff exposes no milestone
-      for (let attempt = 0; attempt < 12; attempt += 1) {
-        if (yield* Deferred.isDone(thread.interruptedOnce)) break;
-        yield* TestClock.adjust(Duration.minutes(5));
-        yield* Effect.sleep(Duration.millis(50)).pipe(TestClock.withLive);
-      }
+      yield* Queue.offer(retries, undefined);
+      yield* Deferred.await(thread.interruptedOnce);
       expect(yield* Ref.get(thread.interrupted)).toBe(1);
     }),
   ).pipe(Effect.provide(NodeHttpServer.layerTest)),

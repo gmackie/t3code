@@ -51,6 +51,15 @@ const backoff = Schedule.exponential(Duration.seconds(2)).pipe(
   ),
 );
 
+/**
+ * When a follower tries an unreachable linked environment again. Tests replace
+ * it to release each retry themselves instead of advancing a clock.
+ */
+export class FollowRetrySchedule extends Context.Reference<Schedule.Schedule<unknown>>(
+  "t3/peer/RemoteDelegation/FollowRetrySchedule",
+  { defaultValue: () => backoff },
+) {}
+
 type ThreadScope = McpInvocationContext.McpThreadInvocationScope;
 
 /**
@@ -119,6 +128,7 @@ const make = Effect.gen(function* () {
   );
   // Followers live as long as this service, so shutting down stops them.
   const followers = yield* Scope.Scope;
+  const followRetry = yield* FollowRetrySchedule;
 
   /** The peer's project with this thread's repository, or the one the caller named. */
   const resolveRemoteProject = Effect.fn("RemoteDelegation.resolveRemoteProject")(function* (
@@ -520,7 +530,7 @@ const make = Effect.gen(function* () {
             yield* complete(parentThreadId, taskId, "failed", reason, "stopped", stopCount);
           }),
       }),
-      Effect.retry(backoff),
+      Effect.retry(followRetry),
       Effect.ignoreCause({ log: true }),
     );
 
