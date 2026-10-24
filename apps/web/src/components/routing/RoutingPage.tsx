@@ -205,7 +205,9 @@ function EnvironmentRouting({
         />
         <Metric
           label="Downgrade failures"
-          value={downgrades.failureRate === null ? "—" : formatPercent(downgrades.failureRate)}
+          value={
+            downgrades.failureRate === null ? "Not measured" : formatPercent(downgrades.failureRate)
+          }
           detail={`${formatCount(downgrades.failed)} of ${formatCount(downgrades.failed + downgrades.completed)} settled`}
         />
         <Metric
@@ -243,7 +245,7 @@ function EnvironmentRouting({
                 <div className="flex justify-between gap-3 text-sm">
                   <span className="min-w-0 truncate text-foreground">{entry.model}</span>
                   <span className="shrink-0 text-muted-foreground tabular-nums">
-                    {entry.rate === null ? "—" : formatPercent(entry.rate)} ·{" "}
+                    {entry.rate === null ? "Not measured" : formatPercent(entry.rate)} ·{" "}
                     {formatTokens(entry.cachedTokens)}/{formatTokens(entry.inputTokens)}
                   </span>
                 </div>

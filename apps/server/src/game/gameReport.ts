@@ -31,7 +31,7 @@ export function gameReport(catalog: GameCatalog, state: GameState) {
         return `<polyline points="${line}" fill="none" stroke="${["#91ceff", "#ffc17d", "#a1e6a1", "#e3a7ff"][axis]}" stroke-width="2"/>`;
       }).join("");
       const latest = samples.at(-1)?.values[hook.handle];
-      return `<tr><th>${escape(hook.key)}</th><td>${escape(Array.isArray(latest) ? JSON.stringify(latest) : String(latest ?? "No samples"))} ${escape(hook.unit ?? "")}</td><td>${traces ? `<svg viewBox="0 0 300 60" role="img" aria-label="Sample history">${traces}</svg>${hook.type === "vector" ? "<small>X blue · Y orange · Z green · W purple (each axis scaled)</small>" : ""}` : "—"}</td></tr>`;
+      return `<tr><th>${escape(hook.key)}</th><td>${escape(Array.isArray(latest) ? JSON.stringify(latest) : String(latest ?? "No samples"))} ${escape(hook.unit ?? "")}</td><td>${traces ? `<svg viewBox="0 0 300 60" role="img" aria-label="Sample history">${traces}</svg>${hook.type === "vector" ? "<small>X blue · Y orange · Z green · W purple (each axis scaled)</small>" : ""}` : "No samples"}</td></tr>`;
     })
     .join("");
   const runtime = catalog.evidence;
