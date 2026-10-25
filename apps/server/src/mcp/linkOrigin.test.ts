@@ -15,6 +15,7 @@ import {
 } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import { McpSchema, McpServer } from "effect/ai";
 
 import * as ServerConfig from "../config.ts";
@@ -130,7 +131,9 @@ const layerTools = Layer.mergeAll(
   Layer.provide(Layer.mock(ScheduledTaskService.ScheduledTaskService)({})),
   Layer.provide(
     Layer.mock(ProjectService.ProjectService)({
-      getById: () => Effect.die("unused"),
+      // A launch from outside a thread reads the project for its defaults; with
+      // no record it falls back to the server's, as for an unconfigured project.
+      getById: () => Effect.succeed(Option.none()),
       create: (input) =>
         Effect.succeed({
           id: input.projectId,
