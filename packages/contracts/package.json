@@ -40,6 +40,7 @@
   },
   "dependencies": {
     "@t3tools/engine": "workspace:*",
+    "@t3tools/systems-model": "workspace:*",
     "effect": "catalog:"
   },
   "devDependencies": {

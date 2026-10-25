@@ -974,6 +974,15 @@ importers:
       '@t3tools/ssh':
         specifier: workspace:*
         version: link:../../packages/ssh
+      '@t3tools/systems-compiler':
+        specifier: workspace:*
+        version: link:../../packages/systems-compiler
+      '@t3tools/systems-model':
+        specifier: workspace:*
+        version: link:../../packages/systems-model
+      '@t3tools/systems-runtime':
+        specifier: workspace:*
+        version: link:../../packages/systems-runtime
       '@t3tools/tailscale':
         specifier: workspace:*
         version: link:../../packages/tailscale
@@ -1417,6 +1426,9 @@ importers:
       '@t3tools/engine':
         specifier: workspace:*
         version: link:../engine
+      '@t3tools/systems-model':
+        specifier: workspace:*
+        version: link:../systems-model
       effect:
         specifier: 4.0.5
         version: 4.0.5(patch_hash=992d106ac1b98fe0d8401b477794a6e50c3c7c25c2cd876f5cb3d4fbb11393dd)
