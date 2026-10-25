@@ -3,6 +3,7 @@ import { error, type ModelDiagnostic } from "@t3tools/systems-model/diagnostics"
 import type { RunDocument } from "@t3tools/systems-model/documents";
 
 import { SUPPORTED_BLOCKS } from "./blocks.ts";
+import { SOLVER_METHODS } from "./solvers.ts";
 
 /**
  * RFC-001 §13.1 capability handshake of this reference runner, and the check that a
@@ -37,7 +38,7 @@ export interface RunnerCapabilities {
 }
 
 /** Solvers this build implements, by pinned identity. */
-export const SOLVERS: ReadonlyArray<string> = [];
+export const SOLVERS: ReadonlyArray<string> = SOLVER_METHODS;
 
 export const capabilities = (): RunnerCapabilities => ({
   protocol: RUNNER_PROTOCOL,
