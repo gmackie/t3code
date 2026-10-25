@@ -30,6 +30,7 @@ import {
   CircuitBoard,
   Gamepad2,
   Cpu,
+  Activity,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
@@ -137,6 +138,7 @@ export interface RightPanelTabsProps {
   onAddKiCad?: () => void;
   onAddGame?: () => void;
   onAddReverse?: () => void;
+  onAddSystems?: () => void;
   browserAvailable: boolean;
   terminalAvailable: boolean;
   diffAvailable: boolean;
@@ -146,6 +148,7 @@ export interface RightPanelTabsProps {
   deviceAvailable: boolean;
   kicadAvailable?: boolean;
   reverseAvailable?: boolean;
+  systemsAvailable?: boolean;
   pullRequestStatusSeeds?: Readonly<Record<string, PullRequestTabStatusSeed>>;
   children: ReactNode;
 }
@@ -174,6 +177,7 @@ const SURFACE_DISABLED_REASONS = {
   device: "Devices are only available from a thread.",
   kicad: "KiCad is only available when a project is open.",
   reverse: "Reverse Workbench is only available when a project is open.",
+  systems: "Systems Workbench is only available when a project is open.",
 } as const;
 
 // Closed keepMounted popups must stop blocking shortcuts once their exit transition ends.
@@ -200,6 +204,7 @@ const SURFACE_UNAVAILABLE_HINTS = {
   device: "Available from a thread.",
   kicad: "Available when a project is open.",
   reverse: "Available when a project is open.",
+  systems: "Available when a project is open.",
 } as const;
 
 type TabContextMenuAction =
@@ -321,6 +326,7 @@ function RightPanelEmptyState(props: {
   onAddKiCad?: () => void;
   onAddGame?: () => void;
   onAddReverse?: () => void;
+  onAddSystems?: () => void;
   browserAvailable: boolean;
   terminalAvailable: boolean;
   diffAvailable: boolean;
@@ -330,6 +336,7 @@ function RightPanelEmptyState(props: {
   deviceAvailable: boolean;
   kicadAvailable?: boolean;
   reverseAvailable?: boolean;
+  systemsAvailable?: boolean;
 }) {
   const [highlight, setHighlight] = useState(-1);
 
@@ -408,6 +415,15 @@ function RightPanelEmptyState(props: {
       available: props.reverseAvailable ?? false,
       disabledReason: SURFACE_UNAVAILABLE_HINTS.reverse,
       onClick: props.onAddReverse ?? (() => undefined),
+    },
+    {
+      label: "Systems",
+      description: "Validate models and run simulations.",
+      icon: Activity,
+      shortcut: "Y",
+      available: props.systemsAvailable ?? false,
+      disabledReason: SURFACE_UNAVAILABLE_HINTS.systems,
+      onClick: props.onAddSystems ?? (() => undefined),
     },
     {
       label: "KiCad",
@@ -618,6 +634,8 @@ function surfaceTitle(
       return "KiCad";
     case "reverse":
       return "Reverse";
+    case "systems":
+      return "Systems";
     case "preview": {
       const snapshot = surface.resourceId ? sessions[surface.resourceId] : null;
       if (!snapshot || snapshot.navStatus._tag === "Idle") return "Browser";
@@ -712,6 +730,8 @@ function SurfaceIcon({
       return <CircuitBoard className="size-3.5 shrink-0" />;
     case "reverse":
       return <Cpu className="size-3.5 shrink-0" />;
+    case "systems":
+      return <Activity className="size-3.5 shrink-0" />;
     case "work":
       return <ClipboardList className="size-3.5 shrink-0" />;
     case "device":
@@ -1157,6 +1177,14 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
       onClick: props.onAddReverse ?? (() => undefined),
     },
     {
+      label: "Systems",
+      icon: Activity,
+      shortcut: "Y",
+      available: props.systemsAvailable ?? false,
+      disabledReason: SURFACE_DISABLED_REASONS.systems,
+      onClick: props.onAddSystems ?? (() => undefined),
+    },
+    {
       label: "KiCad",
       icon: CircuitBoard,
       shortcut: "K",
@@ -1547,6 +1575,7 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
             {...(props.onAddGame ? { onAddGame: props.onAddGame } : {})}
             {...(props.onAddKiCad ? { onAddKiCad: props.onAddKiCad } : {})}
             {...(props.onAddReverse ? { onAddReverse: props.onAddReverse } : {})}
+            {...(props.onAddSystems ? { onAddSystems: props.onAddSystems } : {})}
             browserAvailable={props.browserAvailable}
             terminalAvailable={props.terminalAvailable}
             diffAvailable={props.diffAvailable}
@@ -1556,6 +1585,7 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
             deviceAvailable={props.deviceAvailable}
             kicadAvailable={props.kicadAvailable ?? false}
             reverseAvailable={props.reverseAvailable ?? false}
+            systemsAvailable={props.systemsAvailable ?? false}
           />
         ) : (
           props.children

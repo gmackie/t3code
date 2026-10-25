@@ -61,6 +61,18 @@ describe("rightPanelStore", () => {
     );
   });
 
+  it("returns to Code after moving from Reverse into Systems", () => {
+    const store = useRightPanelStore.getState();
+    store.openFile(refA, "src/main.ts");
+    store.open(refA, "reverse");
+    store.open(refA, "systems");
+    expect(selectActiveRightPanel(useRightPanelStore.getState().byThreadKey, refA)).toBe("systems");
+    store.returnToCode(refA);
+    expect(selectActiveRightPanelSurface(useRightPanelStore.getState().byThreadKey, refA)?.id).toBe(
+      "file:src/main.ts",
+    );
+  });
+
   it("records single and bulk tab closes, newest first", () => {
     const store = useRightPanelStore.getState();
     const pr = pullRequestSurface({

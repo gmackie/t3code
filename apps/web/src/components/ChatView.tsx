@@ -2422,6 +2422,7 @@ export default function ChatView(props: ChatViewProps) {
     addGameSurfaceStable,
     addKiCadSurfaceStable,
     addReverseSurfaceStable,
+    addSystemsSurfaceStable,
     addFilesSurfaceStable,
     addPullRequestSurfaceStable,
     addPullRequestsSurfaceStable,
@@ -3965,6 +3966,8 @@ export default function ChatView(props: ChatViewProps) {
           onAddGame={addGameSurfaceStable}
           onAddReverse={addReverseSurfaceStable}
           reverseAvailable={activeProject !== null}
+          onAddSystems={addSystemsSurfaceStable}
+          systemsAvailable={activeProject !== null}
           kicadAvailable={activeProject !== null}
           browserAvailable={canOperatePreview && browserAvailable}
           terminalAvailable={activeProject !== null && canOperateTerminal}

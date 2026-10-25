@@ -180,6 +180,10 @@
       "types": "./src/state/reverse.ts",
       "default": "./src/state/reverse.ts"
     },
+    "./state/systems": {
+      "types": "./src/state/systems.ts",
+      "default": "./src/state/systems.ts"
+    },
     "./state/kicad": {
       "types": "./src/state/kicad.ts",
       "default": "./src/state/kicad.ts"
