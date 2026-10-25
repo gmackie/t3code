@@ -11,6 +11,8 @@ on:
       - packages/client-runtime/src/state/systems.ts
       - apps/server/src/systems/**
       - apps/server/src/systems-worker.ts
+      - apps/server/src/mcp/toolkits/systems/**
+      - apps/server/src/mcp/McpToolAccess.ts
       - apps/server/src/persistence/Migrations.ts
       - apps/web/src/components/systems/**
       - vite.config.ts
@@ -69,9 +71,9 @@ jobs:
           corepack enable
           corepack prepare pnpm@12.14.0 --activate
           pnpm install --frozen-lockfile
-      - name: Run the Systems service and migration ledger tests
+      - name: Run the Systems service, agent toolkit and migration ledger tests
         run: |
-          pnpm exec vp test run apps/server/src/systems apps/server/src/persistence/Migrations.test.ts apps/server/src/persistence/reconcileV2PreviewMigration.test.ts
+          pnpm exec vp test run apps/server/src/systems apps/server/src/mcp/toolkits/systems apps/server/src/mcp/McpToolAccess.test.ts apps/server/src/persistence/Migrations.test.ts apps/server/src/persistence/reconcileV2PreviewMigration.test.ts
           pnpm exec vp test run apps/web/src/components/systems apps/web/src/rightPanelStore.test.ts
       - name: Typecheck the server, contracts and clients
         run: |
@@ -82,5 +84,5 @@ jobs:
           pnpm --filter @t3tools/mobile run typecheck
       - name: Lint and format
         run: |
-          pnpm exec vp lint apps/server/src/systems apps/server/src/systems-worker.ts apps/web/src/components/systems packages/contracts/src/systems.ts packages/client-runtime/src/state/systems.ts
-          pnpm exec vp fmt --check apps/server/src/systems apps/server/src/systems-worker.ts apps/web/src/components/systems packages/contracts/src/systems.ts packages/client-runtime/src/state/systems.ts
+          pnpm exec vp lint apps/server/src/systems apps/server/src/systems-worker.ts apps/server/src/mcp/toolkits/systems apps/web/src/components/systems packages/contracts/src/systems.ts packages/client-runtime/src/state/systems.ts
+          pnpm exec vp fmt --check apps/server/src/systems apps/server/src/systems-worker.ts apps/server/src/mcp/toolkits/systems apps/web/src/components/systems packages/contracts/src/systems.ts packages/client-runtime/src/state/systems.ts

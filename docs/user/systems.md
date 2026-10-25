@@ -21,3 +21,7 @@ A run never changes after it finishes. It records the digests of the model, plan
 Open a run to see its status and digests, the trace one page at a time, and plots of its probes. Plots show both sides of a jump at the same instant. Long runs are drawn from each interval's minimum and maximum, so peaks are never smoothed away.
 
 When an expected trace under `expected/` or `conformance/expected/` names the run's experiment, the run shows whether it matches and lists each difference with its time.
+
+## Agents
+
+Agents in your threads can validate and compile systems projects, run experiments, read traces and plots, and compare runs through T3 Code's systems tools. An agent can edit a model only when its thread may already edit files without asking (auto-accept edits or full access, not plan mode). Each edit is checked and compiled first and refused if it introduces an error or the file changed since the agent read it. Agents can always preview an edit without saving it. Agents can't operate instruments or devices.

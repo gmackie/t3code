@@ -3,8 +3,9 @@
 The model semantics live in `packages/systems-*` and are specified by RFC-001 (Systems Workbench
 Model IR and Execution Semantics v0.1). This page covers only how T3 hosts them.
 [`SystemsService`](../../apps/server/src/systems/SystemsService.ts) owns loading, compilation, the
-run queue, workers and run storage. The `systems.*` WebSocket RPCs call it, and the MCP tools will
-too, so add capabilities as service methods.
+run queue, workers and run storage. The `systems.*` WebSocket RPCs and the `t3_systems_*` MCP tools
+([toolkit](../../apps/server/src/mcp/toolkits/systems/handlers.ts)) both call it, so add capabilities
+as service methods.
 
 ## Runs live outside thread lifecycle
 
@@ -58,3 +59,35 @@ under the project's real root and rejects traversal and symlinks (RFC-001 §13.3
 files reachable by reference from `systems.project.json` (`readReferencedFiles` in systems-model),
 so a project at a repository root never walks `node_modules`. Sources are parsed strictly, so
 duplicate JSON keys are diagnostics rather than silently resolved.
+
+## Agent capabilities
+
+RFC-001 §13.3 names eight capabilities. They are not a second permission system: each one maps
+onto how T3 already scopes an MCP caller, in
+[`authority.ts`](../../apps/server/src/mcp/toolkits/systems/authority.ts).
+
+| Capability                       | Who holds it                                                                                                                                                                                     | Enforced by                                                          |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------- |
+| `model.read`                     | Every MCP caller, read-only clients included                                                                                                                                                     | `McpToolAccess.reads`                                                |
+| `simulation.execute`             | Callers `McpToolAccess.writes` admits: not read-only clients, live thread callers only. Fenced links may start runs, not cancel them                                                             | `writes`, with `linkedCallers: "allowed"` for create and conformance |
+| `model.edit`                     | Default interaction mode at `auto-accept-edits` or above, the mode at which the caller already writes files unasked. Below full access, a thread only edits its own project. Never a fenced link | `patchModel` checks the authority                                    |
+| `instrument.observe`, `device.*` | Nobody, since no adapter exists                                                                                                                                                                  | `requestDevice` checks the authority                                 |
+
+Callers come with their limits already applied. A delegated child runs at its own modes, which
+delegation never lets exceed its parent's. A native subagent calls as its parent thread. A caller
+from a linked environment is a client capped by its link's access and the calling agent's
+`T3-Mode-Limit`.
+
+Model patches are declared as reads, so a caller without `model.edit` gets a typed `E-AUTH-001`
+instead of a generic MCP refusal, and may still `dryRun`. A patch is RFC 6902 `add`/`remove`/`replace`
+(Effect's `JsonPatch`). Its pointers are the same JSON pointers diagnostics carry, and it reaches
+every document kind, so a layout needs no separate operation set. Safety comes from what happens
+after the edit, not from the operation vocabulary. The patched bytes stand in for the file in the
+pack (`readReferencedFiles` overlay), and the file's closure plus every system using it is validated
+and compiled. The file is renamed into place only if its sha256 still equals `expectedRevision`,
+checked again just before the write. One patch runs at a time per environment.
+
+RFC-001 AUTH-001 requires that a denial happens before any device adapter runs. `requestDevice`
+authorizes first and only then looks for an adapter. None is installed, so even an authorized
+caller gets `unavailable`. The service accepts an adapter only as a construction option, which
+the AUTH-001 test uses to prove the adapter is never reached.
