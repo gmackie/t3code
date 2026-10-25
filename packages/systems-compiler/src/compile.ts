@@ -149,28 +149,16 @@ interface Library extends LibraryDigest {
   readonly catalog: BlockCatalogDocument;
 }
 
-/** Libraries whose bytes the pack verified against a lock; `validatePack` flags the rest. */
-const lockedLibraries = (pack: Pack): ReadonlyArray<Library> => {
-  const libraries: Array<Library> = [];
-  for (const [file, loaded] of pack.documents) {
-    if (loaded.format !== "sw.lock") continue;
-    loaded.value.libraries.forEach((library, index) => {
-      const catalog = pack.documents.get(library.file);
-      const rejected = pack.diagnostics.some(
-        (diagnostic) =>
-          diagnostic.file === file && diagnostic.pointer?.startsWith(`/libraries/${index}/`),
-      );
-      if (catalog?.format === "sw.blockCatalog" && !rejected)
-        libraries.push({
-          name: library.name,
-          version: library.version,
-          digest: `sha256:${library.sha256}`,
-          catalog: catalog.value,
-        });
-    });
-  }
-  return libraries.toSorted((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
-};
+/** Libraries whose bytes the pack verified against their lock, in name order. */
+const lockedLibraries = (pack: Pack): ReadonlyArray<Library> =>
+  pack.libraries
+    .map((library) => ({
+      name: library.name,
+      version: library.version,
+      digest: `sha256:${library.sha256}`,
+      catalog: library.catalog,
+    }))
+    .toSorted((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
 
 const libraryDigests = (libraries: ReadonlyArray<Library>): ReadonlyArray<LibraryDigest> =>
   libraries.map(({ name, version, digest }) => ({ name, version, digest }));
