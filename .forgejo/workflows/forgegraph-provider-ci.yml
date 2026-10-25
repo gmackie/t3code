@@ -19,7 +19,6 @@ on:
       - packages/shared/src/t3McpToolPresentation.ts
       - packages/client-runtime/src/t3ToolSummary.ts
       - apps/server/src/mcp/McpHttpServer.test.ts
-      - apps/server/src/mcp/toolkits/worktree/registration.test.ts
       - apps/server/src/ws.ts
       - apps/server/src/server.ts
       - apps/server/src/observability/RpcInstrumentation.ts
@@ -199,7 +198,6 @@ jobs:
             apps/server/src/pullRequest/PullRequestService.test.ts
             apps/server/src/mcp/toolkits/pullRequests
             apps/server/src/mcp/McpHttpServer.test.ts
-            apps/server/src/mcp/toolkits/worktree/registration.test.ts
             apps/mobile/src/features/settings/SettingsServerControlsRouteScreen.tsx
             apps/mobile/src/features/settings/forgegraph-sign-in.ts
             apps/mobile/src/features/settings/forgegraph-sign-in.test.ts
