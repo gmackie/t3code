@@ -1,0 +1,445 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://systems-workbench.invalid/schemas/chart.schema.json",
+  "$defs": {
+    "expr": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "const": "literal"
+            },
+            "value": {
+              "type": [
+                "number",
+                "integer",
+                "boolean",
+                "string"
+              ]
+            },
+            "unit": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "op",
+            "value"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "const": "ref"
+            },
+            "path": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "op",
+            "path"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "enum": [
+                "eq",
+                "ne",
+                "lt",
+                "le",
+                "gt",
+                "ge",
+                "add",
+                "sub",
+                "mul",
+                "div",
+                "and",
+                "or"
+              ]
+            },
+            "left": {
+              "$ref": "#/$defs/expr"
+            },
+            "right": {
+              "$ref": "#/$defs/expr"
+            }
+          },
+          "required": [
+            "op",
+            "left",
+            "right"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "const": "not"
+            },
+            "arg": {
+              "$ref": "#/$defs/expr"
+            }
+          },
+          "required": [
+            "op",
+            "arg"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "action": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "const": "assign"
+            },
+            "target": {
+              "type": "string",
+              "minLength": 1
+            },
+            "value": {
+              "$ref": "#/$defs/expr"
+            }
+          },
+          "required": [
+            "op",
+            "target",
+            "value"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "const": "emit"
+            },
+            "eventId": {
+              "type": "string",
+              "pattern": "^[a-zA-Z][a-zA-Z0-9._:-]{0,127}$"
+            }
+          },
+          "required": [
+            "op",
+            "eventId"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "trigger": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "enum": [
+                "event",
+                "clock"
+              ]
+            },
+            "id": {
+              "type": "string",
+              "pattern": "^[a-zA-Z][a-zA-Z0-9._:-]{0,127}$"
+            }
+          },
+          "required": [
+            "kind",
+            "id"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "after"
+            },
+            "duration": {
+              "type": "object",
+              "properties": {
+                "num": {
+                  "type": "string",
+                  "pattern": "^-?(0|[1-9][0-9]*)$"
+                },
+                "den": {
+                  "type": "string",
+                  "pattern": "^[1-9][0-9]*$"
+                }
+              },
+              "required": [
+                "num",
+                "den"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "kind",
+            "duration"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "always"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    }
+  },
+  "type": "object",
+  "properties": {
+    "format": {
+      "const": "sw.statechart"
+    },
+    "schemaVersion": {
+      "const": "0.1.0"
+    },
+    "semanticsVersion": {
+      "const": "0.1"
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-zA-Z][a-zA-Z0-9._:-]{0,127}$"
+    },
+    "title": {
+      "type": "string"
+    },
+    "root": {
+      "type": "string",
+      "pattern": "^[a-zA-Z][a-zA-Z0-9._:-]{0,127}$"
+    },
+    "interface": {
+      "type": "object",
+      "properties": {
+        "inputs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^[a-zA-Z][a-zA-Z0-9._:-]{0,127}$"
+              },
+              "type": {
+                "enum": [
+                  "bool",
+                  "int32",
+                  "uint32",
+                  "float32",
+                  "float64",
+                  "string"
+                ]
+              },
+              "unit": {
+                "type": "string"
+              },
+              "initial": {
+                "type": [
+                  "number",
+                  "integer",
+                  "boolean",
+                  "string"
+                ]
+              },
+              "domain": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "type"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "outputs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^[a-zA-Z][a-zA-Z0-9._:-]{0,127}$"
+              },
+              "type": {
+                "enum": [
+                  "bool",
+                  "int32",
+                  "uint32",
+                  "float32",
+                  "float64",
+                  "string"
+                ]
+              },
+              "unit": {
+                "type": "string"
+              },
+              "initial": {
+                "type": [
+                  "number",
+                  "integer",
+                  "boolean",
+                  "string"
+                ]
+              },
+              "domain": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "type"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "events": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^[a-zA-Z][a-zA-Z0-9._:-]{0,127}$"
+              }
+            },
+            "required": [
+              "id"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "inputs",
+        "outputs",
+        "events"
+      ],
+      "additionalProperties": false
+    },
+    "states": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-zA-Z][a-zA-Z0-9._:-]{0,127}$"
+          },
+          "type": {
+            "enum": [
+              "atomic",
+              "compound"
+            ]
+          },
+          "parent": {
+            "type": "string",
+            "pattern": "^[a-zA-Z][a-zA-Z0-9._:-]{0,127}$"
+          },
+          "initial": {
+            "type": "string",
+            "pattern": "^[a-zA-Z][a-zA-Z0-9._:-]{0,127}$"
+          },
+          "entry": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/action"
+            }
+          },
+          "exit": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/action"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "type"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "transitions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-zA-Z][a-zA-Z0-9._:-]{0,127}$"
+          },
+          "source": {
+            "type": "string",
+            "pattern": "^[a-zA-Z][a-zA-Z0-9._:-]{0,127}$"
+          },
+          "target": {
+            "type": "string",
+            "pattern": "^[a-zA-Z][a-zA-Z0-9._:-]{0,127}$"
+          },
+          "kind": {
+            "enum": [
+              "external",
+              "internal"
+            ]
+          },
+          "trigger": {
+            "$ref": "#/$defs/trigger"
+          },
+          "priority": {
+            "type": "integer"
+          },
+          "guard": {
+            "$ref": "#/$defs/expr"
+          },
+          "actions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/action"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "source",
+          "target",
+          "kind",
+          "trigger",
+          "priority"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": [
+    "format",
+    "schemaVersion",
+    "semanticsVersion",
+    "id",
+    "root",
+    "interface",
+    "states",
+    "transitions"
+  ],
+  "additionalProperties": false
+}

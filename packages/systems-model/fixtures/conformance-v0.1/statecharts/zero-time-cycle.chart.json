@@ -1,0 +1,52 @@
+{
+  "format": "sw.statechart",
+  "schemaVersion": "0.1.0",
+  "semanticsVersion": "0.1",
+  "id": "toggle.chart",
+  "title": "Intentional infinite zero-time cycle",
+  "interface": {
+    "inputs": [],
+    "outputs": [],
+    "events": []
+  },
+  "root": "state.root",
+  "states": [
+    {
+      "id": "state.root",
+      "type": "compound",
+      "initial": "state.a"
+    },
+    {
+      "id": "state.a",
+      "type": "atomic",
+      "parent": "state.root"
+    },
+    {
+      "id": "state.b",
+      "type": "atomic",
+      "parent": "state.root"
+    }
+  ],
+  "transitions": [
+    {
+      "id": "tr.a_b",
+      "source": "state.a",
+      "target": "state.b",
+      "kind": "external",
+      "trigger": {
+        "kind": "always"
+      },
+      "priority": 10
+    },
+    {
+      "id": "tr.b_a",
+      "source": "state.b",
+      "target": "state.a",
+      "kind": "external",
+      "trigger": {
+        "kind": "always"
+      },
+      "priority": 10
+    }
+  ]
+}

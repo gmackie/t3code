@@ -1,0 +1,11 @@
+{
+  "format": "sw.project",
+  "schemaVersion": "0.1.0",
+  "name": "Systems Workbench Conformance Examples",
+  "lockRef": "systems.lock.json",
+  "entrypoints": [
+    "models/pump.system.json",
+    "models/cross-clock.system.json",
+    "models/exponential-decay.system.json"
+  ]
+}

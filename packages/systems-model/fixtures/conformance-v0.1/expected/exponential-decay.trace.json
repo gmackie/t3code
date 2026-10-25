@@ -1,0 +1,37 @@
+{
+  "format": "sw.expectedTrace",
+  "schemaVersion": "0.1.0",
+  "fixtureId": "NUM-001",
+  "runRef": "experiments/exponential-decay.run.json",
+  "numericAbsTolerance": 1e-08,
+  "observations": [
+    {
+      "time": {
+        "num": "0",
+        "den": "1"
+      },
+      "signals": {
+        "x": {
+          "value": 1.0,
+          "unit": "1"
+        }
+      },
+      "firedTransitions": []
+    },
+    {
+      "time": {
+        "num": "1",
+        "den": "1"
+      },
+      "signals": {
+        "x": {
+          "value": 0.36787944117144233,
+          "unit": "1"
+        }
+      },
+      "firedTransitions": []
+    }
+  ],
+  "expectedTransitions": [],
+  "notes": "Value at 1 second is e^-1; numerical RK4 fixed step 0.01 must match within 1e-8."
+}

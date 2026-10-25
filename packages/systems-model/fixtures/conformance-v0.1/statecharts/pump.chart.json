@@ -1,0 +1,112 @@
+{
+  "format": "sw.statechart",
+  "schemaVersion": "0.1.0",
+  "semanticsVersion": "0.1",
+  "id": "pump.chart",
+  "title": "Sampled two-threshold pump controller",
+  "interface": {
+    "inputs": [
+      {
+        "id": "level",
+        "type": "float64",
+        "unit": "m",
+        "domain": "clocked:clock.control"
+      }
+    ],
+    "outputs": [
+      {
+        "id": "pump_enabled",
+        "type": "bool",
+        "initial": false,
+        "domain": "clocked:clock.control"
+      }
+    ],
+    "events": []
+  },
+  "root": "state.root",
+  "states": [
+    {
+      "id": "state.root",
+      "type": "compound",
+      "initial": "state.off"
+    },
+    {
+      "id": "state.off",
+      "type": "atomic",
+      "parent": "state.root",
+      "entry": [
+        {
+          "op": "assign",
+          "target": "output.pump_enabled",
+          "value": {
+            "op": "literal",
+            "value": false
+          }
+        }
+      ]
+    },
+    {
+      "id": "state.on",
+      "type": "atomic",
+      "parent": "state.root",
+      "entry": [
+        {
+          "op": "assign",
+          "target": "output.pump_enabled",
+          "value": {
+            "op": "literal",
+            "value": true
+          }
+        }
+      ]
+    }
+  ],
+  "transitions": [
+    {
+      "id": "tr.off_on",
+      "source": "state.off",
+      "target": "state.on",
+      "kind": "external",
+      "trigger": {
+        "kind": "clock",
+        "id": "clock.control"
+      },
+      "priority": 10,
+      "guard": {
+        "op": "ge",
+        "left": {
+          "op": "ref",
+          "path": "input.level"
+        },
+        "right": {
+          "op": "literal",
+          "value": 3,
+          "unit": "m"
+        }
+      }
+    },
+    {
+      "id": "tr.on_off",
+      "source": "state.on",
+      "target": "state.off",
+      "kind": "external",
+      "trigger": {
+        "kind": "clock",
+        "id": "clock.control"
+      },
+      "priority": 10,
+      "guard": {
+        "op": "le",
+        "left": {
+          "op": "ref",
+          "path": "input.level"
+        },
+        "right": {
+          "op": "literal",
+          "value": 1,
+          "unit": "m"
+        }
+      }
+    }
+  ]
+}

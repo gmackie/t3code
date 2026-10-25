@@ -1,0 +1,12 @@
+{
+  "format": "sw.lock",
+  "schemaVersion": "0.1.0",
+  "libraries": [
+    {
+      "name": "sw.std",
+      "version": "0.1.0",
+      "file": "libraries/std.blocks.json",
+      "sha256": "fdbfb1c8dbe8b914ddd066edaa095a369c2f20bc897392de89fee489b82bbda2"
+    }
+  ]
+}

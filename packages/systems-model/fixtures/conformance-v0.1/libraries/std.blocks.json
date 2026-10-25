@@ -1,0 +1,200 @@
+{
+  "format": "sw.blockCatalog",
+  "schemaVersion": "0.1.0",
+  "semanticsVersion": "0.1",
+  "id": "sw.std",
+  "version": "0.1.0",
+  "units": {
+    "1": {
+      "dims": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "scale": "1"
+    },
+    "m": {
+      "dims": [
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "scale": "1"
+    },
+    "s": {
+      "dims": [
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0
+      ],
+      "scale": "1"
+    },
+    "m/s": {
+      "dims": [
+        0,
+        1,
+        -1,
+        0,
+        0,
+        0,
+        0
+      ],
+      "scale": "1"
+    },
+    "1/s": {
+      "dims": [
+        0,
+        0,
+        -1,
+        0,
+        0,
+        0,
+        0
+      ],
+      "scale": "1"
+    }
+  },
+  "blockTypes": [
+    {
+      "type": "std.constant@1",
+      "stateKind": "pure",
+      "inputs": [],
+      "outputs": [
+        "value"
+      ],
+      "feedthrough": false
+    },
+    {
+      "type": "std.sum2@1",
+      "stateKind": "pure",
+      "inputs": [
+        "a",
+        "b"
+      ],
+      "outputs": [
+        "value"
+      ],
+      "feedthrough": true
+    },
+    {
+      "type": "std.gain@1",
+      "stateKind": "pure",
+      "inputs": [
+        "value"
+      ],
+      "outputs": [
+        "value"
+      ],
+      "feedthrough": true
+    },
+    {
+      "type": "std.boolean_to_scalar@1",
+      "stateKind": "pure",
+      "inputs": [
+        "value"
+      ],
+      "outputs": [
+        "value"
+      ],
+      "feedthrough": true
+    },
+    {
+      "type": "std.integrator@1",
+      "stateKind": "continuous",
+      "inputs": [
+        "derivative"
+      ],
+      "outputs": [
+        "value"
+      ],
+      "feedthrough": false
+    },
+    {
+      "type": "std.sample@1",
+      "stateKind": "clocked",
+      "inputs": [
+        "value"
+      ],
+      "outputs": [
+        "value"
+      ],
+      "feedthrough": true
+    },
+    {
+      "type": "std.hold@1",
+      "stateKind": "clocked",
+      "inputs": [
+        "value"
+      ],
+      "outputs": [
+        "value"
+      ],
+      "feedthrough": true
+    },
+    {
+      "type": "std.statechart@1",
+      "stateKind": "event",
+      "inputs": [
+        "level"
+      ],
+      "outputs": [
+        "pump_enabled"
+      ],
+      "feedthrough": true
+    },
+    {
+      "type": "std.unit_convert@1",
+      "stateKind": "pure",
+      "inputs": [
+        "value"
+      ],
+      "outputs": [
+        "value"
+      ],
+      "feedthrough": true
+    },
+    {
+      "type": "std.delay@1",
+      "stateKind": "clocked",
+      "inputs": [
+        "value"
+      ],
+      "outputs": [
+        "value"
+      ],
+      "feedthrough": false
+    },
+    {
+      "type": "std.counter@1",
+      "stateKind": "clocked",
+      "inputs": [],
+      "outputs": [
+        "value"
+      ],
+      "feedthrough": false
+    },
+    {
+      "type": "std.rate_transition@1",
+      "stateKind": "clocked",
+      "inputs": [
+        "value"
+      ],
+      "outputs": [
+        "value"
+      ],
+      "feedthrough": false
+    }
+  ]
+}

@@ -1,0 +1,66 @@
+{
+  "format": "sw.statechart",
+  "schemaVersion": "0.1.0",
+  "semanticsVersion": "0.1",
+  "id": "timer.chart",
+  "title": "State-scoped timer cancels and re-arms",
+  "interface": {
+    "inputs": [],
+    "outputs": [],
+    "events": [
+      {
+        "id": "start"
+      }
+    ]
+  },
+  "root": "state.root",
+  "states": [
+    {
+      "id": "state.root",
+      "type": "compound",
+      "initial": "state.idle"
+    },
+    {
+      "id": "state.idle",
+      "type": "atomic",
+      "parent": "state.root"
+    },
+    {
+      "id": "state.armed",
+      "type": "atomic",
+      "parent": "state.root"
+    },
+    {
+      "id": "state.expired",
+      "type": "atomic",
+      "parent": "state.root"
+    }
+  ],
+  "transitions": [
+    {
+      "id": "tr.start",
+      "source": "state.idle",
+      "target": "state.armed",
+      "kind": "external",
+      "trigger": {
+        "kind": "event",
+        "id": "start"
+      },
+      "priority": 10
+    },
+    {
+      "id": "tr.timeout",
+      "source": "state.armed",
+      "target": "state.expired",
+      "kind": "external",
+      "trigger": {
+        "kind": "after",
+        "duration": {
+          "num": "3",
+          "den": "2"
+        }
+      },
+      "priority": 10
+    }
+  ]
+}

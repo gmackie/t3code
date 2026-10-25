@@ -1,0 +1,62 @@
+{
+  "format": "sw.system",
+  "schemaVersion": "0.1.0",
+  "semanticsVersion": "0.1",
+  "id": "numeric.exponential_decay",
+  "title": "Scalar exponential decay",
+  "clocks": [],
+  "nodes": [
+    {
+      "id": "state",
+      "type": "std.integrator@1",
+      "parameters": {
+        "initial": 1.0,
+        "unit": "1",
+        "derivativeUnit": "1/s"
+      }
+    },
+    {
+      "id": "rate",
+      "type": "std.gain@1",
+      "parameters": {
+        "gain": -1.0,
+        "gainUnit": "1/s"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e.state",
+      "kind": "signal",
+      "from": {
+        "node": "state",
+        "port": "value"
+      },
+      "to": {
+        "node": "rate",
+        "port": "value"
+      }
+    },
+    {
+      "id": "e.derivative",
+      "kind": "signal",
+      "from": {
+        "node": "rate",
+        "port": "value"
+      },
+      "to": {
+        "node": "state",
+        "port": "derivative"
+      }
+    }
+  ],
+  "outputs": [
+    {
+      "id": "x",
+      "source": {
+        "node": "state",
+        "port": "value"
+      }
+    }
+  ]
+}

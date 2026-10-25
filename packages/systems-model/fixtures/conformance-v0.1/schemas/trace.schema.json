@@ -1,0 +1,152 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://systems-workbench.invalid/schemas/trace.schema.json",
+  "type": "object",
+  "properties": {
+    "format": {
+      "const": "sw.expectedTrace"
+    },
+    "schemaVersion": {
+      "const": "0.1.0"
+    },
+    "fixtureId": {
+      "type": "string",
+      "pattern": "^[a-zA-Z][a-zA-Z0-9._:-]{0,127}$"
+    },
+    "runRef": {
+      "type": "string"
+    },
+    "numericAbsTolerance": {
+      "type": "number",
+      "minimum": 0
+    },
+    "observations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "time": {
+            "type": "object",
+            "properties": {
+              "num": {
+                "type": "string",
+                "pattern": "^-?(0|[1-9][0-9]*)$"
+              },
+              "den": {
+                "type": "string",
+                "pattern": "^[1-9][0-9]*$"
+              }
+            },
+            "required": [
+              "num",
+              "den"
+            ],
+            "additionalProperties": false
+          },
+          "activeState": {
+            "type": "string",
+            "pattern": "^[a-zA-Z][a-zA-Z0-9._:-]{0,127}$"
+          },
+          "signals": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "object",
+              "properties": {
+                "value": {
+                  "type": [
+                    "number",
+                    "integer",
+                    "boolean"
+                  ]
+                },
+                "unit": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "value",
+                "unit"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "firedTransitions": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[a-zA-Z][a-zA-Z0-9._:-]{0,127}$"
+            }
+          }
+        },
+        "required": [
+          "time",
+          "signals",
+          "firedTransitions"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "expectedTransitions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "time": {
+            "type": "object",
+            "properties": {
+              "num": {
+                "type": "string",
+                "pattern": "^-?(0|[1-9][0-9]*)$"
+              },
+              "den": {
+                "type": "string",
+                "pattern": "^[1-9][0-9]*$"
+              }
+            },
+            "required": [
+              "num",
+              "den"
+            ],
+            "additionalProperties": false
+          },
+          "transitionId": {
+            "type": "string",
+            "pattern": "^[a-zA-Z][a-zA-Z0-9._:-]{0,127}$"
+          },
+          "exit": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[a-zA-Z][a-zA-Z0-9._:-]{0,127}$"
+            }
+          },
+          "enter": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[a-zA-Z][a-zA-Z0-9._:-]{0,127}$"
+            }
+          }
+        },
+        "required": [
+          "time",
+          "transitionId"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "notes": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "format",
+    "schemaVersion",
+    "fixtureId",
+    "runRef",
+    "numericAbsTolerance",
+    "observations",
+    "expectedTransitions"
+  ],
+  "additionalProperties": false
+}

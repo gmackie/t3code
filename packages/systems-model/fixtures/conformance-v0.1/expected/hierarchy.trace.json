@@ -1,0 +1,46 @@
+{
+  "format": "sw.expectedTrace",
+  "schemaVersion": "0.1.0",
+  "fixtureId": "CHART-001",
+  "runRef": "experiments/hierarchy.run.json",
+  "numericAbsTolerance": 0,
+  "observations": [
+    {
+      "time": {
+        "num": "0",
+        "den": "1"
+      },
+      "activeState": "state.running",
+      "signals": {},
+      "firedTransitions": []
+    },
+    {
+      "time": {
+        "num": "1",
+        "den": "1"
+      },
+      "activeState": "state.fault",
+      "signals": {},
+      "firedTransitions": [
+        "tr.child_to_fault"
+      ]
+    }
+  ],
+  "expectedTransitions": [
+    {
+      "time": {
+        "num": "1",
+        "den": "1"
+      },
+      "transitionId": "tr.child_to_fault",
+      "exit": [
+        "state.running",
+        "state.normal"
+      ],
+      "enter": [
+        "state.fault"
+      ]
+    }
+  ],
+  "notes": "Even though parent transition priority 1 beats child priority 50 numerically, depth wins."
+}

@@ -1,0 +1,32 @@
+{
+  "format": "sw.run",
+  "schemaVersion": "0.1.0",
+  "id": "run.hierarchy",
+  "chartRef": "statecharts/hierarchy.chart.json",
+  "start": {
+    "num": "0",
+    "den": "1"
+  },
+  "stop": {
+    "num": "2",
+    "den": "1"
+  },
+  "solver": {
+    "method": "none"
+  },
+  "seed": "0",
+  "inputs": [
+    {
+      "time": {
+        "num": "1",
+        "den": "1"
+      },
+      "kind": "event",
+      "type": "overload",
+      "priority": 100,
+      "sourceId": "fixture",
+      "ordinal": 0
+    }
+  ],
+  "probes": []
+}

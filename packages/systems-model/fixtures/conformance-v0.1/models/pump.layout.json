@@ -1,0 +1,44 @@
+{
+  "format": "sw.layout",
+  "schemaVersion": "0.1.0",
+  "modelId": "pump.system",
+  "positions": {
+    "inlet": {
+      "x": 0,
+      "y": -150
+    },
+    "net_flow": {
+      "x": 460,
+      "y": -100
+    },
+    "tank": {
+      "x": 650,
+      "y": -100
+    },
+    "level_sampler": {
+      "x": 650,
+      "y": 100
+    },
+    "controller": {
+      "x": 440,
+      "y": 220
+    },
+    "command_numeric": {
+      "x": 260,
+      "y": 240
+    },
+    "pump_gain": {
+      "x": 100,
+      "y": 220
+    },
+    "pump_hold": {
+      "x": 0,
+      "y": 40
+    }
+  },
+  "viewport": {
+    "x": 0,
+    "y": 0,
+    "zoom": 1.0
+  }
+}

@@ -181,6 +181,8 @@ export default defineConfig({
       "infra/task-cache/vendor/**",
       // Macroscope requires one glob per line; Markdown formatting corrupts it.
       ".macroscope/ignore.md",
+      // Conformance fixtures are pinned by sha256 in their library lock.
+      "packages/systems-model/fixtures/**",
       ".alchemy",
       "dist",
       "dist-electron",
