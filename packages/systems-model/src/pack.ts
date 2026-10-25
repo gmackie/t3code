@@ -77,7 +77,7 @@ export type ParseJson = (
   file: string,
 ) => { readonly value?: unknown; readonly diagnostics: ReadonlyArray<ModelDiagnostic> };
 
-export const MAX_PACK_FILE_BYTES = 8 * 1024 * 1024;
+const MAX_PACK_FILE_BYTES = 8 * 1024 * 1024;
 
 const field = (value: unknown, key: string): unknown =>
   typeof value === "object" && value !== null ? (value as Record<string, unknown>)[key] : undefined;

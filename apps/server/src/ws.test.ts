@@ -33,6 +33,7 @@ import * as GmackoChangelog from "./gmackoChangelog/GmackoChangelog.ts";
 import * as ForgeGraphSignIn from "./sourceControl/ForgeGraphSignIn.ts";
 import * as PistacheSource from "./routing/PistacheSource.ts";
 import * as ReverseWorkbench from "./reverse/ReverseWorkbench.ts";
+import * as SystemsService from "./systems/SystemsService.ts";
 import * as LegacyPluginPackageManager from "./plugins/PluginPackageManager.ts";
 import * as ServerBrowser from "./preview/ServerBrowser.ts";
 import * as AcpRegistryRuntimeCoordinator from "@t3tools/provider-acp-registry/server/AcpRegistryRuntimeCoordinator";
@@ -558,6 +559,7 @@ it.effect(
         Layer.mock(GmackoChangelog.GmackoChangelog)({}),
         Layer.mock(PistacheSource.PistacheSource)({}),
         Layer.mock(ReverseWorkbench.ReverseWorkbench)({}),
+        Layer.mock(SystemsService.SystemsService)({}),
         FetchHttpClient.layer,
       ).pipe((services) =>
         Layer.merge(

@@ -24,6 +24,7 @@ import { rpcInitialItems } from "./rpcInitialItems.ts";
 // @effect-diagnostics nodeBuiltinImport:off - plugin state paths are resolved at the server boundary.
 import * as NodePath from "node:path";
 import * as ReverseWorkbench from "./reverse/ReverseWorkbench.ts";
+import * as SystemsService from "./systems/SystemsService.ts";
 import { subscribeChatGptHandoff } from "./provider/CodexChatGptHandoff.ts";
 import { subscribeCodexAuthCallback } from "./provider/CodexAuthCallback.ts";
 import {
@@ -1366,6 +1367,7 @@ export const layerWsRpc = (
       const serverSelfUpdate = yield* ServerSelfUpdate.ServerSelfUpdate;
       const config = yield* ServerConfig.ServerConfig;
       const reverseWorkbench = yield* ReverseWorkbench.ReverseWorkbench;
+      const systems = yield* SystemsService.SystemsService;
       const pluginPackageManager = new PluginPackageManager(
         createLocalPluginPackageReader(config.stateDir),
       );
@@ -1973,6 +1975,19 @@ export const layerWsRpc = (
           reverseWorkbench.createFinding(input, "human"),
         [WS_METHODS.reverseFindingUpdate]: (input) =>
           reverseWorkbench.updateFinding(input, "human"),
+        [WS_METHODS.systemsValidate]: (input) => systems.validate(input),
+        [WS_METHODS.systemsCompile]: (input) => systems.compile(input),
+        [WS_METHODS.systemsSemanticDiff]: (input) => systems.semanticDiff(input),
+        [WS_METHODS.systemsRunsCreate]: (input) => systems.createRun(input),
+        [WS_METHODS.systemsRunsGet]: (input) => systems.getRun(input),
+        [WS_METHODS.systemsRunsList]: (input) => systems.listRuns(input),
+        [WS_METHODS.systemsRunsSubscribe]: (input) => systems.subscribeRuns(input),
+        [WS_METHODS.systemsRunsCancel]: (input) => systems.cancelRun(input),
+        [WS_METHODS.systemsRunsEvents]: (input) => systems.runEvents(input),
+        [WS_METHODS.systemsRunsSignals]: (input) => systems.runSignals(input),
+        [WS_METHODS.systemsRunsCompare]: (input) => systems.compareRun(input),
+        [WS_METHODS.systemsConformanceExecute]: (input) => systems.executeConformance(input),
+        [WS_METHODS.systemsTargetsCapabilities]: () => systems.capabilities(),
         [ORCHESTRATION_V2_WS_METHODS.dispatchCommand]: (command) =>
           Effect.annotateCurrentSpan({
             "orchestration_v2.command_id": command.commandId,
@@ -3631,6 +3646,7 @@ export const layer = Layer.unwrap(
     const pullRequests = yield* PullRequestService.PullRequestService;
     const reviewGuides = yield* PullRequestReviewGuideService.PullRequestReviewGuideService;
     const reverseWorkbench = yield* ReverseWorkbench.ReverseWorkbench;
+    const systems = yield* SystemsService.SystemsService;
     const peerLinks = yield* PeerLinks.PeerLinks;
     const peerLinkRequests = yield* PeerLinkRequests.PeerLinkRequests;
     const sql = yield* SqlClient.SqlClient;
@@ -3716,6 +3732,8 @@ export const layer = Layer.unwrap(
               Layer.provide(Layer.succeed(ServerSelfUpdate.ServerSelfUpdate, serverSelfUpdate)),
               // Shared with the workbench HTTP route: one store, analyzer set and Ghidra pool.
               Layer.provide(Layer.succeed(ReverseWorkbench.ReverseWorkbench, reverseWorkbench)),
+              // Runs and their workers outlive connections (RFC-001 INV-06): one server instance.
+              Layer.provide(Layer.succeed(SystemsService.SystemsService, systems)),
               // Share server-lifetime PR caches so WS mutations invalidate every client's HTTP diffs.
               Layer.provide(Layer.succeed(PullRequestService.PullRequestService, pullRequests)),
               Layer.provide(OtlpEndpointCheck.layer),

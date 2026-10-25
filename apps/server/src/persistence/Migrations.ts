@@ -81,6 +81,8 @@ import BoundedShellLookups from "./Migrations/059_BoundedShellLookups.ts";
 // T3CODE-6 Bob admission; released as 59 on main and 63, 66, 68, 72 and 73 on custom-local
 // before upstream claimed those ids.
 import BobExecutionAdmission from "./Migrations/063_BobExecutionAdmission.ts";
+// T3CODE-62 Systems Workbench runs; fork-only, re-runnable and reconciled by name.
+import SystemsRuns from "./Migrations/075_SystemsRuns.ts";
 
 /**
  * Upstream's ThreadFailureLookupIndex (62) and the lane's BoundedShellLookups both create
@@ -174,6 +176,7 @@ const migrationEntries = [
   [73, "BoundedShellLookups", BoundedShellLookupsShared],
   // Released as 59 on main and 63, 66, 68, 72 and 73 on custom-local; re-keyed by name.
   [74, "BobExecutionAdmission", BobExecutionAdmission],
+  [75, "SystemsRuns", SystemsRuns],
 ] as const;
 
 export const migrationManifest = migrationEntries.map(([id, name]) => [id, name] as const);
