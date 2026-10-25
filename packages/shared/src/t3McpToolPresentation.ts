@@ -52,6 +52,8 @@ export type T3McpToolSummaryAction =
   | "project-clone"
   | "reverse-read"
   | "reverse-run"
+  | "systems-read"
+  | "systems-run"
   | "environment-read"
   | "environment-links"
   | "environment-link"
@@ -411,6 +413,39 @@ const T3_MCP_TOOLS: Readonly<Record<string, T3McpToolDefinition>> = {
   ),
   t3_reverse_analyze: tool(["Analyze", "Analyzing", "Analyzed", "firmware"], "reverse-run"),
   t3_reverse_emulate: tool(["Emulate", "Emulating", "Emulated", "firmware in QEMU"], "reverse-run"),
+  t3_systems_validate: tool(
+    ["Validate", "Validating", "Validated", "a systems model"],
+    "systems-read",
+  ),
+  t3_systems_compile: tool(["Compile", "Compiling", "Compiled", "a systems model"], "systems-read"),
+  t3_systems_semantic_diff: tool(
+    ["Compare", "Comparing", "Compared", "model revisions"],
+    "systems-read",
+  ),
+  t3_systems_model_read: tool(["Read", "Reading", "Read", "a systems model"], "systems-read"),
+  t3_systems_model_patch: tool(["Patch", "Patching", "Patched", "a systems model"], "systems-run"),
+  t3_systems_run_create: tool(["Start", "Starting", "Started", "a simulation"], "systems-run"),
+  t3_systems_run_wait: tool(
+    ["Wait for", "Waiting for", "Waited for", "a simulation"],
+    "systems-read",
+  ),
+  t3_systems_run_get: tool(["Check", "Checking", "Checked", "a simulation"], "systems-read"),
+  t3_systems_run_list: tool(["List", "Listing", "Listed", "simulations"], "systems-read"),
+  t3_systems_run_cancel: tool(["Cancel", "Cancelling", "Cancelled", "a simulation"], "systems-run"),
+  t3_systems_run_events: tool(["Read", "Reading", "Read", "a simulation trace"], "systems-read"),
+  t3_systems_run_signals: tool(["Read", "Reading", "Read", "simulation signals"], "systems-read"),
+  t3_systems_run_compare: tool(
+    ["Compare", "Comparing", "Compared", "a simulation"],
+    "systems-read",
+  ),
+  t3_systems_conformance_execute: tool(
+    ["Run", "Running", "Ran", "systems conformance"],
+    "systems-run",
+  ),
+  t3_systems_capabilities: tool(
+    ["Check", "Checking", "Checked", "systems capabilities"],
+    "systems-read",
+  ),
   t3_attachment_prepare_upload: tool(
     ["Prepare", "Preparing", "Prepared", "an attachment upload"],
     "attachment-prepare",

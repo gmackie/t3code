@@ -82,6 +82,8 @@ import {
 import * as HtmlHandlers from "./toolkits/html/handlers.ts";
 import { ReverseToolkit } from "./toolkits/reverse/tools.ts";
 import * as ReverseHandlers from "./toolkits/reverse/handlers.ts";
+import { SystemsToolkit } from "./toolkits/systems/tools.ts";
+import * as SystemsHandlers from "./toolkits/systems/handlers.ts";
 import { HtmlPreviewTool, HtmlPreviewToolkit, HtmlRenderToolkit } from "./toolkits/html/tools.ts";
 
 const mcpResourceMetadataUrl = (request: HttpServerRequest.HttpServerRequest) =>
@@ -1088,6 +1090,8 @@ export const layerProjectRegistration = toolkitRegistration(ProjectToolkit, Proj
 
 const layerReverseRegistration = toolkitRegistration(ReverseToolkit, ReverseHandlers.layer);
 
+export const layerSystemsRegistration = toolkitRegistration(SystemsToolkit, SystemsHandlers.layer);
+
 export const layerAttachmentToolkit = toolkitRegistration(
   AttachmentToolkit,
   AttachmentHandlers.layer,
@@ -1135,6 +1139,7 @@ export const layer = Layer.mergeAll(
   layerAttachmentToolkit,
   layerProjectRegistration,
   layerReverseRegistration,
+  layerSystemsRegistration,
   layerEnvironmentToolkit,
   layerPreviewControlsRegistration,
   layerWorktreeToolkitRegistration,
