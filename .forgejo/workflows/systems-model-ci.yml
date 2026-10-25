@@ -12,7 +12,6 @@ on:
       - apps/server/src/systems/**
       - apps/server/src/systems-worker.ts
       - apps/server/src/persistence/Migrations.ts
-      - apps/server/src/persistence/Migrations/075_SystemsRuns.ts
       - apps/web/src/components/systems/**
       - vite.config.ts
       - .forgejo/workflows/systems-model-ci.yml
@@ -74,9 +73,9 @@ jobs:
         run: |
           pnpm exec vp test run apps/server/src/systems apps/server/src/persistence/Migrations.test.ts apps/server/src/persistence/reconcileV2PreviewMigration.test.ts
           pnpm exec vp test run apps/web/src/components/systems apps/web/src/rightPanelStore.test.ts
-      # apps/server's typecheck has unrelated errors on this base, so it is not gated here yet.
-      - name: Typecheck the contracts and clients
+      - name: Typecheck the server, contracts and clients
         run: |
+          pnpm --filter t3 run typecheck
           pnpm --filter @t3tools/contracts run typecheck
           pnpm --filter @t3tools/client-runtime run typecheck
           (cd apps/web && pnpm exec tsc --noEmit)

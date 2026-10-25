@@ -13,9 +13,12 @@ is built once in `server.ts` and the WebSocket layer reuses that instance, like 
 Workbench. A per-connection instance would tie runs to sockets. Closing a client never cancels a
 run, and a reconnecting client gets the same run id, status and event cursors.
 
-Trace events and probe samples are stored in `systems_run_events` and `systems_run_samples`
-(migration 75), never in orchestration events. A run can produce far more rows than a thread, and
-RFC-001 §11.2 keeps high-volume signals out of agent history.
+Trace events and probe samples are stored in `systems_run_events` and `systems_run_samples`,
+never in orchestration events. A run can produce far more rows than a thread, and RFC-001 §11.2
+keeps high-volume signals out of agent history. These tables have their own migration table
+([`SystemsMigrations.ts`](../../apps/server/src/systems/SystemsMigrations.ts)), as the engine's
+do, because fork schema in the shared ledger can be masked by a later upstream id (see
+[Divergent migration ids](legacy-orchestration-migration.md#divergent-migration-ids)).
 
 ## Worker isolation
 

@@ -217,7 +217,6 @@ describe("migration ledger reconciliation", () => {
           [70, "PeerLinks"],
           [71, "PeerLinkFence"],
           [72, "WaitingLinkRequestIndex"],
-          [75, "SystemsRuns"],
         ]);
         yield* assertLedgerMatchesManifest();
         const rows = yield* readLedger;
@@ -257,7 +256,6 @@ describe("migration ledger reconciliation", () => {
           [70, "PeerLinks"],
           [71, "PeerLinkFence"],
           [72, "WaitingLinkRequestIndex"],
-          [75, "SystemsRuns"],
         ]);
         yield* assertLedgerMatchesManifest();
         const columns = yield* sql<{ readonly name: string }>`
@@ -294,7 +292,6 @@ describe("migration ledger reconciliation", () => {
         assert.deepStrictEqual(executed, [
           [68, "ShellStopRequestIndex"],
           [69, "ThreadMessageSearch"],
-          [75, "SystemsRuns"],
         ]);
         yield* assertLedgerMatchesManifest();
         const rows = yield* readLedger;
@@ -334,10 +331,7 @@ describe("migration ledger reconciliation", () => {
 
         const executed = yield* runMigrations();
 
-        assert.deepStrictEqual(executed, [
-          [69, "ThreadMessageSearch"],
-          [75, "SystemsRuns"],
-        ]);
+        assert.deepStrictEqual(executed, [[69, "ThreadMessageSearch"]]);
         yield* assertLedgerMatchesManifest();
         const triggers = yield* sql<{ readonly name: string }>`
           SELECT name FROM sqlite_master

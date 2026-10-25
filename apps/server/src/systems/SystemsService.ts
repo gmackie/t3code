@@ -82,6 +82,7 @@ import * as SqlClient from "effect/sql/SqlClient";
 import * as Stream from "effect/Stream";
 
 import * as ProjectService from "../project/ProjectService.ts";
+import { runSystemsMigrations } from "./SystemsMigrations.ts";
 import {
   commandInbox,
   conformanceOf,
@@ -274,6 +275,7 @@ export const make = Effect.fn("SystemsService.make")(function* (
   const projects = yield* ProjectService.ProjectService;
   const isExecutable = yield* HostProcess.IsExecutable;
   const context = yield* Effect.context<FileSystem.FileSystem | Path.Path | Crypto.Crypto>();
+  yield* runSystemsMigrations();
   const chunkBoundaries = options.chunkBoundaries ?? 256;
   const slots = yield* Semaphore.make(options.maxConcurrentRuns ?? 2);
   const fibers = yield* FiberSet.make();
