@@ -1,0 +1,29 @@
+{
+  "name": "@t3tools/systems-statechart",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./chart": {
+      "types": "./src/chart.ts",
+      "import": "./src/chart.ts"
+    },
+    "./experiment": {
+      "types": "./src/experiment.ts",
+      "import": "./src/experiment.ts"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vp test run --config ../../vite.config.ts --dir ."
+  },
+  "dependencies": {
+    "@t3tools/systems-model": "workspace:*"
+  },
+  "devDependencies": {
+    "@effect/platform-node": "catalog:",
+    "@effect/vitest": "catalog:",
+    "@types/node": "catalog:",
+    "effect": "catalog:",
+    "vite-plus": "catalog:"
+  }
+}
