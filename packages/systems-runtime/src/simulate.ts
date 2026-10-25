@@ -63,6 +63,9 @@ export type SimulationProgress =
       /** Last fully committed boundary. */
       readonly time: RationalTime;
       readonly boundaries: number;
+      /** Everything recorded so far, growing in place; a host commits what is new since its last read. */
+      readonly trace: ReadonlyArray<TraceEvent>;
+      readonly samples: ReadonlyArray<SignalSample>;
     }
   | { readonly done: true; readonly outcome: RunOutcome };
 
@@ -653,7 +656,13 @@ const systemSimulation = (
       if (!(cause instanceof RunFault)) throw cause;
       return { done: true, outcome: finish("failed", [cause.diagnostic]) };
     }
-    return { done: false, time: committed, boundaries };
+    return {
+      done: false,
+      time: committed,
+      boundaries,
+      trace: recorded.trace,
+      samples: recorded.samples,
+    };
   };
 
   return {
