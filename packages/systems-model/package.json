@@ -22,6 +22,10 @@
     "./pack": {
       "types": "./src/pack.ts",
       "import": "./src/pack.ts"
+    },
+    "./trace": {
+      "types": "./src/trace.ts",
+      "import": "./src/trace.ts"
     }
   },
   "scripts": {
