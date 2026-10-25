@@ -6,6 +6,14 @@ on:
       - custom-local
     paths:
       - packages/systems-*/**
+      - packages/contracts/src/systems.ts
+      - packages/contracts/src/rpc.ts
+      - packages/client-runtime/src/state/systems.ts
+      - apps/server/src/systems/**
+      - apps/server/src/systems-worker.ts
+      - apps/server/src/persistence/Migrations.ts
+      - apps/server/src/persistence/Migrations/075_SystemsRuns.ts
+      - apps/web/src/components/systems/**
       - vite.config.ts
       - .forgejo/workflows/systems-model-ci.yml
       - pnpm-lock.yaml
@@ -48,3 +56,32 @@ jobs:
         run: |
           pnpm exec vp lint packages/systems-model packages/systems-compiler packages/systems-statechart packages/systems-runtime
           pnpm exec vp fmt --check packages/systems-model packages/systems-compiler packages/systems-statechart packages/systems-runtime
+
+  systems-integration:
+    runs-on: forgegraph-ci
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.14.0
+      - name: Install pinned dependencies
+        run: |
+          corepack enable
+          corepack prepare pnpm@12.14.0 --activate
+          pnpm install --frozen-lockfile
+      - name: Run the Systems service and migration ledger tests
+        run: |
+          pnpm exec vp test run apps/server/src/systems apps/server/src/persistence/Migrations.test.ts apps/server/src/persistence/reconcileV2PreviewMigration.test.ts
+          pnpm exec vp test run apps/web/src/components/systems apps/web/src/rightPanelStore.test.ts
+      # apps/server's typecheck has unrelated errors on this base, so it is not gated here yet.
+      - name: Typecheck the contracts and clients
+        run: |
+          pnpm --filter @t3tools/contracts run typecheck
+          pnpm --filter @t3tools/client-runtime run typecheck
+          (cd apps/web && pnpm exec tsc --noEmit)
+          pnpm --filter @t3tools/mobile run typecheck
+      - name: Lint and format
+        run: |
+          pnpm exec vp lint apps/server/src/systems apps/server/src/systems-worker.ts apps/web/src/components/systems packages/contracts/src/systems.ts packages/client-runtime/src/state/systems.ts
+          pnpm exec vp fmt --check apps/server/src/systems apps/server/src/systems-worker.ts apps/web/src/components/systems packages/contracts/src/systems.ts packages/client-runtime/src/state/systems.ts
