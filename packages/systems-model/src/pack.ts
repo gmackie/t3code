@@ -27,8 +27,18 @@ type Loaded = {
   readonly [F in DocumentFormat]: { readonly format: F; readonly value: DocumentOf<F> };
 }[DocumentFormat];
 
+/** A library whose bytes matched its lock entry; only these may define blocks and units. */
+export interface VerifiedLibrary {
+  readonly name: string;
+  readonly version: string;
+  readonly file: string;
+  readonly sha256: string;
+  readonly catalog: DocumentOf<"sw.blockCatalog">;
+}
+
 export interface Pack {
   readonly documents: ReadonlyMap<string, Loaded>;
+  readonly libraries: ReadonlyArray<VerifiedLibrary>;
   readonly diagnostics: ReadonlyArray<ModelDiagnostic>;
 }
 
@@ -139,7 +149,7 @@ const checkPack = (input: PackFiles, sha256: (file: string) => string | undefine
     );
 
   // Only locked libraries, verified byte-for-byte, may define blocks and units.
-  const catalogs: Array<DocumentOf<"sw.blockCatalog">> = [];
+  const libraries: Array<VerifiedLibrary> = [];
   for (const [file, lock] of entries("sw.lock")) {
     lock.libraries.forEach((library, index) => {
       const pointer = `/libraries/${index}`;
@@ -149,10 +159,10 @@ const checkPack = (input: PackFiles, sha256: (file: string) => string | undefine
         report(file, "E-REF-001", `Library "${library.name}" does not match its locked sha256`, {
           pointer: `${pointer}/sha256`,
         });
-      else catalogs.push(catalog);
+      else libraries.push({ ...library, catalog });
     });
   }
-  const catalog = mergeCatalogs(catalogs);
+  const catalog = mergeCatalogs(libraries.map((library) => library.catalog));
 
   for (const [file, project] of entries("sw.project")) {
     resolve(file, project.lockRef, "sw.lock", "/lockRef");
@@ -309,7 +319,7 @@ const checkPack = (input: PackFiles, sha256: (file: string) => string | undefine
     });
   }
 
-  return { documents, diagnostics: sortDiagnostics(diagnostics) };
+  return { documents, libraries, diagnostics: sortDiagnostics(diagnostics) };
 };
 
 /** Files whose diagnostics belong to a document: itself and everything it references. */
