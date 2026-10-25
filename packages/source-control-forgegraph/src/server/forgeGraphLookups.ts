@@ -1,13 +1,8 @@
 /**
- * The reads both ForgeGraph providers address a pull request through.
- *
- * A server with FORGE-138 lists a repository's pull requests by `owner/repo` with their numbers,
- * and finds one by number directly. An older one lists them only by app, without numbers, so a
- * pull request is found in three hops there: the repository, the app that lists it, and the
- * changeset behind the number. Each read tries the direct route first and falls back when the
- * server answers that it has none; nothing assumes which server it is talking to.
- *
- * @module source-control-forgegraph/server/forgeGraphLookups
+ * The reads both ForgeGraph providers address a pull request through. Newer servers (FORGE-138)
+ * list and find pull requests by `owner/repo` and number; older ones only by app, so it takes
+ * repository, app, then changeset. Each read tries the direct route and falls back when the server
+ * has none, never assuming which server it talks to.
  */
 import * as Cache from "effect/Cache";
 import * as Duration from "effect/Duration";

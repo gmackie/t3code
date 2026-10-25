@@ -1,14 +1,7 @@
 /**
- * Routing contract.
- *
- * A Pistache router sits in front of the models an OpenCode `pistache`
- * provider instance uses and decides, per request, which model and tier run
- * it. This contract carries what the router reports back: hourly rollups for
- * the Routing page, and the per-thread decisions the chat composer shows as a
- * badge. The server keeps the router's credentials; clients only see these
- * shapes.
- *
- * @module routing
+ * What a Pistache router (the OpenCode `pistache` provider instance) reports back: hourly rollups
+ * for the Routing page and per-thread decisions for the composer badge. The server keeps the
+ * router's credentials; clients only see these shapes.
  */
 import * as Schema from "effect/Schema";
 

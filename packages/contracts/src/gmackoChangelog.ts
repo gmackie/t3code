@@ -1,11 +1,9 @@
 import * as Schema from "effect/Schema";
 
 /**
- * GMACKO fork changelog. The gmacko-nightly workflow embeds a
- * {@link GmackoChangelogManifest} in every GMACKO release body
- * (scripts/gmacko-changelog.ts); the server maps those builds onto the
- * upstream nightlies they include and serves {@link GmackoChangelog} to the
- * Settings → Changelog panel.
+ * GMACKO fork changelog. gmacko-nightly embeds a {@link GmackoChangelogManifest} in every GMACKO
+ * release body (scripts/gmacko-changelog.ts); the server maps those builds onto the upstream
+ * nightlies they include and serves {@link GmackoChangelog} to Settings → Changelog.
  */
 
 const GmackoChangelogCommit = Schema.Struct({

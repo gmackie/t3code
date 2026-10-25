@@ -42,7 +42,7 @@ try {
       "oxlint@1.85.0",
       "--config",
       config,
-      // Mermaid's vendored diagram code (upstream #15067) ships latent bugs on
+      // Mermaid's vendored diagram code ships latent bugs on
       // rarely run paths: layout-base and cytoscape-cose-bilkent read
       // undeclared names, and the C4 parser's generated lexer has a no-op `c;`.
       // They are not missing imports, which is what this gate guards.

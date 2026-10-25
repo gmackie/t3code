@@ -1,21 +1,28 @@
-import { SourceControlProviderKind } from "@t3tools/contracts";
-/**
- * The ForgeGraph driver: repositories and pull requests through ForgeGraph's own HTTP API
- * (`/api/fg`), with no git-server CLI involved, for both of its pull request backends.
- *
- * @module source-control-forgegraph/server/driver
- */
-import { defineSourceControlDriver } from "@t3tools/source-control-core/server/driver";
+import {
+  defineSourceControlDriver,
+  withOwnServices,
+} from "@t3tools/source-control-core/server/driver";
 import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
 
+import { definition } from "../shared/definition.ts";
+
+import * as ForgeGraphApi from "./ForgeGraphApi.ts";
+import * as ForgeGraphCredentials from "./ForgeGraphCredentials.ts";
 import * as ForgeGraphPullRequestProvider from "./ForgeGraphPullRequestProvider.ts";
 import * as ForgeGraphSourceControlProvider from "./ForgeGraphSourceControlProvider.ts";
 
+/** ForgeGraph's HTTP API (`/api/fg`) and the token it is read with. Sign-in builds its own. */
+export const services = ForgeGraphApi.layer.pipe(Layer.provideMerge(ForgeGraphCredentials.layer));
+
+const makeInstance = Effect.all({
+  sourceControl: ForgeGraphSourceControlProvider.make,
+  discovery: ForgeGraphSourceControlProvider.makeDiscovery,
+  pullRequests: ForgeGraphPullRequestProvider.make,
+});
+
 export const driver = defineSourceControlDriver({
-  kind: SourceControlProviderKind.make("forgegraph"),
-  make: Effect.all({
-    sourceControl: ForgeGraphSourceControlProvider.make,
-    discovery: ForgeGraphSourceControlProvider.makeDiscovery,
-    pullRequests: ForgeGraphPullRequestProvider.make,
-  }),
+  kind: definition.kind,
+  definition,
+  make: withOwnServices(makeInstance, services),
 });

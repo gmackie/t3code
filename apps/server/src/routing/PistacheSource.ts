@@ -1,18 +1,8 @@
 /**
- * PistacheSource — what the environment's Pistache router decided and how
- * its subscription windows are doing.
- *
- * The router is configured as the OpenCode provider instance `pistache`.
- * Its base URL and API key come from that instance's environment, so the
- * user configures routing once, in Settings → Providers, and this source
- * follows. The source polls on the provider health-check interval and on
- * every settings change, keeping one overview and the live decision list in
- * memory. Nothing is persisted; like provider status it re-derives on boot.
- *
- * Per-thread history is served from the cached decision list rather than the
- * router's `/threads/{id}/history` endpoint, which only carries event titles.
- *
- * @module routing/PistacheSource
+ * What the environment's Pistache router (OpenCode provider instance `pistache`) decided and how
+ * its subscription windows are doing. Polls on the provider health-check interval and on settings
+ * changes, in memory only. Per-thread history comes from the cached decisions, since
+ * `/threads/{id}/history` only carries event titles.
  */
 import {
   DEFAULT_PROVIDER_HEALTH_REFRESH_INTERVAL,
@@ -126,7 +116,7 @@ interface State {
   readonly decisions: PistacheSnapshot["decisions"];
 }
 
-/** @public Service construction is part of the canonical Effect module API. */
+/** @public */
 export const make = Effect.gen(function* () {
   const api = yield* makePistacheApi;
   const settingsService = yield* Settings.ServerSettingsService;

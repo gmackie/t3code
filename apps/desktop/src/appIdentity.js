@@ -48,22 +48,8 @@ export function isGmackoDesktopAppId(appId) {
 }
 
 /**
- * @param {{
- *   isDevelopment: boolean;
- *   appDisplayName: string | undefined | null;
- *   packageName?: string | undefined | null;
- *   appId?: string | undefined | null;
- * }} input
- * @returns {{
- *   appId: string;
- *   appUserModelId: string;
- *   baseDirName: string;
- *   displayName: string;
- *   packageName: string;
- *   stateDirName: string;
- *   updaterCacheDirName: string;
- *   userDataDirName: string;
- * }}
+ * @param {{ isDevelopment: boolean; appDisplayName: string | undefined | null; packageName?: string | undefined | null; appId?: string | undefined | null }} input
+ * @returns {import("./appIdentity").DesktopRuntimeIdentity}
  */
 export function getDesktopRuntimeIdentity(input) {
   if (input.isDevelopment) {

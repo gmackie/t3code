@@ -7,13 +7,10 @@ import * as Ref from "effect/Ref";
 import * as Semaphore from "effect/Semaphore";
 
 /**
- * node:sqlite writes run on the main thread, so every engine transaction
- * pauses the event loop that coding turns share. Engine writers run through
- * this budget: one at a time, and at most `budgetMs` of write time per
- * `windowMs`. Once a window's budget is spent, the next write waits for the
- * following window. A single write can overshoot by its own duration, which
- * the journal's row cap keeps small. scripts/engine-contention-bench.ts
- * measures the effect on coding-turn commits.
+ * node:sqlite writes block the main thread coding turns share, so engine writers run one at a time
+ * with at most `budgetMs` of write time per `windowMs`; once spent, the next write waits for the
+ * next window. A write can overshoot by its own duration, which the journal's row cap keeps small
+ * (see scripts/engine-contention-bench.ts).
  */
 export interface EngineWriteBudgetShape {
   readonly run: <A, E, R>(write: Effect.Effect<A, E, R>) => Effect.Effect<A, E, R>;

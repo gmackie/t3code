@@ -13,9 +13,9 @@ import {
   type PullRequestProviderApi,
 } from "@t3tools/source-control-core/server/PullRequestProvider";
 
-import { definition } from "../client/definition.ts";
+import { definition } from "../shared/definition.ts";
 import * as ForgeGraphApi from "./ForgeGraphApi.ts";
-import { forgeGraphRepositoryPath } from "./forgeGraphHosts.ts";
+import { forgeGraphRepositoryPath } from "../shared/forgeGraphHosts.ts";
 import * as Json from "./forgeGraphJson.ts";
 import * as ForgeGraphLookups from "./forgeGraphLookups.ts";
 
@@ -43,6 +43,13 @@ const CAPABILITIES: PullRequestCapabilities = {
   },
   reviewers: { request: false, listCandidates: false },
   edit: { changeRequest: false, comment: false },
+};
+
+const UNAVAILABLE_REQUIREMENT = {
+  missing:
+    "No ForgeGraph credential on the server. Sign in from Settings → Source Control, set FG_API_TOKEN, or run `forge login` on the server.",
+  unauthenticated:
+    "ForgeGraph refused the server's token. Sign in again from Settings → Source Control.",
 };
 
 const HEAD_SHA = /^[0-9a-f]{40}(?:[0-9a-f]{24})?$/u;
@@ -76,7 +83,7 @@ function refusal(error: ForgeGraphApi.ForgeGraphApiError): string {
   }
 }
 
-/** @public Service construction is part of the canonical Effect module API. */
+/** @public */
 export const make = Effect.gen(function* () {
   const lookups = yield* ForgeGraphLookups.make;
   const { api } = lookups;
@@ -285,6 +292,7 @@ export const make = Effect.gen(function* () {
   const provider: PullRequestProviderApi = {
     kind: KIND,
     capabilities: CAPABILITIES,
+    unavailableRequirement: UNAVAILABLE_REQUIREMENT,
     getViewer: () =>
       lookups.read({ operation: "getViewer", path: "/fg/whoami" }, Json.ForgeGraphWhoami).pipe(
         Effect.mapError(fromApi),

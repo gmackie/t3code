@@ -98,7 +98,7 @@ function problemCode(problem: {
   return code !== undefined && CODE.test(code) ? code : null;
 }
 
-/** @public Service construction is part of the canonical Effect module API. */
+/** @public */
 export const make = Effect.gen(function* () {
   const httpClient = yield* HttpClient.HttpClient;
   const credentials = yield* ForgeGraphCredentials.ForgeGraphCredentials;

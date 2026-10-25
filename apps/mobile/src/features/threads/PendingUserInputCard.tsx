@@ -15,6 +15,7 @@ import Animated, {
   useAnimatedReaction,
   useDerivedValue,
   useSharedValue,
+  type DerivedValue,
   type SharedValue,
 } from "react-native-reanimated";
 
@@ -41,25 +42,14 @@ import {
 export interface PendingUserInputCardProps {
   readonly canOperateThread: boolean;
   readonly pendingUserInput: PendingUserInput;
-  /** Available height above the bottom inset, before the keyboard opens. */
-  readonly maxHeight: number;
+  readonly maxHeight: DerivedValue<number>;
   readonly collapsed: boolean;
   readonly onToggleCollapsed: () => void;
   /** Renders a stop control on the collapsed bar, which replaces the composer. */
   readonly onStopThread?: () => void;
-  /**
-   * 0 collapsed → 1 expanded. Slides the iOS overlay card down behind the
-   * collapsed bar (inside a clipping window) on the UI thread; the host
-   * animates it directly from the tap handler so the card and the feed
-   * inset glide start the same frame.
-   */
+  /** 0 collapsed → 1 expanded; the host animates it from the tap handler on the UI thread. */
   readonly cardProgress?: SharedValue<number>;
-  /**
-   * Receives how far the expanded card extends above the bar footprint
-   * on the UI thread; the host adds it to the
-   * thread feed's end inset so the end of the chat stays visible above the
-   * card.
-   */
+  /** How far the expanded card extends above the bar; the host adds it to the feed's end inset. */
   readonly cardCoverage?: SharedValue<number>;
   /** Fires on custom-answer focus/blur; hosts use it to vet stale keyboard state. */
   readonly onInputFocusChange?: (focused: boolean) => void;
@@ -81,19 +71,7 @@ export interface PendingUserInputCardProps {
   readonly onDismiss: () => Promise<unknown>;
 }
 
-/**
- * On iOS the collapsed bar is the PERMANENT in-flow footprint — the expanded
- * card is an absolutely-positioned overlay rising above it. The overlay's
- * height (which drives the thread feed's bottom inset) therefore
- * never changes on collapse/expand, so the transcript stays perfectly still
- * while the card animates over it.
- *
- * Android cannot use the overlay: it does not hit-test touches outside a
- * parent's bounds, which made everything above the bar-sized wrapper
- * untouchable. There the expanded card renders in-flow instead (the wrapper
- * grows with it, and the host skips the coverage inset since the measured
- * overlay already includes the card).
- */
+/** Android cannot hit-test overlays beyond their parent's bounds; render its expanded card in-flow. */
 const EXPANDED_CARD_IS_OVERLAY = Platform.OS === "ios";
 
 function QuestionText(props: { readonly markdown: string }) {
@@ -129,8 +107,7 @@ export function PendingUserInputCard(props: PendingUserInputCardProps) {
       : []
     : props.pendingUserInput.questions;
   const { height: keyboardHeight } = useReanimatedKeyboardAnimation();
-  // Resize on the UI thread alongside KeyboardStickyView's translation so
-  // opening the keyboard never pushes the top of the card over the header.
+  // The host's maxHeight already excludes the open keyboard, on the UI thread.
   const maxHeight = props.maxHeight;
   const measuredCardHeight = useSharedValue(0);
   const lastKeyboardHeight = useSharedValue(0);
@@ -140,10 +117,14 @@ export function PendingUserInputCard(props: PendingUserInputCardProps) {
       if (height > lastKeyboardHeight.value) lastKeyboardHeight.set(height);
     },
   );
+  // Compact keeps one size whether or not the keyboard is open, so add the open keyboard back.
   const availableHeight = useDerivedValue(() =>
     expanded
-      ? Math.max(160, maxHeight - Math.abs(keyboardHeight.value))
-      : derivePendingUserInputCompactHeight(maxHeight, lastKeyboardHeight.value),
+      ? maxHeight.value
+      : derivePendingUserInputCompactHeight(
+          maxHeight.value + Math.abs(keyboardHeight.value),
+          lastKeyboardHeight.value,
+        ),
   );
   const cardHeight = useDerivedValue(() =>
     expanded ? availableHeight.value : measuredCardHeight.value,
@@ -175,11 +156,8 @@ export function PendingUserInputCard(props: PendingUserInputCardProps) {
     },
   );
   const cardProgress = props.cardProgress;
-  // No opacity: fading an opaque card over the live transcript reads as a
-  // crossfade (card text, transcript, and bar all half-visible at once).
-  // Instead the card stays opaque and slides its full height down past the
-  // clipping window's bottom edge, so the transcript is only revealed where
-  // the card has physically left.
+  // No opacity: an opaque card slides its full height past the clipping window's bottom edge,
+  // so the transcript is only revealed where the card has left, never crossfaded.
   const cardAnimatedStyle = useAnimatedStyle(() => {
     const progress = cardProgress === undefined ? 1 : cardProgress.value;
     return {
@@ -187,16 +165,10 @@ export function PendingUserInputCard(props: PendingUserInputCardProps) {
     };
   });
 
-  // On iOS the card stays MOUNTED while collapsed (hidden via the animated
-  // style): expanding animates existing views on the UI thread the same
-  // frame the host starts the progress timing, instead of paying a React
-  // mount + layout before anything moves.
+  // Keep the iOS card mounted so expansion starts on the UI thread without waiting for React layout.
   const renderCard = EXPANDED_CARD_IS_OVERLAY || !props.collapsed;
   const showBar = props.collapsed || EXPANDED_CARD_IS_OVERLAY;
-  // The bar renders UNDER the card (earlier in JSX), always opaque: while
-  // expanded the opaque card covers it, and during the collapse slide the
-  // card's top edge wipes past and reveals it — no opacity handoff, so no
-  // crossfade frames.
+  // The opaque bar renders under the card, whose top edge reveals it while collapsing.
   const bar = showBar ? (
     <View
       onLayout={(event) => {
@@ -440,10 +412,8 @@ export function PendingUserInputCard(props: PendingUserInputCardProps) {
     <View className="relative">
       {bar}
       {EXPANDED_CARD_IS_OVERLAY ? (
-        // Clipping window for the collapse slide: same footprint as the
-        // expanded card, bottom edge on the bar's bottom edge. The sliding
-        // card exits through the bottom edge instead of drawing over the
-        // composer area, wiping the bar (and the transcript) into view.
+        // Clipping window for the collapse slide, bottom edge on the bar's: the card exits
+        // through it instead of drawing over the composer, wiping the bar into view.
         <Animated.View
           pointerEvents={props.collapsed ? "none" : "box-none"}
           className="absolute inset-x-0 bottom-0 justify-end overflow-hidden"

@@ -21,36 +21,35 @@ import * as NodeCrypto from "node:crypto";
 import * as ServerConfig from "../config.ts";
 import { openZipArchive } from "../zipArchive.ts";
 
-// To bump the pin, pick a version from
-// https://googlechromelabs.github.io/chrome-for-testing/known-good-versions-with-downloads.json,
-// download each platform's chrome zip, and replace the version and every byte count and SHA-256
-// below. This is full Chrome run headless, not chrome-headless-shell: Google and Cloudflare sign-in
-// refuse the headless shell whatever it reports about itself.
-const VERSION = "154.0.8037.92";
+// Update the version, sizes and hashes from each full chrome zip listed at
+// https://googlechromelabs.github.io/chrome-for-testing/known-good-versions-with-downloads.json
+// (not chrome-headless-shell, which Google and Cloudflare sign-in refuse). Never pin below
+// 156.0.8078.70: older SPKI blocklists trust compromised eMudhra intermediates (crrev.com/c/8627687).
+const VERSION = "156.0.8078.70";
 const ARCHIVES = {
   linux64: {
-    bytes: 196_202_491,
-    sha256: "ff43322f335e436b2f4dcdfeeec5db032299e335a7e8c1c618b326e100ce8732",
+    bytes: 201_035_256,
+    sha256: "baac330433bb105012b7429ad77d4ba3d4ec3768810008ce9257d5d930c1b0cd",
   },
   "linux-arm64": {
-    bytes: 196_517_840,
-    sha256: "c0af361aab66b24c72e36a4326dce4d7edf4bc23f9aede8af988c2cb6ea3fec0",
+    bytes: 200_845_435,
+    sha256: "46dce94a0790d177927044e83ee7e0f571bc22e90e6fafe21fce5c1e248bc865",
   },
   "mac-arm64": {
-    bytes: 191_153_086,
-    sha256: "b62e904b6571c5ff5108ed7812cf93ac6d1c4027f10ae47ac34d8e229ed88001",
+    bytes: 194_910_526,
+    sha256: "1070e2acc6fec1b80aac9215c9b83a381334a8c556df941e5146efb816121adb",
   },
   "mac-x64": {
-    bytes: 202_045_791,
-    sha256: "9ddd0959603a3cdb90926427b2942279d81414c9aad856c97d405bb406d50e8b",
+    bytes: 205_543_880,
+    sha256: "3218f6e802588632f2f8055b90035b306cad48874daf6067330e0f012afdb7ab",
   },
   win32: {
-    bytes: 184_469_809,
-    sha256: "ed07adc92a948b215fe75d86b02ceb1b6993cad7979d2437e836aaea6b3679d4",
+    bytes: 188_579_460,
+    sha256: "853955e981b07b8c44dfc77e658f6bfc806868a74176a44900aecda65ea4c26e",
   },
   win64: {
-    bytes: 205_614_867,
-    sha256: "b897ef3601c947ac0620c784556dec719ac602b0159ce105927acf645ee0f598",
+    bytes: 209_092_934,
+    sha256: "8ab65752ca6106bb8a5bf3afaa710ab4f62a57c27ed39db4977422c929fce0b3",
   },
 } as const;
 
@@ -147,11 +146,7 @@ export class PreviewBrowserUnsupportedError extends Schema.TaggedError<PreviewBr
 export class PreviewBrowser extends Context.Service<
   PreviewBrowser,
   {
-    /**
-     * Path to the installed browser. The first call starts the
-     * install; callers wait for it up to a bound and then get its progress
-     * instead, while the install keeps running.
-     */
+    /** Starts installation on first call; returns progress after a bounded wait while installation continues. */
     readonly executable: Effect.Effect<
       string,
       PreviewBrowserInstallError | PreviewBrowserInstallingError | PreviewBrowserUnsupportedError
@@ -374,8 +369,7 @@ export const makePreviewBrowser = Effect.fn("PreviewBrowser.make")(function* (
         yield* fs.remove(destination, { recursive: true, force: true });
         yield* fs.rename(unpacked, destination);
       }).pipe(Effect.scoped);
-      // Two servers can share a home, so a staging directory touched within the
-      // last hour may be another server's install in progress and stays.
+      // Shared homes may have another server installing; preserve staging directories touched within the last hour.
       const entries = yield* fs.readDirectory(installRoot);
       const now = yield* Clock.currentTimeMillis;
       yield* Effect.forEach(

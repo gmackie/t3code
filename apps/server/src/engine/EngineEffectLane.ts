@@ -15,18 +15,10 @@ import { runEngineMigrations } from "./EngineMigrations.ts";
 import { EngineWriteBudget } from "./EngineWriteBudget.ts";
 
 /**
- * Engine side effects, durably queued in the same transaction as the events
- * that caused them (see EngineJournal.commit).
- *
- * Effects on one `laneKey` run one at a time. A claim leases the row and bumps
- * `claim_epoch`; every renew/settle must present that epoch, so a worker whose
- * lease expired cannot settle a row someone else has re-claimed, even when it
- * shares the same worker id. An expired lease is recovered by retry class:
- *
- *   pending ──claim (epoch+1, lease)──► running ──settle(epoch)──► succeeded | failed | pending
- *                                         │ lease expired, seen at next claim
- *                                         ├─ replay-safe   ──► pending (runs again)
- *                                         └─ process-bound ──► outcome-unknown (never re-run)
+ * Engine side effects, queued in the same transaction as their events (EngineJournal.commit), run
+ * one at a time per `laneKey`. A claim bumps `claim_epoch` and renew/settle must present it, so an
+ * expired worker cannot settle a re-claimed row, even under the same worker id. An expired lease
+ * returns to pending if replay-safe, or becomes outcome-unknown (never re-run) if process-bound.
  */
 export const EngineEffectRetryClass = Schema.Literals(["replay-safe", "process-bound"]);
 export type EngineEffectRetryClass = typeof EngineEffectRetryClass.Type;

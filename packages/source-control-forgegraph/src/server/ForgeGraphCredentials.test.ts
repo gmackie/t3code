@@ -2,7 +2,7 @@ import { assert, describe, it } from "@effect/vitest";
 import * as Redacted from "effect/Redacted";
 
 import { resolveForgeGraphCredential } from "./ForgeGraphCredentials.ts";
-import { forgeGraphServerOrigin, parseForgeGraphRemote } from "./forgeGraphHosts.ts";
+import { forgeGraphServerOrigin, parseForgeGraphRemote } from "../shared/forgeGraphHosts.ts";
 
 const settings = (serverUrl = "", token = "") => ({ serverUrl, token });
 

@@ -1,14 +1,8 @@
 // @effect-diagnostics nodeBuiltinImport:off
 /**
- * Typed reads against a Pistache router's HTTP API.
- *
- * Two endpoints feed everything the clients show: `/api/v1/metrics` for the
- * hourly rollups and `/api/v1/snapshot` for live state (subscription windows,
- * alerts, operator counters, and every decision, which is where per-thread
- * history comes from). Only `mode=live` is read; shadow and demo traffic are
- * the router's own concern.
- *
- * @module routing/pistacheApi
+ * Typed reads against a Pistache router's HTTP API: `/api/v1/metrics` for hourly rollups and
+ * `/api/v1/snapshot` for live state, including every decision (the source of per-thread history).
+ * Only `mode=live` is read; shadow and demo traffic are the router's own concern.
  */
 import * as NodeCrypto from "node:crypto";
 
