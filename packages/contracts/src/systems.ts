@@ -163,9 +163,14 @@ export const SystemsRunCreateInput = Schema.Struct({
 export const SystemsRunRef = Schema.Struct({ projectId: ProjectId, runId: Id });
 export type SystemsRunRef = typeof SystemsRunRef.Type;
 export const SystemsRunCancelInput = Schema.Struct({ ...SystemsRunRef.fields, idempotencyKey: Id });
+export const SYSTEMS_RUN_LIST_MAX = 100;
 export const SystemsRunListInput = Schema.Struct({
   projectId: ProjectId,
   path: Schema.optionalKey(SystemsPath),
+  /** Newest first; 100 when omitted. */
+  limit: Schema.optionalKey(
+    Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: SYSTEMS_RUN_LIST_MAX })),
+  ),
 });
 export const SystemsRunListResult = Schema.Struct({ runs: Schema.Array(SystemsRun) });
 export type SystemsRunListResult = typeof SystemsRunListResult.Type;
@@ -212,6 +217,11 @@ export type SystemsSignalSeries = typeof SystemsSignalSeries.Type;
 export const SystemsRunSignalsResult = Schema.Struct({ series: Schema.Array(SystemsSignalSeries) });
 export type SystemsRunSignalsResult = typeof SystemsRunSignalsResult.Type;
 
+export const SystemsRunWaitInput = Schema.Struct({
+  ...SystemsRunRef.fields,
+  timeoutSeconds: Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 120 })),
+});
+
 export const SystemsRunCompareInput = Schema.Struct({
   ...SystemsRunRef.fields,
   /** An expected trace in the run's systems project; found by `runRef` when omitted. */
@@ -250,6 +260,22 @@ export const SystemsConformanceResult = Schema.Struct({
 });
 export type SystemsConformanceResult = typeof SystemsConformanceResult.Type;
 
+/**
+ * RFC-001 §13.3 capabilities, each granted separately. The server decides which a caller holds;
+ * no `device.*` or `instrument.*` capability is granted while no adapter exists.
+ */
+export const SystemsCapability = Schema.Literals([
+  "model.read",
+  "model.edit",
+  "simulation.execute",
+  "instrument.observe",
+  "device.configure",
+  "device.arm",
+  "device.actuate",
+  "device.flash",
+]);
+export type SystemsCapability = typeof SystemsCapability.Type;
+
 export const SystemsCapabilitiesInput = Schema.Struct({});
 export const SystemsCapabilitiesResult = Schema.Struct({
   targetId: Schema.String,
@@ -260,8 +286,86 @@ export const SystemsCapabilitiesResult = Schema.Struct({
   solvers: Schema.Array(Schema.String),
   blocks: Schema.Array(Schema.String),
   deterministicProfile: Schema.String,
+  /** What this caller may do, when the server knows who is asking. */
+  granted: Schema.optionalKey(Schema.Array(SystemsCapability)),
 });
 export type SystemsCapabilitiesResult = typeof SystemsCapabilitiesResult.Type;
+
+// Model editing
+
+const PatchableFormat = Schema.Literals(["sw.system", "sw.statechart", "sw.layout", "sw.run"]);
+
+export const SystemsModelReadInput = Schema.Struct({
+  ...SystemsProjectInput.fields,
+  file: SystemsFileRef,
+});
+export const SystemsModelReadResult = Schema.Struct({
+  file: Schema.String,
+  format: Schema.String,
+  /** sha256 of the file's bytes; pass it to a patch as `expectedRevision`. */
+  revision: Digest,
+  document: Schema.Unknown,
+});
+export type SystemsModelReadResult = typeof SystemsModelReadResult.Type;
+
+const Pointer = Schema.String.check(Schema.isMaxLength(1024));
+/** RFC 6902 operations on the document's JSON; pointers match diagnostic `pointer`s. */
+export const SystemsPatchOperation = Schema.Union([
+  Schema.Struct({ op: Schema.Literal("add"), path: Pointer, value: Schema.Unknown }),
+  Schema.Struct({ op: Schema.Literal("remove"), path: Pointer }),
+  Schema.Struct({ op: Schema.Literal("replace"), path: Pointer, value: Schema.Unknown }),
+]);
+export type SystemsPatchOperation = typeof SystemsPatchOperation.Type;
+
+export const SystemsModelPatchInput = Schema.Struct({
+  ...SystemsProjectInput.fields,
+  /** A system, statechart, layout or experiment in the systems project. */
+  file: SystemsFileRef,
+  expectedRevision: Digest,
+  operations: Schema.Array(SystemsPatchOperation).check(
+    Schema.isMinLength(1),
+    Schema.isMaxLength(256),
+  ),
+  /** Validate and diff without writing. */
+  dryRun: Schema.optionalKey(Schema.Boolean),
+});
+export const SystemsModelPatchResult = Schema.Struct({
+  file: Schema.String,
+  format: PatchableFormat,
+  /** `rejected`: the patched model has error diagnostics, and nothing was written. */
+  status: Schema.Literals(["written", "dry_run", "rejected"]),
+  previousRevision: Digest,
+  /** The patched bytes' revision, written or not. */
+  revision: Digest,
+  diagnostics: Schema.Array(ModelDiagnostic),
+  /** Systems and statecharts; layouts and experiments have no semantic diff. */
+  semanticDiff: Schema.optionalKey(SystemsSemanticDiffResult),
+});
+export type SystemsModelPatchResult = typeof SystemsModelPatchResult.Type;
+
+// Devices
+
+/** `observe` needs `instrument.observe`; the rest need the matching `device.*` capability. */
+export const SystemsDeviceOperation = Schema.Literals([
+  "observe",
+  "configure",
+  "arm",
+  "actuate",
+  "flash",
+]);
+export type SystemsDeviceOperation = typeof SystemsDeviceOperation.Type;
+export const SystemsDeviceRequestInput = Schema.Struct({
+  projectId: ProjectId,
+  operation: SystemsDeviceOperation,
+  target: Id,
+});
+export type SystemsDeviceRequestInput = typeof SystemsDeviceRequestInput.Type;
+export const SystemsDeviceRequestResult = Schema.Struct({
+  operation: SystemsDeviceOperation,
+  target: Schema.String,
+  status: Schema.Literal("accepted"),
+});
+export type SystemsDeviceRequestResult = typeof SystemsDeviceRequestResult.Type;
 
 export class SystemsError extends Schema.TaggedError<SystemsError>()("SystemsError", {
   reason: Schema.Literals([
@@ -271,6 +375,12 @@ export class SystemsError extends Schema.TaggedError<SystemsError>()("SystemsErr
     "too_large",
     "unavailable",
     "operation_failed",
+    /** A patch's `expectedRevision` is not the file's current revision; nothing was written. */
+    "conflict",
+    /** The patch cannot be applied to the document as it is. */
+    "invalid_patch",
+    /** The caller lacks the capability; `diagnostics` holds `E-AUTH-001`. Nothing ran. */
+    "unauthorized",
   ]),
   message: Schema.String,
   diagnostics: Schema.optionalKey(Schema.Array(ModelDiagnostic)),

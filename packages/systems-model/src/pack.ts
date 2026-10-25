@@ -109,18 +109,42 @@ const referencesOf = (value: unknown): ReadonlyArray<string> => {
   }
 };
 
+const readBounded = Effect.fn("systemsModel.readBounded")(function* (
+  realRoot: string,
+  file: string,
+  diagnostics: Array<ModelDiagnostic>,
+) {
+  const fs = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
+  const full = path.join(realRoot, ...file.split("/"));
+  // A missing file stays missing; validatePack reports the reference that names it.
+  if (!(yield* fs.exists(full))) return undefined;
+  if ((yield* fs.realPath(full)) !== full) {
+    diagnostics.push(error("E-REF-001", "Paths through symbolic links are not followed", { file }));
+    return undefined;
+  }
+  const info = yield* fs.stat(full);
+  if (info.type !== "File") return undefined;
+  if (Number(info.size) > MAX_PACK_FILE_BYTES) {
+    diagnostics.push(error("E-SCHEMA-001", `Larger than ${MAX_PACK_FILE_BYTES} bytes`, { file }));
+    return undefined;
+  }
+  return yield* fs.readFile(full);
+});
+
 /**
  * Read `seeds` below `root` and every file they reach by reference, and nothing else, so a
  * project inside a repository root never walks `node_modules`. Paths must be normalized and
  * are never followed through a symlink; a file the strict parser rejects is left out.
+ * `overlay` bytes stand in for files on disk, so an edit validates before it is written.
  */
 export const readReferencedFiles = Effect.fn("systemsModel.readReferencedFiles")(function* (
   root: string,
   seeds: ReadonlyArray<string>,
   parse: ParseJson,
+  overlay: ReadonlyMap<string, Uint8Array> = new Map(),
 ) {
   const fs = yield* FileSystem.FileSystem;
-  const path = yield* Path.Path;
   const realRoot = yield* fs.realPath(root);
   const files = new Map<string, Uint8Array>();
   const diagnostics: Array<ModelDiagnostic> = [];
@@ -135,22 +159,8 @@ export const readReferencedFiles = Effect.fn("systemsModel.readReferencedFiles")
       );
       continue;
     }
-    const full = path.join(realRoot, ...file.split("/"));
-    // A missing file stays missing; validatePack reports the reference that names it.
-    if (!(yield* fs.exists(full))) continue;
-    if ((yield* fs.realPath(full)) !== full) {
-      diagnostics.push(
-        error("E-REF-001", "Paths through symbolic links are not followed", { file }),
-      );
-      continue;
-    }
-    const info = yield* fs.stat(full);
-    if (info.type !== "File") continue;
-    if (Number(info.size) > MAX_PACK_FILE_BYTES) {
-      diagnostics.push(error("E-SCHEMA-001", `Larger than ${MAX_PACK_FILE_BYTES} bytes`, { file }));
-      continue;
-    }
-    const bytes = yield* fs.readFile(full);
+    const bytes = overlay.get(file) ?? (yield* readBounded(realRoot, file, diagnostics));
+    if (bytes === undefined) continue;
     if (!file.endsWith(".json")) {
       files.set(file, bytes);
       continue;
