@@ -40,7 +40,11 @@ jobs:
         run: |
           pnpm exec vp test run packages/systems-statechart
           pnpm --filter @t3tools/systems-statechart run typecheck
+      - name: Simulate the conformance fixtures
+        run: |
+          pnpm exec vp test run packages/systems-runtime
+          pnpm --filter @t3tools/systems-runtime run typecheck
       - name: Lint and format
         run: |
-          pnpm exec vp lint packages/systems-model packages/systems-compiler packages/systems-statechart
-          pnpm exec vp fmt --check packages/systems-model packages/systems-compiler packages/systems-statechart
+          pnpm exec vp lint packages/systems-model packages/systems-compiler packages/systems-statechart packages/systems-runtime
+          pnpm exec vp fmt --check packages/systems-model packages/systems-compiler packages/systems-statechart packages/systems-runtime
