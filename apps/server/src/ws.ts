@@ -120,6 +120,7 @@ import * as PluginCommandCatalog from "./plugins/PluginCommandCatalog.ts";
 import * as LegacyPluginPackageManager from "./plugins/PluginPackageManager.ts";
 import * as ExternalLauncher from "./process/externalLauncher.ts";
 import * as ThreadManagementService from "./orchestration-v2/ThreadManagementService.ts";
+import * as ThreadViewers from "./orchestration-v2/ThreadViewers.ts";
 import * as CommandOutputHub from "./orchestration-v2/CommandOutputHub.ts";
 import * as McpAppRequests from "./mcpApps/McpAppRequests.ts";
 import * as ProviderSessionManager from "./orchestration-v2/ProviderSessionManager.ts";
@@ -2164,6 +2165,17 @@ export const layerWsRpc = (
           Stream.unwrap(
             Effect.annotateCurrentSpan({ "orchestration_v2.thread_id": input.threadId }).pipe(
               Effect.andThen(subscribeOrchestrationV2Thread(input)),
+              // The thread counts as shown while a client streams it (T3CODE-53).
+              Effect.flatMap((stream) =>
+                Effect.serviceOption(ThreadViewers.ThreadViewers).pipe(
+                  Effect.map(
+                    Option.match({
+                      onNone: () => stream,
+                      onSome: (viewers) => stream.pipe(viewers.track(input.threadId)),
+                    }),
+                  ),
+                ),
+              ),
             ),
           ),
         [ORCHESTRATION_V2_WS_METHODS.subscribeCommandOutput]: (input) =>
