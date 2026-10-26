@@ -296,6 +296,10 @@ import {
 } from "./plugins/runtimeSupervisor.ts";
 
 const isProviderUploadFeedbackError = Schema.is(ProviderUploadFeedbackError);
+const CLIENT_MODEL_AUTHORITY: SystemsService.SystemsAuthority = new Set([
+  "model.read",
+  "model.edit",
+]);
 
 const pluginRegistryEntry = (plugin: ReturnType<PluginLifecycle["snapshot"]>[number]) => ({
   pluginId: plugin.manifest.id,
@@ -1988,6 +1992,10 @@ export const layerWsRpc = (
         [WS_METHODS.systemsRunsCompare]: (input) => systems.compareRun(input),
         [WS_METHODS.systemsConformanceExecute]: (input) => systems.executeConformance(input),
         [WS_METHODS.systemsTargetsCapabilities]: () => systems.capabilities(),
+        [WS_METHODS.systemsModelsRead]: (input) => systems.readModel(input),
+        // The operate scope gates this RPC, so the client edits as the user would.
+        [WS_METHODS.systemsModelsPatch]: (input) =>
+          systems.patchModel(input, CLIENT_MODEL_AUTHORITY),
         [ORCHESTRATION_V2_WS_METHODS.dispatchCommand]: (command) =>
           Effect.annotateCurrentSpan({
             "orchestration_v2.command_id": command.commandId,

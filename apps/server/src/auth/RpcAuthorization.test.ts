@@ -87,6 +87,15 @@ describe("RPC authorization scopes", () => {
     }
   });
 
+  it("lets read scope open systems models and keeps patching them behind operate scope", () => {
+    expect(requiredScopeForRpcMethod(WS_METHODS.systemsModelsRead)).toBe(
+      AuthOrchestrationReadScope,
+    );
+    expect(requiredScopeForRpcMethod(WS_METHODS.systemsModelsPatch)).toBe(
+      AuthOrchestrationOperateScope,
+    );
+  });
+
   it("rejects unknown RPC method names", () => {
     for (const method of ["server.notRegistered", "toString", "constructor"]) {
       expect(() => requiredScopeForRpcMethod(method)).toThrow(

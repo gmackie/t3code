@@ -292,6 +292,8 @@ const RPC_AGGREGATES = {
   [WS_METHODS.systemsRunsCompare]: "systems",
   [WS_METHODS.systemsConformanceExecute]: "systems",
   [WS_METHODS.systemsTargetsCapabilities]: "systems",
+  [WS_METHODS.systemsModelsRead]: "systems",
+  [WS_METHODS.systemsModelsPatch]: "systems",
   [WS_METHODS.engineRunsCreate]: "engine",
   [WS_METHODS.engineRunsGet]: "engine",
   [WS_METHODS.engineRunsCancel]: "engine",

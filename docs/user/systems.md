@@ -10,6 +10,10 @@ A systems project is a folder in the thread's project that contains `systems.pro
 
 Validation lists each problem with its code (such as `E-UNIT-001`), the element it concerns, and the file and JSON pointer to fix. Compiling shows each entrypoint's semantic and plan digests and its schedule. Moving things on a canvas never changes a digest; changing behavior always does.
 
+## Edit parameters
+
+Choose **Edit parameters** on an entrypoint to change its blocks' numbers, switches and text. **Check** validates and compiles your changes and lists what they change without saving; **Save** does the same and writes the file only if no error remains. If the file changed since you opened it, the save is refused and you see the current values instead. Structured parameters are shown but can only be changed in the file itself. Saving needs permission to operate the environment, the same as running an experiment.
+
 ## Run an experiment
 
 Experiments are the `*.run.json` files under `experiments/`. Choose **Run** to start one. A run belongs to the environment, not to the thread or your connection: closing the tab or losing the connection doesn't stop it, and reconnecting shows the same run where it got to. Two runs execute at once per environment; later ones wait their turn. **Cancel** stops a run between steps and keeps everything it produced.

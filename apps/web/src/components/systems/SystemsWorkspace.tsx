@@ -11,6 +11,7 @@ import { Input } from "~/components/ui/input";
 import { SystemsRunDetail } from "./SystemsRunDetail";
 import { formatTime as format, statusTone } from "@t3tools/client-runtime/systems-presentation";
 import { Diagnostics } from "./SystemsDiagnostics";
+import { SystemsParameterEditor } from "./SystemsParameterEditor";
 
 const pathKey = (environmentId: string, projectId: string) =>
   `t3:systems-path:${environmentId}:${projectId}`;
@@ -45,6 +46,7 @@ function ProjectSystems({
   );
   const [path, setPath] = useState(draft);
   const [selectedRun, setSelectedRun] = useState<string | null>(null);
+  const [editing, setEditing] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const project = { environmentId, input: { projectId, path } };
@@ -62,6 +64,7 @@ function ProjectSystems({
     localStorage.setItem(pathKey(environmentId, projectId), next);
     setPath(next);
     setSelectedRun(null);
+    setEditing(null);
   };
 
   async function run(experimentRef: string) {
@@ -125,7 +128,17 @@ function ProjectSystems({
               {compiled.error && <p className="text-destructive">{compiled.error}</p>}
               {compiled.data?.entries.map((entry) => (
                 <div key={entry.entry} className="mt-2 rounded-md border border-border p-2">
-                  <p className="font-mono">{entry.entry}</p>
+                  <div className="flex items-center gap-2">
+                    <p className="min-w-0 flex-1 truncate font-mono">{entry.entry}</p>
+                    <Button
+                      size="xs"
+                      variant={editing === entry.entry ? "secondary" : "ghost"}
+                      aria-expanded={editing === entry.entry}
+                      onClick={() => setEditing(editing === entry.entry ? null : entry.entry)}
+                    >
+                      Edit parameters
+                    </Button>
+                  </div>
                   {entry.systemId && <p>System {entry.systemId}</p>}
                   {entry.semanticDigest && (
                     <p className="break-all font-mono text-muted-foreground">
@@ -150,6 +163,18 @@ function ProjectSystems({
                     </p>
                   )}
                   <Diagnostics diagnostics={entry.diagnostics} empty="Compiles cleanly." />
+                  {editing === entry.entry && (
+                    <SystemsParameterEditor
+                      environmentId={environmentId}
+                      projectId={projectId}
+                      path={path}
+                      file={entry.entry}
+                      onSaved={() => {
+                        validation.refresh();
+                        compiled.refresh();
+                      }}
+                    />
+                  )}
                 </div>
               ))}
             </div>

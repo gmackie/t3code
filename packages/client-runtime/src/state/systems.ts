@@ -56,6 +56,15 @@ export function createSystemsEnvironmentAtoms<R, E>(
       tag: WS_METHODS.systemsRunsCompare,
       staleTimeMs: 5_000,
     }),
+    model: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "systems:model",
+      tag: WS_METHODS.systemsModelsRead,
+      staleTimeMs: 1_000,
+    }),
+    patchModel: createEnvironmentRpcCommand(runtime, {
+      label: "systems:model-patch",
+      tag: WS_METHODS.systemsModelsPatch,
+    }),
     semanticDiff: createEnvironmentRpcCommand(runtime, {
       label: "systems:semantic-diff",
       tag: WS_METHODS.systemsSemanticDiff,

@@ -107,6 +107,10 @@ import {
   SystemsConformanceInput,
   SystemsConformanceResult,
   SystemsError,
+  SystemsModelPatchInput,
+  SystemsModelPatchResult,
+  SystemsModelReadInput,
+  SystemsModelReadResult,
   SystemsRun,
   SystemsRunCancelInput,
   SystemsRunCompareInput,
@@ -577,6 +581,8 @@ export const WS_METHODS = {
   systemsRunsCompare: "systems.runs.compare",
   systemsConformanceExecute: "systems.conformance.execute",
   systemsTargetsCapabilities: "systems.targets.capabilities",
+  systemsModelsRead: "systems.models.read",
+  systemsModelsPatch: "systems.models.patch",
 
   shellOpenInEditor: "shell.openInEditor",
 
@@ -1729,6 +1735,17 @@ const WsSystemsTargetsCapabilitiesRpc = Rpc.make(WS_METHODS.systemsTargetsCapabi
   error: SystemsRpcError,
 });
 
+const WsSystemsModelsReadRpc = Rpc.make(WS_METHODS.systemsModelsRead, {
+  payload: SystemsModelReadInput,
+  success: SystemsModelReadResult,
+  error: SystemsRpcError,
+});
+const WsSystemsModelsPatchRpc = Rpc.make(WS_METHODS.systemsModelsPatch, {
+  payload: SystemsModelPatchInput,
+  success: SystemsModelPatchResult,
+  error: SystemsRpcError,
+});
+
 const WsReverseListRpc = Rpc.make(WS_METHODS.reverseList, {
   payload: ReverseListInput,
   success: ReverseListResult,
@@ -2612,6 +2629,8 @@ export const WsRpcGroup = RpcGroup.make(
   WsSystemsRunsCompareRpc,
   WsSystemsConformanceExecuteRpc,
   WsSystemsTargetsCapabilitiesRpc,
+  WsSystemsModelsReadRpc,
+  WsSystemsModelsPatchRpc,
   WsGuestShareCreateRpc,
   WsServerProbeRpc,
   WsServerGetConfigRpc,
