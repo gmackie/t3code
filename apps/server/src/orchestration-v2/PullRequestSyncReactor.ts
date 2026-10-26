@@ -24,6 +24,7 @@ import * as Crypto from "effect/Crypto";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import * as Schedule from "effect/Schedule";
 import type * as Scope from "effect/Scope";
@@ -37,6 +38,7 @@ import { forkParked } from "../serverActivation.ts";
 import * as Orchestrator from "./Orchestrator.ts";
 import * as ProjectionStore from "./ProjectionStore.ts";
 import { isTerminalRunStatus } from "./ThreadManagementService.ts";
+import * as ThreadViewers from "./ThreadViewers.ts";
 
 const SLOW_SYNC_INTERVAL_MS = 15 * 60 * 1_000;
 // Every server polls every open linked pull request, and most of them sit untouched for days.
@@ -170,6 +172,12 @@ function changeRequestsCreatedBy(input: string, output: string) {
   }
   return created.size > creates ? [] : [...created.values()];
 }
+
+// An open pull request on threads nobody is showing or watching only feeds the sidebar badge and
+// settlement, so it is read on this cadence, doubled after each read that found nothing new, up
+// to the cap (T3CODE-53). Showing the thread, a watch, or a requested refresh reads it as before.
+const UNATTENDED_SYNC_INTERVAL_MS = 5 * 60 * 1_000;
+const UNATTENDED_SYNC_MAX_INTERVAL_MS = 30 * 60 * 1_000;
 
 const isPullRequestProviderError = Schema.is(PullRequestProviderError);
 
@@ -317,6 +325,8 @@ export const make = Effect.gen(function* () {
   const pullRequests = yield* PullRequestService.PullRequestService;
   const git = yield* GitManager.GitManager;
   const crypto = yield* Crypto.Crypto;
+  // Without it every thread counts as shown, which is how the sweep read before it existed.
+  const viewers = yield* Effect.serviceOption(ThreadViewers.ThreadViewers);
 
   const lastSyncedAt = new Map<string, number>();
   const requested = new Set<string>();
@@ -330,8 +340,26 @@ export const make = Effect.gen(function* () {
   const hostFailed = new Set<string>();
   // Pause per project and host because credentials are project-specific; leave paused PRs due until reset.
   const pausedUntil = new Map<string, number>();
+  // Reads in a row, on nobody's screen, that found the snapshot as it was.
+  const unattendedUnchanged = new Map<string, number>();
 
-  const isDue = (key: string, entries: ReadonlyArray<LinkEntry>, nowMs: number): boolean => {
+  /** Whether someone is looking at, or an agent is watching, a pull request of these links. */
+  const isAttended = (entries: ReadonlyArray<LinkEntry>, viewed: ReadonlySet<string> | null) =>
+    viewed === null ||
+    entries.some((entry) => viewed.has(entry.thread.id) || entry.link.watch !== undefined);
+
+  const unattendedIntervalMs = (key: string) =>
+    Math.min(
+      UNATTENDED_SYNC_INTERVAL_MS * 2 ** (unattendedUnchanged.get(key) ?? 0),
+      UNATTENDED_SYNC_MAX_INTERVAL_MS,
+    );
+
+  const isDue = (
+    key: string,
+    entries: ReadonlyArray<LinkEntry>,
+    nowMs: number,
+    viewed: ReadonlySet<string> | null,
+  ): boolean => {
     if (requested.has(key)) return true;
     const last = lastSyncedAt.get(key);
     // A down CLI used to stay due on every sweep, because a failed read never stamped
@@ -353,6 +381,7 @@ export const make = Effect.gen(function* () {
     const sinceLastMs = last === undefined ? Number.POSITIVE_INFINITY : nowMs - last;
     const open = active.filter((entry) => entry.link.snapshot?.state === "open");
     if (open.length > 0) {
+      if (!isAttended(open, viewed)) return sinceLastMs >= unattendedIntervalMs(key);
       const quiet = open.every((entry) => {
         const updatedAt = entry.link.snapshot?.updatedAt;
         return updatedAt != null && nowMs - Date.parse(updatedAt) >= QUIET_AFTER_MS;
@@ -372,6 +401,7 @@ export const make = Effect.gen(function* () {
     const now = yield* DateTime.now;
     const nowMs = DateTime.toEpochMillis(now);
     const nowIso = DateTime.formatIso(now);
+    const viewed = Option.isSome(viewers) ? yield* viewers.value.viewed : null;
 
     const groups = new Map<string, Array<LinkEntry>>();
     for (const thread of threads) {
@@ -394,6 +424,8 @@ export const make = Effect.gen(function* () {
     for (const key of retryStacks) if (!groups.has(key)) retryStacks.delete(key);
     for (const key of hostFailed) if (!groups.has(key)) hostFailed.delete(key);
     for (const key of requested.keys()) if (!groups.has(key)) requested.delete(key);
+    for (const key of unattendedUnchanged.keys())
+      if (!groups.has(key)) unattendedUnchanged.delete(key);
 
     const linkedThisSweep = new Set<string>();
     // Fresh stack reads by group, so a member flagged by a sibling is compared against what the
@@ -479,6 +511,14 @@ export const make = Effect.gen(function* () {
       if (invalidated) yield* pullRequests.invalidate({ reference: ref });
       const summary = yield* pullRequests.summary(ref, { recoverTransientFailure: false });
       const fields = snapshotFieldsOf(summary);
+      const unchanged = entries.every(
+        (entry) => entry.link.snapshot !== null && snapshotFieldsEqual(entry.link.snapshot, fields),
+      );
+      if (unchanged && !isAttended(entries, viewed)) {
+        unattendedUnchanged.set(key, (unattendedUnchanged.get(key) ?? 0) + 1);
+      } else {
+        unattendedUnchanged.delete(key);
+      }
       const needsStack =
         refreshRequested ||
         retryStacks.has(key) ||
@@ -590,7 +630,7 @@ export const make = Effect.gen(function* () {
     yield* Effect.forEach(
       groups,
       ([key, entries]) => {
-        if (!((scope === "all" || requested.has(key)) && isDue(key, entries, nowMs))) {
+        if (!((scope === "all" || requested.has(key)) && isDue(key, entries, nowMs, viewed))) {
           return Effect.void;
         }
         const first = entries[0]!;

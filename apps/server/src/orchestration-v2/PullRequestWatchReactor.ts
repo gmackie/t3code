@@ -522,8 +522,11 @@ export const make = Effect.gen(function* () {
           : last.at,
       fingerprint: group.fingerprint,
       inFlight:
-        detail.mergeability === "unknown" ||
-        detail.checks.some((check) => check.status === "pending"),
+        detail.checks.some((check) => check.status === "pending") ||
+        // A host fingerprint's status carries mergeability, so a change to it is read when it
+        // lands. Without one, an unknown answer is polled until the host has worked it out;
+        // with one, it is not, since some never do (ForgeGraph's native pull requests).
+        (fingerprint === null && detail.mergeability === "unknown"),
       remarksComplete: plan.activity ? remarks !== null : (last?.remarksComplete ?? false),
       watches: new Set(group.targets.map(watchKey)),
       status: fingerprint?.status ?? null,

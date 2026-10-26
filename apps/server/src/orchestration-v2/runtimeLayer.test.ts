@@ -3232,6 +3232,106 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
     }),
   );
 
+  // T3CODE-53: a native ForgeGraph pull request never learns its mergeability, which kept every
+  // watch on it reading the whole pull request on every pass.
+  it.effect(
+    "reads a pull request whose mergeability stays unknown only when its fingerprint moves",
+    () =>
+      Effect.gen(function* () {
+        const orchestrator = yield* Orchestrator.OrchestratorV2;
+        const threadId = ThreadId.make("runtime-pull-request-watch-unknown-mergeability");
+        const projectId = ProjectId.make("pr-watch-unknown-mergeability-project");
+        yield* seedProject({
+          projectId,
+          title: "Watch unknown mergeability",
+          workspaceRoot: "/workspace/watch-unknown-mergeability",
+          defaultModelSelection: null,
+          createdAt: "2026-10-01T00:00:00.000Z",
+        });
+        yield* orchestrator.dispatch({
+          type: "thread.create",
+          createdBy: "user",
+          creationSource: "web",
+          commandId: CommandId.make("pr-watch-unknown-mergeability-create"),
+          threadId,
+          projectId,
+          title: "Watch unknown mergeability",
+          modelSelection,
+          runtimeMode: "full-access",
+          interactionMode: "default",
+          branch: null,
+          worktreePath: null,
+        });
+        const key = { host: "forgegraf.com", repository: "gmackie/t3code", number: 53 };
+        yield* orchestrator.dispatch({
+          type: "thread.pull-request.watch",
+          commandId: CommandId.make("pr-watch-unknown-mergeability-start"),
+          threadId,
+          ...key,
+          watching: true,
+          link: { url: "https://forgegraf.com/changesets/cs-53", source: "agent" },
+        });
+
+        let status = "open abc123 pass";
+        let detailReads = 0;
+        const host = Layer.mergeAll(
+          NodeServices.layer,
+          Layer.mock(PullRequestService.PullRequestService)({
+            watchFingerprint: () => Effect.sync(() => ({ status, remarks: "0" })),
+            invalidate: () => Effect.void,
+            detail: () =>
+              Effect.sync(() => {
+                detailReads += 1;
+                return {
+                  ...watchedPullRequestDetail({
+                    projectId,
+                    number: 53,
+                    at: "2026-10-02T12:00:00.000Z",
+                  }),
+                  mergeability: "unknown" as const,
+                  checks: [
+                    { name: "ci", status: "success", description: null, url: null, required: true },
+                  ],
+                };
+              }),
+            activity: () =>
+              Effect.succeed({
+                comments: [],
+                commentCount: 0,
+                commentsTruncated: false,
+                reviewThreads: [],
+                commits: [],
+              }),
+          }),
+        );
+        const reactor = yield* PullRequestWatchReactor.make.pipe(Effect.provide(host));
+        const worker = yield* EffectWorker.OrchestrationEffectWorkerV2;
+        const sweep = reactor.sweep.pipe(Effect.andThen(worker.drain()));
+
+        yield* sweep;
+        assert.equal(detailReads, 1);
+        for (let pass = 0; pass < 5; pass++) {
+          yield* TestClock.adjust("2 minutes");
+          yield* sweep;
+        }
+        assert.equal(detailReads, 1, "an unchanged fingerprint reads nothing more");
+
+        status = "open abc123 pass conflicting";
+        yield* TestClock.adjust("2 minutes");
+        yield* sweep;
+        assert.equal(detailReads, 2, "a moved fingerprint reads the pull request");
+
+        yield* orchestrator.dispatch({
+          type: "thread.pull-request.watch",
+          commandId: CommandId.make("pr-watch-unknown-mergeability-end"),
+          threadId,
+          ...key,
+          watching: false,
+        });
+        yield* worker.drain();
+      }),
+  );
+
   // regression: #21155 watching a pull request again repeated news the thread already got
   it.effect("watching a dismissed stack layer again keeps what its last watch told", () =>
     Effect.gen(function* () {

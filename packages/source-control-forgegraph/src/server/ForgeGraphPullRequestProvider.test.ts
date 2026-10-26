@@ -1114,3 +1114,138 @@ describe("ForgeGraph diffs and commits (FORGE-147)", () => {
     }),
   );
 });
+
+describe("ForgeGraph reads a poll shares (T3CODE-53)", () => {
+  const routes = (current: () => Record<string, unknown>) => ({
+    ...repositoryRoutes,
+    "GET /fg/prs/by-number": () => [200, current()] as const,
+    "GET /fg/prs/cs-33/mergeability": { mergeable: "unknown", autoMerge: null },
+    "GET /fg/ci/gate": { status: "pass", builds: [] },
+    "POST /fg/prs/cs-33/comments": () => [201, { id: "c-9" }] as const,
+  });
+  const count = (sent: ReadonlyArray<SentRequest>, path: string) =>
+    sent.filter((request) => request.method === "GET" && request.path === path).length;
+
+  it.effect("reads a pull request once for a pass's reads, and afresh to write", () =>
+    Effect.gen(function* () {
+      const { fake } = yield* run(
+        routes(() => detail()),
+        (provider) =>
+          Effect.gen(function* () {
+            yield* Effect.all(
+              [
+                provider.getChangeRequestSummary!(target),
+                provider.getChangeRequestChecks!(target),
+                provider.getChangeRequest(target),
+                provider.getChangeRequestActivity(target),
+              ],
+              { concurrency: "unbounded" },
+            );
+            yield* provider.getChangeRequestSummary!(target);
+            // A write reads what it pins anew, and what it changed is not answered from before.
+            yield* provider.comment({ ...target, body: "Done." });
+            yield* provider.getChangeRequestSummary!(target);
+            // A permission check answers as of now.
+            yield* provider.getViewerPermissions(target);
+          }),
+      );
+      assert.strictEqual(count(fake.sent, "/fg/prs/by-number"), 4);
+      assert.strictEqual(count(fake.sent, "/fg/repositories/resolve"), 1);
+      assert.strictEqual(count(fake.sent, "/fg/apps"), 1);
+    }),
+  );
+
+  it.effect("reads a pull request again once its shared read is a few seconds old", () =>
+    Effect.gen(function* () {
+      const { fake } = yield* run(
+        routes(() => detail()),
+        (provider) =>
+          Effect.gen(function* () {
+            yield* provider.getChangeRequestSummary!(target);
+            yield* TestClock.adjust("11 seconds");
+            yield* provider.getChangeRequestSummary!(target);
+          }),
+      );
+      assert.strictEqual(count(fake.sent, "/fg/prs/by-number"), 2);
+    }),
+  );
+
+  it.effect("keeps a resolved repository for half an hour", () =>
+    Effect.gen(function* () {
+      const { fake } = yield* run(
+        routes(() => detail()),
+        (provider) =>
+          Effect.gen(function* () {
+            yield* provider.getChangeRequestChecks!(target);
+            yield* TestClock.adjust("20 minutes");
+            yield* provider.getChangeRequestChecks!(target);
+            yield* TestClock.adjust("11 minutes");
+            yield* provider.getChangeRequestChecks!(target);
+          }),
+      );
+      assert.strictEqual(count(fake.sent, "/fg/repositories/resolve"), 2);
+      assert.strictEqual(count(fake.sent, "/fg/apps"), 2);
+      assert.strictEqual(count(fake.sent, "/fg/ci/gate"), 3);
+    }),
+  );
+
+  it.effect("fingerprints a watch from one read that its detail read shares", () =>
+    Effect.gen(function* () {
+      let pull: Record<string, unknown> = detail({ ci: "running" });
+      let byNumberReads = 0;
+      const { result, fake } = yield* run(
+        routes(() => {
+          byNumberReads += 1;
+          return pull;
+        }),
+        (provider) =>
+          Effect.gen(function* () {
+            const first = yield* provider.getChangeRequestWatchFingerprint!(target);
+            yield* provider.getChangeRequest(target);
+            const readsForPass = byNumberReads;
+            yield* TestClock.adjust("2 minutes");
+            const same = yield* provider.getChangeRequestWatchFingerprint!(target);
+            pull = detail({ ci: "pass" });
+            yield* TestClock.adjust("2 minutes");
+            const checked = yield* provider.getChangeRequestWatchFingerprint!(target);
+            pull = detail({
+              ci: "pass",
+              comments: [
+                {
+                  id: "c-1",
+                  author: "alice",
+                  body: "Why?",
+                  createdAt: "2026-10-18T20:00:00Z",
+                  updatedAt: "2026-10-18T20:00:00Z",
+                },
+              ],
+            });
+            yield* TestClock.adjust("2 minutes");
+            const remarked = yield* provider.getChangeRequestWatchFingerprint!(target);
+            return { first, same, checked, remarked, readsForPass };
+          }),
+      );
+      // The pass read the pull request, its mergeability, and CI on the head: nothing twice.
+      assert.strictEqual(result.readsForPass, 1);
+      assert.deepStrictEqual(
+        fake.sent
+          .slice(0, 6)
+          .map((request) => request.path)
+          .toSorted(),
+        [
+          "/fg/apps",
+          "/fg/ci/gate",
+          "/fg/prs/by-number",
+          "/fg/prs/cs-33/files",
+          "/fg/prs/cs-33/mergeability",
+          "/fg/repositories/resolve",
+        ],
+      );
+      assert.deepStrictEqual(result.same, result.first);
+      assert.notStrictEqual(result.checked!.status, result.first!.status);
+      assert.strictEqual(result.checked!.remarks, result.first!.remarks);
+      assert.strictEqual(result.remarked!.status, result.checked!.status);
+      assert.notStrictEqual(result.remarked!.remarks, result.checked!.remarks);
+    }),
+  );
+});

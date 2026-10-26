@@ -37,6 +37,7 @@ import * as ServerActivation from "../serverActivation.ts";
 import * as Orchestrator from "./Orchestrator.ts";
 import * as ProjectionStore from "./ProjectionStore.ts";
 import * as PullRequestSyncReactor from "./PullRequestSyncReactor.ts";
+import * as ThreadViewers from "./ThreadViewers.ts";
 import type { PullRequestTestThread } from "./testkit/pullRequestFixtures.ts";
 
 const NOW = "2026-08-28T12:00:00.000Z";
@@ -170,6 +171,8 @@ interface HarnessOptions {
     input: PullRequestRef,
   ) => Effect.Effect<PullRequestStack | null, PullRequestOperationError>;
   readonly onSync?: (command: SyncCommand) => Effect.Effect<unknown>;
+  /** The threads a client shows; without it, every thread counts as shown. */
+  readonly viewed?: Ref.Ref<ReadonlySet<string>>;
 }
 
 const makeHarness = Effect.fn("makePullRequestSyncHarness")(function* (options: HarnessOptions) {
@@ -263,6 +266,12 @@ const makeHarness = Effect.fn("makePullRequestSyncHarness")(function* (options: 
     }),
     Layer.succeed(ServerActivation.ServerActivation, Deferred.await(activation)),
     Layer.succeed(Crypto.Crypto, testCrypto),
+    options.viewed === undefined
+      ? Layer.empty
+      : Layer.succeed(ThreadViewers.ThreadViewers, {
+          track: () => (stream) => stream,
+          viewed: Ref.get(options.viewed),
+        }),
   );
 
   return {
@@ -774,6 +783,50 @@ describe("PullRequestSyncReactor", () => {
           assert.strictEqual((yield* Ref.get(fixture.summaryCalls)).length, 2);
           assert.strictEqual((yield* Ref.get(fixture.stackCalls)).length, 1);
           assert.strictEqual((yield* Ref.get(fixture.syncCommands)).length, 1);
+        }).pipe(Effect.provide(fixture.layer));
+      }),
+    ),
+  );
+
+  it.effect("reads an open pull request nobody shows on a cadence that backs off", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        yield* TestClock.setTime(Date.parse(NOW));
+        const viewed = yield* Ref.make<ReadonlySet<string>>(new Set());
+        // Updated just now, so a shown thread would read it every sweep.
+        const fixture = yield* makeHarness({
+          snapshot: makeSnapshot([
+            makeThread("one", { pullRequests: [makeLink(42, { updatedAt: NOW })] }),
+          ]),
+          summary: (input) => Effect.succeed(makeSummary(input, { updatedAt: NOW })),
+          viewed,
+        });
+        const reads = Effect.map(Ref.get(fixture.summaryCalls), (calls) => calls.length);
+
+        yield* Effect.gen(function* () {
+          const reactor = yield* startAndSweep(fixture);
+          assert.strictEqual(yield* reads, 1);
+          // Unchanged, so the next read waits ten minutes rather than five.
+          for (let minute = 1; minute < 10; minute++) yield* sweepAgain(fixture, reactor);
+          assert.strictEqual(yield* reads, 1);
+          yield* sweepAgain(fixture, reactor);
+          assert.strictEqual(yield* reads, 2);
+          for (let minute = 1; minute < 5; minute++) yield* sweepAgain(fixture, reactor);
+          assert.strictEqual(yield* reads, 2);
+
+          // Shown again: read on the next sweep, and every sweep while it stays shown.
+          yield* Ref.set(viewed, new Set(["one"]));
+          yield* sweepAgain(fixture, reactor);
+          assert.strictEqual(yield* reads, 3);
+          yield* sweepAgain(fixture, reactor);
+          assert.strictEqual(yield* reads, 4);
+
+          // Hidden again: the back-off starts over at five minutes.
+          yield* Ref.set(viewed, new Set());
+          for (let minute = 1; minute < 5; minute++) yield* sweepAgain(fixture, reactor);
+          assert.strictEqual(yield* reads, 4);
+          yield* sweepAgain(fixture, reactor);
+          assert.strictEqual(yield* reads, 5);
         }).pipe(Effect.provide(fixture.layer));
       }),
     ),

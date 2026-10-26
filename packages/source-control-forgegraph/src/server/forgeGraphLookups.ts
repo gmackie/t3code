@@ -13,7 +13,18 @@ import * as Schema from "effect/Schema";
 import * as ForgeGraphApi from "./ForgeGraphApi.ts";
 import * as Json from "./forgeGraphJson.ts";
 
-const REPOSITORY_TTL = Duration.minutes(5);
+/**
+ * A repository's id and app hardly ever change, and every pull request read and CI gate starts
+ * from them, so a found repository with an app is kept for a long while (T3CODE-53).
+ */
+const REPOSITORY_TTL = Duration.minutes(30);
+/** One without an app is asked again sooner, so an app created for it is found. */
+const REPOSITORY_WITHOUT_APP_TTL = Duration.minutes(5);
+/**
+ * How long one read of a pull request answers every read of it. A pass over a pull request asks
+ * for its summary, detail, checks and activity at once; they share one `/prs/by-number`.
+ */
+const PULL_TTL = Duration.seconds(10);
 /** A changeset never changes which number it carries, so its id is kept for as long as it fits. */
 const CHANGESET_TTL = Duration.hours(1);
 /** The repository listing's own page cap. */
@@ -61,7 +72,7 @@ const notFound = (operation: string, detail: string) =>
 const cacheSuccessOnly = (ttl: Duration.Duration) => (exit: Exit.Exit<unknown, unknown>) =>
   Exit.isSuccess(exit) ? ttl : Duration.zero;
 
-/** @public Constructed once by each provider over the shared API. */
+/** @public Constructed once per driver, and shared by its providers over the shared API. */
 export const make = Effect.gen(function* () {
   const api = yield* ForgeGraphApi.ForgeGraphApi;
 
@@ -122,17 +133,31 @@ export const make = Effect.gen(function* () {
           appSlug: app?.slug ?? null,
         } satisfies ForgeGraphRepositoryTarget;
       }),
-    { capacity: 64, timeToLive: cacheSuccessOnly(REPOSITORY_TTL) },
+    {
+      capacity: 64,
+      timeToLive: (exit) =>
+        Exit.isSuccess(exit)
+          ? exit.value.appSlug === null
+            ? REPOSITORY_WITHOUT_APP_TTL
+            : REPOSITORY_TTL
+          : Duration.zero,
+    },
   );
 
+  /** A cached read's failure, reported against the operation that joined it. */
+  const asOperation =
+    (operation: string) =>
+    <A, R>(effect: Effect.Effect<A, ForgeGraphApi.ForgeGraphApiError, R>) =>
+      effect.pipe(
+        Effect.mapError((error) =>
+          error.operation === operation
+            ? error
+            : new ForgeGraphApi.ForgeGraphApiError({ ...error, operation }),
+        ),
+      );
+
   const target = (operation: string, repository: string) =>
-    Cache.get(repositories, repository.toLowerCase()).pipe(
-      Effect.mapError((error) =>
-        error.operation === operation
-          ? error
-          : new ForgeGraphApi.ForgeGraphApiError({ ...error, operation }),
-      ),
-    );
+    Cache.get(repositories, repository.toLowerCase()).pipe(asOperation(operation));
 
   /** The app slug an older server's listing and CI gate need; fails for a repository with none. */
   const appSlug = (operation: string, repository: string) =>
@@ -298,7 +323,7 @@ export const make = Effect.gen(function* () {
    * changeset id and answers 404, which is also the answer for a missing number, so both go on to
    * the app's listing before the number is reported missing.
    */
-  const pull = (operation: string, repository: string, number: number) =>
+  const readPullByNumber = (operation: string, repository: string, number: number) =>
     read(
       {
         operation,
@@ -316,6 +341,37 @@ export const make = Effect.gen(function* () {
         notFound(operation, `ForgeGraph pull request #${number} has no branch to read.`),
       ),
     );
+
+  const pullKey = (repository: string, number: number) => `${repository.toLowerCase()}#${number}`;
+  const pulls = yield* Cache.makeWith(
+    (key: string) => {
+      const separator = key.lastIndexOf("#");
+      return readPullByNumber(
+        "readPullRequest",
+        key.slice(0, separator),
+        Number(key.slice(separator + 1)),
+      );
+    },
+    { capacity: 256, timeToLive: cacheSuccessOnly(PULL_TTL) },
+  );
+
+  /**
+   * The pull request a number names, as read within the last few seconds. `fresh` reads it again
+   * for a caller that acts on what it reads: a write pinned to the head, or a permission check.
+   */
+  const pull = (
+    operation: string,
+    repository: string,
+    number: number,
+    options?: { readonly fresh?: boolean },
+  ) =>
+    options?.fresh === true
+      ? readPullByNumber(operation, repository, number)
+      : Cache.get(pulls, pullKey(repository, number)).pipe(asOperation(operation));
+
+  /** Drops a pull request's recent read, after a write changed it. */
+  const forgetPull = (repository: string, number: number) =>
+    Cache.invalidate(pulls, pullKey(repository, number));
 
   /**
    * CI builds on a commit. The gate is keyed by app, so a repository without one, or a server or
@@ -339,5 +395,19 @@ export const make = Effect.gen(function* () {
         )
       : Effect.succeed(null);
 
-  return { api, read, target, appSlug, listPulls, listByBranch, pull, pullById, gate };
+  return {
+    api,
+    read,
+    target,
+    appSlug,
+    listPulls,
+    listByBranch,
+    pull,
+    forgetPull,
+    pullById,
+    gate,
+  };
 });
+
+/** One set of lookups, shared by both providers so they share what they have read. */
+export type ForgeGraphLookups = Effect.Success<typeof make>;

@@ -90,8 +90,13 @@ export const makeDiscovery = Effect.gen(function* () {
 const changesetUrlPattern = /^https?:\/\/[^/]+\/changesets\/([0-9a-f-]{36})\/?(?:[?#].*)?$/iu;
 const pullUrlPattern = /^https?:\/\/([^/]+)\/([^/]+\/[^/]+)\/pulls\/(\d+)\/?(?:[?#].*)?$/u;
 
-export const make = Effect.gen(function* () {
-  const lookups = yield* ForgeGraphLookups.make;
+/**
+ * @public The provider over lookups the driver shares with its pull request provider, so the two
+ * read a repository once between them.
+ */
+export const makeWith = Effect.fn("ForgeGraphSourceControlProvider.makeWith")(function* (
+  lookups: ForgeGraphLookups.ForgeGraphLookups,
+) {
   const { api } = lookups;
   const host = yield* SourceControlHost.SourceControlHost;
   const fileSystem = yield* FileSystem.FileSystem;
@@ -386,3 +391,5 @@ export const make = Effect.gen(function* () {
     ),
   });
 });
+
+export const make = ForgeGraphLookups.make.pipe(Effect.flatMap(makeWith));

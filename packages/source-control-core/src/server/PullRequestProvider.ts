@@ -362,7 +362,11 @@ export interface PullRequestProviderApi {
     input: ProviderRepositoryRef & { readonly number: number },
   ) => Effect.Effect<ProviderChangeRequestSummary, PullRequestProviderError>;
 
-  /** Null means unknown; an absent method requires full watch reads. */
+  /**
+   * Null when the host gave no answer; without one, watches read in full every pass. `status`
+   * moves with state, head, checks and mergeability, `remarks` with any comment or review: a
+   * fingerprinted watch skips unknown mergeability and rereads remarks only when they move.
+   */
   readonly getChangeRequestWatchFingerprint?: (
     input: ProviderRepositoryRef & { readonly number: number },
   ) => Effect.Effect<ProviderChangeRequestWatchFingerprint | null, PullRequestProviderError>;

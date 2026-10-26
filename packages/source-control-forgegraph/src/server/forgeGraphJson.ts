@@ -20,6 +20,7 @@ import type {
 import type {
   ProviderChangeRequest,
   ProviderChangeRequestActivity,
+  ProviderChangeRequestWatchFingerprint,
 } from "@t3tools/source-control-core/server/PullRequestProvider";
 import * as DateTime from "effect/DateTime";
 import * as Option from "effect/Option";
@@ -563,5 +564,43 @@ export function toActivity(pull: ForgeGraphPull): ProviderChangeRequestActivity 
     commentsTruncated: false,
     reviewThreads: threaded ? toReviewThreads(remarks) : [],
     commits: [],
+  };
+}
+
+const newest = (stamps: ReadonlyArray<string | null | undefined>) =>
+  stamps.reduce<string>((latest, stamp) => (stamp && stamp > latest ? stamp : latest), "");
+
+/**
+ * What a watch compares between passes. `status` moves with the state, the head, CI on it, the
+ * merge state, mergeability and a pending merge-when-green request; `remarks` with a comment or
+ * review added, edited or resolved, none of which moves the pull request's own `updatedAt`.
+ */
+export function toWatchFingerprint(
+  pull: ForgeGraphPull,
+  mergeability: ForgeGraphMergeability | null,
+): ProviderChangeRequestWatchFingerprint {
+  const comments = pull.comments ?? [];
+  const reviews = pull.reviews ?? [];
+  const autoMerge = mergeability?.autoMerge === undefined ? pull.autoMerge : mergeability.autoMerge;
+  return {
+    status: [
+      stateOf(pull),
+      pull.status,
+      pull.isDraft ?? pull.status === "draft",
+      pull.headSha ?? "",
+      pull.ci ?? "",
+      pull.merge?.status ?? "",
+      mergeability?.mergeable ?? "",
+      autoMerge ? `when-green:${autoMerge.strategy ?? ""}` : "",
+      pull.updatedAt ?? "",
+    ].join(" "),
+    remarks: [
+      comments.length,
+      newest(comments.map((comment) => comment.updatedAt ?? comment.createdAt)),
+      comments.filter((comment) => comment.resolved === true).length,
+      reviews.length,
+      newest(reviews.map((review) => review.createdAt)),
+      reviews.filter((review) => review.current !== false).length,
+    ].join(" "),
   };
 }
