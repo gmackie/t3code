@@ -26,6 +26,8 @@ try {
           "os",
           // Safari's DOMMatrix fallback in d3-interpolate, behind a typeof guard.
           "WebKitCSSMatrix",
+          // @pierre/diffs' worker flag, read only behind a typeof guard.
+          "__DIFFS_WORKER__",
           // xmlbuilder has a latent undefined `children` in insertBefore.
           // Its vendored desktop code is unrelated to application imports.
           ...(desktop ? ["children"] : []),
