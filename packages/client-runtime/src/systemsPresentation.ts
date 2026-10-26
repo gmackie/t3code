@@ -1,4 +1,4 @@
-import type { SystemsSignalSeries } from "@t3tools/contracts";
+import type { SystemsRun, SystemsSignalSeries } from "@t3tools/contracts";
 
 /** An exact rational time as a short decimal-or-fraction label. */
 export const formatTime = (time: { readonly num: string; readonly den: string }) =>
@@ -61,3 +61,16 @@ export function plotSignals(series: ReadonlyArray<SystemsSignalSeries>, box: Plo
     }),
   };
 }
+
+export const isActiveRun = (run: Pick<SystemsRun, "status">) =>
+  run.status === "queued" || run.status === "running";
+
+/** The badge tone for a run status, shared so web and mobile read runs the same way. */
+export const statusTone = (status: SystemsRun["status"]) =>
+  status === "completed"
+    ? "success"
+    : status === "failed"
+      ? "error"
+      : status === "cancelled"
+        ? "warning"
+        : "info";
