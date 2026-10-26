@@ -1,0 +1,69 @@
+{
+  "format": "sw.statechart",
+  "schemaVersion": "0.1.0",
+  "semanticsVersion": "0.1",
+  "id": "hierarchy.chart",
+  "title": "Deepest enabled source wins",
+  "interface": {
+    "inputs": [],
+    "outputs": [],
+    "events": [
+      {
+        "id": "overload"
+      }
+    ]
+  },
+  "root": "state.root",
+  "states": [
+    {
+      "id": "state.root",
+      "type": "compound",
+      "initial": "state.normal"
+    },
+    {
+      "id": "state.normal",
+      "type": "compound",
+      "parent": "state.root",
+      "initial": "state.running"
+    },
+    {
+      "id": "state.running",
+      "type": "atomic",
+      "parent": "state.normal"
+    },
+    {
+      "id": "state.fault",
+      "type": "atomic",
+      "parent": "state.root"
+    },
+    {
+      "id": "state.off",
+      "type": "atomic",
+      "parent": "state.root"
+    }
+  ],
+  "transitions": [
+    {
+      "id": "tr.child_to_fault",
+      "source": "state.running",
+      "target": "state.fault",
+      "kind": "external",
+      "trigger": {
+        "kind": "event",
+        "id": "overload"
+      },
+      "priority": 50
+    },
+    {
+      "id": "tr.parent_to_off",
+      "source": "state.normal",
+      "target": "state.off",
+      "kind": "external",
+      "trigger": {
+        "kind": "event",
+        "id": "overload"
+      },
+      "priority": 1
+    }
+  ]
+}

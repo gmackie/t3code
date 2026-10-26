@@ -1,0 +1,56 @@
+{
+  "format": "sw.expectedTrace",
+  "schemaVersion": "0.1.0",
+  "fixtureId": "CHART-002",
+  "runRef": "experiments/timer.run.json",
+  "numericAbsTolerance": 0,
+  "observations": [
+    {
+      "time": {
+        "num": "0",
+        "den": "1"
+      },
+      "activeState": "state.idle",
+      "signals": {},
+      "firedTransitions": []
+    },
+    {
+      "time": {
+        "num": "1",
+        "den": "1"
+      },
+      "activeState": "state.armed",
+      "signals": {},
+      "firedTransitions": [
+        "tr.start"
+      ]
+    },
+    {
+      "time": {
+        "num": "5",
+        "den": "2"
+      },
+      "activeState": "state.expired",
+      "signals": {},
+      "firedTransitions": [
+        "tr.timeout"
+      ]
+    }
+  ],
+  "expectedTransitions": [
+    {
+      "time": {
+        "num": "1",
+        "den": "1"
+      },
+      "transitionId": "tr.start"
+    },
+    {
+      "time": {
+        "num": "5",
+        "den": "2"
+      },
+      "transitionId": "tr.timeout"
+    }
+  ]
+}

@@ -1,0 +1,200 @@
+{
+  "format": "sw.system",
+  "schemaVersion": "0.1.0",
+  "semanticsVersion": "0.1",
+  "id": "pump.system",
+  "title": "Sampled pump and tank hybrid system",
+  "clocks": [
+    {
+      "id": "clock.control",
+      "kind": "periodic",
+      "period": {
+        "num": "1",
+        "den": "1"
+      },
+      "offset": {
+        "num": "0",
+        "den": "1"
+      },
+      "priority": 100
+    }
+  ],
+  "nodes": [
+    {
+      "id": "inlet",
+      "type": "std.constant@1",
+      "parameters": {
+        "value": 1.0,
+        "unit": "m/s"
+      }
+    },
+    {
+      "id": "net_flow",
+      "type": "std.sum2@1",
+      "parameters": {
+        "unit": "m/s"
+      }
+    },
+    {
+      "id": "tank",
+      "type": "std.integrator@1",
+      "parameters": {
+        "initial": 0.0,
+        "unit": "m",
+        "derivativeUnit": "m/s"
+      }
+    },
+    {
+      "id": "level_sampler",
+      "type": "std.sample@1",
+      "parameters": {
+        "clock": "clock.control",
+        "unit": "m"
+      }
+    },
+    {
+      "id": "controller",
+      "type": "std.statechart@1",
+      "parameters": {
+        "chart": "statecharts/pump.chart.json",
+        "clock": "clock.control"
+      }
+    },
+    {
+      "id": "command_numeric",
+      "type": "std.boolean_to_scalar@1",
+      "parameters": {}
+    },
+    {
+      "id": "pump_gain",
+      "type": "std.gain@1",
+      "parameters": {
+        "gain": -3.0,
+        "gainUnit": "m/s"
+      }
+    },
+    {
+      "id": "pump_hold",
+      "type": "std.hold@1",
+      "parameters": {
+        "clock": "clock.control",
+        "unit": "m/s",
+        "initial": 0.0
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e.inlet",
+      "kind": "signal",
+      "from": {
+        "node": "inlet",
+        "port": "value"
+      },
+      "to": {
+        "node": "net_flow",
+        "port": "a"
+      }
+    },
+    {
+      "id": "e.flow",
+      "kind": "signal",
+      "from": {
+        "node": "net_flow",
+        "port": "value"
+      },
+      "to": {
+        "node": "tank",
+        "port": "derivative"
+      }
+    },
+    {
+      "id": "e.level_sample",
+      "kind": "signal",
+      "from": {
+        "node": "tank",
+        "port": "value"
+      },
+      "to": {
+        "node": "level_sampler",
+        "port": "value"
+      }
+    },
+    {
+      "id": "e.controller_level",
+      "kind": "signal",
+      "from": {
+        "node": "level_sampler",
+        "port": "value"
+      },
+      "to": {
+        "node": "controller",
+        "port": "level"
+      }
+    },
+    {
+      "id": "e.controller_command",
+      "kind": "signal",
+      "from": {
+        "node": "controller",
+        "port": "pump_enabled"
+      },
+      "to": {
+        "node": "command_numeric",
+        "port": "value"
+      }
+    },
+    {
+      "id": "e.to_gain",
+      "kind": "signal",
+      "from": {
+        "node": "command_numeric",
+        "port": "value"
+      },
+      "to": {
+        "node": "pump_gain",
+        "port": "value"
+      }
+    },
+    {
+      "id": "e.to_hold",
+      "kind": "signal",
+      "from": {
+        "node": "pump_gain",
+        "port": "value"
+      },
+      "to": {
+        "node": "pump_hold",
+        "port": "value"
+      }
+    },
+    {
+      "id": "e.pump_out",
+      "kind": "signal",
+      "from": {
+        "node": "pump_hold",
+        "port": "value"
+      },
+      "to": {
+        "node": "net_flow",
+        "port": "b"
+      }
+    }
+  ],
+  "outputs": [
+    {
+      "id": "level",
+      "source": {
+        "node": "tank",
+        "port": "value"
+      }
+    },
+    {
+      "id": "pump_enabled",
+      "source": {
+        "node": "controller",
+        "port": "pump_enabled"
+      }
+    }
+  ]
+}

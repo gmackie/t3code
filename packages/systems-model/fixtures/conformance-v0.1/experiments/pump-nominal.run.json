@@ -1,0 +1,29 @@
+{
+  "format": "sw.run",
+  "schemaVersion": "0.1.0",
+  "id": "run.pump.nominal",
+  "modelRef": "models/pump.system.json",
+  "start": {
+    "num": "0",
+    "den": "1"
+  },
+  "stop": {
+    "num": "6",
+    "den": "1"
+  },
+  "solver": {
+    "method": "rk4-fixed@1",
+    "fixedStep": {
+      "num": "1",
+      "den": "10"
+    },
+    "absTol": 1e-09,
+    "relTol": 1e-09
+  },
+  "inputs": [],
+  "seed": "0",
+  "probes": [
+    "level",
+    "pump_enabled"
+  ]
+}

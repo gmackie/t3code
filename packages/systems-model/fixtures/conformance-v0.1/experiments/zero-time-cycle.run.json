@@ -1,0 +1,20 @@
+{
+  "format": "sw.run",
+  "schemaVersion": "0.1.0",
+  "id": "run.zero-time",
+  "chartRef": "statecharts/zero-time-cycle.chart.json",
+  "start": {
+    "num": "0",
+    "den": "1"
+  },
+  "stop": {
+    "num": "1",
+    "den": "1"
+  },
+  "solver": {
+    "method": "none"
+  },
+  "inputs": [],
+  "seed": "0",
+  "probes": []
+}

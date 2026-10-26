@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://systems-workbench.invalid/schemas/layout.schema.json",
+  "type": "object",
+  "properties": {
+    "format": {
+      "const": "sw.layout"
+    },
+    "schemaVersion": {
+      "const": "0.1.0"
+    },
+    "modelId": {
+      "type": "string",
+      "pattern": "^[a-zA-Z][a-zA-Z0-9._:-]{0,127}$"
+    },
+    "positions": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "x": {
+            "type": "number"
+          },
+          "y": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "x",
+          "y"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "viewport": {
+      "type": "object",
+      "properties": {
+        "x": {
+          "type": "number"
+        },
+        "y": {
+          "type": "number"
+        },
+        "zoom": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        }
+      },
+      "required": [
+        "x",
+        "y",
+        "zoom"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "format",
+    "schemaVersion",
+    "modelId",
+    "positions",
+    "viewport"
+  ],
+  "additionalProperties": false
+}

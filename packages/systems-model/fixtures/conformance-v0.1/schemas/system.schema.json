@@ -1,0 +1,214 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://systems-workbench.invalid/schemas/system.schema.json",
+  "title": "Draft Systems Workbench semantic system v0.1",
+  "type": "object",
+  "properties": {
+    "format": {
+      "const": "sw.system"
+    },
+    "schemaVersion": {
+      "const": "0.1.0"
+    },
+    "semanticsVersion": {
+      "const": "0.1"
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-zA-Z][a-zA-Z0-9._:-]{0,127}$"
+    },
+    "title": {
+      "type": "string"
+    },
+    "clocks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-zA-Z][a-zA-Z0-9._:-]{0,127}$"
+          },
+          "kind": {
+            "const": "periodic"
+          },
+          "period": {
+            "type": "object",
+            "properties": {
+              "num": {
+                "type": "string",
+                "pattern": "^-?(0|[1-9][0-9]*)$"
+              },
+              "den": {
+                "type": "string",
+                "pattern": "^[1-9][0-9]*$"
+              }
+            },
+            "required": [
+              "num",
+              "den"
+            ],
+            "additionalProperties": false
+          },
+          "offset": {
+            "type": "object",
+            "properties": {
+              "num": {
+                "type": "string",
+                "pattern": "^-?(0|[1-9][0-9]*)$"
+              },
+              "den": {
+                "type": "string",
+                "pattern": "^[1-9][0-9]*$"
+              }
+            },
+            "required": [
+              "num",
+              "den"
+            ],
+            "additionalProperties": false
+          },
+          "priority": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "period",
+          "offset",
+          "priority"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "nodes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-zA-Z][a-zA-Z0-9._:-]{0,127}$"
+          },
+          "type": {
+            "type": "string",
+            "minLength": 1
+          },
+          "parameters": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "id",
+          "type",
+          "parameters"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "edges": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-zA-Z][a-zA-Z0-9._:-]{0,127}$"
+          },
+          "kind": {
+            "const": "signal"
+          },
+          "from": {
+            "type": "object",
+            "properties": {
+              "node": {
+                "type": "string",
+                "pattern": "^[a-zA-Z][a-zA-Z0-9._:-]{0,127}$"
+              },
+              "port": {
+                "type": "string",
+                "pattern": "^[a-zA-Z][a-zA-Z0-9._:-]{0,127}$"
+              }
+            },
+            "required": [
+              "node",
+              "port"
+            ],
+            "additionalProperties": false
+          },
+          "to": {
+            "type": "object",
+            "properties": {
+              "node": {
+                "type": "string",
+                "pattern": "^[a-zA-Z][a-zA-Z0-9._:-]{0,127}$"
+              },
+              "port": {
+                "type": "string",
+                "pattern": "^[a-zA-Z][a-zA-Z0-9._:-]{0,127}$"
+              }
+            },
+            "required": [
+              "node",
+              "port"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "from",
+          "to"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "outputs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-zA-Z][a-zA-Z0-9._:-]{0,127}$"
+          },
+          "source": {
+            "type": "object",
+            "properties": {
+              "node": {
+                "type": "string",
+                "pattern": "^[a-zA-Z][a-zA-Z0-9._:-]{0,127}$"
+              },
+              "port": {
+                "type": "string",
+                "pattern": "^[a-zA-Z][a-zA-Z0-9._:-]{0,127}$"
+              }
+            },
+            "required": [
+              "node",
+              "port"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "id",
+          "source"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": [
+    "format",
+    "schemaVersion",
+    "semanticsVersion",
+    "id",
+    "clocks",
+    "nodes",
+    "edges"
+  ],
+  "additionalProperties": false
+}

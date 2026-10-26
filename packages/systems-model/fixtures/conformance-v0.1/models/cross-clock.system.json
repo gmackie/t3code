@@ -1,0 +1,88 @@
+{
+  "format": "sw.system",
+  "schemaVersion": "0.1.0",
+  "semanticsVersion": "0.1",
+  "id": "clock.crossrate",
+  "title": "Counter at 1 Hz, consumer at 0.5 Hz, previous-committed policy",
+  "clocks": [
+    {
+      "id": "clock.fast",
+      "kind": "periodic",
+      "period": {
+        "num": "1",
+        "den": "1"
+      },
+      "offset": {
+        "num": "0",
+        "den": "1"
+      },
+      "priority": 10
+    },
+    {
+      "id": "clock.slow",
+      "kind": "periodic",
+      "period": {
+        "num": "2",
+        "den": "1"
+      },
+      "offset": {
+        "num": "0",
+        "den": "1"
+      },
+      "priority": 20
+    }
+  ],
+  "nodes": [
+    {
+      "id": "counter",
+      "type": "std.counter@1",
+      "parameters": {
+        "clock": "clock.fast",
+        "initial": 0,
+        "increment": 1,
+        "unit": "1"
+      }
+    },
+    {
+      "id": "bridge",
+      "type": "std.rate_transition@1",
+      "parameters": {
+        "sourceClock": "clock.fast",
+        "targetClock": "clock.slow",
+        "policy": "previous_committed",
+        "initial": 0,
+        "unit": "1"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e.rate",
+      "kind": "signal",
+      "from": {
+        "node": "counter",
+        "port": "value"
+      },
+      "to": {
+        "node": "bridge",
+        "port": "value"
+      }
+    }
+  ],
+  "outputs": [
+    {
+      "id": "source_counter",
+      "source": {
+        "node": "counter",
+        "port": "value"
+      }
+    },
+    {
+      "id": "target_latched",
+      "source": {
+        "node": "bridge",
+        "port": "value"
+      }
+    }
+  ]
+}

@@ -1,0 +1,48 @@
+{
+  "format": "sw.conformancePack",
+  "version": "0.1.0",
+  "semanticsVersion": "0.1",
+  "status": "DRAFT_FIXTURES_ONLY_NOT_EXECUTABLE",
+  "fixtures": [
+    {
+      "id": "DISC-001",
+      "source": "experiments/pump-nominal.run.json",
+      "expected": "expected/pump-nominal.trace.json"
+    },
+    {
+      "id": "CHART-001",
+      "source": "experiments/hierarchy.run.json",
+      "expected": "expected/hierarchy.trace.json"
+    },
+    {
+      "id": "CHART-002",
+      "source": "experiments/timer.run.json",
+      "expected": "expected/timer.trace.json"
+    },
+    {
+      "id": "CLOCK-001",
+      "source": "experiments/cross-clock.run.json",
+      "expected": "expected/cross-clock.trace.json"
+    },
+    {
+      "id": "NUM-001",
+      "source": "experiments/exponential-decay.run.json",
+      "expected": "expected/exponential-decay.trace.json"
+    },
+    {
+      "id": "TIME-001",
+      "source": "experiments/zero-time-cycle.run.json",
+      "expectedDiagnostic": "E-TIME-002"
+    },
+    {
+      "id": "TYPE-001",
+      "source": "negative/invalid-units.system.json",
+      "expectedDiagnostic": "E-UNIT-001"
+    },
+    {
+      "id": "GRAPH-001",
+      "source": "negative/algebraic-loop.system.json",
+      "expectedDiagnostic": "E-ALG-001"
+    }
+  ]
+}

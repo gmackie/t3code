@@ -1,0 +1,191 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://systems-workbench.invalid/schemas/run.schema.json",
+  "type": "object",
+  "properties": {
+    "format": {
+      "const": "sw.run"
+    },
+    "schemaVersion": {
+      "const": "0.1.0"
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-zA-Z][a-zA-Z0-9._:-]{0,127}$"
+    },
+    "modelRef": {
+      "type": "string",
+      "minLength": 1
+    },
+    "chartRef": {
+      "type": "string",
+      "minLength": 1
+    },
+    "start": {
+      "type": "object",
+      "properties": {
+        "num": {
+          "type": "string",
+          "pattern": "^-?(0|[1-9][0-9]*)$"
+        },
+        "den": {
+          "type": "string",
+          "pattern": "^[1-9][0-9]*$"
+        }
+      },
+      "required": [
+        "num",
+        "den"
+      ],
+      "additionalProperties": false
+    },
+    "stop": {
+      "type": "object",
+      "properties": {
+        "num": {
+          "type": "string",
+          "pattern": "^-?(0|[1-9][0-9]*)$"
+        },
+        "den": {
+          "type": "string",
+          "pattern": "^[1-9][0-9]*$"
+        }
+      },
+      "required": [
+        "num",
+        "den"
+      ],
+      "additionalProperties": false
+    },
+    "solver": {
+      "type": "object",
+      "properties": {
+        "method": {
+          "enum": [
+            "none",
+            "rk4-fixed@1",
+            "rk45-dopri5@1"
+          ]
+        },
+        "fixedStep": {
+          "type": "object",
+          "properties": {
+            "num": {
+              "type": "string",
+              "pattern": "^-?(0|[1-9][0-9]*)$"
+            },
+            "den": {
+              "type": "string",
+              "pattern": "^[1-9][0-9]*$"
+            }
+          },
+          "required": [
+            "num",
+            "den"
+          ],
+          "additionalProperties": false
+        },
+        "absTol": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "relTol": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        }
+      },
+      "required": [
+        "method"
+      ],
+      "additionalProperties": false
+    },
+    "inputs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "const": "event"
+          },
+          "time": {
+            "type": "object",
+            "properties": {
+              "num": {
+                "type": "string",
+                "pattern": "^-?(0|[1-9][0-9]*)$"
+              },
+              "den": {
+                "type": "string",
+                "pattern": "^[1-9][0-9]*$"
+              }
+            },
+            "required": [
+              "num",
+              "den"
+            ],
+            "additionalProperties": false
+          },
+          "type": {
+            "type": "string",
+            "pattern": "^[a-zA-Z][a-zA-Z0-9._:-]{0,127}$"
+          },
+          "priority": {
+            "type": "integer"
+          },
+          "sourceId": {
+            "type": "string",
+            "pattern": "^[a-zA-Z][a-zA-Z0-9._:-]{0,127}$"
+          },
+          "ordinal": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "kind",
+          "time",
+          "type",
+          "priority",
+          "sourceId",
+          "ordinal"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "seed": {
+      "type": "string",
+      "pattern": "^-?(0|[1-9][0-9]*)$"
+    },
+    "probes": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[a-zA-Z][a-zA-Z0-9._:-]{0,127}$"
+      }
+    }
+  },
+  "required": [
+    "format",
+    "schemaVersion",
+    "id",
+    "start",
+    "stop",
+    "solver",
+    "inputs",
+    "seed",
+    "probes"
+  ],
+  "additionalProperties": false,
+  "oneOf": [
+    {
+      "required": [
+        "modelRef"
+      ]
+    },
+    {
+      "required": [
+        "chartRef"
+      ]
+    }
+  ]
+}

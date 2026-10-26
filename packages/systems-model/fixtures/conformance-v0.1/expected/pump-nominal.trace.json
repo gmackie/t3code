@@ -1,0 +1,164 @@
+{
+  "format": "sw.expectedTrace",
+  "schemaVersion": "0.1.0",
+  "fixtureId": "DISC-001",
+  "runRef": "experiments/pump-nominal.run.json",
+  "numericAbsTolerance": 1e-08,
+  "observations": [
+    {
+      "time": {
+        "num": "0",
+        "den": "1"
+      },
+      "activeState": "state.off",
+      "signals": {
+        "level": {
+          "value": 0,
+          "unit": "m"
+        },
+        "pump_enabled": {
+          "value": false,
+          "unit": "1"
+        }
+      },
+      "firedTransitions": []
+    },
+    {
+      "time": {
+        "num": "1",
+        "den": "1"
+      },
+      "activeState": "state.off",
+      "signals": {
+        "level": {
+          "value": 1,
+          "unit": "m"
+        },
+        "pump_enabled": {
+          "value": false,
+          "unit": "1"
+        }
+      },
+      "firedTransitions": []
+    },
+    {
+      "time": {
+        "num": "2",
+        "den": "1"
+      },
+      "activeState": "state.off",
+      "signals": {
+        "level": {
+          "value": 2,
+          "unit": "m"
+        },
+        "pump_enabled": {
+          "value": false,
+          "unit": "1"
+        }
+      },
+      "firedTransitions": []
+    },
+    {
+      "time": {
+        "num": "3",
+        "den": "1"
+      },
+      "activeState": "state.on",
+      "signals": {
+        "level": {
+          "value": 3,
+          "unit": "m"
+        },
+        "pump_enabled": {
+          "value": true,
+          "unit": "1"
+        }
+      },
+      "firedTransitions": [
+        "tr.off_on"
+      ]
+    },
+    {
+      "time": {
+        "num": "4",
+        "den": "1"
+      },
+      "activeState": "state.off",
+      "signals": {
+        "level": {
+          "value": 1,
+          "unit": "m"
+        },
+        "pump_enabled": {
+          "value": false,
+          "unit": "1"
+        }
+      },
+      "firedTransitions": [
+        "tr.on_off"
+      ]
+    },
+    {
+      "time": {
+        "num": "5",
+        "den": "1"
+      },
+      "activeState": "state.off",
+      "signals": {
+        "level": {
+          "value": 2,
+          "unit": "m"
+        },
+        "pump_enabled": {
+          "value": false,
+          "unit": "1"
+        }
+      },
+      "firedTransitions": []
+    },
+    {
+      "time": {
+        "num": "6",
+        "den": "1"
+      },
+      "activeState": "state.on",
+      "signals": {
+        "level": {
+          "value": 3,
+          "unit": "m"
+        },
+        "pump_enabled": {
+          "value": true,
+          "unit": "1"
+        }
+      },
+      "firedTransitions": [
+        "tr.off_on"
+      ]
+    }
+  ],
+  "expectedTransitions": [
+    {
+      "time": {
+        "num": "3",
+        "den": "1"
+      },
+      "transitionId": "tr.off_on"
+    },
+    {
+      "time": {
+        "num": "4",
+        "den": "1"
+      },
+      "transitionId": "tr.on_off"
+    },
+    {
+      "time": {
+        "num": "6",
+        "den": "1"
+      },
+      "transitionId": "tr.off_on"
+    }
+  ]
+}

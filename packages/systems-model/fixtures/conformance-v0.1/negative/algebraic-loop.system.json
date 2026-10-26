@@ -1,0 +1,51 @@
+{
+  "format": "sw.system",
+  "schemaVersion": "0.1.0",
+  "semanticsVersion": "0.1",
+  "id": "negative.algebraic_loop",
+  "clocks": [],
+  "nodes": [
+    {
+      "id": "a",
+      "type": "std.gain@1",
+      "parameters": {
+        "gain": 1.0,
+        "gainUnit": "1"
+      }
+    },
+    {
+      "id": "b",
+      "type": "std.gain@1",
+      "parameters": {
+        "gain": 1.0,
+        "gainUnit": "1"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e.a_to_b",
+      "kind": "signal",
+      "from": {
+        "node": "a",
+        "port": "value"
+      },
+      "to": {
+        "node": "b",
+        "port": "value"
+      }
+    },
+    {
+      "id": "e.b_to_a",
+      "kind": "signal",
+      "from": {
+        "node": "b",
+        "port": "value"
+      },
+      "to": {
+        "node": "a",
+        "port": "value"
+      }
+    }
+  ]
+}

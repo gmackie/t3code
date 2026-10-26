@@ -1,0 +1,23 @@
+{
+  "format": "sw.run",
+  "schemaVersion": "0.1.0",
+  "id": "run.clock.crossrate",
+  "modelRef": "models/cross-clock.system.json",
+  "start": {
+    "num": "0",
+    "den": "1"
+  },
+  "stop": {
+    "num": "4",
+    "den": "1"
+  },
+  "solver": {
+    "method": "none"
+  },
+  "inputs": [],
+  "seed": "0",
+  "probes": [
+    "source_counter",
+    "target_latched"
+  ]
+}

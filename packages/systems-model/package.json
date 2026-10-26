@@ -1,0 +1,44 @@
+{
+  "name": "@t3tools/systems-model",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./diagnostics": {
+      "types": "./src/diagnostics.ts",
+      "import": "./src/diagnostics.ts"
+    },
+    "./documents": {
+      "types": "./src/documents.ts",
+      "import": "./src/documents.ts"
+    },
+    "./rational": {
+      "types": "./src/rational.ts",
+      "import": "./src/rational.ts"
+    },
+    "./validate": {
+      "types": "./src/validate.ts",
+      "import": "./src/validate.ts"
+    },
+    "./pack": {
+      "types": "./src/pack.ts",
+      "import": "./src/pack.ts"
+    },
+    "./trace": {
+      "types": "./src/trace.ts",
+      "import": "./src/trace.ts"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vp test run --config ../../vite.config.ts --dir ."
+  },
+  "dependencies": {
+    "effect": "catalog:"
+  },
+  "devDependencies": {
+    "@effect/platform-node": "catalog:",
+    "@effect/vitest": "catalog:",
+    "@types/node": "catalog:",
+    "vite-plus": "catalog:"
+  }
+}

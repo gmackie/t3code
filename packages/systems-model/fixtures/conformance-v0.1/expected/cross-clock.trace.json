@@ -1,0 +1,96 @@
+{
+  "format": "sw.expectedTrace",
+  "schemaVersion": "0.1.0",
+  "fixtureId": "CLOCK-001",
+  "runRef": "experiments/cross-clock.run.json",
+  "numericAbsTolerance": 0,
+  "observations": [
+    {
+      "time": {
+        "num": "0",
+        "den": "1"
+      },
+      "signals": {
+        "source_counter": {
+          "value": 1,
+          "unit": "1"
+        },
+        "target_latched": {
+          "value": 0,
+          "unit": "1"
+        }
+      },
+      "firedTransitions": []
+    },
+    {
+      "time": {
+        "num": "1",
+        "den": "1"
+      },
+      "signals": {
+        "source_counter": {
+          "value": 2,
+          "unit": "1"
+        },
+        "target_latched": {
+          "value": 0,
+          "unit": "1"
+        }
+      },
+      "firedTransitions": []
+    },
+    {
+      "time": {
+        "num": "2",
+        "den": "1"
+      },
+      "signals": {
+        "source_counter": {
+          "value": 3,
+          "unit": "1"
+        },
+        "target_latched": {
+          "value": 2,
+          "unit": "1"
+        }
+      },
+      "firedTransitions": []
+    },
+    {
+      "time": {
+        "num": "3",
+        "den": "1"
+      },
+      "signals": {
+        "source_counter": {
+          "value": 4,
+          "unit": "1"
+        },
+        "target_latched": {
+          "value": 2,
+          "unit": "1"
+        }
+      },
+      "firedTransitions": []
+    },
+    {
+      "time": {
+        "num": "4",
+        "den": "1"
+      },
+      "signals": {
+        "source_counter": {
+          "value": 5,
+          "unit": "1"
+        },
+        "target_latched": {
+          "value": 4,
+          "unit": "1"
+        }
+      },
+      "firedTransitions": []
+    }
+  ],
+  "expectedTransitions": [],
+  "notes": "At coincident t=2 tick, slow clock reads source value 2 from t=1, not newly committed 3 at t=2."
+}
