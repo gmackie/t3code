@@ -3,9 +3,11 @@ import {
   type PullRequestCapabilities,
   type PullRequestMergeMethod,
 } from "@t3tools/contracts";
+import * as Cache from "effect/Cache";
 import * as Clock from "effect/Clock";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
+import * as Exit from "effect/Exit";
 import { randomUuidV4 } from "@t3tools/provider-core/server/randomUuid";
 import {
   PullRequestProviderError,
@@ -49,6 +51,8 @@ const HEAD_SHA = /^[0-9a-f]{40}(?:[0-9a-f]{24})?$/u;
 const COMMENT_ID = /^[A-Za-z0-9_-]{1,128}$/u;
 /** How long a server that answered 404 for mergeability is not asked again. */
 const MERGEABILITY_RETRY_MS = 5 * 60_000;
+/** How long one mergeability read answers, so a watch's fingerprint and detail share it. */
+const MERGEABILITY_TTL = Duration.seconds(10);
 /** A diff ForgeGraph is still computing is asked for again this many times before giving up. */
 const DIFF_PENDING_ATTEMPTS = 10;
 /** The longest wait between those asks, whatever `retryAfter` says. */
@@ -76,9 +80,13 @@ function refusal(error: ForgeGraphApi.ForgeGraphApiError): string {
   }
 }
 
-/** @public Service construction is part of the canonical Effect module API. */
-export const make = Effect.gen(function* () {
-  const lookups = yield* ForgeGraphLookups.make;
+/**
+ * @public The provider over lookups the driver shares with its source control provider, so the
+ * two read a repository once between them.
+ */
+export const makeWith = Effect.fn("ForgeGraphPullRequestProvider.makeWith")(function* (
+  lookups: ForgeGraphLookups.ForgeGraphLookups,
+) {
   const { api } = lookups;
 
   const failure = (operation: string, detail: string) =>
@@ -102,12 +110,34 @@ export const make = Effect.gen(function* () {
       ? Effect.succeed(input.repository)
       : Effect.fail(failure(operation, "ForgeGraph repositories are named owner/repo."));
 
-  const readPull = (operation: string, input: PullRef) =>
+  /**
+   * A read may share one made a few seconds earlier; `fresh` reads again, for a write pinned to
+   * what it read and for a permission check, which must answer as of now.
+   */
+  const readPull = (operation: string, input: PullRef, options?: { readonly fresh?: boolean }) =>
     repositoryOf(operation, input).pipe(
       Effect.flatMap((repository) =>
-        lookups.pull(operation, repository, input.number).pipe(Effect.mapError(fromApi)),
+        lookups.pull(operation, repository, input.number, options).pipe(Effect.mapError(fromApi)),
       ),
     );
+  const readPullFresh = (operation: string, input: PullRef) =>
+    readPull(operation, input, { fresh: true });
+
+  /** What a write changed is read anew next time, not answered from before it. */
+  const afterWrite =
+    (input: PullRef) =>
+    <A, E, R>(effect: Effect.Effect<A, E, R>) =>
+      effect.pipe(
+        Effect.ensuring(
+          Effect.all(
+            [
+              lookups.forgetPull(input.repository, input.number),
+              Cache.invalidateAll(mergeabilities),
+            ],
+            { discard: true },
+          ),
+        ),
+      );
 
   const post = (operation: string, path: string, body: unknown) =>
     api
@@ -195,7 +225,7 @@ export const make = Effect.gen(function* () {
     input: PullRef & { readonly mergeMethod?: PullRequestMergeMethod; readonly whenGreen: boolean },
   ) {
     const operation = input.whenGreen ? "enable-auto-merge" : "merge";
-    const pull = yield* readPull(operation, input);
+    const pull = yield* readPullFresh(operation, input);
     if (pull.status === "merged") return;
     // An older server ignores `whenGreen` on a native pull request and merges at once.
     if (input.whenGreen && !Json.canMergeWhenGreen(pull))
@@ -215,39 +245,44 @@ export const make = Effect.gen(function* () {
 
   // A server without the route answers 404 for every pull request, so it is not asked for a while.
   let mergeabilityMissingAt: number | null = null;
-  const readMergeability = Effect.fn("ForgeGraphPullRequestProvider.readMergeability")(function* (
-    pull: Json.NumberedPull,
-  ) {
-    const now = yield* Clock.currentTimeMillis;
-    if (mergeabilityMissingAt !== null && now - mergeabilityMissingAt < MERGEABILITY_RETRY_MS)
-      return null;
-    return yield* lookups
-      .read(
-        {
-          operation: "getChangeRequest",
-          path: `/fg/prs/${encodeURIComponent(pull.id)}/mergeability`,
-        },
-        Json.ForgeGraphMergeability,
-      )
-      .pipe(
-        Effect.tap(() => Effect.sync(() => (mergeabilityMissingAt = null))),
-        Effect.catchTags({
-          ForgeGraphApiError: (error) => {
-            if (error.reason === "unauthenticated" || error.reason === "rate-limited")
-              return Effect.fail(fromApi(error));
-            if (error.status === 404) mergeabilityMissingAt = now;
-            // Mergeability decorates the detail; without it the detail still stands.
-            return Effect.succeed(null);
+  const readMergeabilityUncached = Effect.fn("ForgeGraphPullRequestProvider.readMergeability")(
+    function* (id: string) {
+      const now = yield* Clock.currentTimeMillis;
+      if (mergeabilityMissingAt !== null && now - mergeabilityMissingAt < MERGEABILITY_RETRY_MS)
+        return null;
+      return yield* lookups
+        .read(
+          {
+            operation: "getChangeRequest",
+            path: `/fg/prs/${encodeURIComponent(id)}/mergeability`,
           },
-        }),
-      );
+          Json.ForgeGraphMergeability,
+        )
+        .pipe(
+          Effect.tap(() => Effect.sync(() => (mergeabilityMissingAt = null))),
+          Effect.catchTags({
+            ForgeGraphApiError: (error) => {
+              if (error.reason === "unauthenticated" || error.reason === "rate-limited")
+                return Effect.fail(fromApi(error));
+              if (error.status === 404) mergeabilityMissingAt = now;
+              // Mergeability decorates the detail; without it the detail still stands.
+              return Effect.succeed(null);
+            },
+          }),
+        );
+    },
+  );
+  const mergeabilities = yield* Cache.makeWith(readMergeabilityUncached, {
+    capacity: 256,
+    timeToLive: (exit) => (Exit.isSuccess(exit) ? MERGEABILITY_TTL : Duration.zero),
   });
+  const readMergeability = (pull: Json.NumberedPull) => Cache.get(mergeabilities, pull.id);
 
   const cancelAutoMerge = Effect.fn("ForgeGraphPullRequestProvider.cancelAutoMerge")(function* (
     input: PullRef,
   ) {
     const operation = "disable-auto-merge";
-    const pull = yield* readPull(operation, input);
+    const pull = yield* readPullFresh(operation, input);
     yield* lookups
       .read(
         {
@@ -276,7 +311,7 @@ export const make = Effect.gen(function* () {
 
   /** Refuses thread writes on a server without threads, which would post a loose comment instead. */
   const readThreadedPull = (operation: string, input: PullRef) =>
-    readPull(operation, input).pipe(
+    readPullFresh(operation, input).pipe(
       Effect.filterOrFail(Json.hasThreads, () =>
         failure(operation, "This ForgeGraph server does not support review threads yet."),
       ),
@@ -396,7 +431,19 @@ export const make = Effect.gen(function* () {
       },
     ),
     getViewerPermissions: (input) =>
-      readPull("getViewerPermissions", input).pipe(Effect.map(Json.toViewerPermissions)),
+      readPullFresh("getViewerPermissions", input).pipe(Effect.map(Json.toViewerPermissions)),
+    /**
+     * The pull request's state, head, CI, mergeability and remarks, so a watch reads the rest only
+     * when one of them moved: one read of the pull request and one of its mergeability, which the
+     * detail read after it shares, in place of the five a full read takes.
+     */
+    getChangeRequestWatchFingerprint: Effect.fn(
+      "ForgeGraphPullRequestProvider.getChangeRequestWatchFingerprint",
+    )(function* (input) {
+      const pull = yield* readPull("getChangeRequestWatchFingerprint", input);
+      const mergeability = Json.stateOf(pull) === "open" ? yield* readMergeability(pull) : null;
+      return Json.toWatchFingerprint(pull, mergeability);
+    }),
     getDiff: Effect.fn("ForgeGraphPullRequestProvider.getDiff")(function* (input) {
       // FORGE-171 takes a commit by its full id, as the pull request's commit list gives it.
       const commit = input.commit?.toLowerCase();
@@ -420,56 +467,65 @@ export const make = Effect.gen(function* () {
         nextCursor: page.nextCursor ?? null,
       };
     }),
-    runAction: Effect.fn("ForgeGraphPullRequestProvider.runAction")(function* (input) {
-      switch (input.action) {
-        case "merge":
-          return yield* merge({ ...input, whenGreen: false });
-        case "enable-auto-merge":
-          return yield* merge({ ...input, whenGreen: true });
-        case "disable-auto-merge":
-          return yield* cancelAutoMerge(input);
-        case "close": {
-          const pull = yield* readPull("close", input);
-          if (Json.stateOf(pull) !== "open") return;
-          return yield* post("close", `/fg/prs/${encodeURIComponent(pull.id)}/close`, {});
+    runAction: Effect.fn("ForgeGraphPullRequestProvider.runAction")(
+      function* (input) {
+        switch (input.action) {
+          case "merge":
+            return yield* merge({ ...input, whenGreen: false });
+          case "enable-auto-merge":
+            return yield* merge({ ...input, whenGreen: true });
+          case "disable-auto-merge":
+            return yield* cancelAutoMerge(input);
+          case "close": {
+            const pull = yield* readPullFresh("close", input);
+            if (Json.stateOf(pull) !== "open") return;
+            return yield* post("close", `/fg/prs/${encodeURIComponent(pull.id)}/close`, {});
+          }
+          default:
+            return yield* failure(
+              input.action,
+              `ForgeGraph cannot ${input.action} from T3 Code yet.`,
+            );
         }
-        default:
+      },
+      (effect, input) => effect.pipe(afterWrite(input)),
+    ),
+    comment: Effect.fn("ForgeGraphPullRequestProvider.comment")(
+      function* (input) {
+        const pull = yield* readPullFresh("comment", input);
+        yield* post("comment", `/fg/prs/${encodeURIComponent(pull.id)}/comments`, {
+          body: input.body,
+        });
+      },
+      (effect, input) => effect.pipe(afterWrite(input)),
+    ),
+    submitReview: Effect.fn("ForgeGraphPullRequestProvider.submitReview")(
+      function* (input) {
+        const pull = yield* readPullFresh("submitReview", input);
+        if (!pull.headSha)
           return yield* failure(
-            input.action,
-            `ForgeGraph cannot ${input.action} from T3 Code yet.`,
+            "submitReview",
+            "ForgeGraph has not reported the pull request's head.",
           );
-      }
-    }),
-    comment: Effect.fn("ForgeGraphPullRequestProvider.comment")(function* (input) {
-      const pull = yield* readPull("comment", input);
-      yield* post("comment", `/fg/prs/${encodeURIComponent(pull.id)}/comments`, {
-        body: input.body,
-      });
-    }),
-    submitReview: Effect.fn("ForgeGraphPullRequestProvider.submitReview")(function* (input) {
-      const pull = yield* readPull("submitReview", input);
-      if (!pull.headSha)
-        return yield* failure(
-          "submitReview",
-          "ForgeGraph has not reported the pull request's head.",
-        );
-      // Pinned to the head that was read: ForgeGraph refuses the verdict if the branch moved.
-      yield* post("submitReview", `/fg/prs/${encodeURIComponent(pull.id)}/review`, {
-        expectedHeadSha: pull.headSha,
-        idempotencyKey: yield* randomUuidV4,
-        verdict: Json.REVIEW_VERDICT[input.verdict],
-        ...(input.body.length === 0 ? {} : { body: input.body }),
-      });
-      // ForgeGraph has no pending review to hold them, so the line comments follow the verdict,
-      // which is the head-pinned write: a moved head refuses the review before any is posted.
-      for (const draft of input.comments) {
-        yield* post(
-          "submitReview",
-          `/fg/prs/${encodeURIComponent(pull.id)}/comments`,
-          Json.toInlineComment(draft),
-        );
-      }
-    }),
+        // Pinned to the head that was read: ForgeGraph refuses the verdict if the branch moved.
+        yield* post("submitReview", `/fg/prs/${encodeURIComponent(pull.id)}/review`, {
+          expectedHeadSha: pull.headSha,
+          idempotencyKey: yield* randomUuidV4,
+          verdict: Json.REVIEW_VERDICT[input.verdict],
+          ...(input.body.length === 0 ? {} : { body: input.body }),
+        });
+        // ForgeGraph has no pending review to hold them, so the line comments follow the verdict,
+        // which is the head-pinned write: a moved head refuses the review before any is posted.
+        for (const draft of input.comments) {
+          yield* post(
+            "submitReview",
+            `/fg/prs/${encodeURIComponent(pull.id)}/comments`,
+            Json.toInlineComment(draft),
+          );
+        }
+      },
+      (effect, input) => effect.pipe(afterWrite(input)),
+    ),
     listReviewerCandidates: () =>
       Effect.fail(
         failure("listReviewerCandidates", "ForgeGraph reviewer requests are not supported."),
@@ -477,14 +533,17 @@ export const make = Effect.gen(function* () {
     setReviewerRequest: () =>
       Effect.fail(failure("setReviewerRequest", "ForgeGraph reviewer requests are not supported.")),
     // Threads are one level deep; a reply takes its root's anchor, so only the root is named.
-    replyToThread: Effect.fn("ForgeGraphPullRequestProvider.replyToThread")(function* (input) {
-      const parentId = yield* commentId("replyToThread", input.threadId);
-      const pull = yield* readThreadedPull("replyToThread", input);
-      yield* post("replyToThread", `/fg/prs/${encodeURIComponent(pull.id)}/comments`, {
-        body: input.body,
-        parentId,
-      });
-    }),
+    replyToThread: Effect.fn("ForgeGraphPullRequestProvider.replyToThread")(
+      function* (input) {
+        const parentId = yield* commentId("replyToThread", input.threadId);
+        const pull = yield* readThreadedPull("replyToThread", input);
+        yield* post("replyToThread", `/fg/prs/${encodeURIComponent(pull.id)}/comments`, {
+          body: input.body,
+          parentId,
+        });
+      },
+      (effect, input) => effect.pipe(afterWrite(input)),
+    ),
     setReaction: () =>
       Effect.fail(failure("setReaction", "ForgeGraph reactions are not supported.")),
     setThreadResolution: Effect.fn("ForgeGraphPullRequestProvider.setThreadResolution")(
@@ -497,7 +556,11 @@ export const make = Effect.gen(function* () {
           { resolved: input.resolved },
         );
       },
+      (effect, input) => effect.pipe(afterWrite(input)),
     ),
   };
   return provider;
 });
+
+/** @public Service construction is part of the canonical Effect module API. */
+export const make = ForgeGraphLookups.make.pipe(Effect.flatMap(makeWith));

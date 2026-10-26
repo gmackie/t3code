@@ -362,6 +362,10 @@ export interface PullRequestProviderApi {
   /**
    * Null when the host gave no answer for it. Optional: a host without one has
    * its watched change requests read in full on every pass.
+   *
+   * `status` must move with the state, head, checks and mergeability, and `remarks` with any
+   * comment or review: a watch with a fingerprint does not poll an unknown mergeability, and
+   * reads remarks again only when `remarks` moves (or after half an hour).
    */
   readonly getChangeRequestWatchFingerprint?: (
     input: ProviderRepositoryRef & { readonly number: number },
