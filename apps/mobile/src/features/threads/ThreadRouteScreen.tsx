@@ -529,6 +529,14 @@ function ThreadRouteContent(
       cwd: selectedThreadCwd,
     });
   };
+  const handleOpenSystems = () => {
+    if (selectedThread === null) return;
+    navigation.navigate("SystemsWorkspace", {
+      environmentId: String(selectedThread.environmentId),
+      threadId: String(selectedThread.id),
+      projectId: String(selectedThread.projectId),
+    });
+  };
   const handleOpenFilesInspector = () => {
     if (selectedThread === null || selectedThreadCwd === null) {
       return;
@@ -956,6 +964,7 @@ function ThreadRouteContent(
               {...(selectedThreadCwd !== null
                 ? { onOpenCad: handleOpenCad, onOpenGame: handleOpenGame }
                 : {})}
+              {...(selectedThreadProject !== null ? { onOpenSystems: handleOpenSystems } : {})}
               onOpenWork={() =>
                 navigation.navigate("ThreadWork", {
                   environmentId: selectedThread.environmentId,

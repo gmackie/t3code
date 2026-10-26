@@ -58,6 +58,13 @@ export function ThreadHeader(
         onPress: props.onOpenCad,
       });
     }
+    if (props.onOpenSystems) {
+      actions.push({
+        accessibilityLabel: "Open Systems",
+        icon: "waveform.path.ecg",
+        onPress: props.onOpenSystems,
+      });
+    }
     if (props.hasWorkspaceRoot && props.gitControls.canOpenTerminal) {
       actions.push({
         accessibilityLabel: "Open terminal",
@@ -91,6 +98,7 @@ export function ThreadHeader(
     props.onOpenFilesInspector,
     props.onOpenCad,
     props.onOpenGame,
+    props.onOpenSystems,
     onOpenTerminal,
     onMergeBack,
     props.onOpenGitInspector,

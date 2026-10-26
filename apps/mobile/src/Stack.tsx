@@ -48,6 +48,8 @@ import { useConnectOnboardingNavigation } from "./features/cloud/connectOnboardi
 import { AttachmentFileScreen } from "./features/files/AttachmentFileScreen";
 import { ThreadFilesTreeScreen, ThreadFileScreen } from "./features/files/ThreadFilesRouteScreen";
 import { KiCadViewerRouteScreen } from "./features/kicad/KiCadViewerRouteScreen";
+import { SystemsRunRouteScreen } from "./features/systems/SystemsRunRouteScreen";
+import { SystemsWorkspaceRouteScreen } from "./features/systems/SystemsWorkspaceRouteScreen";
 import { AdaptiveWorkspaceLayout } from "./features/layout/AdaptiveWorkspaceLayout";
 import { selectedPullRequestKey } from "./features/pull-requests/pullRequestSelection";
 import {
@@ -882,6 +884,16 @@ const RootStackConfig = createWorkspaceStackNavigator({
         ...SOLID_HEADER_OPTIONS,
         gestureEnabled: false,
       },
+    }),
+    SystemsWorkspace: createNativeStackScreen({
+      screen: SystemsWorkspaceRouteScreen,
+      linking: `${THREAD_LINKING_PREFIX}/systems`,
+      options: SOLID_HEADER_OPTIONS,
+    }),
+    SystemsRun: createNativeStackScreen({
+      screen: SystemsRunRouteScreen,
+      linking: `${THREAD_LINKING_PREFIX}/systems/runs/:runId`,
+      options: SOLID_HEADER_OPTIONS,
     }),
     ThreadFile: createNativeStackScreen({
       screen: ThreadFileScreen,

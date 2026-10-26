@@ -1,6 +1,6 @@
 # Systems mode
 
-Use **Systems** in the thread header, the command palette (**Switch to Systems mode**), or the panel add menu to open the Systems Workbench beside your conversation. It simulates block-diagram and statechart models written in the RFC-001 format and keeps every run. **Code** returns to the panel you were using before. Systems is available on web and desktop, not in the mobile app.
+Use **Systems** in the thread header, the command palette (**Switch to Systems mode**), or the panel add menu to open the Systems Workbench beside your conversation. It simulates block-diagram and statechart models written in the RFC-001 format and keeps every run. **Code** returns to the panel you were using before. In the mobile app, open a project thread and tap the **Systems** button in its header.
 
 Everything runs on the connected environment, including when you connect remotely.
 

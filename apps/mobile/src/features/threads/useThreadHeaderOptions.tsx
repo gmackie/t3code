@@ -26,6 +26,8 @@ export function useThreadHeaderOptions(props: {
   /** Open the thread's checkout in the KiCad or game viewer; omitted without a checkout. */
   readonly onOpenCad?: () => void;
   readonly onOpenGame?: () => void;
+  /** Opens the Systems Workbench for the thread's project; omitted without a project. */
+  readonly onOpenSystems?: () => void;
   readonly draft?: boolean;
 }) {
   const usesNativeWorkspaceColumns = useNativeWorkspaceColumnsSupported();
@@ -68,13 +70,34 @@ export function useThreadHeaderOptions(props: {
         : [],
     [onOpenGame],
   );
+  const onOpenSystems = props.onOpenSystems;
+  const systemsHeaderItems = useMemo<NativeHeaderItems>(
+    () =>
+      onOpenSystems
+        ? [
+            withNativeGlassHeaderItem({
+              accessibilityLabel: "Open Systems",
+              icon: { name: "waveform.path.ecg", type: "sfSymbol" as const },
+              identifier: "thread-right-systems",
+              onPress: onOpenSystems,
+              type: "button" as const,
+            }),
+          ]
+        : [],
+    [onOpenSystems],
+  );
   const splitRightHeaderItems = useMemo(
-    () => [...threadCenterHeaderItems, ...cadHeaderItems, ...gameHeaderItems],
-    [threadCenterHeaderItems, cadHeaderItems, gameHeaderItems],
+    () => [
+      ...threadCenterHeaderItems,
+      ...cadHeaderItems,
+      ...gameHeaderItems,
+      ...systemsHeaderItems,
+    ],
+    [threadCenterHeaderItems, cadHeaderItems, gameHeaderItems, systemsHeaderItems],
   );
   const compactRightHeaderItems = useMemo(
-    () => [...gitRightHeaderItems, ...cadHeaderItems, ...gameHeaderItems],
-    [gitRightHeaderItems, cadHeaderItems, gameHeaderItems],
+    () => [...gitRightHeaderItems, ...cadHeaderItems, ...gameHeaderItems, ...systemsHeaderItems],
+    [gitRightHeaderItems, cadHeaderItems, gameHeaderItems, systemsHeaderItems],
   );
   const splitLeftHeaderItems = useMemo<NativeHeaderItems>(
     () => [
