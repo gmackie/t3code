@@ -1,11 +1,7 @@
 /**
- * Which threads a client is showing. A client holds a thread's subscription for as long as the
- * thread is on screen, so every live `subscribeThread` stream counts as one viewer of it.
- *
- * Background work that only matters to someone looking (polling a linked pull request's status)
- * asks here, and slows down for threads nobody is looking at (T3CODE-53).
- *
- * @module orchestration-v2/ThreadViewers
+ * Which threads a client is showing: every live `subscribeThread` stream is one viewer.
+ * Background work that only matters to someone looking (polling a linked pull request)
+ * asks here and slows down for threads nobody is looking at.
  */
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
@@ -31,7 +27,7 @@ export class ThreadViewers extends Context.Service<
   }
 >()("t3/orchestration-v2/ThreadViewers") {}
 
-/** @public Service construction is part of the canonical Effect module API. */
+/** @public */
 export const make = Effect.sync(() => {
   const open = new Map<string, number>();
   const leftAt = new Map<string, number>();

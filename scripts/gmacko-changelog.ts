@@ -2,15 +2,10 @@
 // @effect-diagnostics nodeBuiltinImport:off - a plain git/gh wrapper run in CI.
 
 /**
- * Writes GMACKO release notes: the fork-only changes since the previous GMACKO
- * build, the upstream nightly the build includes, and a machine-readable
- * manifest the Settings → Changelog panel reads back from the release body.
- *
- *   generate  notes for one release (gmacko-nightly sync job)
- *   backfill  notes for every existing GMACKO tag; dry run unless --apply
- *
- * Needs a clone with the lane, its GMACKO tags, upstream main, and upstream's
- * nightly tags (`git fetch upstream main --tags`).
+ * Writes GMACKO release notes (fork-only changes, the included upstream nightly, and the manifest
+ * Settings → Changelog reads). `generate` covers one release; `backfill` every GMACKO tag, dry run
+ * unless --apply. Needs the lane, its GMACKO tags, upstream main and upstream's nightly tags (`git
+ * fetch upstream main --tags`).
  */
 
 import * as NodeChildProcess from "node:child_process";

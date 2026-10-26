@@ -71,23 +71,22 @@ import Migration0065 from "./Migrations/065_CodexUsageNativeTurnIndex.ts";
 import Migration0066 from "./Migrations/066_RepairClientSettlementTimestamps.ts";
 import Migration0067 from "./Migrations/067_WebhookDedupe.ts";
 import Migration0068 from "./Migrations/068_ShellStopRequestIndex.ts";
-// GMACKO lane migrations, released as 68, 69 and 70 before upstream claimed 68.
+import Migration0069 from "./Migrations/069_ThreadMessageSearch.ts";
+// GMACKO lane migrations, released as 68-70 and 69-71 before upstream claimed 68 and 69.
 import PeerLinks from "./Migrations/068_PeerLinks.ts";
 import PeerLinkFence from "./Migrations/069_PeerLinkFence.ts";
 import WaitingLinkRequestIndex from "./Migrations/070_WaitingLinkRequestIndex.ts";
-// GMACKO lane migration, released as 59, 62, 65, 67 and 71 before upstream claimed those ids.
+// GMACKO lane migration, released as 59, 62, 65, 67, 71 and 72 before upstream claimed those ids.
 import BoundedShellLookups from "./Migrations/059_BoundedShellLookups.ts";
-// T3CODE-6 Bob admission; released as 59 on main and 63, 66, 68 and 72 on custom-local before
-// upstream claimed those ids.
+// T3CODE-6 Bob admission; released as 59 on main and 63, 66, 68, 72 and 73 on custom-local
+// before upstream claimed those ids.
 import BobExecutionAdmission from "./Migrations/063_BobExecutionAdmission.ts";
 
 /**
- * Upstream's ThreadFailureLookupIndex (62) and the lane's BoundedShellLookups
- * both create `orchestration_v2_projection_turn_items_failed_error_idx` with the
- * same definition and no IF NOT EXISTS. Fresh installs run 62 before the lane
- * migration, while lane profiles that already applied BoundedShellLookups get 62
- * backfilled by reconcileMigrationLedger. Dropping the identical index first lets
- * either order succeed and leaves the same schema.
+ * Upstream's ThreadFailureLookupIndex (62) and the lane's BoundedShellLookups both create
+ * `orchestration_v2_projection_turn_items_failed_error_idx` without IF NOT EXISTS, and run in
+ * either order (fresh installs vs. reconcileMigrationLedger backfills). Dropping the identical
+ * index first lets both orders succeed with the same schema.
  */
 const dropSharedFailedErrorIndex = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
@@ -166,14 +165,15 @@ const migrationEntries = [
   [66, "RepairClientSettlementTimestamps", Migration0066],
   [67, "WebhookDedupe", Migration0067],
   [68, "ShellStopRequestIndex", Migration0068],
-  // Released as 68, 69 and 70 on the GMACKO lane; reconcileMigrationLedger re-keys them by name.
-  [69, "PeerLinks", PeerLinks],
-  [70, "PeerLinkFence", PeerLinkFence],
-  [71, "WaitingLinkRequestIndex", WaitingLinkRequestIndex],
-  // Released as 59, 62, 65, 67 and 71 on the GMACKO lane; re-keyed by name.
-  [72, "BoundedShellLookups", BoundedShellLookupsShared],
-  // Released as 59 on main and 63, 66, 68 and 72 on custom-local; re-keyed by name.
-  [73, "BobExecutionAdmission", BobExecutionAdmission],
+  [69, "ThreadMessageSearch", Migration0069],
+  // Released as 68-70 and 69-71 on the GMACKO lane; reconcileMigrationLedger re-keys them by name.
+  [70, "PeerLinks", PeerLinks],
+  [71, "PeerLinkFence", PeerLinkFence],
+  [72, "WaitingLinkRequestIndex", WaitingLinkRequestIndex],
+  // Released as 59, 62, 65, 67, 71 and 72 on the GMACKO lane; re-keyed by name.
+  [73, "BoundedShellLookups", BoundedShellLookupsShared],
+  // Released as 59 on main and 63, 66, 68, 72 and 73 on custom-local; re-keyed by name.
+  [74, "BobExecutionAdmission", BobExecutionAdmission],
 ] as const;
 
 export const migrationManifest = migrationEntries.map(([id, name]) => [id, name] as const);
@@ -189,12 +189,7 @@ const makeMigrationLoader = (throughId?: number) =>
 
 const FIRST_V2_MIGRATION_ID = 55;
 
-/**
- * Fail before migrating when the migrator would skip one of V2's own
- * migrations. It skips every id up to the highest recorded one, whatever name
- * was recorded, so a database that took a V2 id for another migration would
- * start without V2's schema and fail on first use.
- */
+// Migrators skip ids up to the highest recorded; reject collisions that would skip V2 schema.
 const assertV2MigrationsCanRun = Effect.fn("assertV2MigrationsCanRun")(function* (
   throughId?: number,
 ) {
@@ -257,11 +252,10 @@ const retiredLaneMigrations = new Set([
 const firstRerunnableMigrationId = 33;
 
 /**
- * Older migrations that only run CREATE INDEX IF NOT EXISTS, so re-running
- * them is safe. Retired lane rows held their slots on GMACKO profiles, which
- * left them unapplied by name. Each lists the tables it indexes: upstream's
- * DropUnusedV1Projections (63) drops some of them, and an index on a dropped
- * table has nothing left to cover, so the backfill records it without running.
+ * Older migrations that only CREATE INDEX IF NOT EXISTS, so re-running them is safe; retired lane
+ * rows left them unapplied by name on GMACKO profiles. Each lists the tables it indexes: upstream's
+ * DropUnusedV1Projections (63) drops some, and an index on a dropped table is recorded without
+ * running.
  */
 const rerunnableIndexMigrations = new Map<string, ReadonlyArray<string>>([
   ["ProjectionSnapshotLookupIndexes", ["projection_projects", "projection_threads"]],
@@ -286,25 +280,10 @@ const indexedTablesExist = Effect.fn("indexedTablesExist")(function* (name: stri
 });
 
 /**
- * The GMACKO lane rebases onto upstream, and upstream occasionally claims
- * migration ids the lane was using, so lane migrations get renumbered. The
- * migrator tracks applied migrations by numeric id only and skips every id at
- * or below the highest recorded one, which turns a renumbered ledger into
- * silently skipped migrations and a schema that lags the code (missing
- * columns surface later as runtime SQL errors, not migration failures).
- *
- * Reconcile the ledger by migration NAME before the migrator runs:
- * - rows whose name moved to a new id are re-keyed to the manifest id
- * - rows named in retiredLaneMigrations are dropped (their schema effects
- *   stay in place); rows with any other unknown name are left exactly where
- *   they are
- * - re-runnable manifest migrations below the highest applied id that were
- *   never applied by name ("holes" created by past renumbering) are executed
- *   and recorded
- *
- * Aligned ledgers (every fresh install, and every repaired profile after one
- * boot) short-circuit without writing anything, as does any ledger where a
- * foreign row occupies a slot the reconciliation would need.
+ * The migrator skips every id at or below the highest recorded one, so lane migrations renumbered
+ * around upstream ids would be silently skipped. Reconcile by NAME first: re-key moved rows, drop
+ * retiredLaneMigrations rows (schema stays), keep other unknown names, run re-runnable "holes".
+ * Aligned ledgers write nothing.
  */
 export const reconcileMigrationLedger = Effect.fn("reconcileMigrationLedger")(function* () {
   const sql = yield* SqlClient.SqlClient;

@@ -436,6 +436,18 @@
       "types": "./src/state/plugins.ts",
       "default": "./src/state/plugins.ts"
     },
+    "./change-request-links": {
+      "types": "./src/changeRequestLinks.ts",
+      "default": "./src/changeRequestLinks.ts"
+    },
+    "./thread-pull-requests": {
+      "types": "./src/threadPullRequests.ts",
+      "default": "./src/threadPullRequests.ts"
+    },
+    "./thread-reference": {
+      "types": "./src/threadReference.ts",
+      "default": "./src/threadReference.ts"
+    },
     "./state/game": {
       "types": "./src/state/game.ts",
       "default": "./src/state/game.ts"
@@ -472,6 +484,18 @@
       "types": "./src/pullRequestMarkdown.ts",
       "default": "./src/pullRequestMarkdown.ts"
     },
+    "./pull-request-checks": {
+      "types": "./src/pullRequestChecks.ts",
+      "default": "./src/pullRequestChecks.ts"
+    },
+    "./pull-request-editing": {
+      "types": "./src/pullRequestEditing.ts",
+      "default": "./src/pullRequestEditing.ts"
+    },
+    "./pull-request-reactions": {
+      "types": "./src/pullRequestReactions.ts",
+      "default": "./src/pullRequestReactions.ts"
+    },
     "./pull-request-query": {
       "types": "./src/pullRequestQuery.ts",
       "default": "./src/pullRequestQuery.ts"
@@ -489,14 +513,9 @@
     "@pierre/diffs": "catalog:",
     "@t3tools/contracts": "workspace:*",
     "@t3tools/shared": "workspace:*",
-    "@t3tools/source-control-azure-devops": "workspace:*",
-    "@t3tools/source-control-bitbucket": "workspace:*",
     "@t3tools/source-control-core": "workspace:*",
+    "@t3tools/source-control-definitions": "workspace:*",
     "@t3tools/source-control-forgegraph": "workspace:*",
-    "@t3tools/source-control-forgejo": "workspace:*",
-    "@t3tools/source-control-gitcafe": "workspace:*",
-    "@t3tools/source-control-github": "workspace:*",
-    "@t3tools/source-control-gitlab": "workspace:*",
     "effect": "catalog:",
     "three": "0.180.0"
   },

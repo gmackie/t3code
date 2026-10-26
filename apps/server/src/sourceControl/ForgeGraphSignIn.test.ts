@@ -72,7 +72,7 @@ function fakeApi(polls: ReadonlyArray<"pending" | "denied" | "token">) {
 
 const withSignIn = (api: ReturnType<typeof fakeApi>) =>
   Effect.provide(
-    ForgeGraphSignIn.layer.pipe(
+    ForgeGraphSignIn.layerFromApi.pipe(
       Layer.provideMerge(ServerSettings.layerTest()),
       Layer.provideMerge(api.layer),
     ),

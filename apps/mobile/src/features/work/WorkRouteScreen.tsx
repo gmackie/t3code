@@ -24,6 +24,7 @@ import { useThreadShell } from "../../state/entities";
 import { useEnvironmentQuery } from "../../state/query";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { uuidv4 } from "../../lib/uuid";
+import { useOpenLinkedThread } from "../threads/useOpenLinkedThread";
 
 type Props = StaticScreenProps<{ environmentId: EnvironmentId; threadId: ThreadId }>;
 const decode = <A,>(operation: string, value: unknown): A =>
@@ -96,6 +97,7 @@ async function loadWork(
 export function WorkRouteScreen(props: Props) {
   const { environmentId, threadId } = props.route.params;
   const navigation = useNavigation();
+  const openLinkedThread = useOpenLinkedThread();
   const thread = useThreadShell(scopeThreadRef(environmentId, threadId));
   const connection = useEnvironmentQuery(bobCoordination.connection({ environmentId, input: {} }));
   const call = useAtomCommand(bobCoordination.call, { reportFailure: false });
@@ -258,7 +260,7 @@ export function WorkRouteScreen(props: Props) {
                   <Button
                     label="Open execution thread"
                     onPress={() =>
-                      navigation.navigate("Thread", {
+                      openLinkedThread({
                         environmentId: EnvironmentId.make(item.execution!.thread.environmentId),
                         threadId: ThreadId.make(item.execution!.thread.threadId),
                       })

@@ -19,9 +19,7 @@ const DEFAULT_CACHE_CAPACITY = 512;
 const DEFAULT_MAX_PENDING = 512;
 const DEFAULT_CONCURRENCY = 4;
 const DEFAULT_SUCCESS_TTL = Duration.minutes(1);
-// A favicon scan checks about 20 files. Shell reads (and PR sync through them) ask for every
-// linked project about once a minute, and icons rarely change, so a resolved favicon is kept
-// longer than the identity, which is only a hit on RepositoryIdentityResolver's own cache.
+// Frequent shell reads scan ~20 files per project; icons change rarely, so cache longer than identities.
 const DEFAULT_FAVICON_TTL = Duration.minutes(15);
 // getAvailable runs for every project on each shell snapshot, so a short failure TTL
 // requeues failing lookups before the previous pass finishes (T3CODE-8).

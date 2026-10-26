@@ -19,7 +19,6 @@ on:
       - packages/shared/src/t3McpToolPresentation.ts
       - packages/client-runtime/src/t3ToolSummary.ts
       - apps/server/src/mcp/McpHttpServer.test.ts
-      - apps/server/src/mcp/toolkits/worktree/registration.test.ts
       - apps/server/src/ws.ts
       - apps/server/src/server.ts
       - apps/server/src/observability/RpcInstrumentation.ts
@@ -34,7 +33,7 @@ on:
       - apps/web/src/components/settings/ForgeGraphSignInSettings.tsx
       - apps/web/src/components/settings/SourceControlSettings.tsx
       - apps/web/src/components/pullRequest/**
-      - apps/web/src/sourceControlPresentation.ts
+      - apps/web/src/sourceControlPresentation.tsx
       - apps/mobile/src/features/projects/SourceControlIcon.tsx
       - apps/mobile/src/features/settings/SettingsServerControlsRouteScreen.tsx
       - apps/mobile/src/features/settings/forgegraph-sign-in*.ts
@@ -82,8 +81,6 @@ jobs:
           corepack enable
           corepack prepare pnpm@12.14.0 --activate
           pnpm install --frozen-lockfile
-      - name: Test source control in shared
-        run: pnpm -C packages/shared exec vp test run --config ../../vite.config.ts --dir . src/sourceControl.test.ts
       - name: Test source control clients in client-runtime
         run: pnpm -C packages/client-runtime exec vp test run src/sourceControlClients.test.ts src/forgeGraphSignIn.test.ts
 
@@ -101,7 +98,7 @@ jobs:
           corepack prepare pnpm@12.14.0 --activate
           pnpm install --frozen-lockfile
       - name: Test the server's source control and pull request services
-        run: pnpm -C apps/server exec vp test run src/sourceControl/ForgeGraphSignIn.test.ts src/sourceControl/SourceControlDiscovery.test.ts src/sourceControl/SourceControlProviderRegistry.test.ts src/auth/RpcAuthorization.test.ts src/pullRequest/PullRequestService.test.ts src/mcp/toolkits/pullRequests src/mcp/McpHttpServer.test.ts src/mcp/toolkits/worktree/registration.test.ts src/mcp/toolkits/core.test.ts
+        run: pnpm -C apps/server exec vp test run src/sourceControl/ForgeGraphSignIn.test.ts src/sourceControl/SourceControlDiscovery.test.ts src/sourceControl/SourceControlProviderRegistry.test.ts src/auth/RpcAuthorization.test.ts src/pullRequest/PullRequestService.test.ts src/mcp/toolkits/pullRequests src/mcp/McpHttpServer.test.ts src/mcp/toolkits/core.test.ts
 
   server-typecheck:
     runs-on: forgegraph-ci
@@ -188,7 +185,6 @@ jobs:
             packages/contracts/src/pullRequest.ts
             packages/contracts/src/rpc.ts
             packages/shared/src/sourceControl.ts
-            packages/shared/src/sourceControl.test.ts
             packages/client-runtime/src/sourceControlClients.ts
             packages/client-runtime/src/sourceControlClients.test.ts
             packages/client-runtime/src/state/sourceControl.ts
@@ -196,13 +192,12 @@ jobs:
             apps/web/src/components/settings/ForgeGraphSignInSettings.tsx
             apps/web/src/components/settings/SourceControlSettings.tsx
             apps/web/src/components/settings/settingsSearch.ts
-            apps/web/src/sourceControlPresentation.ts
+            apps/web/src/sourceControlPresentation.tsx
             apps/mobile/src/features/projects/SourceControlIcon.tsx
             apps/server/src/pullRequest/PullRequestService.ts
             apps/server/src/pullRequest/PullRequestService.test.ts
             apps/server/src/mcp/toolkits/pullRequests
             apps/server/src/mcp/McpHttpServer.test.ts
-            apps/server/src/mcp/toolkits/worktree/registration.test.ts
             apps/mobile/src/features/settings/SettingsServerControlsRouteScreen.tsx
             apps/mobile/src/features/settings/forgegraph-sign-in.ts
             apps/mobile/src/features/settings/forgegraph-sign-in.test.ts

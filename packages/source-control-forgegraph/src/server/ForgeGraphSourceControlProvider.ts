@@ -15,7 +15,7 @@ import * as SourceControlHost from "@t3tools/source-control-core/server/SourceCo
 import * as SourceControlProvider from "@t3tools/source-control-core/server/SourceControlProvider";
 
 import * as ForgeGraphApi from "./ForgeGraphApi.ts";
-import * as ForgeGraphHosts from "./forgeGraphHosts.ts";
+import * as ForgeGraphHosts from "../shared/forgeGraphHosts.ts";
 import * as Json from "./forgeGraphJson.ts";
 import * as ForgeGraphLookups from "./forgeGraphLookups.ts";
 

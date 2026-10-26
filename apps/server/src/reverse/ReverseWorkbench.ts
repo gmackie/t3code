@@ -1,11 +1,7 @@
 /**
- * ReverseWorkbench - firmware investigations for a project.
- *
- * Owns the investigation store, native analyzers, the Ghidra session pool and
- * the Veritas client. WebSocket RPCs and the workbench HTTP route call it; it
- * checks that the project exists before touching any investigation.
- *
- * @module ReverseWorkbench
+ * ReverseWorkbench - firmware investigations for a project. Owns the investigation store, native
+ * analyzers, the Ghidra session pool and the Veritas client; WebSocket RPCs and the workbench HTTP
+ * route call it, and it checks the project exists before touching any investigation.
  */
 import {
   type ProjectId,

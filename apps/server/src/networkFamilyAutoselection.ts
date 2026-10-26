@@ -5,14 +5,10 @@ import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 
 /**
- * Per-address budget for Node's Happy Eyeballs (`autoSelectFamily`).
- *
- * Node's default is 250 ms. On a network that advertises IPv6 but cannot route
- * it, the IPv6 attempt eats that budget and the IPv4 attempt that follows can be
- * cut off too, so roughly one outbound request in three timed out while curl
- * succeeded. 2000 ms measured reliable on such a network and still sits well
- * under any request timeout. Healthy networks are unaffected: the first address
- * that connects wins immediately, so the budget only matters when one fails.
+ * Per-address Happy Eyeballs (`autoSelectFamily`) budget. Node's 250 ms default lets an advertised
+ * but unroutable IPv6 attempt starve the IPv4 fallback, timing out about one request in three; 2000
+ * ms measured reliable and stays under any request timeout. Healthy networks are unaffected: the
+ * first address that connects wins immediately.
  */
 export const DEFAULT_NETWORK_FAMILY_ATTEMPT_TIMEOUT_MS = 2_000;
 

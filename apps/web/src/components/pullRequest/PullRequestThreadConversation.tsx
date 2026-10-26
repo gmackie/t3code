@@ -11,7 +11,10 @@ import { pullRequestEnvironment } from "~/state/pullRequests";
 import { useAtomCommand } from "~/state/use-atom-command";
 import { toastManager } from "../ui/toast";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
-import { canEditPullRequestComment, canResolvePullRequestThread } from "./pullRequestEditing.logic";
+import {
+  canEditPullRequestComment,
+  canResolvePullRequestThread,
+} from "@t3tools/client-runtime/pull-request-editing";
 import { ReviewThreadCard } from "./PullRequestReviewAnnotation";
 
 /**

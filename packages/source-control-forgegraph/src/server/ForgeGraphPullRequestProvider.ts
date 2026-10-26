@@ -15,9 +15,9 @@ import {
   type PullRequestProviderApi,
 } from "@t3tools/source-control-core/server/PullRequestProvider";
 
-import { definition } from "../client/definition.ts";
+import { definition } from "../shared/definition.ts";
 import * as ForgeGraphApi from "./ForgeGraphApi.ts";
-import { forgeGraphRepositoryPath } from "./forgeGraphHosts.ts";
+import { forgeGraphRepositoryPath } from "../shared/forgeGraphHosts.ts";
 import * as Json from "./forgeGraphJson.ts";
 import * as ForgeGraphLookups from "./forgeGraphLookups.ts";
 
@@ -45,6 +45,13 @@ const CAPABILITIES: PullRequestCapabilities = {
   },
   reviewers: { request: false, listCandidates: false },
   edit: { changeRequest: false, comment: false },
+};
+
+const UNAVAILABLE_REQUIREMENT = {
+  missing:
+    "No ForgeGraph credential on the server. Sign in from Settings → Source Control, set FG_API_TOKEN, or run `forge login` on the server.",
+  unauthenticated:
+    "ForgeGraph refused the server's token. Sign in again from Settings → Source Control.",
 };
 
 const HEAD_SHA = /^[0-9a-f]{40}(?:[0-9a-f]{24})?$/u;
@@ -80,10 +87,7 @@ function refusal(error: ForgeGraphApi.ForgeGraphApiError): string {
   }
 }
 
-/**
- * @public The provider over lookups the driver shares with its source control provider, so the
- * two read a repository once between them.
- */
+/** @public */
 export const makeWith = Effect.fn("ForgeGraphPullRequestProvider.makeWith")(function* (
   lookups: ForgeGraphLookups.ForgeGraphLookups,
 ) {
@@ -320,6 +324,7 @@ export const makeWith = Effect.fn("ForgeGraphPullRequestProvider.makeWith")(func
   const provider: PullRequestProviderApi = {
     kind: KIND,
     capabilities: CAPABILITIES,
+    unavailableRequirement: UNAVAILABLE_REQUIREMENT,
     getViewer: () =>
       lookups.read({ operation: "getViewer", path: "/fg/whoami" }, Json.ForgeGraphWhoami).pipe(
         Effect.mapError(fromApi),
@@ -562,5 +567,5 @@ export const makeWith = Effect.fn("ForgeGraphPullRequestProvider.makeWith")(func
   return provider;
 });
 
-/** @public Service construction is part of the canonical Effect module API. */
+/** @public */
 export const make = ForgeGraphLookups.make.pipe(Effect.flatMap(makeWith));

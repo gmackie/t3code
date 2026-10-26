@@ -1,10 +1,7 @@
 import type { DesktopUpdateChannel } from "@t3tools/contracts";
 
 const NIGHTLY_VERSION_PATTERN = /^[^-+]+-nightly\.\d{8}\.\d+$/;
-// They share nightly's branding but are packaged without an update feed (see
-// isDesktopPreviewVersion in scripts/build-desktop-artifact.ts), so the channel
-// a preview install reports is cosmetic: it never checks for updates and no
-// updater feed ever lists a preview release.
+// Preview builds share nightly branding but ship without an update feed.
 const PRERELEASE_VERSION_PATTERN = /^[^-+]+-(?:nightly|preview)\.\d{8}\.\d+$/;
 // GMACKO fork releases (0.0.45-gmacko.202610022125) follow their own channel.
 const GMACKO_VERSION_PATTERN = /-gmacko\.\d+$/;

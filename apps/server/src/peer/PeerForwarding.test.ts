@@ -15,6 +15,7 @@ import { expect, it } from "@effect/vitest";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import * as Ref from "effect/Ref";
 import { McpSchema, McpServer } from "effect/ai";
 
@@ -157,6 +158,8 @@ const boxLaunches = (seen: Ref.Ref<Seen>) =>
 const boxProjects = (seen: Ref.Ref<Seen>) =>
   Layer.merge(
     Layer.mock(ProjectService.ProjectService)({
+      // A linked launch reads the project for its defaults; none falls back to the server's.
+      getById: () => Effect.succeed(Option.none()),
       create: (input) =>
         Ref.update(seen, (current) => ({
           ...current,

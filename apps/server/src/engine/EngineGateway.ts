@@ -20,11 +20,9 @@ import * as EngineRuns from "./EngineRuns.ts";
 import * as EngineWriteBudget from "./EngineWriteBudget.ts";
 
 /**
- * The transport-facing entry to the engine. Until verified principals exist
- * (plan PR05), the engine serves only installs whose operator has declared
- * them single-owner with T3CODE_ENGINE_SINGLE_OWNER=1, and never one running
- * without auth (reviews D7/D18). Every paired session then acts as the local
- * owner. The engine's tables and services are built on first use, so a
+ * The transport-facing entry to the engine. Until verified principals exist it serves only installs
+ * declared single-owner with T3CODE_ENGINE_SINGLE_OWNER=1, never one running without auth, and
+ * every paired session acts as the local owner. Tables and services are built on first use, so a
  * server with the engine off never creates them.
  */
 export interface EngineGatewayShape {

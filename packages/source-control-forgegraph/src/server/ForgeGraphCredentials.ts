@@ -5,15 +5,16 @@ import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
-import * as Path from "effect/Path";
 import * as Redacted from "effect/Redacted";
 import * as Schema from "effect/Schema";
+// @effect-diagnostics-next-line nodeBuiltinImport:off - drivers are built without a Path service.
+import * as NodePath from "node:path";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as SourceControlHost from "@t3tools/source-control-core/server/SourceControlHost";
-import { readSourceControlHostSettings } from "@t3tools/source-control-core/client/definition";
+import { readSourceControlHostSettings } from "@t3tools/source-control-core/shared/definition";
 
-import * as ForgeGraphClient from "../client/definition.ts";
-import { DEFAULT_FORGEGRAPH_SERVER, forgeGraphServerOrigin } from "./forgeGraphHosts.ts";
+import * as ForgeGraphClient from "../shared/definition.ts";
+import { DEFAULT_FORGEGRAPH_SERVER, forgeGraphServerOrigin } from "../shared/forgeGraphHosts.ts";
 
 /** How long the forge CLI's credentials file is reused before it is read again. */
 const FILE_TTL = Duration.seconds(30);
@@ -108,14 +109,13 @@ export function resolveForgeGraphCredential(input: {
       };
 }
 
-/** @public Service construction is part of the canonical Effect module API. */
+/** @public */
 export const make = Effect.gen(function* () {
   const sourceControlHost = yield* SourceControlHost.SourceControlHost;
   const fileSystem = yield* FileSystem.FileSystem;
-  const path = yield* Path.Path;
   const environment = yield* HostProcess.Environment;
   const home = yield* HostProcess.HomeDirectory;
-  const credentialsFile = path.join(home, ".forgegraph", "credentials.json");
+  const credentialsFile = NodePath.join(home, ".forgegraph", "credentials.json");
 
   // Read-only: the forge CLI owns this file, and a missing or unreadable one is no login.
   const cliFile = yield* Cache.make({

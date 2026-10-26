@@ -1,18 +1,8 @@
 /**
- * Contention gate for the engine (T3CODE-41, plan review D26).
- *
- * node:sqlite writes run on the main thread, so engine writes can delay
- * orchestration V2 commits. This measures V2 command commits on a real
- * file-backed WAL database in each of REPS repetitions: twice with no engine
- * (their worse result is the noise band) and once while the engine journal
- * and effect lane write as fast as EngineWriteBudget allows. A metric is
- * within bounds when the loaded value is at most the noise band plus 10% or
- * plus 2 ms, whichever is larger: on fast disks a V2 commit takes ~1 ms and
- * one budgeted engine write ahead of it adds a few ms, well under a 16 ms
- * frame (reviews D26/D27). The gate passes when p95 and p99 are within bounds
- * in the median repetition and no SQLITE_BUSY surfaces.
- *
- *   node apps/server/scripts/engine-contention-bench.ts [--commits 1000] [--reps 5]
+ * Contention gate: V2 commits on a file-backed WAL database, twice without the engine (the worse is
+ * the noise band) and once with it writing as fast as EngineWriteBudget allows. Passes when
+ * median-rep p95/p99 stay within max(noise + 10%, noise + 2 ms) with no SQLITE_BUSY. Run `node
+ * apps/server/scripts/engine-contention-bench.ts [--commits 1000] [--reps 5]`.
  */
 import * as NodeRuntime from "@effect/platform-node/NodeRuntime";
 import * as NodeServices from "@effect/platform-node/NodeServices";

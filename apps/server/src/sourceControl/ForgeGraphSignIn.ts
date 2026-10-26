@@ -1,17 +1,12 @@
 /**
- * ForgeGraphSignIn — signs this environment in to ForgeGraph with its device flow.
- *
- * The server asks ForgeGraph for a code, shows it to whichever client asked, and polls until the
- * code is approved in a browser; the token then goes into the server's secret store through the
- * same settings path a pasted token takes. Clients only ever see the user code and the link, so
- * signing in works the same from a remote browser or the mobile app.
- *
- * One attempt runs per environment. Starting again while one waits answers with the same code.
- *
- * @module sourceControl/ForgeGraphSignIn
+ * Signs this environment in to ForgeGraph with its device flow and stores the approved token
+ * through the same settings path as a pasted one. Clients only see the user code and link, so it
+ * works from remote browsers and mobile. One attempt runs per environment: starting again while one
+ * waits answers with the same code.
  */
 import { ForgeGraphSignInError, type ForgeGraphSignInState } from "@t3tools/contracts";
 import * as ForgeGraphApi from "@t3tools/source-control-forgegraph/server/ForgeGraphApi";
+import * as ForgeGraphDriver from "@t3tools/source-control-forgegraph/server/driver";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
@@ -225,4 +220,7 @@ const make = Effect.gen(function* () {
   return ForgeGraphSignIn.of({ start, status: current, cancel, signOut });
 });
 
-export const layer = Layer.effect(ForgeGraphSignIn, make);
+export const layerFromApi = Layer.effect(ForgeGraphSignIn, make);
+
+/** Its own ForgeGraph API, which reads the same saved server and token the driver does. */
+export const layer = layerFromApi.pipe(Layer.provide(ForgeGraphDriver.services));

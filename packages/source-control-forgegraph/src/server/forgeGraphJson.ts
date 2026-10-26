@@ -1,11 +1,7 @@
 /**
- * ForgeGraph's `/api/fg` answers, and how they become the providers' neutral shapes.
- *
- * Fields that FORGE-138 adds (a native per-repository `number`, `url`, `body`, `updatedAt`,
- * branches on list items) are optional here, so the same code reads an older server and a newer
- * one; a field's absence is never taken to mean anything but "not reported".
- *
- * @module source-control-forgegraph/server/forgeGraphJson
+ * ForgeGraph's `/api/fg` answers and how they become the providers' neutral shapes. Fields
+ * FORGE-138 adds (`number`, `url`, `body`, `updatedAt`, list-item branches) are optional so older
+ * servers still read; a missing field only ever means "not reported".
  */
 import type {
   PullRequestAction,
@@ -30,7 +26,7 @@ import * as DateTime from "effect/DateTime";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
-import { forgeGraphChangesetUrl, forgeGraphCiRunUrl } from "./forgeGraphHosts.ts";
+import { forgeGraphChangesetUrl, forgeGraphCiRunUrl } from "../shared/forgeGraphHosts.ts";
 
 const Text = Schema.String;
 const OptionalText = Schema.optional(Schema.NullOr(Schema.String));

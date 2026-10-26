@@ -349,11 +349,10 @@ const make = Effect.gen(function* () {
   );
 
   /**
-   * Completes `task` here with its thread there's final state. Each attempt
-   * is its own command, so one that failed never blocks the next. A report
-   * refused because the task already has its result (from a cancel, a Stop
-   * or an earlier report) is done. `stoppedThere` records that nothing is
-   * left to stop there, also on a task that already has its result.
+   * Completes `task` here with its thread there's final state. Each attempt is its own command, so
+   * a failed one never blocks the next; a report refused because the task already has its result is
+   * done. `stoppedThere` records that nothing is left to stop there, even on a task that already
+   * has its result.
    */
   const complete = Effect.fn("RemoteDelegation.complete")(function* (
     parentThreadId: ThreadId,
@@ -412,11 +411,9 @@ const make = Effect.gen(function* () {
   });
 
   /**
-   * Stops the task's thread there as its Stop button does: its running turn,
-   * its queued messages, its pull request watches and the tasks it delegated.
-   * The thread there is the task's own, so whatever runs on it is stopped.
-   * `key` names the stop: the follower sends one, each cancel its own, and
-   * each is recorded there once however often it is sent.
+   * Stops the task's own thread there as its Stop button does: running turn, queued messages, pull
+   * request watches and delegated tasks. `key` names the stop (the follower sends one, each cancel
+   * its own) and each is recorded there once however often it is sent.
    */
   const stopThere = (
     scope: ThreadScope,
@@ -509,11 +506,10 @@ const make = Effect.gen(function* () {
   const noReply = "(The thread in the linked environment ended without a reply.)";
 
   /**
-   * Waits on the task's thread there until its run ends, then completes the
-   * task here, and stops it there if it ended here first. A revoked, expired
-   * or forgotten link, or a thread or run gone there, fails the task and
-   * leaves nothing to stop; anything else (the other machine asleep, a
-   * dropped route) is retried, backing off. Completing is retried the same way.
+   * Waits on the task's thread there until its run ends, completes the task here, and stops it
+   * there if it ended here first. A revoked, expired or forgotten link, or a thread or run gone
+   * there, fails the task with nothing to stop; anything else (machine asleep, dropped route) is
+   * retried with backoff, as is completing.
    */
   const follow = (parentThreadId: ThreadId, taskId: NodeId): Effect.Effect<void> =>
     followOnce(parentThreadId, taskId).pipe(

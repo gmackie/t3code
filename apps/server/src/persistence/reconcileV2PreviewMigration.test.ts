@@ -48,11 +48,12 @@ describe("V2 preview upgrade", () => {
         [66, "RepairClientSettlementTimestamps"],
         [67, "WebhookDedupe"],
         [68, "ShellStopRequestIndex"],
-        [69, "PeerLinks"],
-        [70, "PeerLinkFence"],
-        [71, "WaitingLinkRequestIndex"],
-        [72, "BoundedShellLookups"],
-        [73, "BobExecutionAdmission"],
+        [69, "ThreadMessageSearch"],
+        [70, "PeerLinks"],
+        [71, "PeerLinkFence"],
+        [72, "WaitingLinkRequestIndex"],
+        [73, "BoundedShellLookups"],
+        [74, "BobExecutionAdmission"],
       ]);
       assert.deepStrictEqual(yield* runMigrations(), []);
       assert.deepStrictEqual(yield* sql`SELECT * FROM orchestration_v2_legacy_imports`, imports);
@@ -144,11 +145,12 @@ describe("V2 preview upgrade", () => {
         [66, "RepairClientSettlementTimestamps"],
         [67, "WebhookDedupe"],
         [68, "ShellStopRequestIndex"],
-        [69, "PeerLinks"],
-        [70, "PeerLinkFence"],
-        [71, "WaitingLinkRequestIndex"],
-        [72, "BoundedShellLookups"],
-        [73, "BobExecutionAdmission"],
+        [69, "ThreadMessageSearch"],
+        [70, "PeerLinks"],
+        [71, "PeerLinkFence"],
+        [72, "WaitingLinkRequestIndex"],
+        [73, "BoundedShellLookups"],
+        [74, "BobExecutionAdmission"],
       ]);
     }).pipe(Effect.provide(NodeSqliteClient.layer({ filename: ":memory:" }))),
   );

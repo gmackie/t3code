@@ -1,11 +1,7 @@
 /**
- * Routing state: what each environment's Pistache router reports.
- *
- * Every connected environment answers the same typed query. The page lists
- * environments whose router is configured; the composer badge asks one
- * environment about one thread.
- *
- * @module state/routing
+ * What each environment's Pistache router reports. Every connected environment answers the same
+ * typed query; the page lists environments with a configured router, and the composer badge asks
+ * one environment about one thread.
  */
 import { useAtomValue } from "@effect/atom-react";
 import type {
