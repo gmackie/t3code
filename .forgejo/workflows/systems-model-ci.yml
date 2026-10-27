@@ -5,8 +5,7 @@ on:
     branches:
       - custom-local
     paths:
-      - packages/systems-model/**
-      - packages/systems-compiler/**
+      - packages/systems-*/**
       - vite.config.ts
       - .forgejo/workflows/systems-model-ci.yml
       - pnpm-lock.yaml
@@ -16,7 +15,7 @@ permissions:
   contents: read
 
 jobs:
-  systems-model:
+  systems:
     runs-on: forgegraph-ci
     timeout-minutes: 20
     steps:
@@ -33,25 +32,15 @@ jobs:
         run: |
           pnpm exec vp test run packages/systems-model
           pnpm --filter @t3tools/systems-model run typecheck
-          pnpm exec vp lint packages/systems-model
-          pnpm exec vp fmt --check packages/systems-model
-
-  systems-compiler:
-    runs-on: forgegraph-ci
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24.14.0
-      - name: Install pinned dependencies
-        run: |
-          corepack enable
-          corepack prepare pnpm@12.14.0 --activate
-          pnpm install --frozen-lockfile
       - name: Compile and digest the conformance fixtures
         run: |
           pnpm exec vp test run packages/systems-compiler
           pnpm --filter @t3tools/systems-compiler run typecheck
-          pnpm exec vp lint packages/systems-compiler
-          pnpm exec vp fmt --check packages/systems-compiler
+      - name: Execute the statechart conformance fixtures
+        run: |
+          pnpm exec vp test run packages/systems-statechart
+          pnpm --filter @t3tools/systems-statechart run typecheck
+      - name: Lint and format
+        run: |
+          pnpm exec vp lint packages/systems-model packages/systems-compiler packages/systems-statechart
+          pnpm exec vp fmt --check packages/systems-model packages/systems-compiler packages/systems-statechart
