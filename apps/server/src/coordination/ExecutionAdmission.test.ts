@@ -18,6 +18,8 @@ import * as ThreadLaunch from "../orchestration-v2/ThreadLaunchService.ts";
 import * as Bob from "./BobCoordination.ts";
 import * as Admission from "./ExecutionAdmission.ts";
 
+const decodeAdmissionJson = Schema.decodeEffect(Schema.fromJsonString(BobExecutionAdmission));
+
 const target = {
   environmentId: "mini",
   projectId: "project",
@@ -113,12 +115,7 @@ it.effect(
       });
       assert.equal(recovered.thread.threadId, launches[0]!.threadId);
       assert.equal(launches[1]!.commandId, launches[0]!.commandId);
-      assert.deepEqual(
-        recovered,
-        yield* Schema.decodeUnknownEffect(Schema.fromJsonString(BobExecutionAdmission))(
-          rows[0]!.admission_json,
-        ),
-      );
+      assert.deepEqual(recovered, yield* decodeAdmissionJson(rows[0]!.admission_json));
       assert.deepEqual(yield* service.submit("bob", request, request.requestId), recovered);
       assert.equal(launches.length, 2);
       const conflict = yield* Effect.exit(
@@ -230,10 +227,7 @@ it.effect("recovers persisted admission after closing and reopening the SQLite d
         environmentId: "mini",
       });
     }).pipe(Effect.provide(live()), Effect.scoped);
-    assert.deepEqual(
-      result,
-      yield* Schema.decodeUnknownEffect(Schema.fromJsonString(BobExecutionAdmission))(stored),
-    );
+    assert.deepEqual(result, yield* decodeAdmissionJson(stored));
     assert.isTrue(inputs.length >= 2);
     assert.isTrue(
       inputs.every(

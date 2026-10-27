@@ -1,5 +1,5 @@
 // @effect-diagnostics returnEffectInGen:off -- Alchemy Durable Objects use a documented two-phase nested Effect initializer.
-import * as Cloudflare from "alchemy/Cloudflare";
+import * as Cloudflare from "@alchemy.run/cloudflare";
 import * as Crypto from "effect/Crypto";
 import * as DateTime from "effect/DateTime";
 import * as Deferred from "effect/Deferred";

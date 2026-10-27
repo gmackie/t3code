@@ -177,7 +177,7 @@ const ok = <S extends Schema.Decoder<unknown>>(
   call(scope, name, args).pipe(
     Effect.map((result) => {
       assert.isFalse(result.isError === true, `${name}: ${JSON.stringify(result.content)}`);
-      return Schema.decodeUnknownSync(schema)(result.structuredContent);
+      return Schema.decodeSync(schema)(result.structuredContent);
     }),
   );
 

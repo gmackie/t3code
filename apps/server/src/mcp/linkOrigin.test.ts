@@ -15,7 +15,6 @@ import {
 } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import * as Option from "effect/Option";
 import { McpSchema, McpServer } from "effect/ai";
 
 import * as ServerConfig from "../config.ts";
@@ -32,6 +31,7 @@ import * as ProviderReplayHarness from "../orchestration-v2/testkit/ProviderRepl
 import * as SqlitePersistence from "../persistence/Sqlite.ts";
 import * as ManagedProjectFolders from "../project/ManagedProjectFolders.ts";
 import * as ProjectService from "../project/ProjectService.ts";
+import * as DocumentText from "../provider/DocumentText.ts";
 import * as ProviderRegistry from "../provider/ProviderRegistry.ts";
 import * as ScheduledTaskService from "../scheduledTasks/ScheduledTaskService.ts";
 import * as ServerSettings from "../serverSettings.ts";
@@ -133,7 +133,7 @@ const layerTools = Layer.mergeAll(
     Layer.mock(ProjectService.ProjectService)({
       // A launch from outside a thread reads the project for its defaults; with
       // no record it falls back to the server's, as for an unconfigured project.
-      getById: () => Effect.succeed(Option.none()),
+      getById: () => Effect.succeedNone,
       create: (input) =>
         Effect.succeed({
           id: input.projectId,
@@ -183,6 +183,7 @@ const layerTools = Layer.mergeAll(
       Layer.provide(NodeServices.layer),
     ),
   ),
+  Layer.provide(DocumentText.layer),
   Layer.provide(NodeServices.layer),
 );
 

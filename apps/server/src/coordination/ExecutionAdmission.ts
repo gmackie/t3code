@@ -33,6 +33,22 @@ const canonical = (value: unknown): string =>
       ? Object.fromEntries(Object.entries(entry).sort(([a], [b]) => a.localeCompare(b)))
       : entry,
   );
+const BobExecutionRequestJson = Schema.fromJsonString(BobExecutionRequest);
+const ThreadLaunchInputJson = Schema.fromJsonString(OrchestrationV2ThreadLaunchInput);
+const BobExecutionAdmissionJson = Schema.fromJsonString(BobExecutionAdmission);
+const decodeBobExecutionRequestJson = Schema.decodeEffect(BobExecutionRequestJson);
+const decodeThreadLaunchInputJson = Schema.decodeEffect(ThreadLaunchInputJson);
+const encodeThreadLaunchInputJson = Schema.encodeEffect(ThreadLaunchInputJson);
+const decodeBobExecutionAdmissionJson = Schema.decodeEffect(BobExecutionAdmissionJson);
+const encodeBobExecutionAdmissionJson = Schema.encodeEffect(BobExecutionAdmissionJson);
+const decodeBobExecutionRequest = Schema.decodeUnknownEffect(BobExecutionRequest, {
+  onExcessProperty: "error",
+});
+const decodeBobFindExecution = Schema.decodeUnknownEffect(BobFindExecution, {
+  onExcessProperty: "error",
+});
+const isBobCoordinationError = Schema.is(BobCoordinationError);
+
 interface AdmissionRow {
   readonly request_id: string;
   readonly owner: string;
@@ -99,16 +115,16 @@ const make = Effect.gen(function* () {
     return profile;
   });
   const recover = Effect.fn("ExecutionAdmission.recover")(function* (row: AdmissionRow) {
-    const request = yield* Schema.decodeUnknownEffect(Schema.fromJsonString(BobExecutionRequest))(
-      row.request_json,
-    ).pipe(Effect.mapError(storageError));
+    const request = yield* decodeBobExecutionRequestJson(row.request_json).pipe(
+      Effect.mapError(storageError),
+    );
     if (!row.launched) {
       // The full launch (including the environment-local model selection) was
       // pinned before side effects. ThreadLaunchService replays its own durable
       // create/message receipts using these same IDs after any interruption.
-      const launch = yield* Schema.decodeEffect(
-        Schema.fromJsonString(OrchestrationV2ThreadLaunchInput),
-      )(row.launch_json).pipe(Effect.mapError(storageError));
+      const launch = yield* decodeThreadLaunchInputJson(row.launch_json).pipe(
+        Effect.mapError(storageError),
+      );
       if (!launch.threadId || !launch.initialMessage) return yield* storageError();
       const result = yield* launcher
         .launch({
@@ -144,18 +160,16 @@ const make = Effect.gen(function* () {
         Effect.mapError(storageError),
       );
     }
-    return yield* Schema.decodeUnknownEffect(Schema.fromJsonString(BobExecutionAdmission))(
-      row.admission_json,
-    ).pipe(Effect.mapError(storageError));
+    return yield* decodeBobExecutionAdmissionJson(row.admission_json).pipe(
+      Effect.mapError(storageError),
+    );
   });
   const submit = Effect.fn("ExecutionAdmission.submit")(function* (
     owner: string,
     raw: unknown,
     key: string | undefined,
   ) {
-    const request = yield* Schema.decodeUnknownEffect(BobExecutionRequest, {
-      onExcessProperty: "error",
-    })(raw).pipe(
+    const request = yield* decodeBobExecutionRequest(raw).pipe(
       Effect.mapError(
         () =>
           new BobCoordinationError({
@@ -224,12 +238,8 @@ const make = Effect.gen(function* () {
               attachments: [],
             },
           };
-          const launchJson = yield* Schema.encodeEffect(
-            Schema.fromJsonString(OrchestrationV2ThreadLaunchInput),
-          )(launch);
-          const admissionJson = yield* Schema.encodeEffect(
-            Schema.fromJsonString(BobExecutionAdmission),
-          )(admission);
+          const launchJson = yield* encodeThreadLaunchInputJson(launch);
+          const admissionJson = yield* encodeBobExecutionAdmissionJson(admission);
           const stored: AdmissionRow = {
             request_id: request.requestId,
             owner,
@@ -242,17 +252,11 @@ const make = Effect.gen(function* () {
           return stored;
         }),
       )
-      .pipe(
-        Effect.mapError((error) =>
-          Schema.is(BobCoordinationError)(error) ? error : storageError(),
-        ),
-      );
+      .pipe(Effect.mapError((error) => (isBobCoordinationError(error) ? error : storageError())));
     return yield* recover(row);
   });
   const find = Effect.fn("ExecutionAdmission.find")(function* (owner: string, raw: unknown) {
-    const input = yield* Schema.decodeUnknownEffect(BobFindExecution, {
-      onExcessProperty: "error",
-    })(raw).pipe(
+    const input = yield* decodeBobFindExecution(raw).pipe(
       Effect.mapError(
         () =>
           new BobCoordinationError({
@@ -304,8 +308,12 @@ const make = Effect.gen(function* () {
     );
   yield* Effect.forkScoped(pendingRecovery);
   return ExecutionAdmission.of({
-    submit: (owner, input, key) => mutex.withPermits(1)(submit(owner, input, key)),
-    find: (owner, input) => mutex.withPermits(1)(find(owner, input)),
+    submit: Effect.fn("ExecutionAdmission.submit")((owner, input, key) =>
+      mutex.withPermits(1)(submit(owner, input, key)),
+    ),
+    find: Effect.fn("ExecutionAdmission.find")((owner, input) =>
+      mutex.withPermits(1)(find(owner, input)),
+    ),
     capabilities: configuration.read.pipe(
       Effect.map((config) => ({
         contractVersion: "1",

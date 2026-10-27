@@ -11,7 +11,6 @@ import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
-import * as Option from "effect/Option";
 import * as Queue from "effect/Queue";
 import { TestClock } from "effect/testing";
 
@@ -240,7 +239,7 @@ it.effect("skips the project setup script for work a fenced link started", () =>
     Layer.provide(
       Layer.mergeAll(
         Layer.mock(ProjectService.ProjectService)({
-          getById: () => Effect.succeed(Option.some(project)),
+          getById: () => Effect.succeedSome(project),
         }),
         Layer.mock(TerminalManager.TerminalManager)({ open, write, subscribe, closeIdle }),
         // `thread-linked` was started from a linked environment, `thread-trusted`

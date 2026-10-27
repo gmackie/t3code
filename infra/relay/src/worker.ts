@@ -1,7 +1,7 @@
 import * as Alchemy from "alchemy";
-import * as Axiom from "alchemy/Axiom";
-import * as Cloudflare from "alchemy/Cloudflare";
-import { Postgres as DrizzlePostgres } from "alchemy/Drizzle/Postgres";
+import * as Axiom from "@alchemy.run/axiom";
+import * as Cloudflare from "@alchemy.run/cloudflare";
+import * as Drizzle from "@alchemy.run/drizzle/Postgres";
 import * as Config from "effect/Config";
 import * as Cause from "effect/Cause";
 import * as DateTime from "effect/DateTime";
@@ -91,8 +91,12 @@ const layerHttpPlatformNotSupported = Layer.succeed(HttpPlatform.HttpPlatform, {
     algorithms: new Set<HttpPlatform.CompressionAlgorithm>(),
     compressResponse: (response) => Effect.succeed(response),
   },
-  fileResponse: () => Effect.die("Relay API does not serve filesystem responses"),
-  fileWebResponse: () => Effect.die("Relay API does not serve file responses"),
+  fileResponse: Effect.fn("HttpPlatform.fileResponse")(function () {
+    return Effect.die("Relay API does not serve filesystem responses");
+  }),
+  fileWebResponse: Effect.fn("HttpPlatform.fileWebResponse")(function () {
+    return Effect.die("Relay API does not serve file responses");
+  }),
 });
 
 const layerRelayApi = Layer.mergeAll(
@@ -168,8 +172,8 @@ export const layer = Api.make(
     const cloudMintPublicKey = yield* cloudMintKeyPair.publicKey;
     const hyperdrive = yield* Cloudflare.Hyperdrive.Connect(yield* RelayDb.RelayHyperdrive);
     // Named statements collide behind Hyperdrive transaction pooling (Effect-TS/effect#8320); use unnamed statements.
-    const db = yield* DrizzlePostgres(hyperdrive.connectionString, undefined, {
-      prepare: false,
+    const db = yield* Drizzle.Postgres(hyperdrive.connectionString, {
+      client: { prepare: false },
     });
 
     const managedEndpointTunnelBinding = yield* Cloudflare.Tunnel.ReadWriteTunnel();
@@ -247,12 +251,21 @@ export const layer = Api.make(
           ),
         );
     const layerHookInbox = Layer.succeed(HookInbox.HookInbox, {
-      hold: ({ endpointKey, baseUrl, hook }) =>
-        hookInboxes.getByName(endpointKey).hold(hook, baseUrl).pipe(inboxCall("hold", endpointKey)),
-      wake: ({ endpointKey, baseUrl }) =>
-        hookInboxes.getByName(endpointKey).wake(baseUrl).pipe(inboxCall("wake", endpointKey)),
-      clear: ({ endpointKey }) =>
-        hookInboxes.getByName(endpointKey).clear().pipe(inboxCall("clear", endpointKey)),
+      hold: Effect.fn("HookInbox.hold")(function ({ endpointKey, baseUrl, hook }) {
+        return hookInboxes
+          .getByName(endpointKey)
+          .hold(hook, baseUrl)
+          .pipe(inboxCall("hold", endpointKey));
+      }),
+      wake: Effect.fn("HookInbox.wake")(function ({ endpointKey, baseUrl }) {
+        return hookInboxes
+          .getByName(endpointKey)
+          .wake(baseUrl)
+          .pipe(inboxCall("wake", endpointKey));
+      }),
+      clear: Effect.fn("HookInbox.clear")(function ({ endpointKey }) {
+        return hookInboxes.getByName(endpointKey).clear().pipe(inboxCall("clear", endpointKey));
+      }),
     });
 
     const layerRuntime = Layer.empty.pipe(
@@ -280,10 +293,12 @@ export const layer = Api.make(
         FcmDeliveries.layer.pipe(
           Layer.provide(
             Layer.succeed(FcmDeliveryQueueSender.FcmDeliveryQueueSender, {
-              send: (body) =>
-                fcmDeliveryQueueSender
-                  .send(body)
-                  .pipe(Effect.provideService(Alchemy.RuntimeContext, alchemyRuntimeContext)),
+              send: Effect.fn("FcmDeliveryQueueSender.send")(
+                function* (body) {
+                  return yield* fcmDeliveryQueueSender.send(body);
+                },
+                Effect.provideService(Alchemy.RuntimeContext, alchemyRuntimeContext),
+              ),
             }),
           ),
           Layer.provideMerge(

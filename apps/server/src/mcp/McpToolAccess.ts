@@ -131,7 +131,7 @@ export const actsAsCaller = <P, A, E, R>(handle: (params: P) => Effect.Effect<A,
   declare(
     (params: P) =>
       requireThreadCaller.pipe(
-        Effect.flatMap(() => writingCaller),
+        Effect.andThen(writingCaller),
         Effect.flatMap(() => handle(params)),
       ),
     undefined,
@@ -255,6 +255,23 @@ export const startsThreads = <P, A, E, R>(
         return yield* handle(params, yield* started(caller, params));
       }),
     (params: P) => Effect.flatMap(writingCaller, (caller) => started(caller, params)),
+  );
+};
+
+/** One tool with two access rules, picked per call, such as create versus update. */
+export const either = <P, A, E, R, A2, E2, R2>(
+  useFirst: (params: P) => boolean,
+  first: Declaration<(params: P) => Effect.Effect<A, E, R>>,
+  second: Declaration<(params: P) => Effect.Effect<A2, E2, R2>>,
+) => {
+  const firstRemote = remoteCheckOf(first) as RemoteCheck<P> | undefined;
+  const secondRemote = remoteCheckOf(second) as RemoteCheck<P> | undefined;
+  return declare(
+    (params: P): Effect.Effect<A | A2, E | E2, R | R2> =>
+      useFirst(params) ? checkedHandler(first)(params) : checkedHandler(second)(params),
+    firstRemote === undefined || secondRemote === undefined
+      ? undefined
+      : (params: P) => (useFirst(params) ? firstRemote(params) : secondRemote(params)),
   );
 };
 

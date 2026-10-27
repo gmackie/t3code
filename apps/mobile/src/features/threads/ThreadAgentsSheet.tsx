@@ -11,7 +11,6 @@ import { StackActions, useNavigation, type StaticScreenProps } from "@react-navi
 import * as DateTime from "effect/DateTime";
 import { Atom } from "effect/reactivity";
 import * as Haptics from "expo-haptics";
-import { useEffect, useState } from "react";
 import { Platform, Pressable, ScrollView, View } from "react-native";
 import { ScreenStack } from "react-native-screens";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -23,9 +22,12 @@ import { NativeStackScreenOptions, nativeHeaderScrollEdgeEffects } from "../../n
 import { NativeHeader, NativeScreen } from "../../native/ThemedScreenStack";
 import { useEnvironments } from "../../state/environments";
 import { SubagentRow } from "./SubagentRow";
+import { useVisibleSecondClock } from "./use-visible-second-clock";
 import { ScreenContent } from "../../components/ui/ScreenContent";
 import { useAdaptiveWorkspaceLayout } from "../layout/AdaptiveWorkspaceLayout";
 import { subagentThreadTarget } from "./threadAgentsPresentation";
+
+import { useOpenThreadInspector } from "./thread-inspector-navigation";
 
 const HEADER_SCROLL_EDGE_EFFECTS = nativeHeaderScrollEdgeEffects(Platform.OS, Platform.Version);
 
@@ -47,6 +49,7 @@ export function ThreadAgentsSheet({ route }: StaticScreenProps<AgentsTarget>) {
   const { layout } = useAdaptiveWorkspaceLayout();
   const target = route.params;
   const navigation = useNavigation();
+  const openInspector = useOpenThreadInspector();
   const insets = useSafeAreaInsets();
   const turn = useThreadTurnSubagents(target);
   const subagents = turn?.subagents ?? [];
@@ -54,6 +57,14 @@ export function ThreadAgentsSheet({ route }: StaticScreenProps<AgentsTarget>) {
 
   const openChildThread = (child: { environmentId: EnvironmentId; threadId: ThreadId }) => {
     void Haptics.selectionAsync();
+    if (
+      openInspector(target, {
+        type: "thread",
+        environmentId: child.environmentId,
+        threadId: child.threadId,
+      })
+    )
+      return;
     // Replace this leaf sheet so the child enters the workspace stack expected by Home's Back button.
     navigation.dispatch(
       StackActions.replace("Thread", {
@@ -194,13 +205,8 @@ function useSubagentElapsed(
   subagent: Pick<OrchestrationV2Subagent, "status" | "startedAt" | "completedAt">,
   tickSeconds: boolean,
 ): string | null {
-  const [nowMs, setNowMs] = useState(() => Date.now());
   const running = isOrchestrationV2WorkActive(subagent.status);
-  useEffect(() => {
-    if (!tickSeconds || !running) return;
-    const intervalId = setInterval(() => setNowMs(Date.now()), 1_000);
-    return () => clearInterval(intervalId);
-  }, [running, tickSeconds]);
+  const nowMs = useVisibleSecondClock(tickSeconds && running);
   const elapsedMs = deriveSubagentElapsedMs(
     {
       status: subagent.status,

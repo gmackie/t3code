@@ -8,7 +8,6 @@ import {
   formatTokens,
 } from "@t3tools/shared/usageFormat";
 import { isElectron } from "../../env";
-import { useEscapeToGoBack } from "../../hooks/useNavigateBack";
 import { useRoutingOverviews, type EnvironmentRoutingStatus } from "../../state/routing";
 import { Alert, AlertDescription, AlertTitle } from "../ui/alert";
 import { ScrollArea } from "../ui/scroll-area";
@@ -39,7 +38,6 @@ const FUNNEL_STAGES = [
 ] as const;
 
 export function RoutingPage() {
-  useEscapeToGoBack();
   const [range, setRange] = useState<RoutingRange>("24h");
   const environments = useRoutingOverviews();
   const configured = environments.filter(

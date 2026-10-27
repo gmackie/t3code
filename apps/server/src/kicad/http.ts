@@ -153,8 +153,8 @@ export const kicadGerberRouteLayer = HttpRouter.add(
     )
       return HttpServerResponse.text("Gerber file not found or not renderable", { status: 404 });
     const fileSystem = yield* FileSystem.FileSystem;
-    const content = yield* Effect.all(
-      assets.map((asset) => fileSystem.readFileString(asset!.absolutePath)),
+    const content = yield* Effect.forEach(assets, (asset) =>
+      fileSystem.readFileString(asset!.absolutePath),
     );
     const totalBytes = content.reduce((sum, value) => sum + Buffer.byteLength(value, "utf8"), 0);
     if (totalBytes > 16 * 1024 * 1024)

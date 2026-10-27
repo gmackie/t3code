@@ -301,7 +301,9 @@ const make = Effect.gen(function* () {
     requireProject(projectId).pipe(Effect.andThen(attempt(run)));
 
   return ReverseWorkbench.of({
-    list: (input) => inProject(input.projectId, () => store.list(input.projectId)),
+    list: Effect.fn("ReverseWorkbench.list")((input) =>
+      inProject(input.projectId, () => store.list(input.projectId)),
+    ),
     importFile: Effect.fn("ReverseWorkbench.importFile")(function* (input) {
       const project = yield* requireProject(input.projectId);
       const environmentId = yield* serverEnvironment.getEnvironmentId;
@@ -314,19 +316,21 @@ const make = Effect.gen(function* () {
         }),
       );
     }),
-    link: (input) =>
+    link: Effect.fn("ReverseWorkbench.link")((input) =>
       inProject(input.projectId, () =>
         store.link(input.projectId, input.investigationId, {
           veritasProjectId: input.veritasProjectId,
           boardRevisionId: input.boardRevisionId,
         }),
       ),
+    ),
     toolchain: attempt(() => inspectToolchain()),
-    serialPorts: (input) =>
+    serialPorts: Effect.fn("ReverseWorkbench.serialPorts")((input) =>
       inProject(input.projectId, async () => ({
         ports: await serial.ports(),
         sessions: serial.list(input.projectId),
       })),
+    ),
     openSerial: Effect.fn("ReverseWorkbench.openSerial")(function* (input) {
       yield* requireProject(input.projectId);
       // Sessions whose project was deleted would otherwise hold their ports until a restart.
@@ -338,16 +342,20 @@ const make = Effect.gen(function* () {
       }
       return yield* attempt(() => serial.open(input.projectId, input.port, input.baud));
     }),
-    writeSerial: (input) =>
+    writeSerial: Effect.fn("ReverseWorkbench.writeSerial")((input) =>
       inProject(input.projectId, () =>
         serial.write(input.projectId, input.sessionId, Buffer.from(input.data, "base64")),
       ),
+    ),
     // No project check: a session must stay closable after its project is deleted.
-    closeSerial: (input) => attempt(async () => serial.closeFor(input.projectId, input.sessionId)),
-    serialRecent: (input) =>
+    closeSerial: Effect.fn("ReverseWorkbench.closeSerial")((input) =>
+      attempt(async () => serial.closeFor(input.projectId, input.sessionId)),
+    ),
+    serialRecent: Effect.fn("ReverseWorkbench.serialRecent")((input) =>
       inProject(input.projectId, async () =>
         serial.recent(input.projectId, input.sessionId, input.maxBytes ?? 8192),
       ),
+    ),
     serialOutput: (input) =>
       Stream.callback<ReverseSerialChunk, ReverseStoreError>((queue) =>
         requireProject(input.projectId).pipe(
@@ -387,7 +395,7 @@ const make = Effect.gen(function* () {
         }),
       );
     }),
-    viewCapture: (input) =>
+    viewCapture: Effect.fn("ReverseWorkbench.viewCapture")((input) =>
       inProject(input.projectId, async () => {
         if (input.endNs <= input.startNs)
           throw new ReverseStoreError({
@@ -397,7 +405,8 @@ const make = Effect.gen(function* () {
         const capture = await store.capture(input.projectId, input.captureId);
         return captureWindow(capture, input.startNs, input.endNs, input.maxPoints, input.channels);
       }),
-    decodeCapture: (input) =>
+    ),
+    decodeCapture: Effect.fn("ReverseWorkbench.decodeCapture")((input) =>
       inProject(input.projectId, async () => {
         const capture = await store.capture(input.projectId, input.captureId);
         const limit = input.limit ?? 1000;
@@ -425,23 +434,28 @@ const make = Effect.gen(function* () {
         }
         return { events: events.slice(0, limit), truncated: events.length > limit };
       }),
-    removeCapture: (input) =>
+    ),
+    removeCapture: Effect.fn("ReverseWorkbench.removeCapture")((input) =>
       inProject(input.projectId, () => store.removeCapture(input.projectId, input.captureId)),
-    veritasQuery: (input) =>
+    ),
+    veritasQuery: Effect.fn("ReverseWorkbench.veritasQuery")((input) =>
       veritas.configured
         ? attempt(async () => ({ result: await veritas.query(input.procedure, input.input ?? {}) }))
         : Effect.fail(veritasUnavailable()),
-    publishFinding: (input) =>
+    ),
+    publishFinding: Effect.fn("ReverseWorkbench.publishFinding")((input) =>
       workbench.veritasConfigured
         ? inProject(input.projectId, async () => {
             await workbench.publishFinding(input.projectId, input.findingId);
             return store.finding(input.projectId, input.findingId);
           })
         : Effect.fail(veritasUnavailable()),
-    diff: (input) =>
+    ),
+    diff: Effect.fn("ReverseWorkbench.diff")((input) =>
       inProject(input.projectId, () =>
         analysis.diff(input.projectId, input.leftInvestigationId, input.rightInvestigationId),
       ),
+    ),
     importExtracted: Effect.fn("ReverseWorkbench.importExtracted")(function* (input) {
       yield* requireProject(input.projectId);
       const environmentId = yield* serverEnvironment.getEnvironmentId;
@@ -466,17 +480,21 @@ const make = Effect.gen(function* () {
         });
       });
     }),
-    createFinding: (input, author) =>
+    createFinding: Effect.fn("ReverseWorkbench.createFinding")((input, author) =>
       inProject(input.projectId, () => store.createFinding({ ...input, authorKind: author })),
-    updateFinding: (input, actor) =>
+    ),
+    updateFinding: Effect.fn("ReverseWorkbench.updateFinding")((input, actor) =>
       inProject(input.projectId, () => store.updateFinding({ ...input, actor })),
-    remove: (input) =>
+    ),
+    remove: Effect.fn("ReverseWorkbench.remove")((input) =>
       inProject(input.projectId, () => store.remove(input.projectId, input.investigationId)),
-    strings: (input) =>
+    ),
+    strings: Effect.fn("ReverseWorkbench.strings")((input) =>
       inProject(input.projectId, () =>
         store.strings(input.projectId, input.investigationId, input.minLength),
       ),
-    analyze: (input) =>
+    ),
+    analyze: Effect.fn("ReverseWorkbench.analyze")((input) =>
       inProject(input.projectId, async () => {
         const result = await analysis.run(input);
         // A raw image's load settings are part of the investigation once they work.
@@ -485,8 +503,11 @@ const make = Effect.gen(function* () {
           await store.rememberGhidraProfile(input.projectId, input.investigationId, profile);
         return result;
       }),
-    emulate: (input) => inProject(input.projectId, () => analysis.emulate(input)),
-    publish: (input) =>
+    ),
+    emulate: Effect.fn("ReverseWorkbench.emulate")((input) =>
+      inProject(input.projectId, () => analysis.emulate(input)),
+    ),
+    publish: Effect.fn("ReverseWorkbench.publish")((input) =>
       workbench.veritasConfigured
         ? inProject(input.projectId, async () => {
             const registered = await workbench.publish(
@@ -497,7 +518,10 @@ const make = Effect.gen(function* () {
             return { artifactId: registered.id, sha256: registered.sha256 };
           })
         : Effect.fail(veritasUnavailable()),
-    execute: (request) => inProject(request.projectId, () => executeWorkbench(request)),
+    ),
+    execute: Effect.fn("ReverseWorkbench.execute")((request) =>
+      inProject(request.projectId, () => executeWorkbench(request)),
+    ),
   });
 });
 

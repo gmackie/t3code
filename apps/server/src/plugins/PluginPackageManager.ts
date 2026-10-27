@@ -653,9 +653,9 @@ export const make = Effect.fn("PluginPackageManager.make")(function* () {
 const unavailableService = (error: PluginPackageOperationError) =>
   PluginPackageManager.of({
     status: Effect.fail(error),
-    enable: () => Effect.fail(error),
-    disable: () => Effect.fail(error),
-    reload: () => Effect.fail(error),
+    enable: Effect.fn("PluginPackageManager.enable")(() => Effect.fail(error)),
+    disable: Effect.fn("PluginPackageManager.disable")(() => Effect.fail(error)),
+    reload: Effect.fn("PluginPackageManager.reload")(() => Effect.fail(error)),
   });
 
 export const layer = Layer.effect(

@@ -30,6 +30,7 @@ it.effect("bounds handshake waiting and shares discovery across reconnects", () 
                       Effect.andThen(Deferred.await(finish)),
                       Effect.as(["vscode"] as const),
                     ),
+                  // @effect-diagnostics-next-line effectSucceedWithVoid:off - This optional result requires undefined, not the wider void type.
                   resolveFileManagerRevealKind: () => Effect.succeed(undefined),
                   launchBrowser: () => Effect.void,
                   launchEditor: () => Effect.void,
@@ -82,6 +83,7 @@ it.effect("client cancellation leaves shared discovery bounded and keeps indepen
                 ExternalLauncher.ExternalLauncher,
                 ExternalLauncher.ExternalLauncher.of({
                   resolveAvailableEditors: () => Effect.succeed(["vscode"] as const),
+                  // @effect-diagnostics-next-line effectSucceedWithVoid:off - This optional result requires undefined, not the wider void type.
                   resolveFileManagerRevealKind: () => Effect.succeed(undefined),
                   launchBrowser: () => Effect.void,
                   launchEditor: () => Effect.void,

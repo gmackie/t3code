@@ -126,7 +126,7 @@ const make = Effect.gen(function* () {
             ? { ...result, recovered: true }
             : undefined,
         ),
-        Effect.catch(() => Effect.succeed(undefined)),
+        Effect.orElseSucceed(() => undefined),
       );
   });
   const runCli = Effect.fn("UnityHooks.runCli")(function* (

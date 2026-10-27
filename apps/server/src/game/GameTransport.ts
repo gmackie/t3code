@@ -134,9 +134,10 @@ const make = Effect.gen(function* () {
   });
   return GameTransport.of({
     command,
-    frame: (bridge) => request(bridge),
-    video: (bridge, after) =>
+    frame: Effect.fn("GameTransport.frame")((bridge) => request(bridge)),
+    video: Effect.fn("GameTransport.video")((bridge, after) =>
       request(bridge, undefined, "video?after=" + encodeURIComponent(after ?? "")),
+    ),
   });
 });
 export const layer = Layer.effect(GameTransport, make).pipe(Layer.provide(FetchHttpClient.layer));

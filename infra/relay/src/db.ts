@@ -1,7 +1,7 @@
 import type { PgClient } from "@effect/sql-pg/PgClient";
-import * as Cloudflare from "alchemy/Cloudflare";
-import { Schema as DrizzleSchema } from "alchemy/Drizzle/Schema";
-import * as Planetscale from "alchemy/Planetscale";
+import * as Cloudflare from "@alchemy.run/cloudflare";
+import * as Drizzle from "@alchemy.run/drizzle";
+import * as Planetscale from "@alchemy.run/planetscale";
 import * as Alchemy from "alchemy";
 import * as RemovalPolicy from "alchemy/RemovalPolicy";
 import type { EffectPgDatabase } from "drizzle-orm/effect-postgres";
@@ -37,7 +37,7 @@ export class RelayTransactions extends Context.Service<
 
 export const PlanetscaleDatabase = Effect.gen(function* () {
   const { stage } = yield* Alchemy.Stack;
-  const schema = yield* DrizzleSchema("RelaySchema", {
+  const schema = yield* Drizzle.Schema("RelaySchema", {
     schema: "./src/persistence/schema.ts",
     out: "./migrations/postgres",
     dialect: "postgres",
@@ -46,28 +46,22 @@ export const PlanetscaleDatabase = Effect.gen(function* () {
   const mode = relayDatabaseMode(stage);
   const database =
     mode === "shared-database"
-      ? yield* Planetscale.PostgresDatabase(
-          "RelayPostgresDatabase",
-          Effect.succeed({
-            name: "t3coderelay",
-            region: { slug: "us-west" },
-            clusterSize: "PS_80",
-            migrations: { dir: schema.out, table: "relay_migrations" },
-            replicas: 2,
-          }),
-        ).pipe(RemovalPolicy.retain())
+      ? yield* Planetscale.PostgresDatabase("RelayPostgresDatabase", {
+          name: "t3coderelay",
+          region: { slug: "us-west" },
+          clusterSize: "PS_80",
+          migrations: { dir: schema.out, table: "relay_migrations" },
+          replicas: 2,
+        }).pipe(RemovalPolicy.retain())
       : yield* Planetscale.PostgresDatabase.ref("RelayPostgresDatabase", {
           stage: "prod",
         });
   const branch =
     mode === "stage-branch"
-      ? yield* Planetscale.PostgresBranch(
-          "RelayPostgresBranch",
-          Effect.succeed({
-            database,
-            migrations: { dir: schema.out, table: "relay_migrations" },
-          }),
-        )
+      ? yield* Planetscale.PostgresBranch("RelayPostgresBranch", {
+          database,
+          migrations: { dir: schema.out, table: "relay_migrations" },
+        })
       : undefined;
 
   const runtimeRole = yield* Planetscale.PostgresRole("RelayPostgresRuntimeRole", {

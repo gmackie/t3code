@@ -37,13 +37,16 @@ export const layerWorkerBinding = (
   Layer.succeed(
     T3RelayEndpointControl,
     T3RelayEndpointControl.of({
-      configure: ({ endpointKey, connectorToken, connectorLeaseId }) =>
-        edge
-          .configureEndpoint(endpointKey, connectorToken, connectorLeaseId)
-          .pipe(Effect.provideService(Alchemy.RuntimeContext, runtimeContext)),
-      revoke: ({ endpointKey, connectorLeaseId }) =>
+      configure: Effect.fn("T3RelayEndpointControl.configure")(
+        ({ endpointKey, connectorToken, connectorLeaseId }) =>
+          edge
+            .configureEndpoint(endpointKey, connectorToken, connectorLeaseId)
+            .pipe(Effect.provideService(Alchemy.RuntimeContext, runtimeContext)),
+      ),
+      revoke: Effect.fn("T3RelayEndpointControl.revoke")(({ endpointKey, connectorLeaseId }) =>
         edge
           .revokeEndpoint(endpointKey, connectorLeaseId)
           .pipe(Effect.provideService(Alchemy.RuntimeContext, runtimeContext)),
+      ),
     }),
   );

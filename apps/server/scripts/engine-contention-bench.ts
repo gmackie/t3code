@@ -136,11 +136,7 @@ const v2Phase = Effect.fn("EngineContentionBench.v2Phase")(function* (label: str
         events: [event],
         effects: [],
       })
-      .pipe(
-        Effect.catchCause((cause) =>
-          isBusy(cause) ? Effect.sync(() => (busy += 1)) : Effect.failCause(cause),
-        ),
-      );
+      .pipe(Effect.catchCauseIf(isBusy, () => Effect.sync(() => (busy += 1))));
     samples.push(NodePerfHooks.performance.now() - start);
     yield* Effect.yieldNow;
   }
@@ -182,11 +178,7 @@ const engineLoad = Effect.fn("EngineContentionBench.engineLoad")(function* (
       })
       .pipe(
         Effect.tap(() => Ref.update(stats, (s) => ({ ...s, commits: s.commits + 1 }))),
-        Effect.catchCause((cause) =>
-          isBusy(cause)
-            ? Ref.update(stats, (s) => ({ ...s, busy: s.busy + 1 }))
-            : Effect.failCause(cause),
-        ),
+        Effect.catchCauseIf(isBusy, () => Ref.update(stats, (s) => ({ ...s, busy: s.busy + 1 }))),
       );
     for (let n = 0; n < ENGINE_EFFECTS_PER_COMMIT; n += 1) {
       yield* EngineEffectLane.processNextEngineEffect(registry, {

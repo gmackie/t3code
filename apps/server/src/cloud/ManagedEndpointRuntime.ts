@@ -19,22 +19,7 @@ import { HttpClient, HttpClientResponse } from "effect/http";
 import * as ChildProcess from "effect/process/ChildProcess";
 import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 
-import * as ServerSecretStore from "../auth/ServerSecretStore.ts";
-import { CLOUD_ENDPOINT_RUNTIME_CONFIG, decodeRuntimeConfig } from "./config.ts";
 import * as T3RelayConnector from "./T3RelayConnector.ts";
-
-function bytesToString(bytes: Uint8Array): string {
-  return new TextDecoder().decode(bytes);
-}
-
-const readRuntimeConfig = Effect.gen(function* () {
-  const secrets = yield* ServerSecretStore.ServerSecretStore;
-  const bytes = yield* secrets.get(CLOUD_ENDPOINT_RUNTIME_CONFIG);
-  if (Option.isNone(bytes)) {
-    return null;
-  }
-  return Option.getOrNull(decodeRuntimeConfig(bytesToString(bytes.value)));
-});
 
 export type CloudManagedEndpointRuntimeStatus =
   | {
@@ -861,7 +846,9 @@ export const make = Effect.gen(function* () {
     inspectConnector,
     readinessChanged: Stream.fromQueue(readinessChanges),
     recoveryRequests: Stream.fromQueue(recoveryRequests),
-    requestRecovery: (config) => Queue.offer(recoveryRequests, config).pipe(Effect.asVoid),
+    requestRecovery: Effect.fn("CloudManagedEndpointRuntime.requestRecovery")(function (config) {
+      return Queue.offer(recoveryRequests, config).pipe(Effect.asVoid);
+    }),
     tunnelConnected: Stream.fromQueue(tunnelConnections),
     withLinkStateLock: linkStateSemaphore.withPermits(1),
   });

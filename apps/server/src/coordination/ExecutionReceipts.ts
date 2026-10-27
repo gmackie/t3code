@@ -22,6 +22,13 @@ import * as ThreadManagement from "../orchestration-v2/ThreadManagementService.t
 import * as ProcessRunner from "../processRunner.ts";
 import * as ServerConfig from "../config.ts";
 
+const receiptSchema = bobOperationSchemas.get("RecordExecutionReceipt")!;
+const ReceiptPayloadJson = Schema.fromJsonString(receiptSchema.input);
+const decodeAdmissionJson = Schema.decodeEffect(Schema.fromJsonString(BobExecutionAdmission));
+const encodeReceiptPayloadJson = Schema.encodeUnknownEffect(ReceiptPayloadJson);
+const decodeReceiptPayloadJson = Schema.decodeEffect(ReceiptPayloadJson);
+const decodeReceiptAck = Schema.decodeEffect(receiptSchema.output);
+
 interface Row {
   readonly request_id: string;
   readonly admission_json: string;
@@ -44,7 +51,6 @@ export const make = Effect.fn("ExecutionReceipts.make")(function* (startWorkers 
   const config = yield* Bob.BobConfiguration;
   const http = yield* HttpClient.HttpClient;
   const mutex = yield* Semaphore.make(1);
-  const receiptSchema = bobOperationSchemas.get("RecordExecutionReceipt")!;
   const unavailable = () =>
     new BobCoordinationError({
       code: "ReceiptPending",
@@ -68,9 +74,7 @@ export const make = Effect.fn("ExecutionReceipts.make")(function* (startWorkers 
         ),
       );
   const capture = Effect.fn("ExecutionReceipts.capture")(function* (row: Row) {
-    const admission = yield* Schema.decodeUnknownEffect(
-      Schema.fromJsonString(BobExecutionAdmission),
-    )(row.admission_json);
+    const admission = yield* decodeAdmissionJson(row.admission_json);
     const projection = yield* threads.getThreadRecords(ThreadId.make(admission.thread.threadId), [
       "runs",
       "checkpoints",
@@ -119,9 +123,7 @@ export const make = Effect.fn("ExecutionReceipts.make")(function* (startWorkers 
       },
       evidenceRefs: [`t3-checkpoint:${evidenceId}`],
     };
-    const payloadJson = yield* Schema.encodeUnknownEffect(
-      Schema.fromJsonString(receiptSchema.input),
-    )(receipt);
+    const payloadJson = yield* encodeReceiptPayloadJson(receipt);
     // The checkpoint is a Git commit, including any captured worktree changes.
     // Preserve it locally before recording a receipt; it is not PR-head evidence.
     const directory = `${server.stateDir}/bob-evidence`;
@@ -171,9 +173,7 @@ export const make = Effect.fn("ExecutionReceipts.make")(function* (startWorkers 
         pending,
         (row) =>
           Effect.gen(function* () {
-            const payload = yield* Schema.decodeUnknownEffect(
-              Schema.fromJsonString(receiptSchema.input),
-            )(row.payload_json);
+            const payload = yield* decodeReceiptPayloadJson(row.payload_json);
             const base = yield* Effect.try(() => new URL(settings.receiptCoordinator!.baseUrl));
             if (base.username || base.password || !["http:", "https:"].includes(base.protocol))
               return yield* unavailable();
@@ -188,9 +188,10 @@ export const make = Effect.fn("ExecutionReceipts.make")(function* (startWorkers 
               Effect.flatMap(http.execute),
             );
             if (response.status !== 200) return yield* unavailable();
-            const ack = (yield* Schema.decodeUnknownEffect(receiptSchema.output)(
-              yield* response.json,
-            )) as { eventId: string; acceptedSequence: number };
+            const ack = (yield* decodeReceiptAck(yield* response.json)) as {
+              eventId: string;
+              acceptedSequence: number;
+            };
             const receipt = payload as RecordExecutionReceiptInput;
             if (ack.eventId !== receipt.eventId || ack.acceptedSequence !== receipt.sequence)
               return yield* unavailable();

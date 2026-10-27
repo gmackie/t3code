@@ -13,6 +13,13 @@ import * as Schema from "effect/Schema";
 import { requireEnvironmentScope } from "../auth/http.ts";
 import * as ExecutionAdmission from "./ExecutionAdmission.ts";
 
+const isBobCoordinationError = Schema.is(BobCoordinationError);
+const isEnvironmentScopeRequiredError = Schema.is(EnvironmentScopeRequiredError);
+const decodeCapabilitiesInput = Schema.decodeEffect(
+  bobOperationSchemas.get("GetCapabilities")!.input,
+  { onExcessProperty: "error" },
+);
+
 export const layer = HttpApiBuilder.group(
   EnvironmentHttpApi,
   "execution",
@@ -27,9 +34,9 @@ export const layer = HttpApiBuilder.group(
               headers: { "cache-control": "no-store" },
             }),
           onFailure: (error) => {
-            const problem = Schema.is(BobCoordinationError)(error)
+            const problem = isBobCoordinationError(error)
               ? error
-              : Schema.is(EnvironmentScopeRequiredError)(error)
+              : isEnvironmentScopeRequiredError(error)
                 ? { status: 403, code: "Forbidden", message: "Execution scope is required." }
                 : {
                     status: 500,
@@ -64,9 +71,7 @@ export const layer = HttpApiBuilder.group(
                     }),
                 ),
                 Effect.flatMap((payload) =>
-                  Schema.decodeUnknownEffect(bobOperationSchemas.get("GetCapabilities")!.input, {
-                    onExcessProperty: "error",
-                  })(payload).pipe(
+                  decodeCapabilitiesInput(payload).pipe(
                     Effect.mapError(
                       () =>
                         new BobCoordinationError({

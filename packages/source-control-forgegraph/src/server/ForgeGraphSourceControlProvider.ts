@@ -303,7 +303,7 @@ export const makeWith = Effect.fn("ForgeGraphSourceControlProvider.makeWith")(fu
         };
       },
     ),
-    createRepository: (input) =>
+    createRepository: Effect.fn("ForgeGraphSourceControlProvider.createRepository")((input) =>
       Effect.fail(
         error(
           "createRepository",
@@ -311,6 +311,7 @@ export const makeWith = Effect.fn("ForgeGraphSourceControlProvider.makeWith")(fu
           "Create ForgeGraph repositories with `forge app create`; T3 Code cannot create them.",
         ),
       ),
+    ),
     getDefaultBranch: Effect.fn("ForgeGraphSourceControlProvider.getDefaultBranch")(
       function* (input) {
         const operation = "getDefaultBranch";

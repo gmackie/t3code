@@ -13,6 +13,25 @@ import * as Schema from "effect/Schema";
 import { HttpClient, HttpClientRequest } from "effect/http";
 import * as ServerConfig from "../config.ts";
 
+const decodeLocalConfigurationJson = Schema.decodeEffect(
+  Schema.fromJsonString(BobLocalConfiguration),
+);
+const decodeProblem = Schema.decodeUnknownEffect(
+  Schema.Struct({ code: Schema.String, title: Schema.String }),
+);
+const isBobCoordinationError = Schema.is(BobCoordinationError);
+// Operation schemas come from the ForgeC document, so compile each codec once.
+const operationCodecs = new Map(
+  Array.from(bobOperationSchemas, ([operation, spec]) => [
+    operation,
+    {
+      path: spec.path,
+      decodeInput: Schema.decodeUnknownEffect(spec.input, { onExcessProperty: "error" }),
+      decodeOutput: Schema.decodeEffect(spec.output, { onExcessProperty: "error" }),
+    },
+  ]),
+);
+
 export const readOperations = new Set([
   "GetCapabilities",
   "ListPlans",
@@ -60,9 +79,7 @@ export const configurationLayer = Layer.effect(
         );
         if (!exists) return { projects: {}, executionProfiles: {} };
         return yield* fs.readFileString(path).pipe(
-          Effect.flatMap((raw) =>
-            Schema.decodeUnknownEffect(Schema.fromJsonString(BobLocalConfiguration))(raw),
-          ),
+          Effect.flatMap(decodeLocalConfigurationJson),
           Effect.mapError(
             () =>
               new BobCoordinationError({
@@ -88,16 +105,14 @@ const make = Effect.gen(function* () {
   const configuration = yield* BobConfiguration;
   const httpClient = yield* HttpClient.HttpClient;
   const call = Effect.fn("BobCoordination.call")(function* (request: BobOperationInput) {
-    const spec = bobOperationSchemas.get(request.operation);
+    const spec = operationCodecs.get(request.operation);
     if (!spec || !viewerOperations.has(request.operation))
       return yield* new BobCoordinationError({
         code: "CapabilityUnavailable",
         status: 501,
         message: "This operation is not a coordinator viewer operation.",
       });
-    const input = yield* Schema.decodeUnknownEffect(spec.input, { onExcessProperty: "error" })(
-      request.input,
-    ).pipe(
+    const input = yield* spec.decodeInput(request.input).pipe(
       Effect.mapError(
         () =>
           new BobCoordinationError({
@@ -133,20 +148,18 @@ const make = Effect.gen(function* () {
       );
       const raw = yield* response.json;
       if (response.status !== 200) {
-        const problem = yield* Schema.decodeUnknownEffect(
-          Schema.Struct({ code: Schema.String, title: Schema.String }),
-        )(raw);
+        const problem = yield* decodeProblem(raw);
         return yield* new BobCoordinationError({
           code: problem.code,
           status: response.status,
           message: problem.title,
         });
       }
-      return yield* Schema.decodeUnknownEffect(spec.output, { onExcessProperty: "error" })(raw);
+      return yield* spec.decodeOutput(raw);
     }).pipe(
       Effect.timeout("15 seconds"),
       Effect.mapError((cause) =>
-        Schema.is(BobCoordinationError)(cause)
+        isBobCoordinationError(cause)
           ? cause
           : new BobCoordinationError({
               code: "EnvironmentUnavailable",

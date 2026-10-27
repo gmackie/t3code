@@ -111,8 +111,10 @@ export class ElectronWindowOperationError extends Schema.TaggedError<ElectronWin
 export class ElectronWindow extends Context.Service<
   ElectronWindow,
   {
+    /** Auxiliary windows are never returned as the main-or-first fallback. */
     readonly create: (
       options: Electron.BrowserWindowConstructorOptions,
+      behavior?: { readonly auxiliary?: boolean },
     ) => Effect.Effect<Electron.BrowserWindow, ElectronWindowCreateError>;
     readonly main: Effect.Effect<Option.Option<Electron.BrowserWindow>>;
     readonly currentMainOrFirst: Effect.Effect<Option.Option<Electron.BrowserWindow>>;
@@ -146,6 +148,7 @@ export const make = Effect.gen(function* () {
   yield* Effect.addFinalizer(() => Effect.sync(() => windowsForegroundFocus?.close()));
   const mainWindowRef = yield* Ref.make<Option.Option<Electron.BrowserWindow>>(Option.none());
   const opacityRef = yield* Ref.make<WindowOpacity>(100);
+  const auxiliaryWindows = new WeakSet<Electron.BrowserWindow>();
 
   const listWindows = Effect.try({
     try: () => Electron.BrowserWindow.getAllWindows(),
@@ -207,7 +210,9 @@ export const make = Effect.gen(function* () {
       return main;
     }
 
-    const first = Option.fromNullishOr((yield* listWindows)[0] ?? null);
+    const first = Option.fromNullishOr(
+      (yield* listWindows).find((window) => !auxiliaryWindows.has(window)) ?? null,
+    );
     if (Option.isNone(first) || (yield* isWindowDestroyed(first.value))) {
       return Option.none<Electron.BrowserWindow>();
     }
@@ -233,7 +238,7 @@ export const make = Effect.gen(function* () {
   });
 
   return ElectronWindow.of({
-    create: (options) => {
+    create: Effect.fn("ElectronWindow.create")(function (options, behavior) {
       const webPreferences = options.webPreferences;
       const diagnosticOptions = {
         title: options.title ?? null,
@@ -259,19 +264,25 @@ export const make = Effect.gen(function* () {
 
       return Effect.gen(function* () {
         const window = yield* Effect.try({
-          try: () => new Electron.BrowserWindow(options),
+          try: () => {
+            const created = new Electron.BrowserWindow(options);
+            if (behavior?.auxiliary === true) auxiliaryWindows.add(created);
+            return created;
+          },
           catch: (cause) => new ElectronWindowCreateError({ options: diagnosticOptions, cause }),
         });
         yield* applyCurrentOpacity(window);
         return window;
       });
-    },
+    }),
     main: liveMain,
     currentMainOrFirst,
     focusedMainOrFirst,
-    setMain: (window) => Ref.set(mainWindowRef, Option.some(window)),
-    clearMain: (window) =>
-      Ref.update(mainWindowRef, (current) => {
+    setMain: Effect.fn("ElectronWindow.setMain")(function (window) {
+      return Ref.set(mainWindowRef, Option.some(window));
+    }),
+    clearMain: Effect.fn("ElectronWindow.clearMain")(function (window) {
+      return Ref.update(mainWindowRef, (current) => {
         if (Option.isNone(current)) {
           return current;
         }
@@ -279,9 +290,10 @@ export const make = Effect.gen(function* () {
           return current;
         }
         return Option.none();
-      }),
-    prepareReveal: (window) =>
-      Effect.promise(async () => {
+      });
+    }),
+    prepareReveal: Effect.fn("ElectronWindow.prepareReveal")(function (window) {
+      return Effect.promise(async () => {
         if (platform !== "win32" || window.isDestroyed()) {
           return false;
         }
@@ -289,9 +301,10 @@ export const make = Effect.gen(function* () {
         return ensureWindowsForegroundFocus()
           .prepare(windowsForegroundFocusTarget(window))
           .catch(() => false);
-      }),
-    reveal: (window) =>
-      Effect.tryPromise({
+      });
+    }),
+    reveal: Effect.fn("ElectronWindow.reveal")(function (window) {
+      return Effect.tryPromise({
         try: async () => {
           if (window.isDestroyed()) {
             return;
@@ -352,7 +365,8 @@ export const make = Effect.gen(function* () {
             channel: null,
             cause,
           }),
-      }).pipe(Effect.orDie),
+      }).pipe(Effect.orDie);
+    }),
     sendAll:
       /* Window broadcasts run for streamed updates; avoid a span per broadcast. */
       Effect.fnUntraced(function* (channel, ...args) {

@@ -373,10 +373,12 @@ const make = Effect.gen(function* () {
     request,
     agentRequest,
     agentSnapshot,
-    configuration: (token) =>
+    configuration: Effect.fn("GameSessions.configuration")((token) =>
       viewer(token).pipe(Effect.map((v) => ({ cwd: v.cwd, canOperate: v.canOperate }))),
-    frame: (token, id) =>
+    ),
+    frame: Effect.fn("GameSessions.frame")((token, id) =>
       getSession(token, id).pipe(Effect.flatMap((s) => transport.frame(s.bridge))),
+    ),
   });
 });
 export const layer = Layer.effect(GameSessions, make);

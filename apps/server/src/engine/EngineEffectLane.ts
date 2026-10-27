@@ -277,7 +277,7 @@ const make = Effect.gen(function* () {
       Effect.flatMap((rows) =>
         rows[0] === undefined
           ? Effect.succeedNone
-          : decodeStatus(rows[0].status).pipe(Effect.map(Option.some)),
+          : decodeStatus(rows[0].status).pipe(Effect.asSome),
       ),
       mapSqlError("EngineEffectLane.status"),
     );

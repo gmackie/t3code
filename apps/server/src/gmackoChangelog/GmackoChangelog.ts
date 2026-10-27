@@ -106,7 +106,9 @@ export const make = Effect.gen(function* () {
   });
 
   return GmackoChangelog.of({
-    get: (input) => semaphore.withPermits(1)(refresh(input.refresh === true)),
+    get: Effect.fn("GmackoChangelog.get")((input) =>
+      semaphore.withPermits(1)(refresh(input.refresh === true)),
+    ),
   });
 });
 

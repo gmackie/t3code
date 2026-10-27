@@ -912,8 +912,9 @@ export const make = Effect.fn("SystemsService.make")(function* (
       const waiters = finished.get(input.runId) ?? new Set();
       finished.set(input.runId, waiters.add(waiter));
       return yield* recordIn(input).pipe(
-        Effect.flatMap((record) =>
-          isTerminal(record.status) ? Effect.succeed(record) : Deferred.await(waiter),
+        Effect.filterOrElse(
+          (record) => isTerminal(record.status),
+          () => Deferred.await(waiter),
         ),
         Effect.ensuring(
           Effect.sync(() => {
@@ -1266,15 +1267,14 @@ export const make = Effect.fn("SystemsService.make")(function* (
         "invalid_patch",
         "Only systems, statecharts, layouts and experiments can be patched",
       );
-    let patched: unknown;
-    try {
-      patched = JsonPatch.apply(
-        input.operations as JsonPatch.JsonPatch,
-        current.value as Parameters<typeof JsonPatch.apply>[1],
-      );
-    } catch (cause) {
-      return yield* fail("invalid_patch", cause instanceof Error ? cause.message : String(cause));
-    }
+    const patched: unknown = yield* Effect.try({
+      try: () =>
+        JsonPatch.apply(
+          input.operations as JsonPatch.JsonPatch,
+          current.value as Parameters<typeof JsonPatch.apply>[1],
+        ),
+      catch: (cause) => (cause instanceof Error ? cause.message : String(cause)),
+    }).pipe(Effect.catch((message) => fail("invalid_patch", message)));
     if (documentFormat(patched) !== format)
       return yield* fail("invalid_patch", "A patch cannot change a document's format");
     const bytes = encoder.encode(`${encodeSource(patched)}\n`);
@@ -1365,8 +1365,9 @@ export const make = Effect.fn("SystemsService.make")(function* (
     executeConformance: provided(execute_),
     capabilities,
     readModel: provided(readModel),
-    patchModel: (input, authority) =>
+    patchModel: Effect.fn("SystemsService.patchModel")((input, authority) =>
       edits.withPermits(1)(patchModel(input, authority)).pipe(Effect.provide(context)),
+    ),
     requestDevice,
   });
 });
