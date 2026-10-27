@@ -1,5 +1,6 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
+import * as Crypto from "effect/Crypto";
 import * as Effect from "effect/Effect";
 import { format } from "@t3tools/systems-model/rational";
 import type { RunOutcome } from "@t3tools/systems-model/trace";
@@ -218,6 +219,52 @@ it.layer(NodeServices.layer)("discrete scheduler", (it) => {
         ),
         ["E-TARGET-001"],
       );
+    }),
+  );
+});
+
+const hex = (bytes: Uint8Array) =>
+  Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+
+it.layer(NodeServices.layer)("unit conversion", (it) => {
+  it.effect("std.unit_convert@1 scales by the locked catalog's unit scales", () =>
+    Effect.gen(function* () {
+      // Add centimetres to the catalog and re-lock it, as a real project would.
+      const base = yield* loadFiles;
+      const catalog = readJson(base, "libraries/std.blocks.json");
+      catalog.units.cm = { dims: [0, 1, 0, 0, 0, 0, 0], scale: "1/100" };
+      const catalogBytes = new TextEncoder().encode(JSON.stringify(catalog));
+      const lock = readJson(base, "systems.lock.json");
+      lock.libraries[0].sha256 = hex(yield* (yield* Crypto.Crypto).digest("SHA-256", catalogBytes));
+      const files = withJson(
+        withJson(
+          withJson(
+            { ...base, files: new Map(base.files).set("libraries/std.blocks.json", catalogBytes) },
+            "systems.lock.json",
+            lock,
+          ),
+          "models/convert.system.json",
+          system("test.convert", {
+            nodes: [
+              { id: "length", type: "std.constant@1", parameters: { value: 2.5, unit: "m" } },
+              {
+                id: "to_cm",
+                type: "std.unit_convert@1",
+                parameters: { fromUnit: "m", toUnit: "cm" },
+              },
+            ],
+            edges: [edge("e.length", "length", "to_cm")],
+            outputs: { centimetres: "to_cm" },
+          }),
+        ),
+        "experiments/convert.run.json",
+        runOf("models/convert.system.json", [1, 1], { method: "none" }),
+      );
+      const { run, resolved } = yield* compiledRun(files, "experiments/convert.run.json");
+      assert.strictEqual("nodes" in resolved ? resolved.nodes.to_cm?.factor : undefined, 100);
+      const outcome = simulate(resolved, run, { runId: "convert" });
+      assert.strictEqual(outcome.status, "completed");
+      assert.deepStrictEqual(samplesOf(outcome, "centimetres").at(-1), "1 post 250");
     }),
   );
 });

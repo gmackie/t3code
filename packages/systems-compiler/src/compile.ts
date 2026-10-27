@@ -70,6 +70,8 @@ export interface ResolvedNode {
   readonly clock?: string;
   readonly inputs: Readonly<Record<string, ResolvedInput>>;
   readonly outputs: Readonly<Record<string, ResolvedPort>>;
+  /** `std.unit_convert@1` only: from-unit scale over to-unit scale, from the locked catalog. */
+  readonly factor?: number;
 }
 
 export interface ClockStep {
@@ -641,11 +643,17 @@ const analyzeSystem = (
     const nodes: Record<string, ResolvedNode> = {};
     for (const info of [...infos.values()].toSorted((a, b) => (a.id < b.id ? -1 : 1))) {
       const clock = partitionOf(info);
+      const factor =
+        info.type === "std.unit_convert@1"
+          ? unitOf(units, String(info.parameters.fromUnit)).scale /
+            unitOf(units, String(info.parameters.toUnit)).scale
+          : undefined;
       nodes[info.id] = {
         id: info.id,
         type: info.type,
         parameters: info.parameters,
         ...(clock === undefined ? {} : { clock }),
+        ...(factor === undefined || !Number.isFinite(factor) ? {} : { factor }),
         inputs: Object.fromEntries(
           info.inputs.map((port) => {
             const { edge } = driverOf(info.id, port)!;

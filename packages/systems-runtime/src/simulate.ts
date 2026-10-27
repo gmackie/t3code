@@ -34,13 +34,14 @@ import {
 } from "@t3tools/systems-statechart/chart";
 import { runChartExperiment } from "@t3tools/systems-statechart/experiment";
 
-import { evaluatePure, initialValue, RunFault } from "./blocks.ts";
+import { evaluatePure, initialValue, nonFinite, RunFault } from "./blocks.ts";
 import {
   checkRequirements,
   isResolvedSystem,
   requirementsOf,
   RUNTIME_VERSION,
 } from "./capabilities.ts";
+import { integrate, type OdeProblem } from "./solvers.ts";
 
 /**
  * The RFC-001 §6.2/§6.4 scheduler. A run is a pure, synchronous state machine stepped
@@ -441,13 +442,37 @@ const systemSimulation = (
   };
 
   /** Phase A: integrate the plant over `(time, to]` without crossing `to`. */
+  const budget = { remaining: options.maxSolverSteps ?? DEFAULT_MAX_SOLVER_STEPS };
+  /** `dx/dt = f(t, x, u_hold)`: continuous graph in `continuousOrder`, holds as published. */
+  const plant: OdeProblem = {
+    states: integrators,
+    derivative: (_t, y) => {
+      const env = continuous(new Map(integrators.map((id, index) => [id, y[index]!])));
+      return Float64Array.from(integrators, (id) => {
+        const value = inputOf(node(id), "derivative", env);
+        if (typeof value !== "number" || !Number.isFinite(value))
+          throw nonFinite(id, Number(value), "derivative");
+        return value;
+      });
+    },
+  };
+
+  /** Phase A: integrate the plant over `(time, to]`, landing exactly on `to`. */
   const advance = (to: RationalTime) => {
     if (integrators.length === 0 || compare(time, to) === 0) return;
-    throw new RunFault(
-      error("E-TARGET-001", `No ODE solver is available for ${run.solver.method}`, {
-        elementId: integrators[0]!,
-      }),
-    );
+    const y0 = Float64Array.from(integrators, (id) => x.get(id)!);
+    const advanced = integrate(plant, y0, time, to, run.solver, budget);
+    integrators.forEach((id, index) => x.set(id, advanced.y[index]!));
+    recorded.append([
+      {
+        time: to,
+        microstep: 0,
+        phase: "solver",
+        kind: "solver.step",
+        entityId: run.solver.method,
+        payload: { from: time, steps: advanced.steps, rejected: advanced.rejected },
+      },
+    ]);
   };
 
   /** The earliest pending activity: clock tick, chart timer, external input or stop. */

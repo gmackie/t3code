@@ -7,28 +7,27 @@ import { executeConformance } from "./conformance.ts";
 import { loadFiles } from "./pack.testkit.ts";
 
 it.layer(NodeServices.layer)("executeConformance", (it) => {
-  it.effect("every discrete fixture passes; continuous ones need a solver", () =>
+  it.effect("every manifest fixture passes", () =>
     Effect.gen(function* () {
       const reports = yield* executeConformance(yield* validatePack(yield* loadFiles));
       assert.deepStrictEqual(
-        reports.map((report) => [report.id, report.status]),
+        reports.map((report) => [report.id, report.status, report.mismatches]),
         [
-          ["DISC-001", "fail"],
-          ["CHART-001", "pass"],
-          ["CHART-002", "pass"],
-          ["CLOCK-001", "pass"],
-          ["NUM-001", "fail"],
-          ["TIME-001", "pass"],
-          ["TYPE-001", "pass"],
-          ["GRAPH-001", "pass"],
-        ],
+          "DISC-001",
+          "CHART-001",
+          "CHART-002",
+          "CLOCK-001",
+          "NUM-001",
+          "TIME-001",
+          "TYPE-001",
+          "GRAPH-001",
+        ].map((id) => [id, "pass", []]),
       );
-      for (const report of reports.filter((candidate) => candidate.status === "fail"))
-        assert.isTrue(
-          report.diagnostics.length > 0 &&
-            report.diagnostics.every((diagnostic) => diagnostic.code === "E-TARGET-001"),
-          report.id,
-        );
+      const time = reports.find((report) => report.id === "TIME-001")!;
+      assert.deepStrictEqual(
+        time.diagnostics.map((diagnostic) => diagnostic.code),
+        ["E-TIME-002"],
+      );
     }),
   );
 });

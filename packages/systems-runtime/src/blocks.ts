@@ -13,9 +13,10 @@ export const PURE_BLOCKS = [
   "std.constant@1",
   "std.gain@1",
   "std.sum2@1",
+  "std.unit_convert@1",
 ] as const;
 
-/** Every block type the scheduler can execute. `std.unit_convert@1` needs catalog scales. */
+/** Every block type the scheduler can execute. */
 export const SUPPORTED_BLOCKS: ReadonlyArray<string> = [
   ...PURE_BLOCKS,
   "std.counter@1",
@@ -66,6 +67,15 @@ export const evaluatePure = (
       break;
     case "std.sum2@1":
       value = number(node, input("a")) + number(node, input("b"));
+      break;
+    case "std.unit_convert@1":
+      if (node.factor === undefined)
+        throw new RunFault(
+          error("E-TARGET-001", `Node "${node.id}" has no compiled conversion factor`, {
+            elementId: node.id,
+          }),
+        );
+      value = node.factor * number(node, input("value"));
       break;
     case "std.boolean_to_scalar@1":
       value = input("value") === true ? 1 : 0;
