@@ -11,9 +11,17 @@ import {
   type SystemsCapabilitiesResult,
   type SystemsCompileInput,
   type SystemsCompileResult,
+  type SystemsCapability,
   type SystemsCompiledEntry,
   type SystemsConformanceInput,
   type SystemsConformanceResult,
+  type SystemsDeviceOperation,
+  type SystemsDeviceRequestInput,
+  type SystemsDeviceRequestResult,
+  type SystemsModelPatchInput,
+  type SystemsModelPatchResult,
+  type SystemsModelReadInput,
+  type SystemsModelReadResult,
   type SystemsProjectInput,
   SystemsRun,
   type SystemsRunCancelInput,
@@ -27,6 +35,7 @@ import {
   type SystemsRunRef,
   type SystemsRunSignalsInput,
   type SystemsRunSignalsResult,
+  type SystemsRunWaitInput,
   type SystemsSemanticDiffInput,
   type SystemsSemanticDiffResult,
   type SystemsSignalPoint,
@@ -44,6 +53,7 @@ import { semanticDiff as diffDocuments } from "@t3tools/systems-compiler/diff";
 import { canonicalize, digest, parseStrictJson } from "@t3tools/systems-compiler/json";
 import { semanticNormalize } from "@t3tools/systems-compiler/normalize";
 import {
+  error,
   hasErrors,
   sortDiagnostics,
   type ModelDiagnostic,
@@ -51,6 +61,8 @@ import {
 import { RunDocument } from "@t3tools/systems-model/documents";
 import {
   diagnosticsFor,
+  documentClosure,
+  type Pack,
   readPackFiles,
   readReferencedFiles,
   validatePack,
@@ -59,7 +71,7 @@ import {
 } from "@t3tools/systems-model/pack";
 import { toNumber } from "@t3tools/systems-model/rational";
 import { SignalSample, TraceEvent } from "@t3tools/systems-model/trace";
-import { isNormalizedPath } from "@t3tools/systems-model/validate";
+import { decodeDocument, documentFormat, isNormalizedPath } from "@t3tools/systems-model/validate";
 import { capabilities as runnerCapabilities } from "@t3tools/systems-runtime/capabilities";
 import { compareToExpected } from "@t3tools/systems-runtime/compare";
 import * as HostProcess from "@t3tools/shared/HostProcess";
@@ -68,9 +80,11 @@ import * as Context from "effect/Context";
 import * as Crypto from "effect/Crypto";
 import * as DateTime from "effect/DateTime";
 import * as Deferred from "effect/Deferred";
+import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as FiberSet from "effect/FiberSet";
 import * as FileSystem from "effect/FileSystem";
+import * as JsonPatch from "effect/JsonPatch";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
@@ -123,6 +137,10 @@ export class SystemsService extends Context.Service<
     ) => Effect.Effect<SystemsRun, SystemsError>;
     /** Completes once the run is completed, failed or cancelled. */
     readonly awaitRun: (input: SystemsRunRef) => Effect.Effect<SystemsRun, SystemsError>;
+    /** The run once it finishes, or as it stands when the timeout passes; never cancels it. */
+    readonly waitForRun: (
+      input: typeof SystemsRunWaitInput.Type,
+    ) => Effect.Effect<SystemsRun, SystemsError>;
     readonly runEvents: (
       input: typeof SystemsRunEventsInput.Type,
     ) => Effect.Effect<SystemsRunEventsResult, SystemsError>;
@@ -135,19 +153,61 @@ export class SystemsService extends Context.Service<
     readonly executeConformance: (
       input: typeof SystemsConformanceInput.Type,
     ) => Effect.Effect<SystemsConformanceResult, SystemsError>;
-    readonly capabilities: () => Effect.Effect<SystemsCapabilitiesResult>;
+    /** The runner profile; with `authority`, also what that caller is granted. */
+    readonly capabilities: (
+      authority?: SystemsAuthority,
+    ) => Effect.Effect<SystemsCapabilitiesResult>;
+    /** One systems document and its revision, the sha256 of its bytes. */
+    readonly readModel: (
+      input: typeof SystemsModelReadInput.Type,
+    ) => Effect.Effect<SystemsModelReadResult, SystemsError>;
+    /**
+     * Applies a JSON Patch in memory, validates and compiles what it affects, and writes the
+     * file atomically only when the revision still matches and no error remains. Writing
+     * needs `model.edit`; a dry run needs only `model.read`.
+     */
+    readonly patchModel: (
+      input: typeof SystemsModelPatchInput.Type,
+      authority: SystemsAuthority,
+    ) => Effect.Effect<SystemsModelPatchResult, SystemsError>;
+    /** Checks the capability before any adapter runs (RFC-001 AUTH-001). */
+    readonly requestDevice: (
+      input: SystemsDeviceRequestInput,
+      authority: SystemsAuthority,
+    ) => Effect.Effect<SystemsDeviceRequestResult, SystemsError>;
   }
 >()("t3/systems/SystemsService") {}
+
+/** The RFC-001 §13.3 capabilities a caller holds; the transport decides them. */
+export type SystemsAuthority = ReadonlySet<SystemsCapability>;
+
+/** Hardware behind instrument and device operations. None is installed in P0. */
+export type SystemsDeviceAdapter = (
+  input: SystemsDeviceRequestInput,
+) => Effect.Effect<SystemsDeviceRequestResult, SystemsError>;
 
 export interface SystemsServiceOptions {
   /** Runs executing at once; the rest wait in creation order. */
   readonly maxConcurrentRuns?: number;
   /** Boundaries a worker steps before it waits for the host to commit. */
   readonly chunkBoundaries?: number;
+  readonly deviceAdapter?: SystemsDeviceAdapter;
 }
 
 const PROJECT_FILE = "systems.project.json";
 const RUN_LIST_LIMIT = 100;
+const isPatchable = (format: string): format is SystemsModelPatchResult["format"] =>
+  format === "sw.system" ||
+  format === "sw.statechart" ||
+  format === "sw.layout" ||
+  format === "sw.run";
+const DEVICE_CAPABILITY: Record<SystemsDeviceOperation, SystemsCapability> = {
+  observe: "instrument.observe",
+  configure: "device.configure",
+  arm: "device.arm",
+  actuate: "device.actuate",
+  flash: "device.flash",
+};
 const INSERT_BATCH = 200;
 const LISTED_FILES_LIMIT = 200;
 /** A comparison loads the whole run; beyond this it is refused rather than paged. */
@@ -170,6 +230,8 @@ const encodeExperiment = Schema.encodeSync(Schema.fromJsonString(RunDocument));
 // The plan is this server's own compiler output, stored as written; it is not re-validated.
 const decodeJson = Schema.decodeUnknownSync(Schema.fromJsonString(Schema.Unknown));
 const encodeJson = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown));
+// Model sources are written the way the shipped fixtures are: two-space indentation.
+const encodeSource = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown, { space: 2 }));
 const isSystemsError = Schema.is(SystemsError);
 
 const parse: ParseJson = (bytes, file) => parseStrictJson(bytes, file);
@@ -197,6 +259,18 @@ const unexpected = (cause: unknown) =>
         ),
       );
 const guarded = <A, E, R>(effect: Effect.Effect<A, E, R>) => effect.pipe(Effect.catch(unexpected));
+
+/** Fails with `E-AUTH-001` unless the caller holds `capability`. */
+const authorize = (authority: SystemsAuthority, capability: SystemsCapability, what: string) =>
+  authority.has(capability)
+    ? Effect.void
+    : fail("unauthorized", `${what} needs the ${capability} capability, which this caller lacks`, [
+        error("E-AUTH-001", `${what} needs the ${capability} capability`),
+      ]);
+
+const encoder = new TextEncoder();
+const hex = (bytes: Uint8Array) =>
+  Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
 
 const isTerminal = (status: SystemsRun["status"]) =>
   status === "completed" || status === "failed" || status === "cancelled";
@@ -777,12 +851,12 @@ export const make = Effect.fn("SystemsService.make")(function* (
         input.path === undefined
           ? sql<{ readonly record_json: string }>`
                 SELECT record_json FROM systems_runs WHERE project_id = ${input.projectId}
-                ORDER BY created_at DESC, run_id DESC LIMIT ${RUN_LIST_LIMIT}
+                ORDER BY created_at DESC, run_id DESC LIMIT ${input.limit ?? RUN_LIST_LIMIT}
               `
           : sql<{ readonly record_json: string }>`
                 SELECT record_json FROM systems_runs
                 WHERE project_id = ${input.projectId} AND systems_path = ${input.path}
-                ORDER BY created_at DESC, run_id DESC LIMIT ${RUN_LIST_LIMIT}
+                ORDER BY created_at DESC, run_id DESC LIMIT ${input.limit ?? RUN_LIST_LIMIT}
               `,
       );
       return { runs: rows.map((row) => decodeRecord(row.record_json)) };
@@ -849,6 +923,15 @@ export const make = Effect.fn("SystemsService.make")(function* (
           }),
         ),
       );
+    },
+  );
+
+  const waitForRun: SystemsService["Service"]["waitForRun"] = Effect.fn("SystemsService.runs.wait")(
+    function* ({ timeoutSeconds, ...ref }) {
+      const settled = yield* awaitRun(ref).pipe(
+        Effect.timeoutOption(Duration.seconds(timeoutSeconds)),
+      );
+      return Option.isSome(settled) ? settled.value : yield* recordIn(ref);
     },
   );
 
@@ -1051,11 +1134,189 @@ export const make = Effect.fn("SystemsService.make")(function* (
     };
   });
 
-  const capabilities: SystemsService["Service"]["capabilities"] = () =>
+  const capabilities: SystemsService["Service"]["capabilities"] = (authority) =>
     Effect.sync(() => {
       const profile = runnerCapabilities();
-      return { targetId: "local", ...profile, capabilities: { ...profile.capabilities } };
+      return {
+        targetId: "local",
+        ...profile,
+        capabilities: { ...profile.capabilities },
+        ...(authority === undefined ? {} : { granted: [...authority].toSorted() }),
+      };
     });
+
+  // Model editing
+
+  const revisionOf = (bytes: Uint8Array) =>
+    crypto.digest("SHA-256", bytes).pipe(
+      Effect.map((sum) => `sha256:${hex(sum)}`),
+      Effect.catch(unexpected),
+    );
+
+  /** A document's parsed value and revision, read the way the pack reads it. */
+  const readSource = Effect.fn("SystemsService.readSource")(function* (root: string, file: string) {
+    if (!file.endsWith(".json"))
+      return yield* fail("not_found", `"${file}" is not a systems document`);
+    const read = yield* guarded(readReferencedFiles(root, [file], parse));
+    const bytes = read.files.get(file);
+    if (bytes === undefined)
+      return yield* read.diagnostics.some((diagnostic) => diagnostic.file === file)
+        ? fail("invalid_model", `"${file}" cannot be read as a systems document`, read.diagnostics)
+        : fail("not_found", `No file "${file}" in the systems project`);
+    return { value: parse(bytes, file).value, revision: yield* revisionOf(bytes) };
+  });
+
+  const readModel = Effect.fn("SystemsService.models.read")(function* (
+    input: typeof SystemsModelReadInput.Type,
+  ) {
+    const root = yield* systemsRoot(input);
+    const source = yield* readSource(root, input.file);
+    return {
+      file: input.file,
+      format: documentFormat(source.value) ?? "unknown",
+      revision: source.revision,
+      document: source.value,
+    };
+  });
+
+  /** Diagnostics of everything a file's change can affect: its closure and the systems using it. */
+  const affectedDiagnostics = Effect.fn("SystemsService.affectedDiagnostics")(function* (
+    pack: Pack,
+    file: string,
+  ) {
+    const closure = documentClosure(pack, file);
+    const compiled: Array<ReadonlyArray<ModelDiagnostic>> = [];
+    for (const [path, loaded] of pack.documents) {
+      if (
+        loaded.format === "sw.system" &&
+        (closure.has(path) || documentClosure(pack, path).has(file))
+      )
+        compiled.push((yield* compileSystem(pack, path)).diagnostics);
+      if (loaded.format === "sw.statechart" && closure.has(path))
+        compiled.push((yield* compileChart(pack, path)).diagnostics);
+    }
+    return mergeDiagnostics(diagnosticsFor(pack, file), ...compiled);
+  });
+
+  const diffOf = Effect.fn("SystemsService.diffOf")(function* (
+    before: unknown,
+    after: ReturnType<Pack["documents"]["get"]>,
+    file: string,
+  ) {
+    if (after?.format === "sw.system") {
+      const previous = decodeDocument("sw.system", before, file).value;
+      if (previous === undefined) return undefined;
+      return {
+        format: "sw.system" as const,
+        beforeDigest: yield* digest(semanticNormalize(previous)),
+        afterDigest: yield* digest(semanticNormalize(after.value)),
+        changes: { ...diffDocuments(previous, after.value) },
+      };
+    }
+    if (after?.format === "sw.statechart") {
+      const previous = decodeDocument("sw.statechart", before, file).value;
+      if (previous === undefined) return undefined;
+      return {
+        format: "sw.statechart" as const,
+        beforeDigest: yield* digest(semanticNormalize(previous)),
+        afterDigest: yield* digest(semanticNormalize(after.value)),
+        changes: { ...diffDocuments(previous, after.value) },
+      };
+    }
+    return undefined;
+  });
+
+  /** Same directory, then rename, so a reader never sees a half-written model. */
+  const writeAtomically = (root: string, file: string, bytes: Uint8Array) =>
+    guarded(
+      Effect.gen(function* () {
+        const full = path.join(root, ...file.split("/"));
+        const temporary = path.join(
+          path.dirname(full),
+          `.${path.basename(full)}.${yield* crypto.randomUUIDv4()}.tmp`,
+        );
+        yield* fs.writeFile(temporary, bytes);
+        yield* fs
+          .rename(temporary, full)
+          .pipe(Effect.onError(() => fs.remove(temporary).pipe(Effect.ignore)));
+      }),
+    );
+
+  const edits = yield* Semaphore.make(1);
+
+  const patchModel = Effect.fn("SystemsService.models.patch")(function* (
+    input: typeof SystemsModelPatchInput.Type,
+    authority: SystemsAuthority,
+  ) {
+    yield* authorize(
+      authority,
+      input.dryRun === true ? "model.read" : "model.edit",
+      input.dryRun === true ? "Checking a model patch" : "Editing a model",
+    );
+    const root = yield* systemsRoot(input);
+    const current = yield* readSource(root, input.file);
+    if (current.revision !== input.expectedRevision)
+      return yield* fail(
+        "conflict",
+        `"${input.file}" changed since revision ${input.expectedRevision}; read it again and rebase the patch`,
+      );
+    const format = documentFormat(current.value);
+    if (format === undefined || !isPatchable(format))
+      return yield* fail(
+        "invalid_patch",
+        "Only systems, statecharts, layouts and experiments can be patched",
+      );
+    let patched: unknown;
+    try {
+      patched = JsonPatch.apply(
+        input.operations as JsonPatch.JsonPatch,
+        current.value as Parameters<typeof JsonPatch.apply>[1],
+      );
+    } catch (cause) {
+      return yield* fail("invalid_patch", cause instanceof Error ? cause.message : String(cause));
+    }
+    if (documentFormat(patched) !== format)
+      return yield* fail("invalid_patch", "A patch cannot change a document's format");
+    const bytes = encoder.encode(`${encodeSource(patched)}\n`);
+    const pack = yield* guarded(
+      Effect.gen(function* () {
+        const files = yield* readReferencedFiles(
+          root,
+          [PROJECT_FILE, input.file],
+          parse,
+          new Map([[input.file, bytes]]),
+        );
+        return yield* validatePack(files);
+      }),
+    );
+    const diagnostics = yield* affectedDiagnostics(pack, input.file);
+    const semanticDiff = yield* diffOf(current.value, pack.documents.get(input.file), input.file);
+    const result = {
+      file: input.file,
+      format,
+      previousRevision: current.revision,
+      revision: yield* revisionOf(bytes),
+      diagnostics: [...diagnostics],
+      ...(semanticDiff === undefined ? {} : { semanticDiff }),
+    };
+    if (hasErrors(diagnostics)) return { ...result, status: "rejected" as const };
+    if (input.dryRun === true) return { ...result, status: "dry_run" as const };
+    // Another editor may have saved the file while this patch was validated.
+    if ((yield* readSource(root, input.file)).revision !== current.revision)
+      return yield* fail("conflict", `"${input.file}" changed while the patch was validated`);
+    yield* writeAtomically(root, input.file, bytes);
+    return { ...result, status: "written" as const };
+  });
+
+  const requestDevice: SystemsService["Service"]["requestDevice"] = Effect.fn(
+    "SystemsService.devices.request",
+  )(function* (input, authority) {
+    yield* authorize(authority, DEVICE_CAPABILITY[input.operation], `Device ${input.operation}`);
+    yield* projectRoot(input.projectId);
+    if (options.deviceAdapter === undefined)
+      return yield* fail("unavailable", "No instrument or device adapter is installed");
+    return yield* options.deviceAdapter(input);
+  });
 
   // Restart: what was running lost its worker and keeps only what it committed.
   yield* Effect.gen(function* () {
@@ -1097,11 +1358,16 @@ export const make = Effect.fn("SystemsService.make")(function* (
     subscribeRuns: subscribe,
     cancelRun: cancel,
     awaitRun,
+    waitForRun,
     runEvents: events,
     runSignals: signals,
     compareRun: provided(compareRun),
     executeConformance: provided(execute_),
     capabilities,
+    readModel: provided(readModel),
+    patchModel: (input, authority) =>
+      edits.withPermits(1)(patchModel(input, authority)).pipe(Effect.provide(context)),
+    requestDevice,
   });
 });
 

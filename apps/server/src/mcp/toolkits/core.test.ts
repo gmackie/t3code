@@ -65,6 +65,7 @@ import {
 import * as EnvironmentHandlers from "./environment/handlers.ts";
 import { ProjectToolkit } from "./project/tools.ts";
 import { ReverseToolkit } from "./reverse/tools.ts";
+import { SystemsToolkit } from "./systems/tools.ts";
 import { AttachmentToolkit } from "./attachment/tools.ts";
 import * as AttachmentHandlers from "./attachment/handlers.ts";
 import { CoordinationToolkit } from "./coordination/tools.ts";
@@ -113,6 +114,7 @@ it("publishes unique tool names with reference-free object-root inputs", () => {
     PullRequestsToolkit,
     HtmlToolkit,
     ReverseToolkit,
+    SystemsToolkit,
   ]) {
     for (const tool of Object.values(toolkit.tools)) {
       expect(names.has(tool.name)).toBe(false);

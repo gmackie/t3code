@@ -474,6 +474,12 @@ export function summarizeT3ToolCalls(
     case "reverse-run":
       label = phrase("Ran", "run", quantity(selected.length, "firmware operation"));
       break;
+    case "systems-read":
+      label = phrase("Inspected", "inspect", `systems models ${times}`);
+      break;
+    case "systems-run":
+      label = phrase("Ran", "run", quantity(selected.length, "systems operation"));
+      break;
     case "capabilities":
       label = phrase("Checked", "check", `orchestration capabilities ${times}`);
       break;
