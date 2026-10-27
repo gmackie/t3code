@@ -15,8 +15,13 @@ import {
   TableHeader,
   TableRow,
 } from "~/components/ui/table";
-import { formatTime, plotSignals } from "./signalPlot";
-import { Diagnostics, isActiveRun, statusVariant } from "./SystemsDiagnostics";
+import {
+  formatTime,
+  isActiveRun,
+  plotSignals,
+  statusTone,
+} from "@t3tools/client-runtime/systems-presentation";
+import { Diagnostics } from "./SystemsDiagnostics";
 
 const PAGE_SIZE = 100;
 const PLOT = { width: 640, height: 80 } as const;
@@ -61,7 +66,7 @@ export function SystemsRunDetail({
         <h3 className="min-w-0 flex-1 truncate font-semibold">
           {run.experimentId} <span className="font-mono text-muted-foreground">{run.runId}</span>
         </h3>
-        <Badge variant={statusVariant(run.status)}>{run.status}</Badge>
+        <Badge variant={statusTone(run.status)}>{run.status}</Badge>
         {!terminal && (
           <Button size="xs" variant="destructive-outline" onClick={() => void cancel()}>
             Cancel

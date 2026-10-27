@@ -1,7 +1,7 @@
 import type { SystemsSignalSeries } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
-import { plotSignals } from "./signalPlot";
+import { plotSignals } from "./systemsPresentation.ts";
 
 const point = (
   seconds: number,

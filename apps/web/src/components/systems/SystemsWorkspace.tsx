@@ -9,8 +9,8 @@ import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
 import { SystemsRunDetail } from "./SystemsRunDetail";
-import { Diagnostics, statusVariant } from "./SystemsDiagnostics";
-import { formatTime as format } from "./signalPlot";
+import { formatTime as format, statusTone } from "@t3tools/client-runtime/systems-presentation";
+import { Diagnostics } from "./SystemsDiagnostics";
 
 const pathKey = (environmentId: string, projectId: string) =>
   `t3:systems-path:${environmentId}:${projectId}`;
@@ -183,7 +183,7 @@ function ProjectSystems({
                     >
                       {item.experimentId}
                     </Button>
-                    <Badge variant={statusVariant(item.status)}>{item.status}</Badge>
+                    <Badge variant={statusTone(item.status)}>{item.status}</Badge>
                     <span className="text-muted-foreground">
                       t={format(item.lastCommittedTime)} of {format(item.stop)} s ·{" "}
                       {item.boundaries} boundaries

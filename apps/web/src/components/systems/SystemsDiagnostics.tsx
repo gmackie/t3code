@@ -1,16 +1,5 @@
-import type { SystemsDiagnostic, SystemsRun } from "@t3tools/contracts";
+import type { SystemsDiagnostic } from "@t3tools/contracts";
 import { Badge } from "~/components/ui/badge";
-
-export const isActiveRun = (run: SystemsRun) => run.status === "queued" || run.status === "running";
-
-export const statusVariant = (status: SystemsRun["status"]) =>
-  status === "completed"
-    ? "success"
-    : status === "failed"
-      ? "error"
-      : status === "cancelled"
-        ? "warning"
-        : "info";
 
 export function Diagnostics({
   diagnostics,
