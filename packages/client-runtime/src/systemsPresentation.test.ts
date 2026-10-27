@@ -1,7 +1,7 @@
 import type { SystemsSignalSeries } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
-import { plotSignals } from "./systemsPresentation.ts";
+import { plotSignals, runtimeLabel } from "./systemsPresentation.ts";
 
 const point = (
   seconds: number,
@@ -40,5 +40,26 @@ describe("plotSignals", () => {
     expect(plot.series[0]).toMatchObject({ min: 0, max: 1, path: "M0 10 H40 V0 H40" });
     // A constant signal sits mid-box.
     expect(plot.series[1]!.path).toBe("M20 5 H40");
+  });
+});
+
+describe("runtimeLabel", () => {
+  it("names the deterministic profile instead of printing the canonical capability JSON", () => {
+    const run = {
+      runtimeVersion: "systems-runtime@0.1.0",
+      compilerVersion: "systems-compiler@0.1.0",
+    };
+    expect(
+      runtimeLabel({
+        ...run,
+        capabilityProfile: JSON.stringify({
+          deterministicProfile: "reference-float64",
+          solvers: [],
+        }),
+      }),
+    ).toBe("systems-runtime@0.1.0 · systems-compiler@0.1.0 · reference-float64");
+    expect(runtimeLabel({ ...run, capabilityProfile: "legacy" })).toBe(
+      "systems-runtime@0.1.0 · systems-compiler@0.1.0 · legacy",
+    );
   });
 });

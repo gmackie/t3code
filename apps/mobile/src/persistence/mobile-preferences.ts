@@ -79,6 +79,7 @@ export type WorkspaceSelections = typeof WorkspaceSelections.Type;
 const isThreadListFilters = Schema.is(ThreadListFilters);
 const isWorkspaceSelections = Schema.is(WorkspaceSelections);
 const isPullRequestListPreferences = Schema.is(PullRequestListPreferences);
+const isSystemsPaths = Schema.is(Schema.Record(Schema.String, Schema.String));
 
 export interface Preferences {
   readonly navigationTabOrder?: readonly string[];
@@ -119,6 +120,8 @@ export interface Preferences {
   readonly threadListFilters?: ThreadListFilters;
   readonly pullRequestListFilters?: PullRequestListPreferences;
   readonly workspaceSelections?: WorkspaceSelections;
+  /** Systems project folder per `environmentId:projectId`; absent means the project root. */
+  readonly systemsPaths?: Readonly<Record<string, string>>;
 }
 
 export class MobilePreferencesLoadError extends Schema.TaggedError<MobilePreferencesLoadError>()(
@@ -194,6 +197,7 @@ function sanitizePreferences(parsed: Preferences): Preferences {
     threadListFilters?: ThreadListFilters;
     pullRequestListFilters?: PullRequestListPreferences;
     workspaceSelections?: WorkspaceSelections;
+    systemsPaths?: Readonly<Record<string, string>>;
   } = {};
 
   if (Array.isArray(parsed.hiddenNavigationTabs)) {
@@ -341,6 +345,7 @@ function sanitizePreferences(parsed: Preferences): Preferences {
   if (isWorkspaceSelections(parsed.workspaceSelections)) {
     preferences.workspaceSelections = parsed.workspaceSelections;
   }
+  if (isSystemsPaths(parsed.systemsPaths)) preferences.systemsPaths = parsed.systemsPaths;
   return preferences;
 }
 

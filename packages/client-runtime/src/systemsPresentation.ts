@@ -62,6 +62,29 @@ export function plotSignals(series: ReadonlyArray<SystemsSignalSeries>, box: Plo
   };
 }
 
+/**
+ * The runtime line of a run. Its capability profile is stored as canonical JSON so it can
+ * be digested; people read only its deterministic profile name.
+ */
+export function runtimeLabel(
+  run: Pick<SystemsRun, "runtimeVersion" | "compilerVersion" | "capabilityProfile">,
+): string {
+  let profile = run.capabilityProfile;
+  try {
+    const parsed: unknown = JSON.parse(run.capabilityProfile);
+    if (
+      typeof parsed === "object" &&
+      parsed !== null &&
+      "deterministicProfile" in parsed &&
+      typeof parsed.deterministicProfile === "string"
+    )
+      profile = parsed.deterministicProfile;
+  } catch {
+    // Not JSON: show it as recorded.
+  }
+  return `${run.runtimeVersion} · ${run.compilerVersion} · ${profile}`;
+}
+
 export const isActiveRun = (run: Pick<SystemsRun, "status">) =>
   run.status === "queued" || run.status === "running";
 
