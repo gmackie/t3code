@@ -66,6 +66,8 @@ export const CLIENT_GUARDED_RPC_SCOPES = {
   [WS_METHODS.systemsRunsCreate]: AuthOrchestrationOperateScope,
   [WS_METHODS.systemsRunsCancel]: AuthOrchestrationOperateScope,
   [WS_METHODS.systemsConformanceExecute]: AuthOrchestrationOperateScope,
+  // Writes the user's model files, so a patch acts with `model.edit` like an editing agent.
+  [WS_METHODS.systemsModelsPatch]: AuthOrchestrationOperateScope,
   [WS_METHODS.scheduledTasksUpsert]: AuthOrchestrationOperateScope,
   [WS_METHODS.scheduledTasksSetEnabled]: AuthOrchestrationOperateScope,
   [WS_METHODS.scheduledTasksDelete]: AuthOrchestrationOperateScope,

@@ -8,8 +8,11 @@ on:
       - packages/systems-*/**
       - packages/contracts/src/systems.ts
       - packages/contracts/src/rpc.ts
-      - packages/client-runtime/src/state/systems.ts packages/client-runtime/src/systemsPresentation.ts packages/client-runtime/src/systemsPresentation.test.ts
+      - packages/client-runtime/src/state/systems.ts packages/client-runtime/src/systemsPresentation.ts packages/client-runtime/src/systemsPresentation.test.ts packages/client-runtime/src/systemsParameters.ts packages/client-runtime/src/systemsParameters.test.ts
       - packages/client-runtime/src/systemsPresentation*.ts
+      - packages/client-runtime/src/systemsParameters*.ts
+      - packages/contracts/src/clientRpcPermissions.ts
+      - apps/server/src/auth/RpcAuthorization.ts
       - apps/server/src/systems/**
       - apps/server/src/systems-worker.ts
       - apps/server/src/mcp/toolkits/systems/**
@@ -75,7 +78,7 @@ jobs:
       - name: Run the Systems service, agent toolkit and migration ledger tests
         run: |
           pnpm exec vp test run apps/server/src/systems apps/server/src/mcp/toolkits/systems apps/server/src/mcp/McpToolAccess.test.ts apps/server/src/persistence/Migrations.test.ts apps/server/src/persistence/reconcileV2PreviewMigration.test.ts
-          pnpm exec vp test run packages/client-runtime/src/systemsPresentation.test.ts apps/web/src/rightPanelStore.test.ts
+          pnpm exec vp test run packages/client-runtime/src/systemsPresentation.test.ts packages/client-runtime/src/systemsParameters.test.ts apps/server/src/auth/RpcAuthorization.test.ts apps/web/src/rightPanelStore.test.ts
       - name: Typecheck the server, contracts and clients
         run: |
           pnpm --filter t3 run typecheck
@@ -85,5 +88,5 @@ jobs:
           pnpm --filter @t3tools/mobile run typecheck
       - name: Lint and format
         run: |
-          pnpm exec vp lint apps/server/src/systems apps/server/src/systems-worker.ts apps/server/src/mcp/toolkits/systems apps/web/src/components/systems packages/contracts/src/systems.ts packages/client-runtime/src/state/systems.ts packages/client-runtime/src/systemsPresentation.ts packages/client-runtime/src/systemsPresentation.test.ts
-          pnpm exec vp fmt --check apps/server/src/systems apps/server/src/systems-worker.ts apps/server/src/mcp/toolkits/systems apps/web/src/components/systems packages/contracts/src/systems.ts packages/client-runtime/src/state/systems.ts packages/client-runtime/src/systemsPresentation.ts packages/client-runtime/src/systemsPresentation.test.ts
+          pnpm exec vp lint apps/server/src/systems apps/server/src/systems-worker.ts apps/server/src/mcp/toolkits/systems apps/web/src/components/systems packages/contracts/src/systems.ts packages/client-runtime/src/state/systems.ts packages/client-runtime/src/systemsPresentation.ts packages/client-runtime/src/systemsPresentation.test.ts packages/client-runtime/src/systemsParameters.ts packages/client-runtime/src/systemsParameters.test.ts
+          pnpm exec vp fmt --check apps/server/src/systems apps/server/src/systems-worker.ts apps/server/src/mcp/toolkits/systems apps/web/src/components/systems packages/contracts/src/systems.ts packages/client-runtime/src/state/systems.ts packages/client-runtime/src/systemsPresentation.ts packages/client-runtime/src/systemsPresentation.test.ts packages/client-runtime/src/systemsParameters.ts packages/client-runtime/src/systemsParameters.test.ts

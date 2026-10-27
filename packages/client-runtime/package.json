@@ -488,6 +488,10 @@
       "types": "./src/pullRequestMarkdown.ts",
       "default": "./src/pullRequestMarkdown.ts"
     },
+    "./systems-parameters": {
+      "types": "./src/systemsParameters.ts",
+      "default": "./src/systemsParameters.ts"
+    },
     "./systems-presentation": {
       "types": "./src/systemsPresentation.ts",
       "default": "./src/systemsPresentation.ts"
