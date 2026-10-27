@@ -1,7 +1,12 @@
 import { type StaticScreenProps } from "@react-navigation/native";
 import { EnvironmentId, ProjectId, type SystemsRun } from "@t3tools/contracts";
 import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
-import { formatTime, isActiveRun, statusTone } from "@t3tools/client-runtime/systems-presentation";
+import {
+  formatTime,
+  isActiveRun,
+  runtimeLabel,
+  statusTone,
+} from "@t3tools/client-runtime/systems-presentation";
 import { useState } from "react";
 import { View } from "react-native";
 
@@ -88,7 +93,7 @@ function RunSummary(props: { readonly environmentId: EnvironmentId; readonly run
   const rows = [
     ["Experiment", run.experimentRef],
     ["Solver · seed", `${run.solver} · ${run.seed}`],
-    ["Runtime", `${run.runtimeVersion} · ${run.compilerVersion} · ${run.capabilityProfile}`],
+    ["Runtime", runtimeLabel(run)],
     [
       "Progress",
       `t=${formatTime(run.lastCommittedTime)} of ${formatTime(run.stop)} s · ${run.boundaries} boundaries · ${run.eventCount} events · ${run.sampleCount} samples`,

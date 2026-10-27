@@ -113,6 +113,9 @@ export function SystemsParameterEditor(props: {
                     accessibilityLabel={`${node.nodeId} ${parameter.key}`}
                     autoCapitalize="none"
                     autoCorrect={false}
+                    keyboardType={
+                      typeof parameter.value === "number" ? "numbers-and-punctuation" : "default"
+                    }
                     value={texts.get(parameter.pointer) ?? String(parameter.value)}
                     onChangeText={(text) => setTexts(new Map(texts).set(parameter.pointer, text))}
                     className={cn(

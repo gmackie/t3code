@@ -85,7 +85,7 @@ export function SignalPlot(props: {
             accessibilityLabel={`${series.signalId} over time`}
             width={width}
             height={PLOT_HEIGHT + 2}
-            viewBox={`0 -1 ${width} ${PLOT_HEIGHT + 2}`}
+            viewBox={`-1 -1 ${width + 2} ${PLOT_HEIGHT + 2}`}
           >
             <Path
               d={series.path}

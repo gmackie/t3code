@@ -19,6 +19,7 @@ import {
   formatTime,
   isActiveRun,
   plotSignals,
+  runtimeLabel,
   statusTone,
 } from "@t3tools/client-runtime/systems-presentation";
 import { Diagnostics } from "./SystemsDiagnostics";
@@ -82,9 +83,7 @@ export function SystemsRunDetail({
           {run.solver} · {run.seed}
         </dd>
         <dt className="text-muted-foreground">Runtime</dt>
-        <dd>
-          {run.runtimeVersion} · {run.compilerVersion} · {run.capabilityProfile}
-        </dd>
+        <dd>{runtimeLabel(run)}</dd>
         <dt className="text-muted-foreground">Progress</dt>
         <dd>
           t={formatTime(run.lastCommittedTime)} of {formatTime(run.stop)} s · {run.boundaries}{" "}
