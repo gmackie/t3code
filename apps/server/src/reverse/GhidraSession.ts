@@ -317,7 +317,7 @@ export class GhidraSessionPool {
     }
   }
   dispose(): void {
-    for (const key of [...this.sessions.keys()]) this.close(key);
+    for (const key of this.sessions.keys()) this.close(key);
   }
 }
 const pools = new Map<string, GhidraSessionPool>();

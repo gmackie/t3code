@@ -20,6 +20,8 @@ const emptyLink: VeritasCadLink = {
   snapshotSha256: null,
   pendingOperation: null,
 };
+const decodeVeritasCadLink = Schema.decodeUnknownSync(VeritasCadLink);
+const decodeVeritasCadBomLines = Schema.decodeUnknownSync(Schema.Array(VeritasCadBomLine));
 const MAX_SNAPSHOT_BYTES = 40 * 1024 * 1024;
 const SNAPSHOT_LIFETIME_MS = 30 * 60_000;
 const object = (value: unknown): Record<string, unknown> =>
@@ -77,9 +79,7 @@ export class VeritasBridge {
   }
   async readLink(cwd: string): Promise<VeritasCadLink> {
     try {
-      return Schema.decodeUnknownSync(VeritasCadLink)(
-        JSON.parse(await NodeFSP.readFile(this.linkPath(cwd), "utf8")),
-      );
+      return decodeVeritasCadLink(JSON.parse(await NodeFSP.readFile(this.linkPath(cwd), "utf8")));
     } catch (error) {
       if (object(error).code === "ENOENT") return { ...emptyLink };
       throw new Error("The saved Veritas connection could not be read.");
@@ -136,7 +136,7 @@ export class VeritasBridge {
   }
   private async bom(reviewId: string) {
     const result = object(await this.rpc("forgeBom.list", { reviewId, limit: 500 }));
-    return Schema.decodeUnknownSync(Schema.Array(VeritasCadBomLine))(result.lines);
+    return decodeVeritasCadBomLines(result.lines);
   }
   async status(cwd: string, canOperate: boolean): Promise<VeritasCadStatus> {
     const link = await this.readLink(cwd);

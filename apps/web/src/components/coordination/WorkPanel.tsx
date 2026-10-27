@@ -25,10 +25,15 @@ import { Input } from "../ui/input";
 import { ScrollArea } from "../ui/scroll-area";
 import { canRetry, issueSnapshotRef, planActions } from "./work.logic";
 
+const outputDecoders = new Map(
+  Array.from(bobOperationSchemas, ([operation, schemas]) => [
+    operation,
+    Schema.decodeUnknownSync(schemas.output, { onExcessProperty: "error" }),
+  ]),
+);
+const isBobCoordinationError = Schema.is(BobCoordinationError);
 function decode<T>(operation: string, value: unknown): T {
-  return Schema.decodeUnknownSync(bobOperationSchemas.get(operation)!.output, {
-    onExcessProperty: "error",
-  })(value) as T;
+  return outputDecoders.get(operation)!(value) as T;
 }
 export default function WorkPanel({
   environmentId,
@@ -161,7 +166,7 @@ export default function WorkPanel({
     } catch (cause) {
       // A definite rejection permits a corrected command; uncertain delivery
       // retains the same command ID for replay.
-      if (Schema.is(BobCoordinationError)(cause) && cause.status >= 400 && cause.status < 500)
+      if (isBobCoordinationError(cause) && cause.status >= 400 && cause.status < 500)
         setPending(null);
       setError(cause instanceof Error ? cause.message : "Bob could not confirm the request.");
     } finally {

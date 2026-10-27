@@ -50,7 +50,6 @@ import {
   registerEnvironmentTunnelRecovery,
   relayDpopFailureReason,
   resolveManagedEndpointReleaseProvider,
-  revokeEnvironmentLinkRecord,
   traceRelayHttpRequestWith,
   unlinkEnvironmentRecord,
   verifyRelayClientBearerToken,

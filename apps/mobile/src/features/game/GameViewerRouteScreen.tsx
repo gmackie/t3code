@@ -103,13 +103,25 @@ export function GameViewerRouteScreen({ route }: Props) {
     refresh: true,
     reportFailure: false,
   });
-  const [session, setSession] = useState<{
-    token: string;
-    expiresAt: number;
-    httpBaseUrl: string;
-  } | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
+  const threadId = ThreadId.make(route.params.threadId);
+  // Each change of target or retry is a new request; a result only counts for the request that made it.
+  const sessionRequest = useMemo(
+    () => ({ viewerEndpoint, cwd, environmentId, threadId, mintSession, refreshKey }),
+    [viewerEndpoint, cwd, environmentId, threadId, mintSession, refreshKey],
+  );
+  const [viewer, setViewer] = useState<{
+    request: typeof sessionRequest;
+    session: { token: string; expiresAt: number; httpBaseUrl: string } | null;
+    error: string | null;
+  } | null>(null);
+  const current = viewer?.request === sessionRequest ? viewer : null;
+  const session = current?.session ?? null;
+  const error = viewerEndpoint
+    ? (current?.error ?? null)
+    : "Reconnect to this environment to open the Game viewer.";
+  const fail = (message: string) =>
+    setViewer({ request: sessionRequest, session: null, error: message });
   const [progress, setProgress] = useState(0);
   const webViewRef = useRef<WebView>(null);
 
@@ -131,25 +143,34 @@ export function GameViewerRouteScreen({ route }: Props) {
 
   const retry = useCallback(() => setRefreshKey((key) => key + 1), []);
   useEffect(() => {
+    const endpoint = sessionRequest.viewerEndpoint;
+    if (!endpoint) return;
     const controller = new AbortController();
-    setSession(null);
-    setError(null);
-    if (!viewerEndpoint) {
-      setError("Reconnect to this environment to open the Game viewer.");
-      return () => controller.abort();
-    }
-    void mintSession({ environmentId, cwd, threadId: ThreadId.make(route.params.threadId) })
+    void sessionRequest
+      .mintSession({
+        environmentId: sessionRequest.environmentId,
+        cwd: sessionRequest.cwd,
+        threadId: sessionRequest.threadId,
+      })
       .then((result) => {
         if (controller.signal.aborted) return;
         if (result._tag === "Failure") throw squashAtomCommandFailure(result);
-        setSession({ ...result.value, httpBaseUrl: viewerEndpoint });
+        setViewer({
+          request: sessionRequest,
+          session: { ...result.value, httpBaseUrl: endpoint },
+          error: null,
+        });
       })
       .catch((cause: unknown) => {
         if (!controller.signal.aborted)
-          setError(cause instanceof Error ? cause.message : "Unable to open the Game viewer.");
+          setViewer({
+            request: sessionRequest,
+            session: null,
+            error: cause instanceof Error ? cause.message : "Unable to open the Game viewer.",
+          });
       });
     return () => controller.abort();
-  }, [viewerEndpoint, cwd, environmentId, mintSession, refreshKey, route.params.threadId]);
+  }, [sessionRequest]);
 
   useEffect(() => {
     if (!session) return;
@@ -205,7 +226,11 @@ export function GameViewerRouteScreen({ route }: Props) {
               (viewerOrigin !== null && request.url.startsWith(`${viewerOrigin}/`))
             )
               return true;
-            setError("Navigation outside the Game viewer was blocked.");
+            setViewer((previous) => ({
+              request: sessionRequest,
+              session: previous?.request === sessionRequest ? previous.session : null,
+              error: "Navigation outside the Game viewer was blocked.",
+            }));
             return false;
           }}
           onLoadProgress={(event) => setProgress(event.nativeEvent.progress)}
@@ -220,17 +245,14 @@ export function GameViewerRouteScreen({ route }: Props) {
           onHttpError={(event) => {
             if (event.nativeEvent.url.split("#")[0] !== viewerUrl.split("#")[0]) return;
             setProgress(0);
-            setSession(null);
-            setError(`The Game viewer returned status ${event.nativeEvent.statusCode}.`);
+            fail(`The Game viewer returned status ${event.nativeEvent.statusCode}.`);
           }}
           onError={() => {
             setProgress(0);
-            setSession(null);
-            setError("The Game viewer could not be loaded.");
+            fail("The Game viewer could not be loaded.");
           }}
           onContentProcessDidTerminate={() => {
-            setSession(null);
-            setError("The Game viewer stopped responding.");
+            fail("The Game viewer stopped responding.");
           }}
           renderLoading={() => (
             <View className="absolute inset-0 items-center justify-center bg-sheet">

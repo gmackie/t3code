@@ -27,8 +27,14 @@ import { uuidv4 } from "../../lib/uuid";
 import { useOpenLinkedThread } from "../threads/useOpenLinkedThread";
 
 type Props = StaticScreenProps<{ environmentId: EnvironmentId; threadId: ThreadId }>;
+const outputDecoders = new Map(
+  Array.from(bobOperationSchemas, ([operation, schemas]) => [
+    operation,
+    Schema.decodeUnknownSync(schemas.output),
+  ]),
+);
 const decode = <A,>(operation: string, value: unknown): A =>
-  Schema.decodeUnknownSync(bobOperationSchemas.get(operation)!.output)(value) as A;
+  outputDecoders.get(operation)!(value) as A;
 type BobRequest = (input: BobOperationInput) => Promise<unknown>;
 type ProjectBinding = Parameters<typeof planBelongsToProject>[1];
 
@@ -94,12 +100,35 @@ async function loadWork(
   return { caps, visible, nextPlanId: page.nextPlanId ?? null, detail, children };
 }
 
+const useBobConnection = (environmentId: EnvironmentId) =>
+  useEnvironmentQuery(bobCoordination.connection({ environmentId, input: {} }));
+
 export function WorkRouteScreen(props: Props) {
   const { environmentId, threadId } = props.route.params;
+  const connection = useBobConnection(environmentId);
+  // A new thread or connection state starts from an empty view.
+  return (
+    <WorkScreen
+      key={`${environmentId}:${threadId}:${connection.data?.configured === true}`}
+      environmentId={environmentId}
+      threadId={threadId}
+      connection={connection}
+    />
+  );
+}
+
+function WorkScreen({
+  environmentId,
+  threadId,
+  connection,
+}: {
+  environmentId: EnvironmentId;
+  threadId: ThreadId;
+  connection: ReturnType<typeof useBobConnection>;
+}) {
   const navigation = useNavigation();
   const openLinkedThread = useOpenLinkedThread();
   const thread = useThreadShell(scopeThreadRef(environmentId, threadId));
-  const connection = useEnvironmentQuery(bobCoordination.connection({ environmentId, input: {} }));
   const call = useAtomCommand(bobCoordination.call, { reportFailure: false });
   const [plans, setPlans] = useState<ListPlansOutput["plans"]>([]);
   const [next, setNext] = useState<string | null>(null);
@@ -107,7 +136,9 @@ export function WorkRouteScreen(props: Props) {
   const [items, setItems] = useState<ReadonlyArray<GetItemOutput["item"]>>([]);
   const [capabilities, setCapabilities] = useState<GetCapabilitiesOutput | null>(null);
   const [pending, setPending] = useState<BobOperationInput | null>(null);
-  const [busy, setBusy] = useState(false);
+  const configured = connection.data?.configured === true;
+  // A configured view starts loading as soon as it mounts.
+  const [busy, setBusy] = useState(configured);
   const [error, setError] = useState<string | null>(null);
   const generation = useRef(0);
   const binding = thread && connection.data?.projects[thread.projectId];
@@ -119,11 +150,9 @@ export function WorkRouteScreen(props: Props) {
     },
     [call, environmentId],
   );
-  const refresh = useCallback(
-    async (planId?: string, afterPlanId?: string) => {
-      const current = ++generation.current;
-      setBusy(true);
-      setError(null);
+  /** Applies one load unless a newer one has started since `current` was taken. */
+  const load = useCallback(
+    async (current: number, planId?: string, afterPlanId?: string) => {
       const loaded = await settlePromise(() => loadWork(request, binding, planId, afterPlanId));
       if (current !== generation.current) return;
       setBusy(false);
@@ -131,6 +160,7 @@ export function WorkRouteScreen(props: Props) {
         setError(failureMessage(loaded, "Could not load work."));
         return;
       }
+      setError(null);
       const { caps, visible, nextPlanId, detail, children } = loaded.value;
       setCapabilities(caps);
       setPlans((previous) => (afterPlanId ? [...previous, ...visible] : visible));
@@ -142,16 +172,18 @@ export function WorkRouteScreen(props: Props) {
     },
     [binding, request],
   );
+  const refresh = (planId?: string, afterPlanId?: string) => {
+    const current = ++generation.current;
+    setBusy(true);
+    setError(null);
+    return load(current, planId, afterPlanId);
+  };
   useEffect(() => {
-    setPlans([]);
-    setPlan(null);
-    setItems([]);
-    setPending(null);
-    if (connection.data?.configured) void refresh();
+    if (configured) void load(++generation.current);
     return () => {
       generation.current++;
     };
-  }, [connection.data?.configured, environmentId, threadId, refresh]);
+  }, [configured, load]);
   const mutate = async (command: BobOperationInput) => {
     setPending(command);
     setBusy(true);

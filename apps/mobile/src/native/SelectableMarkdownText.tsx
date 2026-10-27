@@ -50,6 +50,7 @@ export function SelectableMarkdownText(props: SelectableMarkdownTextProps) {
         const text = (
           <MobileEnrichedMarkdownText
             {...props}
+            // oxlint-disable-next-line react/no-array-index-key -- segments are positional slices of one markdown string, never reordered
             key={index}
             markdown={markdown}
             textStyle={textStyle}
@@ -59,6 +60,7 @@ export function SelectableMarkdownText(props: SelectableMarkdownTextProps) {
         );
         return segment.kind === "mermaid" ? (
           <MermaidCodeBlock
+            // oxlint-disable-next-line react/no-array-index-key -- positional slice; the source remounts the diagram when it changes
             key={`${index}:${segment.source}`}
             source={segment.source}
             fallback={text}

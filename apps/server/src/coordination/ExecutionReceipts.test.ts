@@ -17,6 +17,8 @@ import * as Threads from "../orchestration-v2/ThreadManagementService.ts";
 import * as Bob from "./BobCoordination.ts";
 import * as Receipts from "./ExecutionReceipts.ts";
 
+const encodeJson = Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown));
+
 it.effect(
   "preserves terminal checkpoint evidence and replays the outbox unchanged after delivery failure",
   () =>
@@ -125,7 +127,7 @@ it.effect(
       yield* Effect.gen(function* () {
         const sql = yield* SqlClient.SqlClient;
         const service = yield* Receipts.ExecutionReceipts;
-        const json = yield* Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown))(admission);
+        const json = yield* encodeJson(admission);
         yield* sql`INSERT INTO bob_execution_admissions (request_id,attempt_id,owner,request_json,launch_json,admission_json,run_id,launched) VALUES ('request','attempt','bob','{}','{}',${json},'run',1)`;
         yield* service.flush;
         const first = yield* sql<{

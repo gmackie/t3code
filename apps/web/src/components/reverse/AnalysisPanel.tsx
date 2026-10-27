@@ -254,9 +254,10 @@ export function AnalysisPanel({
               )}
             </div>
           ))}
-          {result.gadgets?.map((g, i) => (
+          {result.gadgets?.map((g) => (
             <div
-              key={g.address + i}
+              // The server drops repeated address and instruction pairs.
+              key={`${g.address}:${g.instructions}`}
               className="flex gap-2 border-b border-border py-1 font-mono text-xs"
             >
               <span>{g.address}</span>
@@ -350,6 +351,7 @@ export function AnalysisPanel({
                         selected.tokens?.map((token, i) =>
                           token.address ? (
                             <Button
+                              // oxlint-disable-next-line react/no-array-index-key -- decompiler tokens are a fixed sequence with repeating text and addresses
                               key={i}
                               size="micro"
                               variant="ghost"
@@ -359,6 +361,7 @@ export function AnalysisPanel({
                               {token.text}
                             </Button>
                           ) : (
+                            // oxlint-disable-next-line react/no-array-index-key -- decompiler tokens are a fixed sequence with repeating text and addresses
                             <span key={i}>{token.text}</span>
                           ),
                         )}
@@ -402,6 +405,7 @@ export function AnalysisPanel({
                       Incoming references
                       {selected.xrefs?.map((ref, i) => (
                         <Button
+                          // oxlint-disable-next-line react/no-array-index-key -- one source address can reference a function more than once; the list is fixed per function
                           key={i}
                           variant="ghost"
                           size="compact"

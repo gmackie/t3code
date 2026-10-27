@@ -32,8 +32,21 @@ const denied = () =>
     code: "capability_denied",
     message: "This Bob operation is outside the calling project's authority.",
   });
+const outputDecoders = new Map(
+  Array.from(bobOperationSchemas, ([operation, schemas]) => [
+    operation,
+    Schema.decodeUnknownSync(schemas.output),
+  ]),
+);
+const inputDecoders = new Map(
+  Array.from(bobOperationSchemas, ([operation, schemas]) => [
+    operation,
+    Schema.decodeUnknownEffect(schemas.input, { onExcessProperty: "error" }),
+  ]),
+);
+const decodeFields = Schema.decodeUnknownEffect(Schema.Record(Schema.String, Schema.Unknown));
 const decode = <A>(operation: string, value: unknown): A =>
-  Schema.decodeUnknownSync(bobOperationSchemas.get(operation)!.output)(value) as A;
+  outputDecoders.get(operation)!(value) as A;
 /**
  * Bob plans are bound per project, so only a T3 thread caller has one. Reads
  * need nothing more; the handler checks mutations itself (a live run and a
@@ -58,13 +71,8 @@ const handlers = {
       const binding = config.projects[caller.projectId];
       if (!binding) return yield* denied();
       const coordinator = yield* Bob.BobCoordination;
-      const payload = yield* Schema.decodeUnknownEffect(
-        bobOperationSchemas.get(request.operation)!.input,
-        { onExcessProperty: "error" },
-      )(request.input);
-      const fields = yield* Schema.decodeUnknownEffect(
-        Schema.Record(Schema.String, Schema.Unknown),
-      )(payload);
+      const payload = yield* inputDecoders.get(request.operation)!(request.input);
+      const fields = yield* decodeFields(payload);
       const getPlan = (planId: unknown) =>
         coordinator
           .call({ operation: "GetPlan", input: { contractVersion: "1", resourceId: planId } })

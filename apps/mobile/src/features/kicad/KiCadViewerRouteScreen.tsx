@@ -68,9 +68,30 @@ export function KiCadViewerRouteScreen({ route }: Props) {
     refresh: true,
     reportFailure: false,
   });
-  const [session, setSession] = useState<{ token: string; expiresAt: number } | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
+  // Each change of target or retry is a new request; a result only counts for the request that made it.
+  const sessionRequest = useMemo(
+    () => ({ connection, cwd, environmentId, mintSession, refreshKey }),
+    [connection, cwd, environmentId, mintSession, refreshKey],
+  );
+  const [viewer, setViewer] = useState<{
+    request: typeof sessionRequest;
+    session: { token: string; expiresAt: number } | null;
+    error: string | null;
+  } | null>(null);
+  const current = viewer?.request === sessionRequest ? viewer : null;
+  const session = current?.session ?? null;
+  const error = Option.isNone(connection)
+    ? "Reconnect to this environment to open the KiCad viewer."
+    : (current?.error ?? null);
+  const fail = (message: string) =>
+    setViewer({ request: sessionRequest, session: null, error: message });
+  const showError = (message: string) =>
+    setViewer((previous) => ({
+      request: sessionRequest,
+      session: previous?.request === sessionRequest ? previous.session : null,
+      error: message,
+    }));
   const [progress, setProgress] = useState(0);
   const webViewRef = useRef<WebView>(null);
   const theme = useUniwindTheme();
@@ -78,25 +99,25 @@ export function KiCadViewerRouteScreen({ route }: Props) {
 
   const retry = useCallback(() => setRefreshKey((key) => key + 1), []);
   useEffect(() => {
+    if (Option.isNone(sessionRequest.connection)) return;
     const controller = new AbortController();
-    setSession(null);
-    setError(null);
-    if (Option.isNone(connection)) {
-      setError("Reconnect to this environment to open the KiCad viewer.");
-      return () => controller.abort();
-    }
-    void mintSession({ environmentId, cwd })
+    void sessionRequest
+      .mintSession({ environmentId: sessionRequest.environmentId, cwd: sessionRequest.cwd })
       .then((result) => {
         if (controller.signal.aborted) return;
         if (result._tag === "Failure") throw squashAtomCommandFailure(result);
-        setSession(result.value);
+        setViewer({ request: sessionRequest, session: result.value, error: null });
       })
       .catch((cause: unknown) => {
         if (!controller.signal.aborted)
-          setError(cause instanceof Error ? cause.message : "Unable to open the KiCad viewer.");
+          setViewer({
+            request: sessionRequest,
+            session: null,
+            error: cause instanceof Error ? cause.message : "Unable to open the KiCad viewer.",
+          });
       });
     return () => controller.abort();
-  }, [connection, cwd, environmentId, mintSession, refreshKey]);
+  }, [sessionRequest]);
 
   useEffect(() => {
     if (!session) return;
@@ -178,11 +199,11 @@ export function KiCadViewerRouteScreen({ route }: Props) {
               // Analysis dashboards load in their own frame; full-page links open externally.
               if (request.isTopFrame === false) return true;
               void Linking.openURL(request.url).catch(() => {
-                setError("Unable to open the analysis dashboard in your browser.");
+                showError("Unable to open the analysis dashboard in your browser.");
               });
               return false;
             }
-            setError("Navigation outside the KiCad viewer was blocked.");
+            showError("Navigation outside the KiCad viewer was blocked.");
             return false;
           }}
           onLoadProgress={(event) => setProgress(event.nativeEvent.progress)}
@@ -194,17 +215,14 @@ export function KiCadViewerRouteScreen({ route }: Props) {
           onHttpError={(event) => {
             if (event.nativeEvent.url.split("#")[0] !== viewerUrl.split("#")[0]) return;
             setProgress(0);
-            setSession(null);
-            setError(`The KiCad viewer returned status ${event.nativeEvent.statusCode}.`);
+            fail(`The KiCad viewer returned status ${event.nativeEvent.statusCode}.`);
           }}
           onError={() => {
             setProgress(0);
-            setSession(null);
-            setError("The KiCad viewer could not be loaded.");
+            fail("The KiCad viewer could not be loaded.");
           }}
           onContentProcessDidTerminate={() => {
-            setSession(null);
-            setError("The KiCad viewer stopped responding.");
+            fail("The KiCad viewer stopped responding.");
           }}
           renderLoading={() => (
             <View className="absolute inset-0 items-center justify-center bg-sheet">
