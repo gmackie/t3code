@@ -1,0 +1,37 @@
+{
+  "name": "@t3tools/systems-compiler",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./json": {
+      "types": "./src/json.ts",
+      "import": "./src/json.ts"
+    },
+    "./normalize": {
+      "types": "./src/normalize.ts",
+      "import": "./src/normalize.ts"
+    },
+    "./compile": {
+      "types": "./src/compile.ts",
+      "import": "./src/compile.ts"
+    },
+    "./diff": {
+      "types": "./src/diff.ts",
+      "import": "./src/diff.ts"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vp test run --config ../../vite.config.ts --dir ."
+  },
+  "dependencies": {
+    "@t3tools/systems-model": "workspace:*",
+    "effect": "catalog:"
+  },
+  "devDependencies": {
+    "@effect/platform-node": "catalog:",
+    "@effect/vitest": "catalog:",
+    "@types/node": "catalog:",
+    "vite-plus": "catalog:"
+  }
+}
