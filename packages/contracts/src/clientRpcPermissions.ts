@@ -62,6 +62,10 @@ export const CLIENT_GUARDED_RPC_SCOPES = {
   [WS_METHODS.reverseCaptureImport]: AuthOrchestrationOperateScope,
   [WS_METHODS.reverseCaptureDelete]: AuthOrchestrationOperateScope,
   [WS_METHODS.reverseFindingUpdate]: AuthOrchestrationOperateScope,
+  // Simulating executes model code on this environment; reading and validating do not.
+  [WS_METHODS.systemsRunsCreate]: AuthOrchestrationOperateScope,
+  [WS_METHODS.systemsRunsCancel]: AuthOrchestrationOperateScope,
+  [WS_METHODS.systemsConformanceExecute]: AuthOrchestrationOperateScope,
   [WS_METHODS.scheduledTasksUpsert]: AuthOrchestrationOperateScope,
   [WS_METHODS.scheduledTasksSetEnabled]: AuthOrchestrationOperateScope,
   [WS_METHODS.scheduledTasksDelete]: AuthOrchestrationOperateScope,

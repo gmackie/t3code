@@ -75,7 +75,8 @@ export type EnvironmentSubscriptionRpcTag =
   | typeof WS_METHODS.pullRequestsSubscribeRefreshes
   | typeof WS_METHODS.terminalAttach
   | typeof WS_METHODS.terminalObserve
-  | typeof WS_METHODS.reverseSerialObserve;
+  | typeof WS_METHODS.reverseSerialObserve
+  | typeof WS_METHODS.systemsRunsSubscribe;
 
 export type EnvironmentStreamCommandRpcTag =
   | typeof WS_METHODS.chatGptHandoffSubscribe

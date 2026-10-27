@@ -71,6 +71,101 @@ export const readPackFiles = Effect.fn("systemsModel.readPackFiles")(function* (
   return { files, diagnostics } satisfies PackFiles;
 });
 
+/** A strict JSON parse: no value when the source is rejected, with the reasons as diagnostics. */
+export type ParseJson = (
+  bytes: Uint8Array,
+  file: string,
+) => { readonly value?: unknown; readonly diagnostics: ReadonlyArray<ModelDiagnostic> };
+
+const MAX_PACK_FILE_BYTES = 8 * 1024 * 1024;
+
+const field = (value: unknown, key: string): unknown =>
+  typeof value === "object" && value !== null ? (value as Record<string, unknown>)[key] : undefined;
+const strings = (...values: ReadonlyArray<unknown>) =>
+  values.filter((value): value is string => typeof value === "string");
+const array = (value: unknown): ReadonlyArray<unknown> => (Array.isArray(value) ? value : []);
+
+/** Files a document names: the edges `validatePack` resolves, read from raw JSON. */
+const referencesOf = (value: unknown): ReadonlyArray<string> => {
+  switch (field(value, "format")) {
+    case "sw.project":
+      return strings(field(value, "lockRef"), ...array(field(value, "entrypoints")));
+    case "sw.lock":
+      return strings(...array(field(value, "libraries")).map((library) => field(library, "file")));
+    case "sw.system":
+      return strings(
+        ...array(field(value, "nodes")).map((node) => field(field(node, "parameters"), "chart")),
+      );
+    case "sw.run":
+      return strings(field(value, "modelRef"), field(value, "chartRef"));
+    case "sw.expectedTrace":
+      return strings(field(value, "runRef"));
+    case "sw.conformancePack":
+      return array(field(value, "fixtures")).flatMap((fixture) =>
+        strings(field(fixture, "source"), field(fixture, "expected")),
+      );
+    default:
+      return [];
+  }
+};
+
+/**
+ * Read `seeds` below `root` and every file they reach by reference, and nothing else, so a
+ * project inside a repository root never walks `node_modules`. Paths must be normalized and
+ * are never followed through a symlink; a file the strict parser rejects is left out.
+ */
+export const readReferencedFiles = Effect.fn("systemsModel.readReferencedFiles")(function* (
+  root: string,
+  seeds: ReadonlyArray<string>,
+  parse: ParseJson,
+) {
+  const fs = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
+  const realRoot = yield* fs.realPath(root);
+  const files = new Map<string, Uint8Array>();
+  const diagnostics: Array<ModelDiagnostic> = [];
+  const visited = new Set<string>();
+  const pending = [...seeds];
+  for (let file = pending.shift(); file !== undefined; file = pending.shift()) {
+    if (visited.has(file)) continue;
+    visited.add(file);
+    if (!isNormalizedPath(file)) {
+      diagnostics.push(
+        error("E-REF-001", `"${file}" is not a normalized workspace-relative path`, { file }),
+      );
+      continue;
+    }
+    const full = path.join(realRoot, ...file.split("/"));
+    // A missing file stays missing; validatePack reports the reference that names it.
+    if (!(yield* fs.exists(full))) continue;
+    if ((yield* fs.realPath(full)) !== full) {
+      diagnostics.push(
+        error("E-REF-001", "Paths through symbolic links are not followed", { file }),
+      );
+      continue;
+    }
+    const info = yield* fs.stat(full);
+    if (info.type !== "File") continue;
+    if (Number(info.size) > MAX_PACK_FILE_BYTES) {
+      diagnostics.push(error("E-SCHEMA-001", `Larger than ${MAX_PACK_FILE_BYTES} bytes`, { file }));
+      continue;
+    }
+    const bytes = yield* fs.readFile(full);
+    if (!file.endsWith(".json")) {
+      files.set(file, bytes);
+      continue;
+    }
+    const parsed = parse(bytes, file);
+    if (parsed.value === undefined) {
+      diagnostics.push(...parsed.diagnostics);
+      continue;
+    }
+    files.set(file, bytes);
+    pending.push(...referencesOf(parsed.value));
+  }
+  return { files, diagnostics } satisfies PackFiles;
+});
+
 const hex = (bytes: Uint8Array) =>
   Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
 

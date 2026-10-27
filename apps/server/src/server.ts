@@ -14,6 +14,7 @@ import * as StorageCleanup from "./storageCleanup.ts";
 import * as PullRequestSyncReactor from "./orchestration-v2/PullRequestSyncReactor.ts";
 import { veritasIntegrationRouteLayer } from "./veritas/http.ts";
 import * as ReverseWorkbench from "./reverse/ReverseWorkbench.ts";
+import * as SystemsService from "./systems/SystemsService.ts";
 import {
   kicadProjectRouteLayer,
   kicadViewerSessionRouteLayer,
@@ -805,6 +806,8 @@ const layerMakeRoutes = Layer.mergeAll(
   ),
   // The firmware workbench HTTP route and the reverse RPCs share one service and Ghidra pool.
   Layer.provide(ReverseWorkbench.layer),
+  // Systems runs belong to the environment; the WebSocket layer reuses this instance.
+  Layer.provide(SystemsService.layer),
   // delegate_task to a linked environment, from /mcp and the follower above.
   Layer.provide(RemoteDelegation.layer.pipe(Layer.provide(ProjectionStoreV2.layer))),
   // Links agents ask for: shown in a thread from /mcp, answered over WebSocket.

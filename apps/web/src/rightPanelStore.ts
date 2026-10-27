@@ -21,6 +21,7 @@ const RIGHT_PANEL_KINDS = [
   "kicad",
   "game",
   "reverse",
+  "systems",
   "terminal",
   "pull-request",
   "pull-requests",
@@ -45,6 +46,11 @@ export type RightPanelSurface =
   | {
       id: "reverse";
       kind: "reverse";
+      codePanel?: { isOpen: boolean; activeSurfaceId: string | null };
+    }
+  | {
+      id: "systems";
+      kind: "systems";
       codePanel?: { isOpen: boolean; activeSurfaceId: string | null };
     }
   | { id: "kicad"; kind: "kicad"; codePanel?: { isOpen: boolean; activeSurfaceId: string | null } }
@@ -231,6 +237,8 @@ const singletonSurface = (
       return { id: "kicad", kind };
     case "reverse":
       return { id: "reverse", kind };
+    case "systems":
+      return { id: "systems", kind };
     case "work":
       return { id: "work", kind };
     case "device":
@@ -309,8 +317,11 @@ export function pullRequestSurface(target: {
   };
 }
 
-const isModeSurface = (surface: RightPanelSurface | undefined) =>
-  surface?.kind === "kicad" || surface?.kind === "reverse";
+const MODE_SURFACE_IDS: ReadonlySet<string | null> = new Set(["kicad", "reverse", "systems"]);
+const isModeSurface = (
+  surface: RightPanelSurface | undefined,
+): surface is Extract<RightPanelSurface, { kind: "kicad" | "reverse" | "systems" }> =>
+  surface?.kind === "kicad" || surface?.kind === "reverse" || surface?.kind === "systems";
 
 const upsertSurface = (
   current: ThreadRightPanelState,
@@ -325,10 +336,9 @@ const upsertSurface = (
     isModeSurface(surface) && current.activeSurfaceId !== surface.id
       ? {
           ...surface,
-          codePanel:
-            active?.kind === "kicad" || active?.kind === "reverse"
-              ? (active.codePanel ?? { isOpen: current.isOpen, activeSurfaceId: null })
-              : { isOpen: current.isOpen, activeSurfaceId: current.activeSurfaceId },
+          codePanel: isModeSurface(active)
+            ? (active.codePanel ?? { isOpen: current.isOpen, activeSurfaceId: null })
+            : { isOpen: current.isOpen, activeSurfaceId: current.activeSurfaceId },
         }
       : (existing ?? surface);
   return {
@@ -726,12 +736,10 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
       returnToCode: (ref) =>
         set((state) =>
           userAction(state, scopedThreadKey(ref), (current) => {
-            if (current.activeSurfaceId !== "kicad" && current.activeSurfaceId !== "reverse")
-              return current;
+            if (!MODE_SURFACE_IDS.has(current.activeSurfaceId)) return current;
             const modeId = current.activeSurfaceId;
             const mode = current.surfaces.find((surface) => surface.id === modeId);
-            const previous =
-              mode?.kind === "kicad" || mode?.kind === "reverse" ? mode.codePanel : undefined;
+            const previous = isModeSurface(mode) ? mode.codePanel : undefined;
             const activeSurfaceId =
               current.surfaces.find(
                 (surface) => !isModeSurface(surface) && surface.id === previous?.activeSurfaceId,
@@ -945,7 +953,7 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
         set((state) =>
           userAction(state, scopedThreadKey(ref), (current) =>
             current.surfaces.some((surface) => surface.id === surfaceId)
-              ? surfaceId === "kicad" || surfaceId === "reverse"
+              ? surfaceId === "kicad" || surfaceId === "reverse" || surfaceId === "systems"
                 ? upsertSurface(current, singletonSurface(surfaceId))
                 : { ...current, isOpen: true, activeSurfaceId: surfaceId }
               : current,

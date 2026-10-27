@@ -42,6 +42,10 @@ const ReverseWorkspace = lazy(() =>
   import("../reverse/ReverseWorkspace").then((module) => ({ default: module.ReverseWorkspace })),
 );
 
+const SystemsWorkspace = lazy(() =>
+  import("../systems/SystemsWorkspace").then((module) => ({ default: module.SystemsWorkspace })),
+);
+
 export type RightPanelTerminalProps = Omit<
   PersistentThreadTerminalPanelProps,
   "visible" | "threadRef" | "surface"
@@ -214,6 +218,12 @@ export function RightPanelSurfaceContent(props: {
       return (
         <Suspense fallback={null}>
           <ReverseWorkspace threadRef={threadRef} projectId={props.projectId} />
+        </Suspense>
+      );
+    case "systems":
+      return (
+        <Suspense fallback={null}>
+          <SystemsWorkspace threadRef={threadRef} projectId={props.projectId} />
         </Suspense>
       );
     case "kicad":

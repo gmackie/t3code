@@ -99,6 +99,31 @@ import {
   ReverseFindingRecord,
   ReverseStoreError,
 } from "./reverse.ts";
+import {
+  SystemsCapabilitiesInput,
+  SystemsCapabilitiesResult,
+  SystemsCompileInput,
+  SystemsCompileResult,
+  SystemsConformanceInput,
+  SystemsConformanceResult,
+  SystemsError,
+  SystemsRun,
+  SystemsRunCancelInput,
+  SystemsRunCompareInput,
+  SystemsRunCompareResult,
+  SystemsRunCreateInput,
+  SystemsRunEventsInput,
+  SystemsRunEventsResult,
+  SystemsRunListInput,
+  SystemsRunListResult,
+  SystemsRunRef,
+  SystemsRunSignalsInput,
+  SystemsRunSignalsResult,
+  SystemsSemanticDiffInput,
+  SystemsSemanticDiffResult,
+  SystemsValidateInput,
+  SystemsValidateResult,
+} from "./systems.ts";
 import * as Rpc from "effect/rpc/Rpc";
 import * as RpcGroup from "effect/rpc/RpcGroup";
 import * as RpcMiddleware from "effect/rpc/RpcMiddleware";
@@ -538,6 +563,20 @@ export const WS_METHODS = {
   reverseSerialRecent: "reverse.serialRecent",
   reverseSerialObserve: "reverse.serialObserve",
   reverseFindingUpdate: "reverse.findingUpdate",
+
+  systemsValidate: "systems.validate",
+  systemsCompile: "systems.compile",
+  systemsSemanticDiff: "systems.semanticDiff",
+  systemsRunsCreate: "systems.runs.create",
+  systemsRunsGet: "systems.runs.get",
+  systemsRunsList: "systems.runs.list",
+  systemsRunsSubscribe: "systems.runs.subscribe",
+  systemsRunsCancel: "systems.runs.cancel",
+  systemsRunsEvents: "systems.runs.events",
+  systemsRunsSignals: "systems.runs.signals",
+  systemsRunsCompare: "systems.runs.compare",
+  systemsConformanceExecute: "systems.conformance.execute",
+  systemsTargetsCapabilities: "systems.targets.capabilities",
 
   shellOpenInEditor: "shell.openInEditor",
 
@@ -1622,6 +1661,74 @@ const WsSourceControlForgeGraphSignOutRpc = Rpc.make(WS_METHODS.sourceControlFor
   error: ForgeGraphSignInRpcError,
 });
 
+const SystemsRpcError = Schema.Union([SystemsError, EnvironmentAuthorizationError]);
+const WsSystemsValidateRpc = Rpc.make(WS_METHODS.systemsValidate, {
+  payload: SystemsValidateInput,
+  success: SystemsValidateResult,
+  error: SystemsRpcError,
+});
+const WsSystemsCompileRpc = Rpc.make(WS_METHODS.systemsCompile, {
+  payload: SystemsCompileInput,
+  success: SystemsCompileResult,
+  error: SystemsRpcError,
+});
+const WsSystemsSemanticDiffRpc = Rpc.make(WS_METHODS.systemsSemanticDiff, {
+  payload: SystemsSemanticDiffInput,
+  success: SystemsSemanticDiffResult,
+  error: SystemsRpcError,
+});
+const WsSystemsRunsCreateRpc = Rpc.make(WS_METHODS.systemsRunsCreate, {
+  payload: SystemsRunCreateInput,
+  success: SystemsRun,
+  error: SystemsRpcError,
+});
+const WsSystemsRunsGetRpc = Rpc.make(WS_METHODS.systemsRunsGet, {
+  payload: SystemsRunRef,
+  success: SystemsRun,
+  error: SystemsRpcError,
+});
+const WsSystemsRunsListRpc = Rpc.make(WS_METHODS.systemsRunsList, {
+  payload: SystemsRunListInput,
+  success: SystemsRunListResult,
+  error: SystemsRpcError,
+});
+const WsSystemsRunsSubscribeRpc = Rpc.make(WS_METHODS.systemsRunsSubscribe, {
+  payload: SystemsRunListInput,
+  success: SystemsRunListResult,
+  error: SystemsRpcError,
+  stream: true,
+});
+const WsSystemsRunsCancelRpc = Rpc.make(WS_METHODS.systemsRunsCancel, {
+  payload: SystemsRunCancelInput,
+  success: SystemsRun,
+  error: SystemsRpcError,
+});
+const WsSystemsRunsEventsRpc = Rpc.make(WS_METHODS.systemsRunsEvents, {
+  payload: SystemsRunEventsInput,
+  success: SystemsRunEventsResult,
+  error: SystemsRpcError,
+});
+const WsSystemsRunsSignalsRpc = Rpc.make(WS_METHODS.systemsRunsSignals, {
+  payload: SystemsRunSignalsInput,
+  success: SystemsRunSignalsResult,
+  error: SystemsRpcError,
+});
+const WsSystemsRunsCompareRpc = Rpc.make(WS_METHODS.systemsRunsCompare, {
+  payload: SystemsRunCompareInput,
+  success: SystemsRunCompareResult,
+  error: SystemsRpcError,
+});
+const WsSystemsConformanceExecuteRpc = Rpc.make(WS_METHODS.systemsConformanceExecute, {
+  payload: SystemsConformanceInput,
+  success: SystemsConformanceResult,
+  error: SystemsRpcError,
+});
+const WsSystemsTargetsCapabilitiesRpc = Rpc.make(WS_METHODS.systemsTargetsCapabilities, {
+  payload: SystemsCapabilitiesInput,
+  success: SystemsCapabilitiesResult,
+  error: SystemsRpcError,
+});
+
 const WsReverseListRpc = Rpc.make(WS_METHODS.reverseList, {
   payload: ReverseListInput,
   success: ReverseListResult,
@@ -2492,6 +2599,19 @@ export const WsRpcGroup = RpcGroup.make(
   WsReverseCaptureDecodeRpc,
   WsReverseCaptureDeleteRpc,
   WsReverseFindingUpdateRpc,
+  WsSystemsValidateRpc,
+  WsSystemsCompileRpc,
+  WsSystemsSemanticDiffRpc,
+  WsSystemsRunsCreateRpc,
+  WsSystemsRunsGetRpc,
+  WsSystemsRunsListRpc,
+  WsSystemsRunsSubscribeRpc,
+  WsSystemsRunsCancelRpc,
+  WsSystemsRunsEventsRpc,
+  WsSystemsRunsSignalsRpc,
+  WsSystemsRunsCompareRpc,
+  WsSystemsConformanceExecuteRpc,
+  WsSystemsTargetsCapabilitiesRpc,
   WsGuestShareCreateRpc,
   WsServerProbeRpc,
   WsServerGetConfigRpc,

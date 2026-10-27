@@ -171,6 +171,10 @@ export function useRightPanelActions(input: RightPanelActionsInput) {
     if (activeThreadRef) useRightPanelStore.getState().open(activeThreadRef, "reverse");
   };
   const addReverseSurfaceStable = useStableCallback(addReverseSurface);
+  const addSystemsSurface = () => {
+    if (activeThreadRef) useRightPanelStore.getState().open(activeThreadRef, "systems");
+  };
+  const addSystemsSurfaceStable = useStableCallback(addSystemsSurface);
   const openFileSurface = (relativePath: string) => {
     if (!activeThreadRef || !activeProject) return;
     useRightPanelStore.getState().openFile(activeThreadRef, relativePath);
@@ -335,6 +339,7 @@ export function useRightPanelActions(input: RightPanelActionsInput) {
     addGameSurfaceStable,
     addKiCadSurfaceStable,
     addReverseSurfaceStable,
+    addSystemsSurfaceStable,
     addFilesSurfaceStable,
     addPullRequestSurfaceStable,
     addPullRequestsSurfaceStable,

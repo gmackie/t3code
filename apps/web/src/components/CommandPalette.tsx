@@ -1431,7 +1431,7 @@ function OpenCommandPaletteDialog(props: {
 
   if (activeThread) {
     const routeThreadRef = scopeThreadRef(activeThread.environmentId, activeThread.id);
-    for (const mode of ["Code", "CAD", "Reverse"] as const) {
+    for (const mode of ["Code", "CAD", "Reverse", "Systems"] as const) {
       actionItems.push({
         kind: "action",
         value: `action:workspace-mode-${mode.toLowerCase()}`,
@@ -1439,12 +1439,15 @@ function OpenCommandPaletteDialog(props: {
         searchTerms:
           mode === "Reverse"
             ? ["workspace mode", "reverse engineering", "firmware", "ghidra", "binary"]
-            : ["workspace mode", "t3cad", "kicad", "electronics", "pcb"],
+            : mode === "Systems"
+              ? ["workspace mode", "systems workbench", "simulation", "statechart", "model"]
+              : ["workspace mode", "t3cad", "kicad", "electronics", "pcb"],
         icon: <FileSearchIcon className={ITEM_ICON_CLASS} />,
         run: async () => {
           const store = useRightPanelStore.getState();
           if (mode === "CAD") store.open(routeThreadRef, "kicad");
           else if (mode === "Reverse") store.open(routeThreadRef, "reverse");
+          else if (mode === "Systems") store.open(routeThreadRef, "systems");
           else store.returnToCode(routeThreadRef);
         },
       });
