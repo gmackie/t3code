@@ -61,6 +61,7 @@ export function AnalysisPanel({
   const emulate = useAtomCommand(reverseEnvironment.emulate, { reportFailure: false });
   const alive = useRef(true),
     request = useRef(0);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Invalidate outstanding analysis requests on teardown so late completions cannot update a different workspace.
   useEffect(() => {
     alive.current = true;
     return () => {

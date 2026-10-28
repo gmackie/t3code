@@ -1,13 +1,12 @@
 /* eslint-disable react/iframe-missing-sandbox -- The bundled CAD runtime needs same-origin module and worker access. */
 import { WorkspaceModeSwitcher } from "../chat/WorkspaceModeSwitcher";
-import type { KiCadViewerSession, ScopedThreadRef } from "@t3tools/contracts";
-import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
+import type { ScopedThreadRef } from "@t3tools/contracts";
 import * as Option from "effect/Option";
 import { ExternalLink } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef } from "react";
 
 import { kicadState } from "~/state/kicad";
-import { useAtomQueryRunner } from "~/state/use-atom-query-runner";
+import { useEnvironmentQuery } from "~/state/query";
 import { usePreparedConnection } from "~/state/session";
 import { previewEnvironment } from "~/state/preview";
 import { useAtomCommand } from "~/state/use-atom-command";
@@ -22,39 +21,20 @@ export interface KiCadProjectPanelProps {
 }
 
 export function KiCadProjectPanel({ mode, threadRef, projectPath }: KiCadProjectPanelProps) {
-  const [session, setSession] = useState<KiCadViewerSession | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [refreshKey, setRefreshKey] = useState(0);
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const connection = usePreparedConnection(threadRef.environmentId);
-  const mintSession = useAtomQueryRunner(kicadState.session, {
-    refresh: true,
-    reportFailure: false,
-  });
-  useEffect(() => {
-    const controller = new AbortController();
-    setSession(null);
-    setError(null);
-    if (!projectPath) {
-      setError("Open a KiCad project to inspect it here.");
-      return () => controller.abort();
-    }
-    if (Option.isNone(connection)) {
-      setError("Reconnect to this environment to open the KiCad viewer.");
-      return () => controller.abort();
-    }
-    void mintSession({ environmentId: threadRef.environmentId, cwd: projectPath })
-      .then((result) => {
-        if (controller.signal.aborted) return;
-        if (result._tag === "Failure") throw squashAtomCommandFailure(result);
-        setSession(result.value);
-      })
-      .catch((cause: unknown) => {
-        if (!controller.signal.aborted)
-          setError(cause instanceof Error ? cause.message : "Unable to open the KiCad viewer.");
-      });
-    return () => controller.abort();
-  }, [connection, mintSession, projectPath, refreshKey, threadRef.environmentId]);
+  const sessionQuery = useEnvironmentQuery(
+    projectPath
+      ? kicadState.session({ environmentId: threadRef.environmentId, cwd: projectPath })
+      : null,
+  );
+  const session = sessionQuery.data;
+  const error = !projectPath
+    ? "Open a KiCad project to inspect it here."
+    : Option.isNone(connection)
+      ? "Reconnect to this environment to open the KiCad viewer."
+      : sessionQuery.error;
+  const refreshSession = sessionQuery.refresh;
 
   const sendTheme = useCallback(() => {
     const frame = iframeRef.current?.contentWindow;
@@ -78,6 +58,7 @@ export function KiCadProjectPanel({ mode, threadRef, projectPath }: KiCadProject
     );
   }, []);
 
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Observe the host document palette to update the mounted CAD iframe, disconnecting the observer on unmount.
   useEffect(() => {
     const observer = new MutationObserver(sendTheme);
     observer.observe(document.documentElement, {
@@ -87,17 +68,15 @@ export function KiCadProjectPanel({ mode, threadRef, projectPath }: KiCadProject
     return () => observer.disconnect();
   }, [sendTheme]);
 
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Renew the mounted CAD iframe's access before its ticket expires and release the renewal timer on unmount.
   useEffect(() => {
-    if (!session || session.expiresAt <= Date.now()) {
-      if (session) setRefreshKey((key) => key + 1);
-      return;
-    }
+    if (!session) return;
     const timer = window.setTimeout(
-      () => setRefreshKey((key) => key + 1),
+      refreshSession,
       Math.max(1_000, session.expiresAt - Date.now() - 60_000),
     );
     return () => window.clearTimeout(timer);
-  }, [session]);
+  }, [session, refreshSession]);
 
   const openPreview = useAtomCommand(previewEnvironment.open, { reportFailure: false });
   const viewerUrl = session
@@ -163,7 +142,7 @@ export function KiCadProjectPanel({ mode, threadRef, projectPath }: KiCadProject
                   <button
                     type="button"
                     className="rounded-md bg-accent px-2 py-1 text-foreground hover:bg-accent/80"
-                    onClick={() => setRefreshKey((key) => key + 1)}
+                    onClick={refreshSession}
                   >
                     Retry
                   </button>

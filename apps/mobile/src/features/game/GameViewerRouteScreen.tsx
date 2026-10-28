@@ -130,8 +130,10 @@ export function GameViewerRouteScreen({ route }: Props) {
       `window.dispatchEvent(new CustomEvent('t3-game-theme', { detail: ${JSON.stringify(theme)} })); true;`,
     );
   }, [theme]);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Send palette updates into the mounted native Game WebView.
   useEffect(postTheme, [postTheme]);
 
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Forward native foreground events to the Game runtime while its WebView is mounted.
   useEffect(() => {
     const subscription = AppState.addEventListener("change", (state) => {
       webViewRef.current?.injectJavaScript(
@@ -142,6 +144,7 @@ export function GameViewerRouteScreen({ route }: Props) {
   }, []);
 
   const retry = useCallback(() => setRefreshKey((key) => key + 1), []);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Acquire the mounted WebView's scoped HTTP ticket for this target; keep it across WebSocket wakeups and ignore completions after teardown.
   useEffect(() => {
     const endpoint = sessionRequest.viewerEndpoint;
     if (!endpoint) return;
@@ -172,6 +175,7 @@ export function GameViewerRouteScreen({ route }: Props) {
     return () => controller.abort();
   }, [sessionRequest]);
 
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Own the mounted Game viewer's ticket-renewal timer, cancelling it when the ticket changes or the viewer unmounts.
   useEffect(() => {
     if (!session) return;
     const remaining = session.expiresAt - Date.now() - 60_000;

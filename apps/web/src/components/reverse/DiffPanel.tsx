@@ -30,6 +30,7 @@ export function DiffPanel({
   const [busy, setBusy] = useState(false),
     [error, setError] = useState<string | null>(null);
   const alive = useRef(true);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Invalidate outstanding diff requests on teardown so late completions cannot update the closed panel.
   useEffect(() => {
     alive.current = true;
     return () => {

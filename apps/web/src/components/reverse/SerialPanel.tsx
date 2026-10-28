@@ -57,6 +57,7 @@ function SerialSessionView({
   const text = output.data?.text ?? "";
   // Follow new output while the reader stays at the bottom; scrolling up pauses it.
   const stickToBottom = useRef(true);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Keep the serial log DOM scrolled to new output only while the reader remains at the bottom.
   useLayoutEffect(() => {
     const element = log.current;
     if (text && element && stickToBottom.current) element.scrollTop = element.scrollHeight;

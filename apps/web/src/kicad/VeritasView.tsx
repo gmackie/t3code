@@ -1,4 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEnvironmentQuery } from "../state/query";
+import { cadQuery } from "./query";
 import * as Schema from "effect/Schema";
 import {
   VeritasCadStatus,
@@ -21,9 +23,23 @@ export function VeritasView({
   manifest: KiCadProjectManifest;
   assetUrl: (path: string) => string;
 }) {
-  const [status, setStatus] = useState<VeritasCadStatus | null>(null);
+  const initialStatus = useEnvironmentQuery(
+    useMemo(
+      () =>
+        cadQuery(async (signal) => {
+          const response = await fetch(endpoint, { signal, cache: "no-store" });
+          if (!response.ok)
+            throw new Error("Unable to load Veritas. Reopen CAD if viewer access expired.");
+          return decodeStatus(await response.json());
+        }),
+      [endpoint],
+    ),
+  );
+  const [localStatus, setStatus] = useState<VeritasCadStatus | null>(null);
+  const status = localStatus ?? initialStatus.data;
   const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [localBusy, setBusy] = useState(false);
+  const busy = localBusy || initialStatus.isPending;
   const [boards, setBoards] = useState(1);
   const [route, setRoute] = useState<"turnkey" | "lumen-pnp" | "hand">("hand");
   const [fab, setFab] = useState({
@@ -79,8 +95,8 @@ export function VeritasView({
     },
     [endpoint],
   );
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Cancel the mounted Veritas view's outstanding imperative submissions on endpoint change or teardown.
   useEffect(() => {
-    void request();
     return () => {
       ++generation.current;
       controller.current?.abort();
@@ -104,9 +120,9 @@ export function VeritasView({
             {busy ? "Working…" : "Refresh status"}
           </button>
         </div>
-        {error && (
+        {(error || initialStatus.error) && (
           <p className="rounded border border-destructive p-3 text-destructive" role="alert">
-            {error}
+            {error ?? initialStatus.error}
           </p>
         )}
         {status?.remoteError && (

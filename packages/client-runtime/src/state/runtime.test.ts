@@ -1,6 +1,7 @@
 import { describe, expect, it } from "@effect/vitest";
 import {
   EnvironmentId,
+  ProjectId,
   type PreviewEvent,
   type TerminalAttachInput,
   type TerminalAttachStreamEvent,
@@ -34,6 +35,7 @@ import * as EnvironmentSupervisor from "../connection/supervisor.ts";
 import { EnvironmentRpcUnavailableError } from "../rpc/client.ts";
 import type * as RpcSession from "../rpc/session.ts";
 import { createPreviewEnvironmentAtoms } from "./preview.ts";
+import { createSystemsEnvironmentAtoms } from "./systems.ts";
 import type { QueryPersistence } from "./queryPersistence.ts";
 import { createTerminalEnvironmentAtoms } from "./terminal.ts";
 import {
@@ -954,6 +956,70 @@ describe("environment query lifecycle", () => {
         expect(executions).toBe(2);
 
         expect(yield* read).toBe(3);
+      }),
+    ),
+  );
+});
+
+describe("Systems live query refresh", () => {
+  it.effect.each([false, true])("refreshes growing traces while full=%s", (full) =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const runId = "run";
+        const projectId = ProjectId.make("project");
+        const live = yield* SubscriptionRef.make({
+          runs: [{ runId, sampleCount: 0, eventCount: 0 }],
+        });
+        const eventReads = yield* Queue.unbounded<number>();
+        const signalReads = yield* Queue.unbounded<number>();
+        let events = 0;
+        let signals = 0;
+        const harness = yield* makeEnvironmentQueryHarness(Effect.void, {
+          rpcSession: {
+            client: {
+              [WS_METHODS.systemsRunsSubscribe]: () => SubscriptionRef.changes(live),
+              [WS_METHODS.systemsRunsEvents]: () =>
+                Effect.gen(function* () {
+                  yield* Queue.offer(eventReads, ++events);
+                  return {
+                    events: full ? [{ sequence: "0" }] : [],
+                    nextSequence: full ? "1" : "0",
+                    hasMore: false,
+                  };
+                }),
+              [WS_METHODS.systemsRunsSignals]: () =>
+                Effect.gen(function* () {
+                  yield* Queue.offer(signalReads, ++signals);
+                  return { series: [] };
+                }),
+            },
+          } as unknown as RpcSession.RpcSession,
+        });
+        const state = createSystemsEnvironmentAtoms(harness.runtime);
+        const environmentId = QUERY_ENVIRONMENT.environmentId;
+        const trace = state.events({
+          environmentId,
+          input: { projectId, runId, fromSequence: "0", limit: 1 },
+        });
+        const signal = state.signals({
+          environmentId,
+          input: { projectId, runId, signalIds: ["voltage"], maxPoints: 100 },
+        });
+        const registry = yield* mountEnvironmentQuery(trace);
+        const unmountSignal = registry.mount(signal);
+        yield* Effect.addFinalizer(() => Effect.sync(unmountSignal));
+        yield* readEnvironmentQuery(registry, trace);
+        yield* readEnvironmentQuery(registry, signal);
+        expect(yield* Queue.take(eventReads)).toBe(1);
+        expect(yield* Queue.take(signalReads)).toBe(1);
+
+        yield* SubscriptionRef.set(live, { runs: [{ runId, sampleCount: 1, eventCount: 1 }] });
+        expect(yield* Queue.take(signalReads)).toBe(2);
+        if (!full) expect(yield* Queue.take(eventReads)).toBe(2);
+        yield* readEnvironmentQuery(registry, trace);
+        yield* readEnvironmentQuery(registry, signal);
+        expect(events).toBe(full ? 1 : 2);
+        expect(signals).toBe(2);
       }),
     ),
   );

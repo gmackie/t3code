@@ -12,13 +12,13 @@ import {
   type CreatePlanOutput,
 } from "@t3tools/contracts/bobCoordination";
 import { Link } from "@tanstack/react-router";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import * as Schema from "effect/Schema";
 import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
 import { bobCoordination } from "../../state/bobCoordination";
 import { serverEnvironment } from "../../state/server";
 import { useAtomCommand } from "../../state/use-atom-command";
-import { useEnvironmentQuery } from "../../state/query";
+import { useEnvironmentQuery, type EnvironmentQueryView } from "../../state/query";
 import { Button } from "../ui/button";
 import { Textarea } from "../ui/textarea";
 import { Input } from "../ui/input";
@@ -43,20 +43,55 @@ export default function WorkPanel({
   projectId: ProjectId;
 }) {
   const connection = useEnvironmentQuery(bobCoordination.connection({ environmentId, input: {} }));
+  return (
+    <WorkContent
+      key={JSON.stringify([
+        environmentId,
+        projectId,
+        connection.data?.configured,
+        connection.data?.projects[projectId],
+      ])}
+      environmentId={environmentId}
+      projectId={projectId}
+      connection={connection}
+    />
+  );
+}
+
+function WorkContent({
+  environmentId,
+  projectId,
+  connection,
+}: {
+  environmentId: EnvironmentId;
+  projectId: ProjectId;
+  connection: EnvironmentQueryView<import("@t3tools/contracts/bobCoordination").BobConnectionState>;
+}) {
+  const overview = useEnvironmentQuery(
+    connection.data?.configured
+      ? bobCoordination.overview({ environmentId, input: { projectId } })
+      : null,
+  );
   const call = useAtomCommand(bobCoordination.call, { reportFailure: false });
   const listIssues = useAtomCommand(serverEnvironment.listProjectIssues, { reportFailure: false });
-  const [plans, setPlans] = useState<ListPlansOutput["plans"]>([]);
-  const [nextPlanId, setNextPlanId] = useState<string | null>(null);
+  const [localPlans, setPlans] = useState<ListPlansOutput["plans"] | null>(null);
+  const plans = localPlans ?? overview.data?.plans ?? [];
+  const [localNextPlanId, setNextPlanId] = useState<string | null | undefined>(undefined);
+  const nextPlanId =
+    localNextPlanId === undefined ? (overview.data?.nextPlanId ?? null) : localNextPlanId;
   const [plan, setPlan] = useState<GetPlanOutput | null>(null);
   const [items, setItems] = useState<ReadonlyArray<GetItemOutput["item"]>>([]);
   const [issues, setIssues] = useState<ReadonlyArray<IssueItem>>([]);
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
-  const [capabilities, setCapabilities] = useState<GetCapabilitiesOutput | null>(null);
+  const [localCapabilities, setCapabilities] = useState<GetCapabilitiesOutput | null>(null);
+  const capabilities = localCapabilities ?? overview.data?.caps;
   const [profile, setProfile] = useState("");
   const [acceptanceCriteria, setAcceptanceCriteria] = useState("");
   const [baseRevision, setBaseRevision] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [localBusy, setBusy] = useState(false);
+  const busy = localBusy || overview.isPending;
+  const [localError, setError] = useState<string | null>(null);
+  const error = localError ?? overview.error;
   const [pending, setPending] = useState<BobOperationInput | null>(null);
   const generation = useRef(0);
   const binding = connection.data?.projects[projectId];
@@ -123,7 +158,11 @@ export default function WorkPanel({
         const visiblePlans = scoped.filter((entry) => entry !== null);
         if (current !== generation.current) return;
         setCapabilities(caps);
-        setPlans((previous) => (afterPlanId ? [...previous, ...visiblePlans] : visiblePlans));
+        setPlans((previous) =>
+          afterPlanId
+            ? [...(previous ?? overview.data?.plans ?? []), ...visiblePlans]
+            : visiblePlans,
+        );
         setNextPlanId(page.nextPlanId ?? null);
         if (detail) {
           setPlan(detail.snapshot);
@@ -136,21 +175,8 @@ export default function WorkPanel({
         if (current === generation.current) setBusy(false);
       }
     },
-    [binding, loadPlan, request],
+    [binding, loadPlan, request, overview.data?.plans],
   );
-  useEffect(() => {
-    setPlans([]);
-    setPlan(null);
-    setItems([]);
-    setIssues([]);
-    setSelected(new Set());
-    setPending(null);
-    setCapabilities(null);
-    if (connection.data?.configured) void refresh();
-    return () => {
-      generation.current++;
-    };
-  }, [connection.data?.configured, environmentId, projectId, refresh]);
   const mutate = async (command: BobOperationInput) => {
     setBusy(true);
     setError(null);

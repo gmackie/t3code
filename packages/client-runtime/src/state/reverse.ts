@@ -77,6 +77,11 @@ export function createReverseEnvironmentAtoms<R, E>(
       label: "reverse:capture-view",
       tag: WS_METHODS.reverseCaptureView,
     }),
+    captureView: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "reverse:capture-view:query",
+      tag: WS_METHODS.reverseCaptureView,
+      staleTimeMs: 5_000,
+    }),
     decodeCapture: createEnvironmentRpcCommand(runtime, {
       label: "reverse:capture-decode",
       tag: WS_METHODS.reverseCaptureDecode,

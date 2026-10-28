@@ -20,11 +20,13 @@ export function PrismGerberView({ svg, label }: { svg: string; label: string }) 
   const ref = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ width: 0, height: 0 });
   const [url, setUrl] = useState("");
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Hold the SVG blob URL for the mounted image and revoke it when its content changes or it unmounts.
   useEffect(() => {
     const blobUrl = URL.createObjectURL(new Blob([svg], { type: "image/svg+xml" }));
     setUrl(blobUrl);
     return () => URL.revokeObjectURL(blobUrl);
   }, [svg]);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Observe the mounted Gerber viewport size for its camera transform, disconnecting on teardown.
   useEffect(() => {
     const node = ref.current;
     if (!node) return;

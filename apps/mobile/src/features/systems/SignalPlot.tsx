@@ -1,6 +1,6 @@
 import type { EnvironmentId, SystemsRun } from "@t3tools/contracts";
 import { plotSignals } from "@t3tools/client-runtime/systems-presentation";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { View } from "react-native";
 import { Path, Svg } from "react-native-svg";
 
@@ -36,10 +36,6 @@ export function SignalPlot(props: {
         })
       : null,
   );
-  const refresh = signals.refresh;
-  useEffect(() => {
-    if (run.sampleCount > 0) refresh();
-  }, [run.sampleCount, refresh]);
   const plot =
     signals.data && width > 0
       ? plotSignals(signals.data.series, { width, height: PLOT_HEIGHT })

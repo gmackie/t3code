@@ -65,6 +65,7 @@ function ProjectWorkspace({
       null,
     );
   const alive = useRef(true);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Invalidate outstanding workspace operations on teardown so late completions cannot update a different project.
   useEffect(() => {
     alive.current = true;
     return () => {

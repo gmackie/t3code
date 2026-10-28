@@ -1,6 +1,8 @@
 import type { KiCadBom } from "@t3tools/contracts";
 import { Download, Search } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
+import { useEnvironmentQuery } from "../state/query";
+import { cadQuery } from "./query";
 
 export type BomViewProps = {
   readonly path: string;
@@ -31,34 +33,17 @@ function downloadBom(content: string, sourcePath: string) {
 }
 
 export function BomView({ path, revision, read }: BomViewProps) {
-  const [bom, setBom] = useState<KiCadBom | null>(null);
+  return <BomContent key={`${path}\u0000${revision}`} path={path} read={read} />;
+}
+
+function BomContent({ path, read }: Omit<BomViewProps, "revision">) {
+  const result = useEnvironmentQuery(
+    useMemo(() => cadQuery(async (signal) => parseBom(await read(path, signal))), [path, read]),
+  );
+  const bom = result.data;
+  const error = result.error;
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(0);
-  const [error, setError] = useState<string | null>(null);
-  const readRef = useRef(read);
-  const requestKey = `${path}\u0000${revision}`;
-  useEffect(() => {
-    readRef.current = read;
-  }, [read]);
-
-  useEffect(() => {
-    const controller = new AbortController();
-    setBom(null);
-    setError(null);
-    setQuery("");
-    setPage(0);
-    void readRef
-      .current(path, controller.signal)
-      .then((value) => {
-        if (!controller.signal.aborted) setBom(parseBom(value));
-      })
-      .catch((cause: unknown) => {
-        if (!controller.signal.aborted) {
-          setError(cause instanceof Error ? cause.message : "Unable to load the BOM.");
-        }
-      });
-    return () => controller.abort();
-  }, [requestKey]);
 
   const filteredRows = useMemo(() => {
     if (!bom) return [];

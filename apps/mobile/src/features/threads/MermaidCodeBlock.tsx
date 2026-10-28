@@ -22,6 +22,7 @@ function Diagram({
   const [ready, setReady] = useState(expanded);
   // Streaming source remounts this preview. Wait for a pause before starting
   // a WebView and Mermaid layout, rather than doing both for every token.
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Delay mounting the Mermaid WebView until the streaming source pauses, cancelling the timer when the preview is replaced.
   useEffect(() => {
     if (expanded) return;
     const timer = setTimeout(() => setReady(true), 300);

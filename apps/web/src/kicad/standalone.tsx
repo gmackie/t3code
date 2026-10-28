@@ -1,6 +1,6 @@
 /* eslint-disable react/iframe-missing-sandbox -- The bundled CAD runtime needs same-origin module and worker access. */
 import { createRoot } from "react-dom/client";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import {
   Box,
   CircuitBoard,
@@ -56,6 +56,11 @@ const params = new URLSearchParams(location.hash.slice(1));
 const apiBase = params.get("api") || location.origin;
 const token = params.get("token") || "";
 const messageOrigin = location.origin === "null" ? "*" : location.origin;
+const subscribeVisibility = (notify: () => void) => {
+  document.addEventListener("visibilitychange", notify);
+  return () => document.removeEventListener("visibilitychange", notify);
+};
+const isVisible = () => !document.hidden;
 function apiUrl(route: string, path?: string, revision?: string) {
   const url = new URL(`${apiBase.replace(/\/$/, "")}/api/kicad/${route}`);
   url.searchParams.set("token", token);
@@ -102,6 +107,7 @@ function RuntimeView({
   const ref = useRef<HTMLIFrameElement>(null);
   const snapshotRef = useRef(snapshot);
   snapshotRef.current = snapshot;
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Send the current snapshot when this mounted runtime iframe reports readiness; remove the message listener on teardown.
   useEffect(() => {
     const send = (event: MessageEvent) => {
       if (
@@ -118,6 +124,7 @@ function RuntimeView({
     window.addEventListener("message", send);
     return () => window.removeEventListener("message", send);
   }, []);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Forward snapshot updates to the mounted model runtime through its postMessage boundary.
   useEffect(() => {
     ref.current?.contentWindow?.postMessage({ type: "k3eda-snapshot", ...snapshot }, messageOrigin);
   }, [snapshot]);
@@ -158,12 +165,8 @@ function App() {
     !params.get("view") || params.get("view") === "pcb" || params.get("view") === "schematic",
   );
   const [refresh, setRefresh] = useState(0);
-  const [visible, setVisible] = useState(!document.hidden);
-  useEffect(() => {
-    const change = () => setVisible(!document.hidden);
-    document.addEventListener("visibilitychange", change);
-    return () => document.removeEventListener("visibilitychange", change);
-  }, []);
+  const visible = useSyncExternalStore(subscribeVisibility, isVisible);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Own the standalone viewer's saved-file polling connection only while visible, cancelling its HTTP request and timer on teardown.
   useEffect(() => {
     if (!token || !visible) return;
     const controller = new AbortController();
@@ -221,6 +224,21 @@ function App() {
       : undefined) ??
     files[0];
   const revision = manifest?.revision ?? "";
+  const readAsset = useCallback(
+    async (path: string, signal: AbortSignal) =>
+      (await readResponse(apiUrl("assets", path, revision), signal)).text(),
+    [revision],
+  );
+  const readLibrary = useCallback(
+    async (path: string, signal: AbortSignal) =>
+      (await readResponse(apiUrl("library", path, revision), signal)).text(),
+    [revision],
+  );
+  const readBom = useCallback(
+    async (path: string, signal: AbortSignal) =>
+      (await readResponse(apiUrl("bom", path, revision), signal)).text(),
+    [revision],
+  );
   const boards = manifest?.files.filter((item) => item.kind === "pcb") ?? [];
   const schematics = manifest?.files.filter((item) => item.kind === "schematic") ?? [];
   const pcb =
@@ -355,9 +373,7 @@ function App() {
                   sheets={schematics.map((item) => item.path)}
                   revision={`${revision}:${refresh}`}
                   onView={chooseView}
-                  read={async (path, signal) =>
-                    (await readResponse(apiUrl("assets", path, revision), signal)).text()
-                  }
+                  read={readAsset}
                 />
               </div>
             )}
@@ -367,9 +383,7 @@ function App() {
                   kind={libraryView}
                   path={file.path}
                   revision={`${revision}:${refresh}`}
-                  read={async (path, signal) =>
-                    (await readResponse(apiUrl("library", path, revision), signal)).text()
-                  }
+                  read={readLibrary}
                 />
               ) : (
                 <Notice
@@ -386,13 +400,7 @@ function App() {
             )}
             {view === "bom" &&
               (file ? (
-                <BomView
-                  path={file.path}
-                  revision={`${revision}:${refresh}`}
-                  read={async (path, signal) =>
-                    (await readResponse(apiUrl("bom", path, revision), signal)).text()
-                  }
-                />
+                <BomView path={file.path} revision={`${revision}:${refresh}`} read={readBom} />
               ) : (
                 <Notice text="No schematic found for the BOM. Select the project's root schematic in .k3eda.json." />
               ))}

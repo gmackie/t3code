@@ -1,16 +1,45 @@
-import type { Atom } from "effect/reactivity";
+import { AsyncResult, Atom } from "effect/reactivity";
 import type { EnvironmentRegistry } from "../connection/registry.ts";
-import { WS_METHODS } from "@t3tools/contracts";
+import {
+  WS_METHODS,
+  type EnvironmentId,
+  type ProjectId,
+  type SystemsRunEventsInput,
+} from "@t3tools/contracts";
+import * as Effect from "effect/Effect";
+import { request } from "../rpc/client.ts";
 import {
   createEnvironmentRpcCommand,
   createEnvironmentRpcQueryAtomFamily,
   createEnvironmentRpcSubscriptionAtomFamily,
+  createEnvironmentQueryAtomFamily,
 } from "./runtime.ts";
 
 /** Systems Workbench operations; runs execute on the connected environment, never the client. */
 export function createSystemsEnvironmentAtoms<R, E>(
   runtime: Atom.AtomRuntime<EnvironmentRegistry | R, E>,
 ) {
+  const runsLive = createEnvironmentRpcSubscriptionAtomFamily(runtime, {
+    label: "systems:runs:live",
+    tag: WS_METHODS.systemsRunsSubscribe,
+  });
+  const counters = Atom.family((key: string) => {
+    const target = JSON.parse(key) as {
+      environmentId: EnvironmentId;
+      projectId: ProjectId;
+      runId: string;
+      kind: "eventCount" | "sampleCount";
+    };
+    return Atom.make((get) => {
+      const snapshot = AsyncResult.getOrElse(
+        get(
+          runsLive({ environmentId: target.environmentId, input: { projectId: target.projectId } }),
+        ),
+        () => null,
+      );
+      return snapshot?.runs.find((run) => run.runId === target.runId)?.[target.kind] ?? 0;
+    });
+  });
   return {
     validate: createEnvironmentRpcQueryAtomFamily(runtime, {
       label: "systems:validate",
@@ -37,19 +66,38 @@ export function createSystemsEnvironmentAtoms<R, E>(
       tag: WS_METHODS.systemsRunsList,
       staleTimeMs: 1_000,
     }),
-    runsLive: createEnvironmentRpcSubscriptionAtomFamily(runtime, {
-      label: "systems:runs:live",
-      tag: WS_METHODS.systemsRunsSubscribe,
-    }),
-    events: createEnvironmentRpcQueryAtomFamily(runtime, {
+    runsLive,
+    events: createEnvironmentQueryAtomFamily(runtime, {
       label: "systems:events",
-      tag: WS_METHODS.systemsRunsEvents,
+      execute: (input: typeof SystemsRunEventsInput.Type) =>
+        request(WS_METHODS.systemsRunsEvents, input).pipe(
+          Effect.map((page) => ({ ...page, full: page.events.length >= input.limit })),
+        ),
       staleTimeMs: 1_000,
+      refreshTrigger: ({ environmentId, input }) =>
+        counters(
+          JSON.stringify({
+            environmentId,
+            projectId: input.projectId,
+            runId: input.runId,
+            kind: "eventCount",
+          }),
+        ),
+      isFinal: (page) => page.full,
     }),
     signals: createEnvironmentRpcQueryAtomFamily(runtime, {
       label: "systems:signals",
       tag: WS_METHODS.systemsRunsSignals,
       staleTimeMs: 1_000,
+      refreshTrigger: ({ environmentId, input }) =>
+        counters(
+          JSON.stringify({
+            environmentId,
+            projectId: input.projectId,
+            runId: input.runId,
+            kind: "sampleCount",
+          }),
+        ),
     }),
     compare: createEnvironmentRpcQueryAtomFamily(runtime, {
       label: "systems:compare",

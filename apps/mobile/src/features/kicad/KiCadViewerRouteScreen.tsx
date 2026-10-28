@@ -98,6 +98,7 @@ export function KiCadViewerRouteScreen({ route }: Props) {
   const { themeAppearance } = useAppearancePreferences();
 
   const retry = useCallback(() => setRefreshKey((key) => key + 1), []);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Acquire the native CAD WebView's scoped access ticket for this connection and ignore outstanding acquisition after teardown.
   useEffect(() => {
     if (Option.isNone(sessionRequest.connection)) return;
     const controller = new AbortController();
@@ -119,6 +120,7 @@ export function KiCadViewerRouteScreen({ route }: Props) {
     return () => controller.abort();
   }, [sessionRequest]);
 
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Renew the mounted CAD WebView's ticket before expiry, releasing its timer on teardown.
   useEffect(() => {
     if (!session) return;
     const remaining = session.expiresAt - Date.now() - 60_000;
@@ -153,6 +155,7 @@ export function KiCadViewerRouteScreen({ route }: Props) {
     return `(() => { const vars = ${JSON.stringify(variables)}; for (const [key, value] of Object.entries(vars)) document.documentElement.style.setProperty(key, value); document.documentElement.classList.toggle("dark", ${themeAppearance === "dark"}); })(); true;`;
   }, [theme, themeAppearance]);
 
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Apply palette updates to the mounted native CAD document through WebView injection.
   useEffect(() => {
     if (viewerUrl) webViewRef.current?.injectJavaScript(themeScript);
   }, [themeScript, viewerUrl]);

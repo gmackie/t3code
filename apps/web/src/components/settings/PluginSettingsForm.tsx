@@ -1,5 +1,5 @@
 import { RotateCcwIcon, SaveIcon } from "lucide-react";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 
 import {
   defaultPluginSettings,
@@ -72,17 +72,25 @@ export function PluginSettingsForm({
   const refreshSettings = useAtomRefresh(settingsAtom);
   const updateSettings = useAtomCommand(pluginEnvironment.settingsUpdate, { reportFailure: false });
   const resetSettings = useAtomCommand(pluginEnvironment.settingsReset, { reportFailure: false });
-  const [draft, setDraft] = useState<PluginSettingValueMap>({});
+  const savedValues = scope === "client" ? clientValues : settingsQuery.data?.values;
+  const draftKey = JSON.stringify([
+    environmentId,
+    plugin.pluginId,
+    scope,
+    projectId,
+    panelSettings,
+    savedValues,
+  ]);
+  const [edits, setEdits] = useState<{ key: string; values: PluginSettingValueMap } | null>(null);
+  const draft =
+    edits?.key === draftKey
+      ? edits.values
+      : { ...defaultPluginSettings(panelSettings), ...savedValues };
+  const setDraft = (
+    update: PluginSettingValueMap | ((current: PluginSettingValueMap) => PluginSettingValueMap),
+  ) => setEdits({ key: draftKey, values: typeof update === "function" ? update(draft) : update });
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-
-  useEffect(() => {
-    if (scope === "client") {
-      setDraft({ ...defaultPluginSettings(panelSettings), ...clientValues });
-    } else if (settingsQuery.data) {
-      setDraft({ ...defaultPluginSettings(panelSettings), ...settingsQuery.data.values });
-    }
-  }, [clientValues, panelSettings, scope, settingsQuery.data]);
 
   if (scope === "project" && projectId === undefined) {
     return (

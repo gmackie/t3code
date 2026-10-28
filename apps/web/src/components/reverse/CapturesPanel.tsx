@@ -9,6 +9,7 @@ import type {
 import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
 import { reverseEnvironment } from "~/state/reverse";
 import { useAtomCommand } from "~/state/use-atom-command";
+import { useEnvironmentQuery } from "~/state/query";
 import { observeResize } from "~/lib/observeResize";
 import { Button } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
@@ -120,7 +121,6 @@ export function CapturesPanel({
   onCite: (citation: CaptureCitation) => void;
 }) {
   const importCapture = useAtomCommand(reverseEnvironment.importCapture, { reportFailure: false });
-  const viewCapture = useAtomCommand(reverseEnvironment.viewCapture, { reportFailure: false });
   const decodeCapture = useAtomCommand(reverseEnvironment.decodeCapture, { reportFailure: false });
   const removeCapture = useAtomCommand(reverseEnvironment.removeCapture, { reportFailure: false });
   const [channelFilter, setChannelFilter] = useState("");
@@ -128,7 +128,6 @@ export function CapturesPanel({
     [selectedId, setSelectedId] = useState<string | null>(null),
     [confirmDelete, setConfirmDelete] = useState(false);
   const [range, setRange] = useState<{ startNs: number; endNs: number } | null>(null),
-    [view, setView] = useState<ReverseCaptureViewResult | null>(null),
     [cursorNs, setCursorNs] = useState<number | null>(null);
   const [protocol, setProtocol] = useState<Protocol>("uart"),
     [lines, setLines] = useState<Record<string, string>>({}),
@@ -137,8 +136,8 @@ export function CapturesPanel({
   const [busy, setBusy] = useState(false),
     [error, setError] = useState<string | null>(null);
   const [canvasElement, setCanvasElement] = useState<HTMLCanvasElement | null>(null);
-  const alive = useRef(true),
-    request = useRef(0);
+  const alive = useRef(true);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Invalidate outstanding capture operations on teardown so late completions cannot update the closed panel.
   useEffect(() => {
     alive.current = true;
     return () => {
@@ -172,7 +171,6 @@ export function CapturesPanel({
   const select = (id: string) => {
     setSelectedId(id);
     setRange(null);
-    setView(null);
     setDecoded(null);
     setCursorNs(null);
     setLines({});
@@ -183,8 +181,8 @@ export function CapturesPanel({
   const visibleChannels = (selected?.channels ?? [])
     .filter((name) => name.toLowerCase().includes(channelFilter.trim().toLowerCase()))
     .slice(0, MAX_VISIBLE_CHANNELS);
-  const visibleKey = visibleChannels.join("\u0000");
   const [width, setWidth] = useState(0);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Observe the mounted capture canvas size and disconnect when its DOM element changes.
   useEffect(() => {
     if (!canvasElement) return;
     return observeResize(canvasElement, () => setWidth(canvasElement.clientWidth));
@@ -193,27 +191,24 @@ export function CapturesPanel({
   const startNs = shown?.startNs ?? 0;
   const endNs = shown?.endNs ?? 0;
   const environmentId = threadRef.environmentId;
-  useEffect(() => {
-    if (!captureId || width === 0) return;
-    const sequence = ++request.current;
-    const maxPoints = Math.max(10, Math.min(4000, Math.floor(width - LABEL_WIDTH)));
-    void viewCapture({
-      environmentId,
-      input: {
-        projectId,
-        captureId,
-        startNs,
-        endNs,
-        maxPoints,
-        channels: visibleKey ? visibleKey.split("\u0000") : [],
-      },
-    }).then((response) => {
-      if (!alive.current || sequence !== request.current) return;
-      if (response._tag === "Failure") setError(String(squashAtomCommandFailure(response)));
-      else setView(response.value);
-    });
-  }, [captureId, startNs, endNs, projectId, environmentId, viewCapture, visibleKey, width]);
+  const captureQuery = useEnvironmentQuery(
+    captureId && width > 0
+      ? reverseEnvironment.captureView({
+          environmentId,
+          input: {
+            projectId,
+            captureId,
+            startNs,
+            endNs,
+            maxPoints: Math.max(10, Math.min(4000, Math.floor(width - LABEL_WIDTH))),
+            channels: visibleChannels,
+          },
+        })
+      : null,
+  );
+  const view = captureQuery.data;
 
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Draw the selected capture window and cursor into the mounted canvas when their inputs change.
   useEffect(() => {
     if (view && canvasElement) drawWindow(canvasElement, view, cursorNs, width);
   }, [view, cursorNs, canvasElement, width]);
@@ -311,9 +306,9 @@ export function CapturesPanel({
           ))}
         </div>
       )}
-      {error && (
+      {(error || captureQuery.error) && (
         <p role="alert" className="text-xs text-destructive">
-          {error}
+          {error ?? captureQuery.error}
         </p>
       )}
       {selected && shown && (

@@ -1,8 +1,10 @@
 import { LegendList } from "@legendapp/list/react-native";
 import type { EnvironmentId, SystemsRun, SystemsTraceEvent } from "@t3tools/contracts";
-import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
 import { formatTime, isActiveRun } from "@t3tools/client-runtime/systems-presentation";
-import { useCallback, useEffect, useRef, useState, type ReactElement } from "react";
+import { useMemo, useState, type ReactElement } from "react";
+import { useAtomValue } from "@effect/atom-react";
+import * as Cause from "effect/Cause";
+import { AsyncResult, Atom } from "effect/reactivity";
 import { Platform, View } from "react-native";
 
 import { AppText as Text } from "../../components/ui/AppText";
@@ -10,15 +12,8 @@ import { Button } from "../../components/ui/Button";
 import { cn } from "../../lib/cn";
 import { NativeScrollView } from "../../native/NativeScrollViewMarker";
 import { systemsEnvironment } from "../../state/systems";
-import { useAtomQueryRunner } from "../../state/use-atom-query-runner";
 import { failureText } from "./SystemsDiagnostics";
-import {
-  growingTraceCursor,
-  nextTraceCursor,
-  storeTracePage,
-  TRACE_PAGE_SIZE,
-  type TracePage,
-} from "./tracePages";
+import { nextTraceCursor, TRACE_PAGE_SIZE } from "./tracePages";
 
 const COLUMNS = [
   ["#", "w-12"],
@@ -37,47 +32,34 @@ export function TraceList(props: {
   readonly header: ReactElement;
 }) {
   const { environmentId, run } = props;
-  const fetchPage = useAtomQueryRunner(systemsEnvironment.events, {
-    refresh: true,
-    reportFailure: false,
-  });
-  const [pages, setPages] = useState<ReadonlyArray<TracePage<SystemsTraceEvent>>>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const inFlight = useRef(new Set<string>());
-
-  const load = useCallback(
-    (cursor: string) => {
-      if (inFlight.current.has(cursor)) return;
-      inFlight.current.add(cursor);
-      setLoading(true);
-      void fetchPage({
-        environmentId,
-        input: {
-          projectId: run.projectId,
-          runId: run.runId,
-          fromSequence: cursor,
-          limit: TRACE_PAGE_SIZE,
-        },
-      }).then((result) => {
-        inFlight.current.delete(cursor);
-        setLoading(inFlight.current.size > 0);
-        if (result._tag === "Failure") {
-          setError(failureText(squashAtomCommandFailure(result)));
-          return;
-        }
-        setError(null);
-        setPages((current) => storeTracePage(current, { cursor, ...result.value }));
-      });
-    },
-    [environmentId, fetchPage, run.projectId, run.runId],
+  const [cursors, setCursors] = useState<ReadonlyArray<string>>(["0"]);
+  const { projectId, runId } = run;
+  const results = useAtomValue(
+    useMemo(
+      () =>
+        Atom.make((get) =>
+          cursors.map((cursor) => ({
+            cursor,
+            result: get(
+              systemsEnvironment.events({
+                environmentId,
+                input: { projectId, runId, fromSequence: cursor, limit: TRACE_PAGE_SIZE },
+              }),
+            ),
+          })),
+        ),
+      [cursors, environmentId, projectId, runId],
+    ),
   );
-
-  // Loads the first page, then refetches an unfilled last page whenever the run records events.
-  const growing = growingTraceCursor(pages);
-  useEffect(() => {
-    if (growing !== null && run.eventCount > 0) load(growing);
-  }, [growing, load, run.eventCount]);
+  const pages = results.flatMap(({ cursor, result }) => {
+    const page = AsyncResult.getOrElse(result, () => null);
+    return page === null ? [] : [{ cursor, ...page }];
+  });
+  const loading = results.some(({ result }) => result.waiting);
+  const failed = results.find(({ result }) => result._tag === "Failure")?.result;
+  const error = failed?._tag === "Failure" ? failureText(Cause.squash(failed.cause)) : null;
+  const load = (cursor: string) =>
+    setCursors((previous) => (previous.includes(cursor) ? previous : [...previous, cursor]));
 
   const next = nextTraceCursor(pages, isActiveRun(run));
   const events = pages.flatMap((page) => page.events);

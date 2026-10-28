@@ -14,7 +14,7 @@ import { settlePromise, squashAtomCommandFailure } from "@t3tools/client-runtime
 import * as Cause from "effect/Cause";
 import { AsyncResult } from "effect/reactivity";
 import * as Schema from "effect/Schema";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { ScrollView, View } from "react-native";
 import { AppText } from "../../components/ui/AppText";
 import { Button } from "../../components/ui/Button";
@@ -129,17 +129,25 @@ function WorkScreen({
   const navigation = useNavigation();
   const openLinkedThread = useOpenLinkedThread();
   const thread = useThreadShell(scopeThreadRef(environmentId, threadId));
+  const overview = useEnvironmentQuery(
+    connection.data?.configured && thread
+      ? bobCoordination.overview({ environmentId, input: { projectId: thread.projectId } })
+      : null,
+  );
   const call = useAtomCommand(bobCoordination.call, { reportFailure: false });
-  const [plans, setPlans] = useState<ListPlansOutput["plans"]>([]);
-  const [next, setNext] = useState<string | null>(null);
+  const [localPlans, setPlans] = useState<ListPlansOutput["plans"] | null>(null);
+  const plans = localPlans ?? overview.data?.plans ?? [];
+  const [localNext, setNext] = useState<string | null | undefined>(undefined);
+  const next = localNext === undefined ? (overview.data?.nextPlanId ?? null) : localNext;
   const [plan, setPlan] = useState<GetPlanOutput | null>(null);
   const [items, setItems] = useState<ReadonlyArray<GetItemOutput["item"]>>([]);
-  const [capabilities, setCapabilities] = useState<GetCapabilitiesOutput | null>(null);
+  const [localCapabilities, setCapabilities] = useState<GetCapabilitiesOutput | null>(null);
+  const capabilities = localCapabilities ?? overview.data?.caps;
   const [pending, setPending] = useState<BobOperationInput | null>(null);
-  const configured = connection.data?.configured === true;
-  // A configured view starts loading as soon as it mounts.
-  const [busy, setBusy] = useState(configured);
-  const [error, setError] = useState<string | null>(null);
+  const [localBusy, setBusy] = useState(false);
+  const busy = localBusy || overview.isPending;
+  const [localError, setError] = useState<string | null>(null);
+  const error = localError ?? overview.error;
   const generation = useRef(0);
   const binding = thread && connection.data?.projects[thread.projectId];
   const request = useCallback(
@@ -163,14 +171,16 @@ function WorkScreen({
       setError(null);
       const { caps, visible, nextPlanId, detail, children } = loaded.value;
       setCapabilities(caps);
-      setPlans((previous) => (afterPlanId ? [...previous, ...visible] : visible));
+      setPlans((previous) =>
+        afterPlanId ? [...(previous ?? overview.data?.plans ?? []), ...visible] : visible,
+      );
       setNext(nextPlanId);
       if (detail) {
         setPlan(detail);
         setItems(children);
       }
     },
-    [binding, request],
+    [binding, request, overview.data?.plans],
   );
   const refresh = (planId?: string, afterPlanId?: string) => {
     const current = ++generation.current;
@@ -178,12 +188,6 @@ function WorkScreen({
     setError(null);
     return load(current, planId, afterPlanId);
   };
-  useEffect(() => {
-    if (configured) void load(++generation.current);
-    return () => {
-      generation.current++;
-    };
-  }, [configured, load]);
   const mutate = async (command: BobOperationInput) => {
     setPending(command);
     setBusy(true);

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import type { EnvironmentId, SystemsRun } from "@t3tools/contracts";
 import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
 import { systemsEnvironment } from "~/state/systems";
@@ -138,11 +138,6 @@ function SignalPlot({
         })
       : null,
   );
-  // Live runs push progress; refetch the bounded, downsampled view when new samples land.
-  const refresh = signals.refresh;
-  useEffect(() => {
-    if (run.sampleCount > 0) refresh();
-  }, [run.sampleCount, refresh]);
   const plot = signals.data ? plotSignals(signals.data.series, PLOT) : null;
   if (run.probes.length === 0) return null;
   return (
@@ -300,12 +295,7 @@ function TracePage({
       input: { projectId: run.projectId, runId: run.runId, fromSequence, limit: PAGE_SIZE },
     }),
   );
-  // Only an unfilled last page can grow while the run is live.
-  const refresh = page.refresh;
   const filled = (page.data?.events.length ?? 0) >= PAGE_SIZE;
-  useEffect(() => {
-    if (last && !filled && run.eventCount > 0) refresh();
-  }, [last, filled, run.eventCount, refresh]);
   return (
     <TableBody>
       {page.error && (

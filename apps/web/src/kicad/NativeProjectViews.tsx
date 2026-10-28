@@ -1,6 +1,8 @@
 /* eslint-disable react/iframe-missing-sandbox -- The bundled CAD runtime needs same-origin module and worker access. */
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ComponentProps } from "react";
 import { ArrowLeftRight, Search } from "lucide-react";
+import { useEnvironmentQuery } from "../state/query";
+import { cadQuery } from "./query";
 
 type Source = { filename: string; content: string };
 export type NativeView = "pcb" | "schematic";
@@ -26,7 +28,7 @@ function NativeFrame({
   onResult,
 }: {
   view: NativeView;
-  sources: Source[];
+  sources: Source[] | undefined;
   revision: string;
   active: boolean;
   probe?: Probe | undefined;
@@ -43,12 +45,14 @@ function NativeFrame({
   const send = () => {
     if (!ready.current) return;
     const { sources, ...state } = latest.current.snapshot;
+    if (!sources) return;
     ref.current?.contentWindow?.postMessage(
       sentRevision.current === state.revision ? state : { ...state, sources },
       origin,
     );
     sentRevision.current = state.revision;
   };
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Subscribe to selection and readiness messages from this mounted Prism iframe, removing the listener on teardown.
   useEffect(() => {
     const receive = (event: MessageEvent) => {
       if (event.source !== ref.current?.contentWindow || event.origin !== location.origin) return;
@@ -65,6 +69,7 @@ function NativeFrame({
     window.addEventListener("message", receive);
     return () => window.removeEventListener("message", receive);
   }, []);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Send changed project and cross-probe inputs to the mounted Prism runtime without recreating its camera.
   useEffect(() => {
     send();
   }, [sources, revision, active, probe]);
@@ -76,6 +81,52 @@ function NativeFrame({
       src="/kicad-viewer/runtime.html"
       className="h-full w-full border-0"
     />
+  );
+}
+
+function ProjectFrame({
+  path,
+  sheetsKey,
+  read,
+  ...props
+}: Omit<ComponentProps<typeof NativeFrame>, "sources"> & {
+  path: string;
+  sheetsKey: string;
+  read: (path: string, signal: AbortSignal) => Promise<string>;
+}) {
+  const { view, revision } = props;
+  const query = useEnvironmentQuery(
+    useMemo(
+      () =>
+        cadQuery(async (signal) => {
+          const sheets = JSON.parse(sheetsKey) as string[];
+          const paths = view === "pcb" ? [path] : [path, ...sheets.filter((item) => item !== path)];
+          return {
+            revision,
+            sources: await Promise.all(
+              paths.map(async (filename) => ({ filename, content: await read(filename, signal) })),
+            ),
+          };
+        }),
+      [path, sheetsKey, view, revision, read],
+    ),
+  );
+  return (
+    <>
+      <NativeFrame
+        {...props}
+        sources={query.data?.sources}
+        active={props.active && query.data !== null}
+      />
+      {(query.data === null || query.error) && (
+        <div
+          role="status"
+          className="absolute inset-0 flex items-center justify-center bg-background p-4 text-center text-xs text-muted-foreground"
+        >
+          {query.error ?? "Loading saved project…"}
+        </div>
+      )}
+    </>
   );
 }
 
@@ -97,45 +148,13 @@ export function NativeProjectViews({
   read: (path: string, signal: AbortSignal) => Promise<string>;
   onView: (view: NativeView) => void;
 }) {
-  const [loaded, setLoaded] = useState<
-    Partial<Record<NativeView, { key: string; sources: Source[] }>>
-  >({});
-  const [errors, setErrors] = useState<Partial<Record<NativeView, string>>>({});
   const [selection, setSelection] = useState<Selection | null>(null);
   const [query, setQuery] = useState("");
   const [net, setNet] = useState(false);
   const [probe, setProbe] = useState<Probe>();
   const [status, setStatus] = useState("");
   const requestId = useRef(0);
-  const readRef = useRef(read);
-  readRef.current = read;
   const sheetsKey = JSON.stringify(sheets);
-  useEffect(() => {
-    const controller = new AbortController();
-    setErrors({});
-    for (const [context, path] of [
-      ["pcb", pcb],
-      ["schematic", schematic],
-    ] as const) {
-      if (!path) continue;
-      const paths = context === "pcb" ? [path] : [path, ...sheets.filter((item) => item !== path)];
-      void Promise.all(
-        paths.map(async (filename) => ({
-          filename,
-          content: await readRef.current(filename, controller.signal),
-        })),
-      )
-        .then((sources) => {
-          if (!controller.signal.aborted)
-            setLoaded((old) => ({ ...old, [context]: { key: `${revision}:${path}`, sources } }));
-        })
-        .catch((error: unknown) => {
-          if (!controller.signal.aborted)
-            setErrors((old) => ({ ...old, [context]: String(error) }));
-        });
-    }
-    return () => controller.abort();
-  }, [pcb, schematic, revision, sheetsKey]);
   const runProbe = (value: string, kind: "net" | "component", target: NativeView) => {
     if (!value.trim()) return;
     setStatus(`Finding ${value}…`);
@@ -199,21 +218,19 @@ export function NativeProjectViews({
       )}
       {(["pcb", "schematic"] as const).map((context) => {
         const path = context === "pcb" ? pcb : schematic;
-        const data = loaded[context];
-        const current = data?.key === `${revision}:${path}`;
         return (
           <div key={context} hidden={view !== context} className="relative min-h-0 flex-1">
-            {data && (
-              <NativeFrame
+            {path && (
+              <ProjectFrame
                 key={path}
                 view={context}
-                sources={data.sources}
-                revision={data.key}
-                active={view === context && current}
+                path={path}
+                sheetsKey={sheetsKey}
+                read={read}
+                revision={`${revision}:${path}`}
+                active={view === context}
                 probe={
-                  probe?.targetContext === (context === "pcb" ? "PCB" : "SCH") && current
-                    ? probe
-                    : undefined
+                  probe?.targetContext === (context === "pcb" ? "PCB" : "SCH") ? probe : undefined
                 }
                 onSelection={(item) => {
                   if (view === context) {
@@ -229,12 +246,12 @@ export function NativeProjectViews({
                 }
               />
             )}
-            {(!current || errors[context]) && (
+            {!path && (
               <div
                 role="status"
                 className="absolute inset-0 flex items-center justify-center bg-background p-4 text-center text-xs text-muted-foreground"
               >
-                {errors[context] ?? (path ? "Loading saved project…" : `No ${context} file found.`)}
+                No {context} file found.
               </div>
             )}
           </div>
