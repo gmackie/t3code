@@ -694,7 +694,11 @@ export function buildThreadListV2Items(input: {
       settled.push(thread);
     } else if (thread.pinnedAt != null) {
       pinned.push(thread);
-    } else if (workingShelfEnabled && (input.isWorking ?? isThreadWorking)(thread)) {
+    } else if (
+      workingShelfEnabled &&
+      !hasQueuedMessages &&
+      (input.isWorking ?? isThreadWorking)(thread)
+    ) {
       working.push(thread);
     } else {
       active.push(thread);
