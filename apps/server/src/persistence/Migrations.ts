@@ -73,9 +73,9 @@ import Migration0067 from "./Migrations/067_WebhookDedupe.ts";
 import Migration0068 from "./Migrations/068_ShellStopRequestIndex.ts";
 import Migration0069 from "./Migrations/069_ThreadMessageSearch.ts";
 // GMACKO lane migrations, released as 68-70 and 69-71 before upstream claimed 68 and 69.
-import PeerLinks from "./Migrations/068_PeerLinks.ts";
-import PeerLinkFence from "./Migrations/069_PeerLinkFence.ts";
-import WaitingLinkRequestIndex from "./Migrations/070_WaitingLinkRequestIndex.ts";
+import PeerLinks from "./Migrations/070_PeerLinks.ts";
+import PeerLinkFence from "./Migrations/071_PeerLinkFence.ts";
+import WaitingLinkRequestIndex from "./Migrations/072_WaitingLinkRequestIndex.ts";
 // GMACKO lane migration, released as 59, 62, 65, 67, 71 and 72 before upstream claimed those ids.
 import BoundedShellLookups from "./Migrations/059_BoundedShellLookups.ts";
 // T3CODE-6 Bob admission; released as 59 on main and 63, 66, 68, 72 and 73 on custom-local

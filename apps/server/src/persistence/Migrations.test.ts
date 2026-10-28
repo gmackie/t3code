@@ -7,9 +7,9 @@ import * as SqlClient from "effect/sql/SqlClient";
 import { migrationManifest, reconcileMigrationLedger, runMigrations } from "./Migrations.ts";
 import BoundedShellLookups from "./Migrations/059_BoundedShellLookups.ts";
 import BobExecutionAdmission from "./Migrations/063_BobExecutionAdmission.ts";
-import PeerLinks from "./Migrations/068_PeerLinks.ts";
-import PeerLinkFence from "./Migrations/069_PeerLinkFence.ts";
-import WaitingLinkRequestIndex from "./Migrations/070_WaitingLinkRequestIndex.ts";
+import PeerLinks from "./Migrations/070_PeerLinks.ts";
+import PeerLinkFence from "./Migrations/071_PeerLinkFence.ts";
+import WaitingLinkRequestIndex from "./Migrations/072_WaitingLinkRequestIndex.ts";
 
 // Each case gets its own database: OrchestrationV2 is not re-runnable, so a
 // shared database would make later ledger rewinds re-run it.
