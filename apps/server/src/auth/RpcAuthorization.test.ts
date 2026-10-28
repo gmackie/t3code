@@ -403,3 +403,9 @@ it.effect("denies manual cleanup before the handler without settings permission"
     expect(handled).toBe(false);
   }).pipe(Effect.scoped),
 );
+
+it("keeps triage behind operate scope", () => {
+  expect(requiredScopeForRpcMethod(WS_METHODS.serverPrepareTriage)).toBe(
+    AuthOrchestrationOperateScope,
+  );
+});

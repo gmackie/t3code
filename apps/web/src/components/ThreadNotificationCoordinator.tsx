@@ -172,11 +172,14 @@ export function startThreadNotifications(
     entry: WatchedEnvironment,
     threads: ReadonlyArray<OrchestrationV2ThreadShell>,
     // A parent here also hears of what its tasks on linked environments ask.
-    subagentRequests: ReadonlyMap<ThreadId, PendingSubagentRequest>,
-    delegatedUnderParent: ReadonlySet<string>,
   ) => {
     const previous = entry.previous;
     const next = new Map<ThreadId, NotificationState>();
+    // A parent here also hears of what its tasks on linked environments ask.
+    const subagentRequests = registry.get(
+      environmentThreadShells.pendingSubagentRequestsAtom(environmentId),
+    );
+    const delegatedUnderParent = registry.get(environmentThreadShells.delegatedUnderParentAtom);
     const changed: Array<[NotificationState | undefined, NotificationState]> = [];
     for (const rawThread of threads) {
       if (
@@ -239,34 +242,38 @@ export function startThreadNotifications(
         if (state) present(environmentId, state, kind);
       }),
     };
-    const shellAtom = environmentShell.stateValueAtom(environmentId);
-    const subagentRequestsAtom = environmentThreadShells.pendingSubagentRequestsAtom(environmentId);
-    const refresh = () => {
-      const shell = registry.get(shellAtom);
-      const threads =
-        shell.status === "live" && Option.isSome(shell.snapshot)
-          ? shell.snapshot.value.threads
-          : null;
-      if (threads !== null) {
-        observeThreads(
-          environmentId,
-          entry,
-          threads,
-          registry.get(subagentRequestsAtom),
-          registry.get(environmentThreadShells.delegatedUnderParentAtom),
-        );
-        return;
-      }
-      entry.gate.clear();
-      entry.previous = new Map();
+    let threads: ReadonlyArray<OrchestrationV2ThreadShell> | null = null;
+    const unsubscribeShell = registry.subscribe(
+      environmentShell.stateValueAtom(environmentId),
+      (shell) => {
+        threads =
+          shell.status === "live" && Option.isSome(shell.snapshot)
+            ? shell.snapshot.value.threads
+            : null;
+        if (threads !== null) {
+          observeThreads(environmentId, entry, threads);
+          return;
+        }
+        entry.gate.clear();
+        entry.previous = new Map();
+      },
+      { immediate: true },
+    );
+    const reobserve = () => {
+      if (threads !== null) observeThreads(environmentId, entry, threads);
     };
-    const unsubscribes = [
-      registry.subscribe(subagentRequestsAtom, refresh),
-      registry.subscribe(environmentThreadShells.delegatedUnderParentAtom, refresh),
-      registry.subscribe(shellAtom, refresh, { immediate: true }),
-    ];
+    const unsubscribeRequests = registry.subscribe(
+      environmentThreadShells.pendingSubagentRequestsAtom(environmentId),
+      reobserve,
+    );
+    const unsubscribeDelegated = registry.subscribe(
+      environmentThreadShells.delegatedUnderParentAtom,
+      reobserve,
+    );
     entry.unsubscribe = () => {
-      for (const unsubscribe of unsubscribes) unsubscribe();
+      unsubscribeShell();
+      unsubscribeRequests();
+      unsubscribeDelegated();
       entry.gate.clear();
     };
     return entry;

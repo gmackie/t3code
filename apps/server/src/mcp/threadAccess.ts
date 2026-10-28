@@ -98,10 +98,7 @@ export const assertTargetWithinLimits = (
     Effect.asVoid,
   );
 
-/**
- * A caller's thread is live while unarchived, on the caller's provider
- * instance, with an active run or a background subagent that instance started.
- */
+/** Background subagents retain credentials until provider exit; archived threads and other instances cannot act. */
 export const isLiveCallerShell = (
   shell: Pick<
     OrchestrationV2ThreadShell,

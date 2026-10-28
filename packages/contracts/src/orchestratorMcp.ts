@@ -32,6 +32,7 @@ import {
   ThreadPullRequestKey,
   ThreadPullRequestLinkSource,
 } from "./threadPullRequest.ts";
+import { hasOnlyPairedSurrogates } from "./threadMetadataMcp.ts";
 import { ThreadTitleRegeneration } from "./threadTitle.ts";
 import {
   OrchestrationV2Actor,
@@ -44,9 +45,15 @@ import { ProviderDriverKind, ProviderInstanceId } from "./providerInstance.ts";
 
 const OrchestratorMcpPrompt = TrimmedNonEmptyString.check(Schema.isMaxLength(120_000));
 const OrchestratorMcpTitle = TrimmedNonEmptyString.check(Schema.isMaxLength(512));
-export const OrchestratorMcpClientRequestId = TrimmedNonEmptyString.check(
-  Schema.isMaxLength(256),
-).annotate({ description: "Reuse it to retry the same call. A new call gets a new key." });
+export const OrchestratorMcpClientRequestId = TrimmedNonEmptyString.check(Schema.isMaxLength(256))
+  .check(
+    Schema.makeFilter((value) =>
+      hasOnlyPairedSurrogates(value)
+        ? true
+        : "clientRequestId must contain valid paired Unicode surrogates.",
+    ),
+  )
+  .annotate({ description: "Reuse it to retry the same call. A new call gets a new key." });
 
 // OpenCode 1.15 serializes nested MCP union objects as JSON strings; decode that form at the boundary.
 const OrchestratorMcpScheduleFromJsonString = Schema.fromJsonString(
@@ -107,13 +114,13 @@ export const OrchestratorMcpTarget = Schema.Struct({
   environmentId: Schema.optional(
     EnvironmentId.annotate({
       description:
-        "Run in a linked environment (`t3_environment_links`). Default: your provider and model; name others from `orchestrator_capabilities` with this environmentId.",
+        "Linked environment to run in. Provider and model default to yours; others come from `orchestrator_capabilities` with this `environmentId`.",
     }),
   ),
   projectId: Schema.optional(
     ProjectId.annotate({
       description:
-        "With environmentId: its project. Default: the one with your project's repository.",
+        "With `environmentId`: its project to run in. Default: the one with this project's repository.",
     }),
   ),
 });
@@ -316,7 +323,7 @@ const OrchestratorMcpProjectTarget = Schema.optional(
 export const OrchestratorMcpEnvironmentTarget = Schema.optional(
   EnvironmentId.annotate({
     description:
-      "Linked environment to act in (`t3_environment_links`). Omit for this one. Ids then belong to it.",
+      "Linked environment to act in. Omit for this one. Ids are then that environment's.",
   }),
 );
 
@@ -516,7 +523,7 @@ export const OrchestratorMcpThreadWaitInput = Schema.Struct({
   untilDelegatedWorkSettled: Schema.optional(
     Schema.Boolean.annotate({
       description:
-        "Also wait for the thread's delegated and background tasks to settle. `resultRun` then names the run with its final answer.",
+        "Also wait for its delegated and background tasks and their completions to settle. `resultRun` then names the run with its final answer.",
     }),
   ),
 });
@@ -530,6 +537,7 @@ export const OrchestratorMcpThreadWaitResult = Schema.Struct({
   /** With untilDelegatedWorkSettled, once settled: the run whose reply is the thread's result. */
   resultRun: Schema.optional(Schema.Struct({ runId: RunId, status: OrchestrationV2RunStatus })),
   next: Schema.optional(OrchestratorMcpRunningTaskNext),
+  /** With untilDelegatedWorkSettled, once settled: the run whose reply is the thread's result. */
 });
 export type OrchestratorMcpThreadWaitResult = typeof OrchestratorMcpThreadWaitResult.Type;
 
@@ -761,31 +769,31 @@ export type OrchestratorMcpRequestSecretResult = typeof OrchestratorMcpRequestSe
 
 export const OrchestratorMcpEnvironmentLinkInput = Schema.Struct({
   environmentId: Schema.optional(EnvironmentId).annotate({
-    description: "The environment, if known. Omit to let the user pick in the card.",
+    description:
+      "The machine, when known, e.g. from a mentioned machine. Otherwise the user picks it in the card.",
   }),
   url: Schema.optional(TrimmedNonEmptyString).annotate({
     description:
-      "Only an address the user gave: https, Tailscale, LAN or loopback base URL. Never guess.",
+      "Only an address the user gave: https, Tailscale, LAN or loopback. Never guess one.",
   }),
   hint: Schema.optional(TrimmedNonEmptyString).annotate({
     description: 'The user\'s words for the machine, e.g. "vps". Preselects it in the card.',
   }),
   reason: Schema.optional(TrimmedNonEmptyString).annotate({
-    description: "One sentence on why, shown on the card.",
+    description: "One sentence for the card.",
   }),
   requestedAccess: Schema.optional(AuthMcpClientAccess).annotate({
     description: "Suggested access. The user picks; default approval-required.",
   }),
-  clientRequestId: Schema.optional(OrchestratorMcpClientRequestId).annotate({
-    description: "Reuse to retry a lost result with the same card. A new id asks again.",
-  }),
+  clientRequestId: Schema.optional(OrchestratorMcpClientRequestId),
 });
 export type OrchestratorMcpEnvironmentLinkInput = typeof OrchestratorMcpEnvironmentLinkInput.Type;
 
 export const OrchestratorMcpEnvironmentLinkResult = Schema.Union([
   Schema.Struct({
     status: Schema.Literal("pending").annotate({
-      description: "Waiting for the user. Their answer arrives as a message here.",
+      description:
+        "The card is waiting for the user. Their answer arrives as a message in this thread.",
     }),
     turnItemId: TurnItemId,
   }),
@@ -799,7 +807,8 @@ export const OrchestratorMcpEnvironmentLinkResult = Schema.Union([
   }),
   Schema.Struct({
     status: Schema.Literals(["declined", "cancelled"]).annotate({
-      description: "cancelled: the card closed unanswered (thread stopped or archived).",
+      description:
+        "declined: the user chose not to. cancelled: the card closed unanswered, when the thread was stopped or archived.",
     }),
   }),
   Schema.Struct({

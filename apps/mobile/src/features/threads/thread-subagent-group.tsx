@@ -168,7 +168,11 @@ export function ThreadSubagentGroup(props: {
                   if (
                     openInspector(
                       { environmentId: props.environmentId, threadId: members[0]!.threadId },
-                      { type: "thread", ...target },
+                      {
+                        type: "thread",
+                        environmentId: target.environmentId,
+                        threadId: target.threadId,
+                      },
                     )
                   )
                     return;

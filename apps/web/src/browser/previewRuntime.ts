@@ -49,12 +49,13 @@ export function usePreviewAvailable(environmentId: EnvironmentId | null): boolea
 export function rendersServerTabNatively(
   environmentId: EnvironmentId,
   primaryEnvironmentId: EnvironmentId | null,
-  snapshot: Pick<PreviewSessionSnapshot, "runtime" | "profileId"> | null | undefined,
+  snapshot: Pick<PreviewSessionSnapshot, "runtime" | "headless" | "profileId"> | null | undefined,
 ): boolean {
   return (
     isElectron &&
     snapshot?.runtime === "server" &&
     snapshot.profileId !== METAMASK_BROWSER_PROFILE_ID &&
+    !snapshot.headless &&
     primaryEnvironmentId !== null &&
     environmentId === primaryEnvironmentId
   );
@@ -62,7 +63,7 @@ export function rendersServerTabNatively(
 
 export function useRendersServerTabNatively(
   environmentId: EnvironmentId,
-  snapshot: Pick<PreviewSessionSnapshot, "runtime" | "profileId"> | null | undefined,
+  snapshot: Pick<PreviewSessionSnapshot, "runtime" | "headless" | "profileId"> | null | undefined,
 ): boolean {
   return rendersServerTabNatively(environmentId, useAtomValue(primaryEnvironmentIdAtom), snapshot);
 }

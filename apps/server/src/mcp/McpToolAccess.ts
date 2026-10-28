@@ -162,7 +162,7 @@ export const writes = <P, A, E, R>(
     () => orchestratingCaller,
   );
 
-/** Requires handler capability checks, not thread control. Linked work is refused too. */
+/** Requires handler capability checks, not thread control; linked work is refused the same way. */
 export const writesWithCapability = <P, A, E, R>(handle: (params: P) => Effect.Effect<A, E, R>) =>
   declare(
     (params: P) =>
@@ -264,14 +264,20 @@ export const either = <P, A, E, R, A2, E2, R2>(
   first: Declaration<(params: P) => Effect.Effect<A, E, R>>,
   second: Declaration<(params: P) => Effect.Effect<A2, E2, R2>>,
 ) => {
-  const firstRemote = remoteCheckOf(first) as RemoteCheck<P> | undefined;
-  const secondRemote = remoteCheckOf(second) as RemoteCheck<P> | undefined;
+  const remotes = [remoteCheckOf(first), remoteCheckOf(second)] as ReadonlyArray<
+    RemoteCheck<P> | undefined
+  >;
   return declare(
     (params: P): Effect.Effect<A | A2, E | E2, R | R2> =>
       useFirst(params) ? checkedHandler(first)(params) : checkedHandler(second)(params),
-    firstRemote === undefined || secondRemote === undefined
-      ? undefined
-      : (params: P) => (useFirst(params) ? firstRemote(params) : secondRemote(params)),
+    (params) =>
+      remotes[useFirst(params) ? 0 : 1]?.(params) ??
+      Effect.fail(
+        new OrchestratorMcpFailure({
+          code: "invalid_request",
+          message: "This action acts as the calling thread, which is here. Omit environmentId.",
+        }),
+      ),
   );
 };
 
@@ -403,6 +409,7 @@ const routed = Effect.fn("McpToolAccess.routed")(function* <Tools extends Record
         const scope = yield* McpInvocationContext.McpInvocationContext;
         const target = PeerForwarding.remoteTarget(scope, environmentId);
         if (target === undefined) return yield* here(params);
+        if (scope.linkedEnvironments === false) return yield* PeerForwarding.linkedEnvironmentsOff;
         yield* (remote as RemoteCheck<typeof params>)(params);
         if (Option.isNone(forwarding)) return yield* linksUnavailable;
         return withoutThreadLinks(

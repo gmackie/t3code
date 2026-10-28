@@ -59,6 +59,7 @@ vi.mock(import("../state/presentation"), async (original) => {
     },
   };
 });
+
 vi.mock(import("../hooks/useSettings"), async (original) => ({
   ...(await original()),
   subscribeClientSettings: ((listener: () => void) => {
@@ -83,7 +84,7 @@ let registry: AtomRegistry.AtomRegistry;
 const shellAtom = Atom.family((_id: string) => Atom.make<unknown>(null));
 const environmentIdsAtom = Atom.make<ReadonlyArray<string>>([]);
 const subagentRequestsAtom = Atom.family((_id: string) =>
-  Atom.make<ReadonlyMap<string, unknown>>(new Map<string, unknown>()),
+  Atom.make<ReadonlyMap<string, unknown>>(new Map()),
 );
 const delegatedUnderParentAtom = Atom.make<ReadonlySet<string>>(new Set<string>());
 state.shells = { set: (id, value) => registry.set(shellAtom(id), value) };
