@@ -9,7 +9,7 @@ const environmentId = EnvironmentId.make("primary");
 
 const atoms = vi.hoisted(() => ({
   status: Symbol("pluginPackagesStatus"),
-  enable: Symbol("pluginPackagesEnable"),
+  enable: { permissionAtom: () => Symbol("pluginPackagesEnablePermission") },
   disable: Symbol("pluginPackagesDisable"),
   reload: Symbol("pluginPackagesReload"),
 }));
@@ -51,15 +51,12 @@ vi.mock("../../state/environments", () => ({
   usePrimaryEnvironmentId: () => environmentId,
 }));
 
-vi.mock("../../environments/primary", () => ({
-  usePrimarySessionState: () => ({ data: null, error: null, isPending: false }),
+vi.mock("@effect/atom-react", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@effect/atom-react")>()),
+  useAtomValue: () => access.value === "granted",
 }));
 
-vi.mock("../../env", () => ({ isElectron: false }));
-
-vi.mock("./ProviderSettingsPanel.logic", () => ({
-  resolvePrimaryOperateAccess: () => access.value,
-}));
+vi.mock("./PluginApplicationsSettings", () => ({ PluginApplicationsSettingsPanel: () => null }));
 
 vi.mock("../../state/query", () => ({
   useEnvironmentQuery: () => query,
@@ -75,7 +72,7 @@ vi.mock("../../state/server", () => ({
 }));
 
 vi.mock("../../state/use-atom-command", () => ({
-  useAtomCommand: (command: symbol) => {
+  useAtomCommand: (command: unknown) => {
     if (command === atoms.enable) return commands.enable;
     if (command === atoms.disable) return commands.disable;
     return commands.reload;

@@ -1,8 +1,9 @@
 import { scopeProjectRef } from "@t3tools/client-runtime/environment";
+import { inferProjectTitleFromPath } from "@t3tools/client-runtime/state/projects";
 import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
 import type { EnvironmentId, IssueItem, ProjectId, ProjectIssueStatus } from "@t3tools/contracts";
 import { ClipboardListIcon, KanbanIcon, ListIcon, PlusIcon, RefreshCwIcon } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 
 import { Button } from "./ui/button";
 import {
@@ -20,7 +21,6 @@ import { SidebarInset, SidebarTrigger } from "./ui/sidebar";
 import { Textarea } from "./ui/textarea";
 import { useComposerDraftStore } from "../composerDraftStore";
 import { useNewThreadHandler } from "../hooks/useHandleNewThread";
-import { inferProjectTitleFromPath } from "../lib/projectPaths";
 import { cn } from "../lib/utils";
 import {
   groupIssuesByStatus,
@@ -35,6 +35,7 @@ import {
 import { useEnvironmentSettings } from "../hooks/useSettings";
 import { useProjects } from "../state/entities";
 import { serverEnvironment } from "../state/server";
+import { useEnvironmentQuery } from "../state/query";
 import { useAtomCommand } from "../state/use-atom-command";
 
 interface ProjectIssueViewerProps {
@@ -122,17 +123,26 @@ export function ProjectIssueViewer({ environmentId, projectId }: ProjectIssueVie
   const mapping = linearSettings.projectMappings[projectId] ?? null;
   const handleNewThread = useNewThreadHandler();
   const [viewMode, setViewMode] = useState<ProjectIssueViewMode>("list");
-  const [issues, setIssues] = useState<readonly IssueItem[]>([]);
-  const [statuses, setStatuses] = useState<readonly ProjectIssueStatus[]>([]);
   const [query, setQuery] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const listProjectIssues = useAtomCommand(serverEnvironment.listProjectIssues, {
-    reportFailure: false,
-  });
-  const listProjectIssueStatuses = useAtomCommand(serverEnvironment.listProjectIssueStatuses, {
-    reportFailure: false,
-  });
+  const [submittedQuery, setSubmittedQuery] = useState("");
+  const [mutationError, setError] = useState<string | null>(null);
+  const issueQuery = useEnvironmentQuery(
+    mapping
+      ? serverEnvironment.projectIssues({
+          environmentId,
+          input: { projectId, ...(submittedQuery ? { query: submittedQuery } : {}), limit: 100 },
+        })
+      : null,
+  );
+  const statusQuery = useEnvironmentQuery(
+    mapping
+      ? serverEnvironment.projectIssueStatuses({ environmentId, input: { projectId } })
+      : null,
+  );
+  const issues = issueQuery.data?.issues ?? [];
+  const statuses = statusQuery.data?.statuses ?? [];
+  const loading = issueQuery.isPending;
+  const error = mutationError ?? issueQuery.error ?? statusQuery.error;
   const createProjectIssue = useAtomCommand(serverEnvironment.createProjectIssue, {
     reportFailure: false,
   });
@@ -151,62 +161,27 @@ export function ProjectIssueViewer({ environmentId, projectId }: ProjectIssueVie
   }, [issues, statuses]);
   const statusGroups = useMemo(() => groupIssuesByStatus(issues), [issues]);
 
-  useEffect(() => {
-    if (!statusOptions.some((status) => status.id === newStatusId)) {
-      setNewStatusId(statusOptions[0]?.id ?? DEFAULT_CREATE_STATUS);
-    }
-  }, [newStatusId, statusOptions]);
+  const selectedStatusId = statusOptions.some((status) => status.id === newStatusId)
+    ? newStatusId
+    : (statusOptions[0]?.id ?? DEFAULT_CREATE_STATUS);
 
   const loadIssues = useCallback(
     (nextQuery: string) => {
-      setLoading(true);
       setError(null);
-      void listProjectIssues({
-        environmentId,
-        input: {
-          projectId,
-          ...(nextQuery.trim().length > 0 ? { query: nextQuery.trim() } : {}),
-          limit: 100,
-        },
-      }).then((result) => {
-        if (result._tag === "Success") {
-          setIssues(result.value.issues);
-        } else {
-          setIssues([]);
-          const failure = squashAtomCommandFailure(result);
-          setError(failure instanceof Error ? failure.message : "Unable to load issues.");
-        }
-        setLoading(false);
-      });
+      const normalizedQuery = nextQuery.trim();
+      if (normalizedQuery === submittedQuery) issueQuery.refresh();
+      else setSubmittedQuery(normalizedQuery);
+      statusQuery.refresh();
     },
-    [environmentId, listProjectIssues, projectId],
+    [issueQuery, statusQuery, submittedQuery],
   );
-
-  const loadStatuses = useCallback(() => {
-    setError(null);
-    void listProjectIssueStatuses({ environmentId, input: { projectId } }).then((result) => {
-      if (result._tag === "Success") {
-        setStatuses(result.value.statuses);
-      } else {
-        setStatuses([]);
-        const failure = squashAtomCommandFailure(result);
-        setError(failure instanceof Error ? failure.message : "Unable to load issue statuses.");
-      }
-    });
-  }, [environmentId, listProjectIssueStatuses, projectId]);
-
-  useEffect(() => {
-    if (!mapping) return;
-    loadIssues("");
-    loadStatuses();
-  }, [loadIssues, loadStatuses, mapping]);
 
   const createIssue = useCallback(() => {
     const title = newTitle.trim();
     if (!title) return;
     setCreating(true);
     setError(null);
-    const selectedStatus = statusOptions.find((status) => status.id === newStatusId);
+    const selectedStatus = statusOptions.find((status) => status.id === selectedStatusId);
     void (async () => {
       const result = await createProjectIssue({
         environmentId,
@@ -222,10 +197,7 @@ export function ProjectIssueViewer({ environmentId, projectId }: ProjectIssueVie
         },
       });
       if (result._tag === "Success") {
-        setIssues((current) => [
-          result.value.issue,
-          ...current.filter((issue) => issue.id !== result.value.issue.id),
-        ]);
+        issueQuery.refresh();
         setNewTitle("");
         setNewDescription("");
         setCreateIssueOpen(false);
@@ -239,10 +211,11 @@ export function ProjectIssueViewer({ environmentId, projectId }: ProjectIssueVie
     createProjectIssue,
     environmentId,
     newDescription,
-    newStatusId,
+    selectedStatusId,
     newTitle,
     projectId,
     statusOptions,
+    issueQuery,
   ]);
 
   const updateIssueStatus = useCallback(
@@ -261,11 +234,7 @@ export function ProjectIssueViewer({ environmentId, projectId }: ProjectIssueVie
           },
         });
         if (result._tag === "Success") {
-          setIssues((current) =>
-            current.map((candidate) =>
-              candidate.id === result.value.issue.id ? result.value.issue : candidate,
-            ),
-          );
+          issueQuery.refresh();
         } else {
           const failure = squashAtomCommandFailure(result);
           setError(failure instanceof Error ? failure.message : "Unable to update issue.");
@@ -273,7 +242,7 @@ export function ProjectIssueViewer({ environmentId, projectId }: ProjectIssueVie
         setUpdatingIssueId(null);
       })();
     },
-    [environmentId, projectId, updateProjectIssueStatus],
+    [environmentId, projectId, updateProjectIssueStatus, issueQuery],
   );
 
   const startThreadForIssue = useCallback(
@@ -469,7 +438,7 @@ export function ProjectIssueViewer({ environmentId, projectId }: ProjectIssueVie
             <select
               aria-label="New issue status"
               className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground"
-              value={newStatusId}
+              value={selectedStatusId}
               onChange={(event) => setNewStatusId(event.currentTarget.value)}
             >
               {statusOptions.map((status) => (

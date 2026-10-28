@@ -40,6 +40,10 @@ export const CLIENT_GUARDED_RPC_SCOPES = {
   [WS_METHODS.sourceControlForgeGraphSignInStatus]: AuthSettingsWriteScope,
   [WS_METHODS.sourceControlForgeGraphSignInCancel]: AuthSettingsWriteScope,
   [WS_METHODS.sourceControlForgeGraphSignOut]: AuthSettingsWriteScope,
+  // Signing in replaces the server's GitHub credential, as saving a token in Settings does.
+  [WS_METHODS.sourceControlSignInStart]: AuthSettingsWriteScope,
+  [WS_METHODS.sourceControlSignInWait]: AuthSettingsWriteScope,
+  [WS_METHODS.sourceControlSignInCancel]: AuthSettingsWriteScope,
   [WS_METHODS.projectCloneStart]: AuthSourceControlWriteScope,
   [WS_METHODS.projectCloneCancel]: AuthSourceControlWriteScope,
   [WS_METHODS.projectCloneRetry]: AuthSourceControlWriteScope,
@@ -78,6 +82,10 @@ export const CLIENT_GUARDED_RPC_SCOPES = {
   [WS_METHODS.scheduledTasksDelete]: AuthOrchestrationOperateScope,
   [WS_METHODS.scheduledTasksRunNow]: AuthOrchestrationOperateScope,
   [WS_METHODS.scheduledTasksRotateWebhookToken]: AuthOrchestrationOperateScope,
+  [WS_METHODS.pluginCommandsInvoke]: AuthOrchestrationOperateScope,
+  [WS_METHODS.pluginPackagesEnable]: AuthOrchestrationOperateScope,
+  [WS_METHODS.pluginPackagesDisable]: AuthOrchestrationOperateScope,
+  [WS_METHODS.pluginPackagesReload]: AuthOrchestrationOperateScope,
   [ORCHESTRATION_V2_WS_METHODS.stopWorkflow]: AuthOrchestrationOperateScope,
 
   [WS_METHODS.peerLinksLink]: AuthAccessWriteScope,

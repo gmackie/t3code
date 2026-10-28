@@ -68,7 +68,7 @@ export function AssistantTimelineRow({ row }: { row: Extract<TimelineRow, { kind
             className="mt-1.5"
             projectedItem={row.projectedItem}
             message={row.message}
-            durationStart={row.durationStart}
+            routingStart={row.routingStart ?? row.message.createdAt}
             showCopyButton={row.showAssistantCopyButton}
             copyStreaming={row.assistantCopyStreaming}
           />
@@ -136,7 +136,7 @@ export function AssistantMetaTimelineRow({
         className="mt-0.5"
         projectedItem={row.projectedItem}
         message={row.message}
-        durationStart={row.durationStart}
+        routingStart={row.routingStart ?? row.message.createdAt}
         showCopyButton={row.showAssistantCopyButton}
         copyStreaming={row.assistantCopyStreaming}
         alwaysVisible
@@ -149,7 +149,7 @@ function AssistantMessageMeta({
   className,
   projectedItem,
   message,
-  durationStart,
+  routingStart,
   showCopyButton,
   copyStreaming,
   alwaysVisible = false,
@@ -157,15 +157,14 @@ function AssistantMessageMeta({
   className?: string;
   projectedItem?: Extract<TimelineRow, { kind: "message" }>["projectedItem"];
   message: ChatMessage;
-  durationStart: string;
+  routingStart: string;
   showCopyButton: boolean;
   copyStreaming: boolean;
   alwaysVisible?: boolean;
 }) {
   const ctx = use(TimelineRowCtx);
-  const routed =
-    ctx.threadRef !== null &&
-    shouldShowRoutingBadge(ctx.runs.find((run) => run.id === message.runId)?.providerInstanceId);
+  const run = ctx.runs.find((run) => run.id === message.runId);
+  const routed = ctx.threadRef !== null && shouldShowRoutingBadge(run?.providerInstanceId);
 
   return (
     <div
@@ -194,7 +193,7 @@ function AssistantMessageMeta({
         <ServedModelTag
           environmentId={ctx.threadRef.environmentId}
           threadId={ctx.threadRef.threadId}
-          start={durationStart}
+          start={routingStart}
           end={message.streaming ? null : message.updatedAt}
         />
       ) : null}

@@ -395,7 +395,7 @@ function isLoopbackOrigin(origin: RelayManagedEndpointOrigin): boolean {
   );
 }
 
-export function isManagedEndpointNotFound(cause: unknown): boolean {
+function isManagedEndpointNotFound(cause: unknown): boolean {
   if (typeof cause !== "object" || cause === null) {
     return false;
   }
@@ -539,7 +539,7 @@ const makeCloudflareApiGate = (alchemyRuntimeContext: Alchemy.BaseRuntimeContext
  * either one that has not finished draining or another runtime still serving
  * the tunnel.
  */
-export function isManagedEndpointTunnelInUse(cause: unknown): boolean {
+function isManagedEndpointTunnelInUse(cause: unknown): boolean {
   if (typeof cause !== "object" || cause === null) {
     return false;
   }
@@ -568,7 +568,7 @@ const ignoreNotFound = <A>(
     }),
   );
 
-export const make = Effect.gen(function* () {
+const make = Effect.gen(function* () {
   const config = yield* RelayConfiguration.RelayConfiguration;
   const t3RelayControl = yield* Effect.serviceOption(T3RelayEndpointControl);
   const crypto = yield* Crypto.Crypto;
@@ -959,6 +959,7 @@ export const make = Effect.gen(function* () {
         return false;
       }
       const tunnelId = allocation.tunnelId;
+      let tunnelDeleted = false;
       const deprovision = Effect.gen(function* () {
         const dnsRecordId = allocation.dnsRecordId;
         if (dnsRecordId !== null) {
@@ -986,6 +987,7 @@ export const make = Effect.gen(function* () {
                 }),
             ),
           );
+          tunnelDeleted = true;
         }
         return yield* allocations
           .removeClaimed({
@@ -1033,6 +1035,30 @@ export const make = Effect.gen(function* () {
                 }),
               ),
           }),
+          // The rollback keeps the deleted tunnel's id; mark it released so the tunnel limit stops
+          // counting it. onError also covers an interrupted unlink, which rolls back the same way.
+          Effect.onError(() =>
+            tunnelDeleted
+              ? allocations
+                  .claimRelease({
+                    userId: input.userId,
+                    environmentId: input.environmentId,
+                    tunnelId,
+                    generation: claimedGeneration,
+                    markReleased: true,
+                  })
+                  .pipe(
+                    Effect.catch((error) =>
+                      Effect.logWarning("Failed to mark a deleted managed tunnel released", {
+                        userId: input.userId,
+                        environmentId: input.environmentId,
+                        tunnelId,
+                        error: error.message,
+                      }),
+                    ),
+                  )
+              : Effect.void,
+          ),
         );
       return Option.getOrElse(removed, () => false);
     }),
@@ -1314,27 +1340,7 @@ export const make = Effect.gen(function* () {
         environmentHash,
       );
       const requestedTunnelName = managedEndpointTunnelName(cf.namespace, environmentHash);
-      yield* tunnelLimits
-        .ensureCapacity({
-          userId: input.userId,
-          environmentId: input.environmentId,
-        })
-        .pipe(
-          Effect.catchTags({
-            ManagedTunnelLimitPersistenceError: (cause) =>
-              Effect.fail(
-                new ManagedEndpointProvisioningFailed({
-                  userId: input.userId,
-                  environmentId: input.environmentId,
-                  stage: "check-tunnel-limit",
-                  hostname: requestedHostname,
-                  tunnelName: requestedTunnelName,
-                  cause,
-                }),
-              ),
-          }),
-        );
-      const allocation = yield* allocations
+      const reserveAllocation = allocations
         .reserve({
           userId: input.userId,
           environmentId: input.environmentId,
@@ -1353,6 +1359,26 @@ export const make = Effect.gen(function* () {
                 cause,
               }),
           ),
+        );
+      const allocation = yield* tunnelLimits
+        .withCapacity(
+          { userId: input.userId, environmentId: input.environmentId },
+          reserveAllocation,
+        )
+        .pipe(
+          Effect.catchTags({
+            ManagedTunnelLimitPersistenceError: (cause) =>
+              Effect.fail(
+                new ManagedEndpointProvisioningFailed({
+                  userId: input.userId,
+                  environmentId: input.environmentId,
+                  stage: "check-tunnel-limit",
+                  hostname: requestedHostname,
+                  tunnelName: requestedTunnelName,
+                  cause,
+                }),
+              ),
+          }),
         );
       const { hostname, tunnelName } = allocation;
 

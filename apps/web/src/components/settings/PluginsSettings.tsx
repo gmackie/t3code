@@ -1,4 +1,5 @@
 import { PluginApplicationsSettingsPanel } from "./PluginApplicationsSettings";
+import { useAtomValue } from "@effect/atom-react";
 import type { PluginPackageStatus } from "@t3tools/contracts";
 import {
   isAtomCommandInterrupted,
@@ -13,8 +14,6 @@ import {
 } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 
-import { isElectron } from "../../env";
-import { usePrimarySessionState } from "../../environments/primary";
 import { usePrimaryEnvironmentId } from "../../state/environments";
 import { useEnvironmentQuery } from "../../state/query";
 import { serverEnvironment } from "../../state/server";
@@ -28,7 +27,6 @@ import { Switch } from "../ui/switch";
 import { toastManager } from "../ui/toast";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { SettingsPageContainer, SettingsRow, SettingsSection } from "./settingsLayout";
-import { resolvePrimaryOperateAccess } from "./ProviderSettingsPanel.logic";
 import { searchableSetting } from "./settingsSearch";
 
 const statePresentation = {
@@ -121,15 +119,9 @@ function PluginPackageRow({
 
 export function PluginsSettingsPanel() {
   const environmentId = usePrimaryEnvironmentId();
-  const primarySession = usePrimarySessionState();
-  const operateAccess = resolvePrimaryOperateAccess({
-    isPrimary: true,
-    hasDesktopBridge: isElectron,
-    session: primarySession.data,
-    isPending: primarySession.isPending,
-    hasError: primarySession.error !== null,
-  });
-  const readOnly = operateAccess !== "granted";
+  const readOnly = !useAtomValue(
+    serverEnvironment.enablePluginPackage.permissionAtom(environmentId),
+  );
   const status = useEnvironmentQuery(
     environmentId === null ? null : serverEnvironment.pluginPackages({ environmentId, input: {} }),
   );
@@ -222,7 +214,7 @@ export function PluginsSettingsPanel() {
           </AlertDescription>
         </Alert>
 
-        {operateAccess === "denied" ? (
+        {readOnly ? (
           <Alert variant="info" className="mb-3" data-plugin-read-only>
             <ShieldAlertIcon />
             <AlertTitle>Limited permissions</AlertTitle>

@@ -107,7 +107,6 @@ const makePrimaryBroker = Effect.fn("clientRuntime.connection.broker.makePrimary
         httpBaseUrl: target.httpBaseUrl,
         socketUrl: primarySocketUrl(target, presentation.metadata, yield* readClientOwnerParams),
         httpAuthorization: null,
-        descriptor: undefined,
         target,
       } satisfies AuthorizedPreparedConnection;
     }
@@ -175,12 +174,7 @@ const makeBearerBroker = Effect.fn("clientRuntime.connection.broker.makeBearer")
       connectionMethod: "direct",
     });
     return {
-      environmentId: authorized.environmentId,
-      label: authorized.label,
-      httpBaseUrl: authorized.httpBaseUrl,
-      socketUrl: authorized.socketUrl,
-      httpAuthorization: authorized.httpAuthorization,
-      descriptor: authorized.descriptor,
+      ...authorized,
       target,
     } satisfies AuthorizedPreparedConnection;
   });
@@ -195,12 +189,7 @@ const makeRelayBroker = Effect.fn("clientRuntime.connection.broker.makeRelay")(f
         expectedEnvironmentId: target.environmentId,
       });
       return {
-        environmentId: authorized.environmentId,
-        label: authorized.label,
-        httpBaseUrl: authorized.httpBaseUrl,
-        socketUrl: authorized.socketUrl,
-        httpAuthorization: authorized.httpAuthorization,
-        descriptor: authorized.descriptor,
+        ...authorized,
         target,
       } satisfies AuthorizedPreparedConnection;
     },
@@ -271,12 +260,7 @@ const makeSshBroker = Effect.fn("clientRuntime.connection.broker.makeSsh")(funct
       connectionMethod: "ssh",
     });
     return {
-      environmentId: authorized.environmentId,
-      label: authorized.label,
-      httpBaseUrl: authorized.httpBaseUrl,
-      socketUrl: authorized.socketUrl,
-      httpAuthorization: authorized.httpAuthorization,
-      descriptor: authorized.descriptor,
+      ...authorized,
       target,
     } satisfies AuthorizedPreparedConnection;
   });
@@ -298,7 +282,9 @@ export const make = Effect.gen(function* () {
       "connection.environment.id": target.environmentId,
       "connection.target.kind": target._tag,
     });
-    const { descriptor: freshDescriptor, ...prepared } = yield* (() => {
+    const authorized: PreparedConnection & {
+      readonly descriptor?: ExecutionEnvironmentDescriptor;
+    } = yield* (() => {
       switch (target._tag) {
         case "PrimaryConnectionTarget":
           return primary(target);
@@ -310,8 +296,9 @@ export const make = Effect.gen(function* () {
           return ssh({ ...entry, target });
       }
     })();
+    const { descriptor: authorizedDescriptor, ...prepared } = authorized;
     const descriptor =
-      freshDescriptor ??
+      authorizedDescriptor ??
       (yield* fetchRemoteEnvironmentDescriptor({
         httpBaseUrl: prepared.httpBaseUrl,
       }).pipe(

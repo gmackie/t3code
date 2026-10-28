@@ -273,7 +273,6 @@ export const RelayAgentActivityPublishProofPayload = Schema.Struct({
 });
 export type RelayAgentActivityPublishProofPayload =
   typeof RelayAgentActivityPublishProofPayload.Type;
-export type RelayAgentActivityPublishProof = string;
 
 export const RelayAgentActivityPublishRequest = Schema.Struct({
   state: Schema.NullOr(RelayAgentActivityState).annotate({
@@ -985,6 +984,32 @@ export const RelayOkResponse = Schema.Struct({
 });
 export type RelayOkResponse = typeof RelayOkResponse.Type;
 
+export const RelayT3ChatPlan = Schema.Literals(["free", "pro", "premier"]);
+export type RelayT3ChatPlan = typeof RelayT3ChatPlan.Type;
+
+export const DEFAULT_MANAGED_TUNNEL_LIMIT = 3;
+
+// A linked paid T3 Chat plan raises the default managed tunnel cap.
+export const T3CHAT_PLAN_TUNNEL_LIMITS = { pro: 10, premier: 100 } as const;
+
+export const RelayT3ChatLink = Schema.Struct({
+  email: Schema.String,
+  plan: RelayT3ChatPlan,
+});
+export type RelayT3ChatLink = typeof RelayT3ChatLink.Type;
+
+export const RelayT3ChatLinkResponse = Schema.Struct({
+  // False when this relay has no T3 Chat secret, so clients hide the feature.
+  available: Schema.Boolean,
+  link: Schema.NullOr(RelayT3ChatLink),
+});
+export type RelayT3ChatLinkResponse = typeof RelayT3ChatLinkResponse.Type;
+
+export const RelayT3ChatLinkRequestResponse = Schema.Struct({
+  url: TrimmedNonEmptyString,
+});
+export type RelayT3ChatLinkRequestResponse = typeof RelayT3ChatLinkRequestResponse.Type;
+
 export const RelayPublishResponse = Schema.Struct({
   ok: Schema.Boolean,
   deliveries: Schema.Array(RelayDeliveryResult),
@@ -1129,6 +1154,21 @@ const RelayClientGroup = HttpApiGroup.make("client")
         OpenApi.Description,
         "Releases the environment's current managed connector while keeping its link and hostname. Cloudflare Tunnel allocations delete their billed tunnel; T3 relay connectors revoke only the lease supplied by the shutting-down environment, so a concurrent relink remains active.",
       ),
+    HttpApiEndpoint.get("getT3ChatLink", "/v1/client/t3chat-link", {
+      headers: RelayBearerRequestHeaders,
+      success: RelayT3ChatLinkResponse,
+      error: RelayAuthAndInternalErrors,
+    }).annotate(OpenApi.Summary, "Get the linked T3 Chat account"),
+    HttpApiEndpoint.post("createT3ChatLinkRequest", "/v1/client/t3chat-link-requests", {
+      headers: RelayBearerRequestHeaders,
+      success: RelayT3ChatLinkRequestResponse,
+      error: RelayAuthAndInternalErrors,
+    }).annotate(OpenApi.Summary, "Start linking a T3 Chat account"),
+    HttpApiEndpoint.delete("unlinkT3Chat", "/v1/client/t3chat-link", {
+      headers: RelayBearerRequestHeaders,
+      success: RelayOkResponse,
+      error: RelayAuthAndInternalErrors,
+    }).annotate(OpenApi.Summary, "Unlink the T3 Chat account"),
   )
   .annotate(OpenApi.Description, "Cloud-user environment links and registered devices.")
   .middleware(RelayClientAuth);
