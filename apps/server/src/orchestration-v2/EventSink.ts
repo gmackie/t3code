@@ -17,7 +17,9 @@ import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as Predicate from "effect/Predicate";
 import * as PubSub from "effect/PubSub";
+import * as Schedule from "effect/Schedule";
 import * as Semaphore from "effect/Semaphore";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
@@ -65,6 +67,21 @@ export class EventSinkStreamError extends Schema.TaggedError<EventSinkStreamErro
 
 export const EventSinkV2Error = Schema.Union([EventSinkWriteError, EventSinkStreamError]);
 export type EventSinkV2Error = typeof EventSinkV2Error.Type;
+
+// SQL services wrap the native error; match structured codes rather than messages.
+function isSqliteFull(error: unknown): boolean {
+  let cause = error;
+  for (let depth = 0; depth < 8 && Predicate.isObject(cause); depth += 1) {
+    if (
+      ("errcode" in cause && typeof cause.errcode === "number" && (cause.errcode & 0xff) === 13) ||
+      ("code" in cause && cause.code === "SQLITE_FULL")
+    ) {
+      return true;
+    }
+    cause = "cause" in cause ? cause.cause : undefined;
+  }
+  return false;
+}
 
 export interface EventSinkV2Shape {
   readonly write: (input: {
@@ -260,27 +277,40 @@ const layerBase: Layer.Layer<
       transaction: Effect.Effect<A, E, R>,
       publish: (committed: A) => Effect.Effect<void>,
     ) =>
-      Effect.uninterruptibleMask((restore) => {
-        let holdsLane = false;
-        const takeLane = publishLane.take(1).pipe(
-          Effect.andThen(
-            Effect.sync(() => {
-              holdsLane = true;
-            }),
-          ),
-          Effect.uninterruptible,
-        );
-        // Cancellation may roll back the transaction's work. Once it commits,
-        // every subscriber must hear about it before this writer can exit.
-        // Otherwise a failed child run can leave its parent's task running.
-        return sql
-          .withTransaction(Effect.tap(restore(transaction), () => takeLane))
-          .pipe(
-            Effect.tap(publish),
-            Effect.ensuring(
-              Effect.suspend(() => (holdsLane ? publishLane.release(1) : Effect.void)),
+      Effect.suspend(() => {
+        let warned = false;
+        return Effect.uninterruptibleMask((restore) => {
+          let holdsLane = false;
+          const takeLane = publishLane.take(1).pipe(
+            Effect.andThen(
+              Effect.sync(() => {
+                holdsLane = true;
+              }),
             ),
+            Effect.uninterruptible,
           );
+          // Cancellation may roll back the transaction's work. Once it commits,
+          // every subscriber must hear about it before this writer can exit.
+          // Otherwise a failed child run can leave its parent's task running.
+          return sql
+            .withTransaction(Effect.tap(restore(transaction), () => takeLane))
+            .pipe(
+              Effect.tap(publish),
+              Effect.ensuring(
+                Effect.suspend(() => (holdsLane ? publishLane.release(1) : Effect.void)),
+              ),
+            );
+        }).pipe(
+          // Rollback and lane release finish before the interruptible capacity wait.
+          Effect.tapError((error) => {
+            if (warned || !isSqliteFull(error)) return Effect.void;
+            warned = true;
+            return Effect.logWarning(
+              "Orchestration event persistence is waiting for SQLite storage capacity. Free disk space to resume pending writes.",
+            );
+          }),
+          Effect.retry({ while: isSqliteFull, schedule: Schedule.spaced("1 second") }),
+        );
       });
 
     // A user can answer after terminal normalization reads the pending request.
