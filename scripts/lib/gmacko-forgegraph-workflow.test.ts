@@ -18,9 +18,21 @@ describe("ForgeGraph GMACKO release workflow", () => {
   it("uploads iOS to TestFlight without gating the desktop release", () => {
     const workflow = NodeFS.readFileSync(workflowPath, "utf8");
     const release = workflow.slice(workflow.indexOf("  release:\n"));
+    const ios = workflow.slice(
+      workflow.indexOf("  ios_testflight:\n"),
+      workflow.indexOf("  release:\n"),
+    );
 
     expect(workflow).toContain("scripts/gmacko-ios-testflight.sh");
     expect(release.slice(0, release.indexOf("steps:"))).not.toContain("ios_testflight");
+    expect(ios).toContain("needs: [sync, preflight, relay_public_config]");
+    for (const [name, output] of [
+      ["T3CODE_CLERK_PUBLISHABLE_KEY", "clerk_publishable_key"],
+      ["T3CODE_CLERK_JWT_TEMPLATE", "clerk_jwt_template"],
+      ["T3CODE_RELAY_URL", "relay_url"],
+    ]) {
+      expect(ios).toContain(`${name}: \u0024{{ needs.relay_public_config.outputs.${output} }}`);
+    }
   });
 
   it("cuts a release for every custom-local push", () => {

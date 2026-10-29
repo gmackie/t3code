@@ -2793,6 +2793,8 @@ export const makeOpenCodeAdapterV2 = Effect.fn("makeOpenCodeAdapterV2")(function
                 }
                 return;
               }
+              const error = event.properties.error;
+              const usageLimit = error?.name === "APIError" && error.data.statusCode === 429;
               if (
                 !isMessageAbortedError(event) &&
                 (event.properties.sessionID === undefined ||
@@ -2809,8 +2811,8 @@ export const makeOpenCodeAdapterV2 = Effect.fn("makeOpenCodeAdapterV2")(function
                     {
                       failure: makeProviderFailure({
                         message,
-                        code: event.properties.error?.name ?? null,
-                        class: "provider_error",
+                        code: error?.name ?? null,
+                        class: usageLimit ? "usage_limit" : "provider_error",
                       }),
                       threadDisposition:
                         event.properties.sessionID === undefined ? "broken" : "reusable",

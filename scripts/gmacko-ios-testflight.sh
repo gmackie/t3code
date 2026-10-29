@@ -69,6 +69,8 @@ export T3CODE_IOS_BUILD_NUMBER="$BUILD_NUMBER"
 export T3CODE_MOBILE_UPDATES_ENABLED=0
 export EXPO_NO_GIT_STATUS=1
 
+node "$repo_root/scripts/verify-gmacko-mobile-config.ts"
+
 cd "$mobile_dir"
 pnpm exec expo prebuild --clean --platform ios
 
@@ -121,6 +123,9 @@ xcodebuild archive \
   -destination "generic/platform=iOS" \
   -archivePath "$work_dir/$scheme.xcarchive" \
   OTHER_CODE_SIGN_FLAGS="--keychain $keychain"
+
+node "$repo_root/scripts/verify-gmacko-mobile-config.ts" \
+  "$work_dir/$scheme.xcarchive/Products/Applications/$scheme.app"
 
 profile_entries="$(while read -r bundle uuid; do
   printf '    <key>%s</key>\n    <string>%s</string>\n' "$bundle" "$uuid"
