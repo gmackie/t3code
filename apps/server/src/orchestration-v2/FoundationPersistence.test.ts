@@ -32,6 +32,7 @@ import * as DateTime from "effect/DateTime";
 import * as Deferred from "effect/Deferred";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
+import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
@@ -146,6 +147,150 @@ function threadCreatedEvent(input: {
     payload: input.thread,
   };
 }
+
+it.effect.each(["capacity returns", "run changes", "writer cancelled"] as const)(
+  "retains full-disk events until %s",
+  (scenario) =>
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      const eventStore = yield* EventStore.EventStoreV2;
+      const sink = yield* EventSink.EventSinkV2;
+      const projections = yield* ProjectionStore.ProjectionStoreV2;
+      const now = yield* DateTime.now;
+      const thread = makeThread(ThreadId.make("thread:disk-full"), now);
+      const run: OrchestrationV2Run = {
+        id: RunId.make("run:disk-full"),
+        threadId: thread.id,
+        ordinal: 1,
+        providerInstanceId,
+        modelSelection,
+        providerThreadId: null,
+        userMessageId: MessageId.make("message:disk-full"),
+        rootNodeId: null,
+        activeAttemptId: RunAttemptId.make("attempt:disk-full"),
+        status: "running",
+        queuePosition: null,
+        requestedAt: now,
+        startedAt: now,
+        completedAt: null,
+        checkpointId: null,
+        contextHandoffId: null,
+      };
+      yield* sink.write({
+        events: [
+          threadCreatedEvent({ id: "event:disk-full:created", thread, now }),
+          {
+            id: EventId.make("event:disk-full:run"),
+            type: "run.created",
+            threadId: thread.id,
+            occurredAt: now,
+            payload: run,
+          },
+        ],
+      });
+      const baselineSequence = yield* sink.latestSequence();
+      const marker = threadCreatedEvent({
+        id: "event:disk-full:marker",
+        thread: makeThread(ThreadId.make("thread:disk-full:marker"), now),
+        now,
+      });
+      const published = yield* sink.stream({ afterSequence: baselineSequence }).pipe(
+        Stream.takeUntil((stored) => stored.event.id === marker.id),
+        Stream.runCollect,
+        Effect.forkScoped({ startImmediately: true }),
+      );
+      const pages = yield* sql<{ page_count: number }>`PRAGMA page_count`;
+      assert.isDefined(pages[0]);
+      yield* sql.unsafe(`PRAGMA max_page_count = ${pages[0].page_count}`);
+      const update: OrchestrationV2DomainEvent = {
+        id: EventId.make("event:disk-full:updated"),
+        type: "thread.metadata-updated",
+        threadId: thread.id,
+        occurredAt: now,
+        payload: { ...thread, title: "Recovered " + "x".repeat(100_000) },
+      };
+      const completion: OrchestrationV2DomainEvent = {
+        id: EventId.make("event:disk-full:completed"),
+        type: "run.updated",
+        threadId: thread.id,
+        occurredAt: now,
+        payload: { ...run, status: "completed", completedAt: now },
+      };
+      const pending = yield* sink
+        .writeIfRunCurrent({
+          threadId: thread.id,
+          runId: run.id,
+          activeAttemptId: RunAttemptId.make("attempt:disk-full"),
+          expectedStatus: "running",
+          events: [update, completion],
+        })
+        .pipe(Effect.forkScoped);
+      yield* TestClock.adjust("2 seconds");
+      assert.isUndefined(pending.pollUnsafe());
+      assert.equal(yield* sink.latestSequence(), baselineSequence);
+      assert.equal((yield* projections.getThreadProjection(thread.id)).runs[0]?.status, "running");
+      if (scenario === "writer cancelled") {
+        yield* Fiber.interrupt(pending);
+        assert.isTrue(Exit.hasInterrupts(yield* Fiber.await(pending)));
+      }
+      yield* sql`PRAGMA max_page_count = 1073741823`;
+      const replacement: OrchestrationV2DomainEvent = {
+        ...completion,
+        id: EventId.make("event:disk-full:replacement"),
+        payload: { ...run, activeAttemptId: RunAttemptId.make("attempt:disk-full:new") },
+      };
+      if (scenario === "run changes") yield* sink.write({ events: [replacement] });
+      yield* TestClock.adjust("1 second");
+      if (scenario !== "writer cancelled") {
+        const result = yield* Fiber.join(pending);
+        assert.equal(result.committed, scenario === "capacity returns");
+        assert.lengthOf(result.storedEvents, scenario === "capacity returns" ? 2 : 0);
+      }
+      yield* sink.write({ events: [marker] });
+      const expected =
+        scenario === "capacity returns"
+          ? [update.id, completion.id, marker.id]
+          : scenario === "run changes"
+            ? [replacement.id, marker.id]
+            : [marker.id];
+      const history = yield* eventStore
+        .read({ afterSequence: baselineSequence })
+        .pipe(Stream.runCollect);
+      assert.deepEqual(
+        history.map((stored) => stored.event.id),
+        expected,
+      );
+      assert.deepEqual(
+        Array.from(yield* Fiber.join(published), (stored) => stored.event.id),
+        expected,
+      );
+      assert.equal(
+        (yield* projections.getThreadProjection(thread.id)).runs[0]?.status,
+        scenario === "capacity returns" ? "completed" : "running",
+      );
+    }).pipe(Effect.scoped, Effect.provide(layerTest)),
+);
+
+it.effect("propagates SQL errors other than full storage without retrying", () =>
+  Effect.gen(function* () {
+    const sink = yield* EventSink.EventSinkV2;
+    const sql = yield* SqlClient.SqlClient;
+    const now = yield* DateTime.now;
+    yield* sql`DROP TABLE orchestration_events`;
+    const result = yield* Effect.exit(
+      sink.write({
+        events: [
+          threadCreatedEvent({
+            id: "event:missing-table",
+            thread: makeThread(ThreadId.make("thread:missing-table"), now),
+            now,
+          }),
+        ],
+      }),
+    );
+    assert.isTrue(Exit.isFailure(result));
+  }).pipe(Effect.provide(layerTest)),
+);
 
 it.effect("rebuilds event history one bounded page at a time", () =>
   Effect.gen(function* () {
