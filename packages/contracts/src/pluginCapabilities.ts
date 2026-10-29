@@ -32,6 +32,9 @@ export const PluginCapabilityRequest = Schema.Union([
     kind: Schema.Literal("provider.control"),
     providerInstanceIds: Schema.optional(Schema.Array(Schema.String)),
   }),
+  // Lets the plugin read composer drafts before they are sent (see the
+  // `composer.beforeSubmit` hook).
+  Schema.Struct({ kind: Schema.Literal("composer.review") }),
 ]);
 export type PluginCapabilityRequest = typeof PluginCapabilityRequest.Type;
 
@@ -45,5 +48,6 @@ export const PluginCapabilityKind = Schema.Literals([
   "network.connect",
   "ui.embed",
   "provider.control",
+  "composer.review",
 ]);
 export type PluginCapabilityKind = typeof PluginCapabilityKind.Type;

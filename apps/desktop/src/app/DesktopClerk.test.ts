@@ -135,6 +135,7 @@ describe("DesktopClerk", () => {
         "setPath:userData:/isolated/review-profile",
         "requestSingleInstanceLock",
         "on:second-instance",
+        "on:open-url",
         "createClerkBridge",
       ]);
     });

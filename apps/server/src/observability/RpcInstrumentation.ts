@@ -220,6 +220,8 @@ const RPC_AGGREGATES = {
   [WS_METHODS.subscribeAuthAccess]: "auth",
   // GMACKO fork RPCs.
   [WS_METHODS.pluginAction]: "plugin",
+  [WS_METHODS.pluginComposerReview]: "plugin",
+  [WS_METHODS.pluginComposerReviewDecision]: "plugin",
   [WS_METHODS.pluginCommandsInvoke]: "plugin",
   [WS_METHODS.pluginCommandsList]: "plugin",
   [WS_METHODS.pluginDisable]: "plugin",

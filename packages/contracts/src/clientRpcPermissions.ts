@@ -83,6 +83,8 @@ export const CLIENT_GUARDED_RPC_SCOPES = {
   [WS_METHODS.scheduledTasksRunNow]: AuthOrchestrationOperateScope,
   [WS_METHODS.scheduledTasksRotateWebhookToken]: AuthOrchestrationOperateScope,
   [WS_METHODS.pluginCommandsInvoke]: AuthOrchestrationOperateScope,
+  [WS_METHODS.pluginComposerReview]: AuthOrchestrationOperateScope,
+  [WS_METHODS.pluginComposerReviewDecision]: AuthOrchestrationOperateScope,
   [WS_METHODS.pluginPackagesEnable]: AuthOrchestrationOperateScope,
   [WS_METHODS.pluginPackagesDisable]: AuthOrchestrationOperateScope,
   [WS_METHODS.pluginPackagesReload]: AuthOrchestrationOperateScope,

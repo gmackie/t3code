@@ -301,3 +301,64 @@ export const PluginRpcResponse = Schema.Union([
   }),
 ]);
 export type PluginRpcResponse = typeof PluginRpcResponse.Type;
+
+/**
+ * Pre-send composer review. Plugins that request the `composer.review`
+ * capability and list `PLUGIN_COMPOSER_REVIEW_HOOK` in `contributes.hooks` are
+ * asked to review the draft before it is sent. Every failure path is a pass:
+ * a broken plugin must never block sending.
+ */
+export const PLUGIN_COMPOSER_REVIEW_HOOK = "composer.beforeSubmit";
+export const PLUGIN_COMPOSER_REVIEW_MAX_DRAFT_CHARS = 32_000;
+const PLUGIN_COMPOSER_REVIEW_MAX_TIPS = 5;
+export const PLUGIN_COMPOSER_REVIEW_TIMEOUT_MS = 1_500;
+
+export const PluginComposerReviewInput = Schema.Struct({
+  threadId: Schema.String,
+  projectRoot: Schema.NullOr(Schema.String),
+  providerModel: Schema.NullOr(Schema.String),
+  draft: Schema.String.check(Schema.isMaxLength(PLUGIN_COMPOSER_REVIEW_MAX_DRAFT_CHARS)),
+});
+export type PluginComposerReviewInput = typeof PluginComposerReviewInput.Type;
+export const PluginComposerReviewTip = Schema.Struct({
+  pattern: Schema.String,
+  message: Schema.String,
+});
+export type PluginComposerReviewTip = typeof PluginComposerReviewTip.Type;
+const PluginComposerReviewSuggestFields = {
+  tips: Schema.Array(PluginComposerReviewTip).check(
+    Schema.isMaxLength(PLUGIN_COMPOSER_REVIEW_MAX_TIPS),
+  ),
+  rewrite: Schema.optional(
+    Schema.String.check(Schema.isMaxLength(PLUGIN_COMPOSER_REVIEW_MAX_DRAFT_CHARS)),
+  ),
+};
+// What a single plugin returns for the `composer.review` runtime method.
+export const PluginComposerReviewVerdict = Schema.Union([
+  Schema.Struct({ verdict: Schema.Literal("pass") }),
+  Schema.Struct({ verdict: Schema.Literal("suggest"), ...PluginComposerReviewSuggestFields }),
+]);
+export type PluginComposerReviewVerdict = typeof PluginComposerReviewVerdict.Type;
+// What the `plugin.composer.review` RPC returns after merging every reviewer.
+export const PluginComposerReviewResult = Schema.Union([
+  Schema.Struct({ verdict: Schema.Literal("pass") }),
+  Schema.Struct({
+    verdict: Schema.Literal("suggest"),
+    pluginId: Schema.String,
+    ...PluginComposerReviewSuggestFields,
+  }),
+]);
+export type PluginComposerReviewResult = typeof PluginComposerReviewResult.Type;
+export const PluginComposerReviewDecision = Schema.Literals([
+  "accepted",
+  "original",
+  "dismissed",
+  "muted",
+]);
+export type PluginComposerReviewDecision = typeof PluginComposerReviewDecision.Type;
+export const PluginComposerReviewDecisionInput = Schema.Struct({
+  pluginId: Schema.String,
+  threadId: Schema.String,
+  decision: PluginComposerReviewDecision,
+});
+export type PluginComposerReviewDecisionInput = typeof PluginComposerReviewDecisionInput.Type;

@@ -60,6 +60,14 @@ export function createPluginEnvironmentAtoms<R, ER>(
     label: "plugins:workflow:action",
     tag: WS_METHODS.pluginWorkflowAction,
   });
+  const composerReview = createEnvironmentRpcCommand(runtime, {
+    label: "plugins:composer:review",
+    tag: WS_METHODS.pluginComposerReview,
+  });
+  const composerReviewDecision = createEnvironmentRpcCommand(runtime, {
+    label: "plugins:composer:review-decision",
+    tag: WS_METHODS.pluginComposerReviewDecision,
+  });
   const settingsGet = createEnvironmentRpcQueryAtomFamily(runtime, {
     label: "plugins:settings:get",
     tag: WS_METHODS.pluginSettingsGet,
@@ -87,6 +95,8 @@ export function createPluginEnvironmentAtoms<R, ER>(
     workflowGet,
     action,
     workflowAction,
+    composerReview,
+    composerReviewDecision,
     settingsGet,
     settingsUpdate,
     settingsReset,

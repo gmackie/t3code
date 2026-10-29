@@ -147,6 +147,8 @@ describe("command permissions", () => {
     WS_METHODS.scheduledTasksDelete,
     ORCHESTRATION_V2_WS_METHODS.stopWorkflow,
     WS_METHODS.pluginCommandsInvoke,
+    WS_METHODS.pluginComposerReview,
+    WS_METHODS.pluginComposerReviewDecision,
     WS_METHODS.pluginPackagesEnable,
     WS_METHODS.pluginPackagesDisable,
     WS_METHODS.pluginPackagesReload,

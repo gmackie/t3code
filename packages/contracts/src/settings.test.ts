@@ -189,6 +189,19 @@ describe("resolveIdleCompaction", () => {
   });
 });
 
+describe("ClientSettings composer review", () => {
+  it("keeps legacy settings enabled and preserves an explicit opt-out", () => {
+    expect(decodeClientSettings({}).composerReviewEnabled).toBe(true);
+    expect(decodeClientSettingsPatch({})).not.toHaveProperty("composerReviewEnabled");
+    expect(decodeClientSettings({ composerReviewEnabled: false }).composerReviewEnabled).toBe(
+      false,
+    );
+    expect(decodeClientSettingsPatch({ composerReviewEnabled: false })).toEqual({
+      composerReviewEnabled: false,
+    });
+  });
+});
+
 describe("ClientSettings notifications", () => {
   it("requires opt-in when existing settings omit notification preferences", () => {
     expect(decodeClientSettings({}).notificationMode).toBe("off");
