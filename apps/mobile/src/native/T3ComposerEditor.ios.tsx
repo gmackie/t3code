@@ -32,6 +32,7 @@ import {
   assumeComposerControlledState,
   isComposerNativeEcho,
   pruneAcknowledgedComposerNativeEvents,
+  reconcileComposerSubmitSnapshot,
   resolveComposerControlledEventCount,
   type ComposerNativeEventSnapshot,
 } from "./composerEditorRevision";
@@ -277,23 +278,30 @@ export function ComposerEditor({
     () => ({
       focus: () => settleViewCommand(nativeRef.current?.focus()),
       blur: () => settleViewCommand(nativeRef.current?.blur()),
-      prepareForSubmit: async () => {
-        const snapshot = await nativeRef.current?.prepareForSubmit();
-        if (!snapshot) return;
-        const acknowledgedEventCount = acceptNativeEvent(
-          snapshot.eventCount,
-          snapshot.value,
-          snapshot.selection,
+      prepareForSubmit: async (isCurrent) => {
+        const editor = nativeRef.current;
+        const snapshot = await editor?.prepareForSubmit();
+        if (!snapshot || nativeRef.current !== editor) return false;
+        const current = isCurrent();
+        const reconciled = reconcileComposerSubmitSnapshot(
+          mostRecentEventCountRef.current,
+          nativeEventSnapshotsRef.current,
+          snapshot,
+          current,
         );
-        if (acknowledgedEventCount === false) return;
+        if (reconciled === null) return false;
+        mostRecentEventCountRef.current = reconciled.eventCount;
+        nativeEventSnapshotsRef.current = reconciled.snapshots;
+        setMostRecentEventCount(reconciled.eventCount);
+        if (!current) return false;
         onChangeText(snapshot.value);
         onSelectionChange?.(snapshot.selection);
-        setMostRecentEventCount(acknowledgedEventCount);
+        return true;
       },
       setSelection: (nextSelection) =>
         settleViewCommand(nativeRef.current?.setSelection(nextSelection.start, nextSelection.end)),
     }),
-    [acceptNativeEvent, onChangeText, onSelectionChange],
+    [onChangeText, onSelectionChange],
   );
   const themeJson = JSON.stringify(createNativeComposerTheme(theme));
   const resolvedTextStyle = StyleSheet.flatten(textStyle) ?? {};

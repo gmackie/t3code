@@ -31,7 +31,14 @@ import {
 } from "@t3tools/shared/usageLimits";
 import { StackActions, useFocusEffect, useNavigation } from "@react-navigation/native";
 import type { ReactNode } from "react";
-import { useEffect, useEffectEvent, useRef, useState, type RefObject } from "react";
+import {
+  useEffect,
+  useEffectEvent,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type RefObject,
+} from "react";
 import { Keyboard, Platform, View, type ViewStyle } from "react-native";
 import { composerImageGallery } from "../../lib/composerImageGallery";
 import { filePreviewGallery } from "../../lib/filePreviewGallery";
@@ -64,6 +71,7 @@ import {
   useComposerDraft,
 } from "../../state/use-composer-drafts";
 import { appAtomRegistry } from "../../state/atom-registry";
+import { submitComposer } from "../../state/submit-composer";
 import type { ComposerDocumentAttachment } from "../../lib/composerContext";
 import { useProject, useThreadShells } from "../../state/entities";
 import { useMentionableEnvironments } from "../../state/environments";
@@ -439,6 +447,14 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
   const [previewVideo, setPreviewVideo] = useState<VideoPreviewSource | null>(null);
   const composerOwnerKey = scopedThreadKey(props.environmentId, props.selectedThread.id);
   const composerDraftKey = props.draftKey ?? composerOwnerKey;
+  const activeDraftKeyRef = useRef<string | null>(composerDraftKey);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- cancels pending native preparation when the initiating draft changes or unmounts
+  useLayoutEffect(() => {
+    activeDraftKeyRef.current = composerDraftKey;
+    return () => {
+      activeDraftKeyRef.current = null;
+    };
+  }, [composerDraftKey]);
   const { text: draftMessage, attachments: draftAttachments } = useComposerDraft(composerDraftKey);
   const queuedEdit = props.queuedEdit ?? null;
   const hasContent =
@@ -667,25 +683,30 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
     const threadKey = scopedThreadKey(props.environmentId, props.selectedThread.id);
     if (inFlightThreadIdsRef.current.has(threadKey)) return;
     inFlightThreadIdsRef.current.add(threadKey);
-    const sent = await settlePromise(async () => {
-      // UIKit commits its last-word correction when editing ends. Wait for
-      // the native snapshot to reach the draft before any send/save path reads it.
-      await inputRef.current?.prepareForSubmit?.();
-      const draftAtSend = getComposerDraftSnapshot(composerDraftKey);
-      const stillSendable = () => {
-        const draft = getComposerDraftSnapshot(composerDraftKey);
-        return (
-          pendingPastedTextAttachmentCountRef.current === 0 &&
-          pendingNativeImagePasteCountRef.current === 0 &&
-          draft.text === draftAtSend.text &&
-          draft.attachments.length === draftAtSend.attachments.length &&
-          draft.attachments.every(
-            (attachment, index) => attachment.id === draftAtSend.attachments[index]?.id,
-          )
-        );
-      };
-      return onSendMessage(followUp, stillSendable);
-    });
+    const sent = await settlePromise(() =>
+      submitComposer(
+        threadKey,
+        inputRef.current,
+        (isCurrent) => {
+          const draftAtSend = getComposerDraftSnapshot(composerDraftKey);
+          const stillSendable = () => {
+            const draft = getComposerDraftSnapshot(composerDraftKey);
+            return (
+              isCurrent() &&
+              pendingPastedTextAttachmentCountRef.current === 0 &&
+              pendingNativeImagePasteCountRef.current === 0 &&
+              draft.text === draftAtSend.text &&
+              draft.attachments.length === draftAtSend.attachments.length &&
+              draft.attachments.every(
+                (attachment, index) => attachment.id === draftAtSend.attachments[index]?.id,
+              )
+            );
+          };
+          return onSendMessage(followUp, stillSendable);
+        },
+        () => activeDraftKeyRef.current === composerDraftKey && navigation.isFocused(),
+      ),
+    );
     inFlightThreadIdsRef.current.delete(threadKey);
     if (AsyncResult.isFailure(sent)) {
       console.error("[composer] send failed", squashAtomCommandFailure(sent));

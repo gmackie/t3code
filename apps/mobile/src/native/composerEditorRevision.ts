@@ -106,3 +106,14 @@ export function pruneAcknowledgedComposerNativeEvents(
       index === latestAcknowledgedIndex || snapshot.eventCount > acknowledgedEventCount,
   );
 }
+
+export function reconcileComposerSubmitSnapshot(
+  mostRecentEventCount: number,
+  snapshots: ReadonlyArray<ComposerNativeEventSnapshot>,
+  snapshot: ComposerNativeEventSnapshot,
+  isCurrent: boolean,
+): { eventCount: number; snapshots: ComposerNativeEventSnapshot[] } | null {
+  const eventCount = acknowledgeComposerNativeEvent(mostRecentEventCount, snapshot.eventCount);
+  if (eventCount === null) return null;
+  return { eventCount, snapshots: isCurrent ? [...snapshots, snapshot] : [] };
+}

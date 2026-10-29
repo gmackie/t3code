@@ -22,7 +22,7 @@ export interface ComposerEditorHandle {
   focus: () => void;
   blur: () => void;
   /** iOS: commit pending keyboard corrections and synchronize the draft before sending. */
-  prepareForSubmit?: () => Promise<void>;
+  prepareForSubmit?: (isCurrent: () => boolean) => Promise<boolean>;
   setSelection: (selection: ComposerEditorSelection) => void;
 }
 
