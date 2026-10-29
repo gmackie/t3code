@@ -12,6 +12,16 @@ becomes an attachment when inserting it would exceed the message limit. On a
 hardware keyboard, use `Cmd+Shift+V` on Apple devices or `Ctrl+Shift+V` elsewhere
 to keep a large paste editable in the composer instead.
 
+## Prompt coach
+
+On web and desktop, an enabled prompt-coach plugin can suggest tips or a rewrite before you send.
+You choose whether to accept the rewrite, send the original, or keep editing. Plugin errors and
+slow responses let your original message through. Editing the draft while a review runs cancels
+that send.
+
+Turn prompt coaching off in **Settings → Chat → Prompt coach**, or mute it for one thread. Mutes
+stay on this device; Settings lets you unmute them. Plugins need an explicit draft-review grant.
+
 ## Formatting
 
 The composer writes Markdown and shows it styled as you type. Markers such as

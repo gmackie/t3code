@@ -292,6 +292,9 @@ import {
   PluginWorkflowGetInput,
   PluginWorkflowActionInput,
   PluginWorkflowModel,
+  PluginComposerReviewInput,
+  PluginComposerReviewResult,
+  PluginComposerReviewDecisionInput,
 } from "./pluginProtocol.ts";
 import {
   PluginSettingsGetInput,
@@ -675,6 +678,8 @@ export const WS_METHODS = {
   pluginWorkflowGet: "plugin.workflow.get",
   pluginWorkflowAction: "plugin.workflow.action",
   pluginAction: "plugin.action",
+  pluginComposerReview: "plugin.composer.review",
+  pluginComposerReviewDecision: "plugin.composer.reviewDecision",
   serverUpdateProvider: "server.updateProvider",
   serverUpdateServer: "server.updateServer",
   serverUpdateServerWithProgress: "server.updateServerWithProgress",
@@ -1050,6 +1055,16 @@ export const WsPluginActionRpc = Rpc.make(WS_METHODS.pluginAction, {
 export const WsPluginSettingsGetRpc = Rpc.make(WS_METHODS.pluginSettingsGet, {
   payload: PluginSettingsGetInput,
   success: PluginSettingsSnapshot,
+  error: EnvironmentAuthorizationError,
+});
+const WsPluginComposerReviewRpc = Rpc.make(WS_METHODS.pluginComposerReview, {
+  payload: PluginComposerReviewInput,
+  success: PluginComposerReviewResult,
+  error: EnvironmentAuthorizationError,
+});
+const WsPluginComposerReviewDecisionRpc = Rpc.make(WS_METHODS.pluginComposerReviewDecision, {
+  payload: PluginComposerReviewDecisionInput,
+  success: Schema.Void,
   error: EnvironmentAuthorizationError,
 });
 export const WsPluginSettingsUpdateRpc = Rpc.make(WS_METHODS.pluginSettingsUpdate, {
@@ -2624,6 +2639,8 @@ export const WsRpcGroup = RpcGroup.make(
   WsPluginWorkflowGetRpc,
   WsPluginWorkflowActionRpc,
   WsPluginActionRpc,
+  WsPluginComposerReviewRpc,
+  WsPluginComposerReviewDecisionRpc,
   WsPluginSettingsGetRpc,
   WsPluginSettingsUpdateRpc,
   WsPluginSettingsResetRpc,

@@ -37,6 +37,8 @@ function capabilityLabel(capability: PluginCapabilityRequest): string {
       return `Embed UI (${capability.surfaces.join(", ")})`;
     case "provider.control":
       return "Control provider instances";
+    case "composer.review":
+      return "Review composer drafts before sending";
   }
 }
 

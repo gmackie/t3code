@@ -1,4 +1,9 @@
 import { useComposerTypingGuard } from "./useComposerTypingGuard";
+import { ComposerReviewCard } from "./ComposerReviewCard";
+import type {
+  ComposerReviewAction,
+  ComposerReviewSuggestion,
+} from "@t3tools/client-runtime/plugins";
 import { insertAttachmentReferencesForDraft } from "./composerAttachmentReferences";
 import { DESKTOP_PASTE_AS_TEXT_EVENT } from "../../lib/desktopPasteAsText";
 import {
@@ -96,6 +101,7 @@ import {
   type ComposerFileAttachment,
   type ComposerImageAttachment,
   type DraftId,
+  type ComposerThreadDraftState,
   type PersistedComposerImageAttachment,
   composerFileNeedsReattach,
   composerDraftHasUserContent,
@@ -379,6 +385,11 @@ export interface ChatComposerProps {
   isPreparingWorktree: boolean;
   isCompacting: boolean;
   bannerItems: readonly ComposerBannerStackItem[];
+  composerReview?: {
+    readonly draft: ComposerThreadDraftState | null;
+    readonly suggestion: ComposerReviewSuggestion;
+    readonly onAction: (action: ComposerReviewAction) => void;
+  } | null;
   resumeCompactionTokens: number | null;
   keepFullHistory: boolean;
   onToggleKeepFullHistory: () => void;
@@ -2348,12 +2359,27 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   );
   // An open question owns the space above the composer. Only a machine problem,
   // which is why an answer could not go through, stays beside it.
+  const review = props.composerReview;
+  const reviewItems: readonly ComposerBannerStackItem[] =
+    review && review.draft === composerDraft
+      ? [
+          {
+            id: `composer-review:${review.suggestion.pluginId}`,
+            variant: "info",
+            title: "Prompt coach",
+            icon: null,
+            children: (
+              <ComposerReviewCard suggestion={review.suggestion} onAction={review.onAction} />
+            ),
+          },
+        ]
+      : [];
   const shelfItems = hasBlockingComposerTopDrawer
     ? props.bannerItems.filter(
         (item) =>
           item.group === "environment" && (item.variant === "error" || item.variant === "warning"),
       )
-    : props.bannerItems;
+    : [...reviewItems, ...props.bannerItems];
 
   const insertComposerText = (
     text: string,

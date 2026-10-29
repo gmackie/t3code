@@ -2507,6 +2507,10 @@ export const layerWsRpc = (
                 requiredScope: AuthOrchestrationOperateScope,
               }),
           }),
+        [WS_METHODS.pluginComposerReview]: (input) =>
+          Effect.promise(() => pluginRuntimeHost.composerReview(input)),
+        [WS_METHODS.pluginComposerReviewDecision]: (input) =>
+          Effect.promise(() => pluginRuntimeHost.composerReviewDecision(input)),
         [WS_METHODS.pluginSettingsGet]: (input) =>
           Effect.try({
             try: () => {

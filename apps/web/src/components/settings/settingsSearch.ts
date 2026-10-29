@@ -580,6 +580,12 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["composer rich text tiptap bold italic markdown styled wysiwyg"],
   },
   {
+    id: "composer-review",
+    title: "Prompt coach",
+    to: "/settings/chat",
+    searchTerms: ["composer review plugin prompt tips rewrite mute unmute"],
+  },
+  {
     id: "send-shortcut",
     title: "Send shortcut",
     to: "/settings/chat",

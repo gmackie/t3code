@@ -113,6 +113,8 @@ export const RPC_REQUIRED_SCOPES = {
   [WS_METHODS.pluginWorkflowGet]: AuthOrchestrationReadScope,
   [WS_METHODS.pluginWorkflowAction]: AuthOrchestrationOperateScope,
   [WS_METHODS.pluginAction]: AuthOrchestrationOperateScope,
+  [WS_METHODS.pluginComposerReview]: AuthOrchestrationOperateScope,
+  [WS_METHODS.pluginComposerReviewDecision]: AuthOrchestrationOperateScope,
   [WS_METHODS.pluginSettingsGet]: AuthOrchestrationReadScope,
   [WS_METHODS.pluginSettingsUpdate]: AuthOrchestrationOperateScope,
   [WS_METHODS.pluginSettingsReset]: AuthOrchestrationOperateScope,

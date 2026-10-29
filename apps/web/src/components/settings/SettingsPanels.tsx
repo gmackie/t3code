@@ -96,6 +96,7 @@ import { BackgroundActivitySettingsRow } from "./BackgroundActivitySettings";
 import { AdvancedSettings } from "./AdvancedSettings";
 import { PullRequestLinksOpenInAppSetting } from "./IntegrationsSettings";
 import { StorageCleanupSections } from "./StorageSettings";
+import { useComposerReviewMutes } from "../../composerReviewMutes";
 
 const RESPONSE_STREAMING_MODE_LABELS: Record<ResponseStreamingMode, string> = {
   turn: "Wait for the full response",
@@ -478,6 +479,9 @@ export function useSettingsRestore(onRestored?: () => void) {
     ...(settings.composerRichTextEnabled !== DEFAULT_UNIFIED_SETTINGS.composerRichTextEnabled
       ? ["Rich text composer"]
       : []),
+    ...(settings.composerReviewEnabled !== DEFAULT_UNIFIED_SETTINGS.composerReviewEnabled
+      ? ["Prompt coach"]
+      : []),
     ...(settings.sendShortcut !== DEFAULT_UNIFIED_SETTINGS.sendShortcut ? ["Send shortcut"] : []),
     ...(settings.followUpBehavior !== DEFAULT_UNIFIED_SETTINGS.followUpBehavior
       ? ["Follow-up behavior"]
@@ -594,6 +598,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       proactivePanelsEnabled: DEFAULT_UNIFIED_SETTINGS.proactivePanelsEnabled,
       showSkillsInSlashMenu: DEFAULT_UNIFIED_SETTINGS.showSkillsInSlashMenu,
       composerRichTextEnabled: DEFAULT_UNIFIED_SETTINGS.composerRichTextEnabled,
+      composerReviewEnabled: DEFAULT_UNIFIED_SETTINGS.composerReviewEnabled,
       sendShortcut: DEFAULT_UNIFIED_SETTINGS.sendShortcut,
       followUpBehavior: DEFAULT_UNIFIED_SETTINGS.followUpBehavior,
       contextWindowMeterEnabled: DEFAULT_UNIFIED_SETTINGS.contextWindowMeterEnabled,
@@ -1036,10 +1041,47 @@ export function ChatSettingsPanel() {
   ] as const;
   const settings = useScopedSettings();
   const updateSettings = useUpdateScopedSettings();
+  const { mutedThreadKeys, unmuteAllThreads } = useComposerReviewMutes();
 
   return (
     <SettingsPageContainer>
       <SettingsSection id="composer" title="Composer">
+        <SettingsRow
+          {...searchableSetting("composer-review")}
+          description="Let enabled prompt-coach plugins suggest improvements before sending."
+          resetAction={
+            settings.composerReviewEnabled !== DEFAULT_UNIFIED_SETTINGS.composerReviewEnabled ? (
+              <SettingResetButton
+                label="prompt coach"
+                onClick={() =>
+                  updateSettings({
+                    composerReviewEnabled: DEFAULT_UNIFIED_SETTINGS.composerReviewEnabled,
+                  })
+                }
+              />
+            ) : null
+          }
+          control={
+            <Switch
+              checked={settings.composerReviewEnabled}
+              onCheckedChange={(checked) =>
+                updateSettings({ composerReviewEnabled: Boolean(checked) })
+              }
+              aria-label="Prompt coach"
+            />
+          }
+        />
+        {mutedThreadKeys.size > 0 ? (
+          <SettingsRow
+            title="Muted prompt-coach threads"
+            description={`${mutedThreadKeys.size} thread${mutedThreadKeys.size === 1 ? " is" : "s are"} muted on this device.`}
+            control={
+              <Button size="sm" variant="outline" onClick={unmuteAllThreads}>
+                Unmute all
+              </Button>
+            }
+          />
+        ) : null}
         <SettingsRow
           {...searchableSetting("composer-rich-text")}
           description="Show formatted Markdown as you type."

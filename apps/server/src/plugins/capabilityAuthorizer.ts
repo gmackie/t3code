@@ -8,7 +8,8 @@ export type T3CapabilityOperation =
   | { kind: "secrets.read"; name: string }
   | { kind: "network.connect"; host: string }
   | { kind: "ui.embed"; surface: "settings" | "project" | "thread.sidePanel" | "thread.main" }
-  | { kind: "provider.control"; providerInstanceId?: string };
+  | { kind: "provider.control"; providerInstanceId?: string }
+  | { kind: "composer.review" };
 
 export class CapabilityAuthorizer {
   #grants = new Map<string, PluginCapabilityRequest[]>();
@@ -111,6 +112,8 @@ export class CapabilityAuthorizer {
                 (operation as Extract<T3CapabilityOperation, { kind: "provider.control" }>)
                   .providerInstanceId!,
               );
+      case "composer.review":
+        return true;
     }
   }
 
