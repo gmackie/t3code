@@ -1625,6 +1625,26 @@ describe("Working section beta", () => {
     expect(off.workingCount).toBe(0);
   });
 
+  it("keeps queued user messages visible while their thread is working", () => {
+    const queuedThreadKeys = new Set([`${environmentId}:working`]);
+    const layout = build({ queuedThreadKeys });
+    expect(ids(layout)).toContain("working");
+    expect(layout.workingCount).toBe(0);
+
+    const queuedItems = buildThreadListV2ListItems({
+      ...layout,
+      pendingTasks: [],
+      queuedThreadKeys,
+    });
+    expect(
+      queuedItems.find((item) => item.type === "v2-thread" && item.item.thread.id === "working"),
+    ).toMatchObject({ hasQueuedMessages: true });
+
+    const drained = build({ queuedThreadKeys: new Set() });
+    expect(ids(drained)).not.toContain("working");
+    expect(drained.workingCount).toBe(1);
+  });
+
   it("keeps an inactive row in Working during the shared grace and returns it on expiry", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date(NOW));
