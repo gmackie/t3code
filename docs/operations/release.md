@@ -40,7 +40,8 @@ Configure the Apple push key for `com.gmacko.t3code` with
 `APP_VARIANT=gmacko eas credentials --platform ios` from `apps/mobile` (select the `gmacko`
 profile). Expo manages delivery credentials; the existing local TestFlight build remains unchanged.
 The App Store Connect upload key is not an APNs key. The server must have outbound HTTPS access
-to `exp.host`. Live Activities still require the T3 relay, and T3 Connect passkeys require the
+to `exp.host`. GMACKO iOS Live Activities use the paired environment's
+[direct APNs configuration](gmacko-live-activities.md). T3 Connect passkeys require the
 authentication domain to authorize the fork's app identity.
 
 ## What the workflow does

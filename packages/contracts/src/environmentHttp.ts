@@ -9,6 +9,7 @@ import * as HttpApiMiddleware from "effect/http-api/HttpApiMiddleware";
 import * as HttpApiSchema from "effect/http-api/HttpApiSchema";
 import * as HttpServerRespondable from "effect/http/HttpServerRespondable";
 import * as HttpServerResponse from "effect/http/HttpServerResponse";
+import { RelayAgentActivityAggregateState } from "./relay.ts";
 
 import {
   AuthAccessTokenResult,
@@ -834,19 +835,65 @@ export class ExpoPushError extends Schema.TaggedError<ExpoPushError>()("ExpoPush
   }
 }
 
-class EnvironmentNotificationsHttpApi extends HttpApiGroup.make("notifications").add(
-  HttpApiEndpoint.post("register", "/api/notifications/expo", {
-    headers: OptionalBearerHeaders,
-    payload: ExpoPushRegistration,
-    success: Schema.Void,
-    error: [
-      ExpoPushError,
-      EnvironmentAuthInvalidError,
-      EnvironmentScopeRequiredError,
-      EnvironmentInternalError,
-    ],
-  }).middleware(EnvironmentAuthenticatedAuth),
-) {}
+export const LiveActivityRegistration = Schema.Struct({
+  activityId: Schema.NullOr(Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(128))),
+  token: Schema.NullOr(Schema.String.check(Schema.isPattern(/^[a-fA-F0-9]{64,512}$/))),
+});
+export type LiveActivityRegistration = typeof LiveActivityRegistration.Type;
+
+export const LiveActivitySnapshot = Schema.Struct({
+  configured: Schema.Boolean,
+  aggregate: Schema.NullOr(RelayAgentActivityAggregateState),
+});
+export type LiveActivitySnapshot = typeof LiveActivitySnapshot.Type;
+
+export class LiveActivityError extends Schema.TaggedError<LiveActivityError>()(
+  "LiveActivityError",
+  {
+    cause: Schema.Defect(),
+  },
+) {
+  override get message(): string {
+    return "Could not update Live Activities.";
+  }
+}
+
+const liveActivityErrors = [
+  LiveActivityError,
+  EnvironmentAuthInvalidError,
+  EnvironmentScopeRequiredError,
+  EnvironmentInternalError,
+] as const;
+
+class EnvironmentNotificationsHttpApi extends HttpApiGroup.make("notifications")
+  .add(
+    HttpApiEndpoint.post("register", "/api/notifications/expo", {
+      headers: OptionalBearerHeaders,
+      payload: ExpoPushRegistration,
+      success: Schema.Void,
+      error: [
+        ExpoPushError,
+        EnvironmentAuthInvalidError,
+        EnvironmentScopeRequiredError,
+        EnvironmentInternalError,
+      ],
+    }).middleware(EnvironmentAuthenticatedAuth),
+  )
+  .add(
+    HttpApiEndpoint.get("liveActivitySnapshot", "/api/notifications/live-activity", {
+      headers: OptionalBearerHeaders,
+      success: LiveActivitySnapshot,
+      error: liveActivityErrors,
+    }).middleware(EnvironmentAuthenticatedAuth),
+  )
+  .add(
+    HttpApiEndpoint.post("registerLiveActivity", "/api/notifications/live-activity", {
+      headers: OptionalBearerHeaders,
+      payload: LiveActivityRegistration,
+      success: Schema.Void,
+      error: liveActivityErrors,
+    }).middleware(EnvironmentAuthenticatedAuth),
+  ) {}
 
 // Path tokens and optional body signatures authenticate webhooks; read raw bytes to verify signatures.
 const WebhookParams = Schema.Struct({

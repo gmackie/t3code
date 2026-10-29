@@ -8,6 +8,7 @@ import { ScreenScrollView } from "../../components/ui/ScreenScrollView";
 import { AppText } from "../../components/ui/AppText";
 import { mobilePreferencesAtom, updateMobilePreferencesAtom } from "../../state/preferences";
 import { expoPushProjectId, useExpoPushStatus } from "../agent-awareness/ExpoPushCoordinator";
+import { useEnvironmentLiveActivityStatus } from "../agent-awareness/EnvironmentLiveActivityCoordinator";
 import { SettingsScreen } from "./components/SettingsScreen";
 import { SettingsSection } from "./components/SettingsSection";
 import { SettingsSwitchRow } from "./components/SettingsSwitchRow";
@@ -26,6 +27,9 @@ export function SettingsExpoNotifications() {
   const preferences = useAtomValue(mobilePreferencesAtom);
   const save = useAtomSet(updateMobilePreferencesAtom);
   const status = useExpoPushStatus();
+  const activityStatus = useEnvironmentLiveActivityStatus();
+  const activitiesEnabled =
+    AsyncResult.isSuccess(preferences) && preferences.value.liveActivitiesEnabled !== false;
   const [requesting, setRequesting] = useState(false);
   const configured = expoPushProjectId() !== null;
   const enabled = AsyncResult.isSuccess(preferences) && preferences.value.expoPushEnabled === true;
@@ -78,9 +82,30 @@ export function SettingsExpoNotifications() {
         </AppText>
         <AppText className="mt-4 text-sm text-foreground-muted">
           Receive alerts when an agent finishes, fails, needs approval, or asks for input. Pair with
-          an environment first. It must stay running and have internet access. Live Activities are
-          not available with these notifications.
+          an environment first. It must stay running and have internet access.
         </AppText>
+        {Platform.OS === "ios" ? (
+          <>
+            <SettingsSection title="Lock Screen">
+              <SettingsSwitchRow
+                icon="bell.badge"
+                label="Live Activities"
+                value={activitiesEnabled}
+                disabled={!AsyncResult.isSuccess(preferences)}
+                onValueChange={(value) => save({ liveActivitiesEnabled: value })}
+              />
+            </SettingsSection>
+            <AppText className="text-sm text-foreground-muted">
+              {!activitiesEnabled
+                ? "Live Activities are off."
+                : activityStatus.failed > 0
+                  ? "Some activities could not connect. Reopen the app after reconnecting to your environments."
+                  : activityStatus.unavailable > 0
+                    ? "An environment needs an update or Live Activity setup before it can update the Lock Screen."
+                    : "Open the app while an agent is working to start its activity. It continues updating while your phone is locked."}
+            </AppText>
+          </>
+        ) : null}
       </ScreenScrollView>
     </SettingsScreen>
   );

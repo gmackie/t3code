@@ -1,5 +1,8 @@
 import * as ProviderEventLoggers from "@t3tools/provider-core/server/ProviderEventLoggers";
 import * as ExpoPush from "./notifications/ExpoPush.ts";
+import * as LiveActivities from "./notifications/LiveActivities.ts";
+import * as LiveActivityApns from "./notifications/LiveActivityApns.ts";
+import * as LiveActivityWorker from "./notifications/LiveActivityWorker.ts";
 import * as AgentNotificationWorker from "./notifications/AgentNotificationWorker.ts";
 import { notificationsHttpApiLayer } from "./notifications/http.ts";
 import * as GameHttp from "./game/http.ts";
@@ -615,6 +618,10 @@ const layerProviderInstallationRefresh = Layer.effectDiscard(
 const layerRuntimeCoreDependenciesBase = Layer.mergeAll(
   AgentAwarenessRelay.layer,
   AgentNotificationWorker.layer.pipe(Layer.provideMerge(ExpoPush.layer)),
+  LiveActivityWorker.layer.pipe(
+    Layer.provideMerge(LiveActivities.layer),
+    Layer.provide(LiveActivityApns.layer),
+  ),
   HeldHooksWaker.layer,
   layerThreadSettlementWorker,
   layerIdleCompactionWorker,

@@ -287,64 +287,59 @@ describe("makeRelayDeviceRegistrationRequest", () => {
     ).toMatchObject({ liveActivitiesEnabled: false, notificationsEnabled: false });
   });
 
-  it.effect(
-    "retires GMACKO relay delivery and old activities when cloud auth becomes available",
-    () => {
-      const requests: Array<{ method: string; path: string }> = [];
-      vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
-        const request = new Request(input, init);
-        requests.push({ method: request.method, path: new URL(request.url).pathname });
-        return Response.json(
-          request.url.endsWith("/v1/client/dpop-token")
-            ? {
-                access_token: "relay-dpop-token",
-                issued_token_type: "urn:ietf:params:oauth:token-type:access_token",
-                token_type: "DPoP",
-                expires_in: 300,
-                scope: "mobile:registration",
-              }
-            : { ok: true },
-        );
-      });
-      Constants.expoConfig!.extra = {
-        appVariant: "gmacko",
-        relay: { url: "https://relay.example.test/" },
-      };
-      registrationRecordStore.current = { identity: "user-a", signature: "old-registration" };
-      const end = vi.fn(async () => {});
-      widgetMocks.getInstances.mockReturnValue([
-        {
-          getId: () => "old-activity",
-          getPushToken: vi.fn(async () => "old-activity-token"),
-          addPushTokenListener: vi.fn(),
-          end,
-        },
-      ] as never);
-      vi.mocked(Notifications.getDevicePushTokenAsync).mockClear();
-      vi.mocked(Notifications.addPushTokenListener).mockClear();
-      setAgentAwarenessRelayTokenProvider(async () => "clerk-token-user-a", "user-a");
-
-      return Effect.gen(function* () {
-        yield* runBackgroundOperations();
-        expect(end).toHaveBeenCalledWith("immediate");
-        expect(requests.filter((request) => request.path.startsWith("/v1/mobile/"))).toEqual([
-          { method: "DELETE", path: "/v1/mobile/devices/device-1" },
-        ]);
-        expect(Notifications.getDevicePushTokenAsync).not.toHaveBeenCalled();
-        expect(Notifications.addPushTokenListener).not.toHaveBeenCalled();
-        expect(widgetMocks.start).not.toHaveBeenCalled();
-
-        for (const listener of appStateMock.listeners) listener("active");
-        yield* runBackgroundOperations();
-        expect(requests.filter((request) => request.path.startsWith("/v1/mobile/"))).toHaveLength(
-          1,
-        );
-      }).pipe(
-        Effect.provideService(FetchHttpClient.Fetch, globalThis.fetch),
-        Effect.provide(layerRelayTest),
+  it.effect("retires GMACKO relay delivery without ending environment-owned activities", () => {
+    const requests: Array<{ method: string; path: string }> = [];
+    vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
+      const request = new Request(input, init);
+      requests.push({ method: request.method, path: new URL(request.url).pathname });
+      return Response.json(
+        request.url.endsWith("/v1/client/dpop-token")
+          ? {
+              access_token: "relay-dpop-token",
+              issued_token_type: "urn:ietf:params:oauth:token-type:access_token",
+              token_type: "DPoP",
+              expires_in: 300,
+              scope: "mobile:registration",
+            }
+          : { ok: true },
       );
-    },
-  );
+    });
+    Constants.expoConfig!.extra = {
+      appVariant: "gmacko",
+      relay: { url: "https://relay.example.test/" },
+    };
+    registrationRecordStore.current = { identity: "user-a", signature: "old-registration" };
+    const end = vi.fn(async () => {});
+    widgetMocks.getInstances.mockReturnValue([
+      {
+        getId: () => "old-activity",
+        getPushToken: vi.fn(async () => "old-activity-token"),
+        addPushTokenListener: vi.fn(),
+        end,
+      },
+    ] as never);
+    vi.mocked(Notifications.getDevicePushTokenAsync).mockClear();
+    vi.mocked(Notifications.addPushTokenListener).mockClear();
+    setAgentAwarenessRelayTokenProvider(async () => "clerk-token-user-a", "user-a");
+
+    return Effect.gen(function* () {
+      yield* runBackgroundOperations();
+      expect(end).not.toHaveBeenCalled();
+      expect(requests.filter((request) => request.path.startsWith("/v1/mobile/"))).toEqual([
+        { method: "DELETE", path: "/v1/mobile/devices/device-1" },
+      ]);
+      expect(Notifications.getDevicePushTokenAsync).not.toHaveBeenCalled();
+      expect(Notifications.addPushTokenListener).not.toHaveBeenCalled();
+      expect(widgetMocks.start).not.toHaveBeenCalled();
+
+      for (const listener of appStateMock.listeners) listener("active");
+      yield* runBackgroundOperations();
+      expect(requests.filter((request) => request.path.startsWith("/v1/mobile/"))).toHaveLength(1);
+    }).pipe(
+      Effect.provideService(FetchHttpClient.Fetch, globalThis.fetch),
+      Effect.provide(layerRelayTest),
+    );
+  });
 
   it.effect("does not create a relay notification device for a fresh GMACKO sign-in", () => {
     const fetchMock = vi.fn(async () => Response.json({ ok: true }));

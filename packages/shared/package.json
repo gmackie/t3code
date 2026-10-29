@@ -514,6 +514,14 @@
     "./cloneUrl": {
       "types": "./src/cloneUrl.ts",
       "import": "./src/cloneUrl.ts"
+    },
+    "./agentActivityAggregate": {
+      "types": "./src/agentActivityAggregate.ts",
+      "import": "./src/agentActivityAggregate.ts"
+    },
+    "./agentActivityPayloads": {
+      "types": "./src/agentActivityPayloads.ts",
+      "import": "./src/agentActivityPayloads.ts"
     }
   },
   "scripts": {

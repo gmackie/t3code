@@ -1,4 +1,5 @@
 import { ExpoPushCoordinator } from "./features/agent-awareness/ExpoPushCoordinator";
+import { EnvironmentLiveActivityCoordinator } from "./features/agent-awareness/EnvironmentLiveActivityCoordinator";
 import { usesExpoPush } from "./features/agent-awareness/capabilities";
 import { installPermissionUpdateNotice } from "./features/connection/permissionUpdateNotice";
 import { installComposerAttachmentUploads } from "./state/composer-attachment-uploads";
@@ -235,6 +236,7 @@ function AppContent() {
       <SplashScreenCoordinator />
       <SubscriptionUsageCoordinator />
       {usesExpoPush() ? <ExpoPushCoordinator /> : null}
+      {usesExpoPush() ? <EnvironmentLiveActivityCoordinator /> : null}
       <GestureHandlerRootView className="flex-1">
         <KeyboardProvider statusBarTranslucent>
           <SafeAreaProvider>

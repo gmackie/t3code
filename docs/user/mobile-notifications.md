@@ -17,7 +17,15 @@ GMACKO uses Expo for ordinary push alerts. Pair your phone with each environment
 direct and Tailscale connections work. Each environment must stay running with internet access,
 but the phone does not need to keep its connection open. Check the registration status below the
 switch. If an environment is offline when you change the setting, reconnect to finish applying it.
-Revoking the phone’s paired session on an environment also stops its alerts. Live Activities are
-not included in this notification mode; signing in to T3 Connect does not enable them for GMACKO.
+Revoking the phone’s paired session on an environment also stops its alerts.
+
+On iOS, enable **Live Activities** in the same screen and open the app while an agent is working
+to start a Lock Screen activity for each paired environment. It continues updating over cellular
+while the app is suspended. The environment needs Live Activity delivery configured; Settings
+shows when an environment needs setup or an update. Completed work ends the activity, and
+turning off Live Activities removes its cards independently of ordinary alerts. Removing an
+environment or signing out of its T3 account also removes its cards. An environment that stops
+running cannot send updates; iOS marks its last status out of date after ten minutes.
+
 If you also use another T3 Code app on the same phone, manage its notifications separately in
 that app or in iOS Settings to avoid receiving both apps’ alerts.

@@ -12,10 +12,8 @@ import {
   type RelayDeliveryResult,
 } from "@t3tools/contracts/relay";
 
-import {
-  sanitizeAgentActivityAggregateState,
-  sanitizeApnsNotificationPayload,
-} from "./agentActivityPayloads.ts";
+import { sanitizeAgentActivityAggregateState } from "@t3tools/shared/agentActivityPayloads";
+import { sanitizeApnsNotificationPayload } from "./agentActivityPayloads.ts";
 import {
   expiresAtForJob,
   makeApnsDeliveryJobPayload,

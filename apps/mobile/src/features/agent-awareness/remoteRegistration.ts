@@ -196,7 +196,8 @@ export function setAgentAwarenessRelayTokenProvider(
       activeLiveActivityRegistrationRetry = null;
     }
     // Signed-out activities would be orphaned because the relay can no longer update or end them.
-    endLocalLiveActivities("live activity cleanup after cloud sign-out failed");
+    if (!usesExpoPush())
+      endLocalLiveActivities("live activity cleanup after cloud sign-out failed");
     setRegistrationStatus("unknown");
     void clearAgentAwarenessRegistrationRecord().catch((error: unknown) => {
       logRegistrationError("clear registration record on sign-out failed", error);
@@ -955,7 +956,7 @@ const refreshActiveLiveActivityRemoteRegistration = Effect.fn(
   "remoteRegistration.refreshActiveLiveActivityRemoteRegistration",
 )(function* (): Effect.fn.Return<void, never, ManagedRelay.ManagedRelayClient> {
   if (usesExpoPush()) {
-    endLocalLiveActivities("unsupported live activity cleanup failed");
+    // GMACKO's environment coordinator owns native cards and their APNs update tokens.
     return;
   }
   if (!canRegisterRemoteLiveActivities() || !relayTokenProvider) {
