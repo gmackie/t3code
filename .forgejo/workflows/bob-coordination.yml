@@ -8,7 +8,7 @@ on:
       - apps/server/src/coordination/**
       - apps/server/src/mcp/toolkits/coordination/**
       - apps/server/src/persistence/Migrations.ts
-      - apps/server/src/persistence/Migrations/063_BobExecutionAdmission.ts
+      - apps/server/src/persistence/Migrations/074_BobExecutionAdmission.ts
       - apps/web/src/components/coordination/**
       - apps/web/src/state/bobCoordination.ts
       - apps/web/src/rightPanelStore*

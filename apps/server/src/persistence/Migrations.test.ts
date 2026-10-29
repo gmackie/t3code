@@ -8,8 +8,8 @@ import * as Path from "effect/Path";
 import * as SqlClient from "effect/sql/SqlClient";
 
 import { migrationManifest, reconcileMigrationLedger, runMigrations } from "./Migrations.ts";
-import BoundedShellLookups from "./Migrations/059_BoundedShellLookups.ts";
-import BobExecutionAdmission from "./Migrations/063_BobExecutionAdmission.ts";
+import BoundedShellLookups from "./Migrations/073_BoundedShellLookups.ts";
+import BobExecutionAdmission from "./Migrations/074_BobExecutionAdmission.ts";
 import PeerLinks from "./Migrations/070_PeerLinks.ts";
 import PeerLinkFence from "./Migrations/071_PeerLinkFence.ts";
 import WaitingLinkRequestIndex from "./Migrations/072_WaitingLinkRequestIndex.ts";
