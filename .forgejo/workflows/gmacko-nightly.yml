@@ -1094,7 +1094,7 @@ jobs:
             gh --version
             exit 0
           fi
-          gh_version="$(curl -fsSL https://api.github.com/repos/cli/cli/releases/latest | node -e 'let r="";process.stdin.on("data",c=>r+=c).on("end",()=>process.stdout.write(JSON.parse(r).tag_name.replace(/^v/,"")))')"
+          gh_version="$(curl -fsSL -H "Authorization: Bearer ${GH_TOKEN}" https://api.github.com/repos/cli/cli/releases/latest | node -e 'let r="";process.stdin.on("data",c=>r+=c).on("end",()=>process.stdout.write(JSON.parse(r).tag_name.replace(/^v/,"")))')"
           curl -fsSL "https://github.com/cli/cli/releases/download/v${gh_version}/gh_${gh_version}_linux_amd64.tar.gz" -o /tmp/gh.tgz
           tar -xzf /tmp/gh.tgz -C /tmp
           sudo install "/tmp/gh_${gh_version}_linux_amd64/bin/gh" /usr/local/bin/gh
