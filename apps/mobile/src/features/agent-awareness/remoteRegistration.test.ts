@@ -18,6 +18,7 @@ import * as Dpop from "../cloud/dpop";
 import * as ManagedRelayLayer from "../cloud/managedRelayLayer";
 import {
   clearAgentAwarenessRegistrationRecord,
+  loadAgentAwarenessDeviceId,
   loadAgentAwarenessRegistrationRecord,
   loadOrCreateAgentAwarenessDeviceId,
   saveAgentAwarenessRegistrationRecord,
@@ -244,6 +245,7 @@ describe("makeRelayDeviceRegistrationRequest", () => {
     vi.mocked(loadAgentAwarenessRegistrationRecord).mockClear();
     vi.mocked(clearAgentAwarenessRegistrationRecord).mockClear();
     vi.mocked(loadOrCreateAgentAwarenessDeviceId).mockResolvedValue("device-1");
+    vi.mocked(loadAgentAwarenessDeviceId).mockResolvedValue("device-1");
     widgetMocks.getInstances.mockReset();
     widgetMocks.getInstances.mockReturnValue([]);
     widgetMocks.start.mockClear();
@@ -269,6 +271,148 @@ describe("makeRelayDeviceRegistrationRequest", () => {
       liveActivitiesEnabled: false,
       notificationsEnabled: false,
     });
+  });
+
+  it("keeps relay push disabled in GMACKO's Expo notification mode", () => {
+    Constants.expoConfig!.extra = { appVariant: "gmacko" };
+
+    expect(
+      makeRelayDeviceRegistrationRequest({
+        deviceId: "device-1",
+        label: "iPhone",
+        iosMajorVersion: 18,
+        notificationsEnabled: true,
+        preferences: { liveActivitiesEnabled: true },
+      }).preferences,
+    ).toMatchObject({ liveActivitiesEnabled: false, notificationsEnabled: false });
+  });
+
+  it.effect(
+    "retires GMACKO relay delivery and old activities when cloud auth becomes available",
+    () => {
+      const requests: Array<{ method: string; path: string }> = [];
+      vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
+        const request = new Request(input, init);
+        requests.push({ method: request.method, path: new URL(request.url).pathname });
+        return Response.json(
+          request.url.endsWith("/v1/client/dpop-token")
+            ? {
+                access_token: "relay-dpop-token",
+                issued_token_type: "urn:ietf:params:oauth:token-type:access_token",
+                token_type: "DPoP",
+                expires_in: 300,
+                scope: "mobile:registration",
+              }
+            : { ok: true },
+        );
+      });
+      Constants.expoConfig!.extra = {
+        appVariant: "gmacko",
+        relay: { url: "https://relay.example.test/" },
+      };
+      registrationRecordStore.current = { identity: "user-a", signature: "old-registration" };
+      const end = vi.fn(async () => {});
+      widgetMocks.getInstances.mockReturnValue([
+        {
+          getId: () => "old-activity",
+          getPushToken: vi.fn(async () => "old-activity-token"),
+          addPushTokenListener: vi.fn(),
+          end,
+        },
+      ] as never);
+      vi.mocked(Notifications.getDevicePushTokenAsync).mockClear();
+      vi.mocked(Notifications.addPushTokenListener).mockClear();
+      setAgentAwarenessRelayTokenProvider(async () => "clerk-token-user-a", "user-a");
+
+      return Effect.gen(function* () {
+        yield* runBackgroundOperations();
+        expect(end).toHaveBeenCalledWith("immediate");
+        expect(requests.filter((request) => request.path.startsWith("/v1/mobile/"))).toEqual([
+          { method: "DELETE", path: "/v1/mobile/devices/device-1" },
+        ]);
+        expect(Notifications.getDevicePushTokenAsync).not.toHaveBeenCalled();
+        expect(Notifications.addPushTokenListener).not.toHaveBeenCalled();
+        expect(widgetMocks.start).not.toHaveBeenCalled();
+
+        for (const listener of appStateMock.listeners) listener("active");
+        yield* runBackgroundOperations();
+        expect(requests.filter((request) => request.path.startsWith("/v1/mobile/"))).toHaveLength(
+          1,
+        );
+      }).pipe(
+        Effect.provideService(FetchHttpClient.Fetch, globalThis.fetch),
+        Effect.provide(layerRelayTest),
+      );
+    },
+  );
+
+  it.effect("does not create a relay notification device for a fresh GMACKO sign-in", () => {
+    const fetchMock = vi.fn(async () => Response.json({ ok: true }));
+    vi.stubGlobal("fetch", fetchMock);
+    Constants.expoConfig!.extra = {
+      appVariant: "gmacko",
+      relay: { url: "https://relay.example.test/" },
+    };
+    vi.mocked(loadAgentAwarenessDeviceId).mockResolvedValue(null);
+    vi.mocked(loadOrCreateAgentAwarenessDeviceId).mockClear();
+    setAgentAwarenessRelayTokenProvider(async () => "clerk-token-user-a", "user-a");
+
+    return Effect.gen(function* () {
+      yield* runBackgroundOperations();
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(loadOrCreateAgentAwarenessDeviceId).not.toHaveBeenCalled();
+      expect(widgetMocks.start).not.toHaveBeenCalled();
+    }).pipe(
+      Effect.provideService(FetchHttpClient.Fetch, globalThis.fetch),
+      Effect.provide(layerRelayTest),
+    );
+  });
+
+  it.effect("retries retiring the old GMACKO relay device after returning online", () => {
+    let offline = true;
+    let deletions = 0;
+    vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
+      const request = new Request(input, init);
+      if (request.url.endsWith("/v1/client/dpop-token")) {
+        return Response.json({
+          access_token: "relay-dpop-token",
+          issued_token_type: "urn:ietf:params:oauth:token-type:access_token",
+          token_type: "DPoP",
+          expires_in: 300,
+          scope: "mobile:registration",
+        });
+      }
+      if (request.method === "DELETE") {
+        deletions++;
+        if (offline) throw new Error("offline");
+      }
+      return Response.json({ ok: true });
+    });
+    Constants.expoConfig!.extra = {
+      appVariant: "gmacko",
+      relay: { url: "https://relay.example.test/" },
+    };
+    registrationRecordStore.current = { identity: "user-a", signature: "old-registration" };
+    setAgentAwarenessRelayTokenProvider(async () => "clerk-token-user-a", "user-a");
+
+    return Effect.gen(function* () {
+      yield* runBackgroundOperations();
+      expect(deletions).toBe(1);
+      expect(registrationRecordStore.current).not.toBeNull();
+
+      offline = false;
+      for (const listener of appStateMock.listeners) listener("active");
+      yield* runBackgroundOperations();
+      expect(deletions).toBe(2);
+      expect(registrationRecordStore.current).toBeNull();
+
+      for (const listener of appStateMock.listeners) listener("active");
+      yield* runBackgroundOperations();
+      expect(deletions).toBe(2);
+    }).pipe(
+      Effect.provideService(FetchHttpClient.Fetch, globalThis.fetch),
+      Effect.provide(layerRelayTest),
+    );
   });
 
   it.effect("registers one push-token listener per Live Activity across wrappers", () => {

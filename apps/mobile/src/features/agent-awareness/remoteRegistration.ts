@@ -42,7 +42,7 @@ import {
   startAgentLiveActivity,
 } from "./agentLiveActivity";
 import { resolveCloudPublicConfig } from "../cloud/publicConfig";
-import { supportsAgentAwarenessPush } from "./capabilities";
+import { supportsAgentAwarenessPush, usesExpoPush } from "./capabilities";
 import { makeRelayDeviceRegistrationRequest, resolveApsEnvironment } from "./registrationPayload";
 
 const REMOTE_ACTIVITY_REGISTRATION_RETRY_MS = 15_000;
@@ -115,6 +115,7 @@ let activeLiveActivityRegistrationRetry: ReturnType<typeof setTimeout> | null = 
 let relayTokenProvider: (() => Promise<string | null>) | null = null;
 let relayTokenProviderIdentity: string | null = null;
 let deviceRegistrationGeneration = 0;
+let relayRegistrationRetired = false;
 let activeDeviceRegistration: {
   readonly input: DeviceRegistrationInput;
   operation: Promise<void>;
@@ -149,7 +150,7 @@ function readRelayConfig(): { readonly url: string } | null {
 }
 
 function canRegisterRemoteLiveActivities(): boolean {
-  return Platform.OS === "ios";
+  return Platform.OS === "ios" && !usesExpoPush();
 }
 
 function canRegisterPushNotifications(): boolean {
@@ -176,6 +177,7 @@ export function setAgentAwarenessRelayTokenProvider(
       clearAndroidAgentNotifications();
     }
     androidDeviceReplayedAt = null;
+    relayRegistrationRetired = false;
     deviceRegistrationGeneration++;
     activeDeviceRegistration = null;
     pendingDeviceRegistration = null;
@@ -224,6 +226,7 @@ export function releaseAgentAwarenessRelayTokenProvider(): void {
   activeDeviceRegistration = null;
   pendingDeviceRegistration = null;
   androidDeviceReplayedAt = null;
+  relayRegistrationRetired = false;
   pushTokenSubscription?.remove();
   pushTokenSubscription = null;
   appStateSubscription?.remove();
@@ -395,8 +398,8 @@ const unregisterDeviceWithRelay = Effect.fn("remoteRegistration.unregisterDevice
   function* (input: {
     readonly deviceId: string;
     readonly tokenProvider: () => Promise<string | null>;
-  }): Effect.fn.Return<void, unknown, ManagedRelay.ManagedRelayClient> {
-    if (!readRelayConfig()) return;
+  }): Effect.fn.Return<boolean, unknown, ManagedRelay.ManagedRelayClient> {
+    if (!readRelayConfig()) return false;
     const token = yield* Effect.tryPromise({
       try: input.tokenProvider,
       catch: (cause) =>
@@ -406,7 +409,7 @@ const unregisterDeviceWithRelay = Effect.fn("remoteRegistration.unregisterDevice
         }),
     });
     if (!token) {
-      return;
+      return false;
     }
 
     const client = yield* ManagedRelay.ManagedRelayClient;
@@ -414,6 +417,7 @@ const unregisterDeviceWithRelay = Effect.fn("remoteRegistration.unregisterDevice
       clerkToken: token,
       deviceId: input.deviceId,
     });
+    return true;
   },
 );
 
@@ -628,6 +632,30 @@ const registerDevice = Effect.fn("remoteRegistration.registerDevice")(function* 
     return;
   }
 
+  // Older GMACKO builds enrolled in both Expo and relay delivery after cloud
+  // sign-in. Retire only this install's relay device; foreground retries keep
+  // an offline migration from leaving a second delivery path behind.
+  if (usesExpoPush()) {
+    clearAndroidAgentNotifications();
+    if (relayRegistrationRetired) {
+      setRegistrationStatus("unknown");
+      return;
+    }
+    const deviceId = yield* Effect.tryPromise(() => loadAgentAwarenessDeviceId());
+    if (expectedGeneration !== deviceRegistrationGeneration) return;
+    const provider = relayTokenProvider;
+    if (deviceId) {
+      if (!provider) return;
+      const retired = yield* unregisterDeviceWithRelay({ deviceId, tokenProvider: provider });
+      if (!retired || expectedGeneration !== deviceRegistrationGeneration) return;
+    }
+    yield* Effect.tryPromise(() => clearAgentAwarenessRegistrationRecord());
+    if (expectedGeneration !== deviceRegistrationGeneration) return;
+    relayRegistrationRetired = true;
+    setRegistrationStatus("unknown");
+    return;
+  }
+
   const [deviceId, storedPreferences] = yield* Effect.all([
     Effect.tryPromise({
       try: () => loadOrCreateAgentAwarenessDeviceId(),
@@ -694,7 +722,7 @@ function registerDeviceForCurrentUser(): Effect.Effect<
 }
 
 function ensurePushTokenListener(): void {
-  if (pushTokenSubscription || !canRegisterPushNotifications()) {
+  if (pushTokenSubscription || !canRegisterPushNotifications() || usesExpoPush()) {
     return;
   }
 
@@ -739,7 +767,7 @@ function dismissEndedLocalLiveActivities(): void {
 }
 
 function endLocalLiveActivities(context: string): void {
-  if (!canRegisterRemoteLiveActivities()) {
+  if (Platform.OS !== "ios") {
     return;
   }
   dismissEndedLocalLiveActivities();
@@ -802,6 +830,7 @@ export function __resetAgentAwarenessRemoteRegistrationForTest(): void {
   pendingDeviceRegistration = null;
   registrationStatus = "unknown";
   androidDeviceReplayedAt = null;
+  relayRegistrationRetired = false;
   registrationStatusListeners.clear();
   registeredActivityPushTokens.clear();
   activityPushTokenLocks.clear();
@@ -925,6 +954,10 @@ function scheduleActiveLiveActivityRegistrationRetry(): void {
 const refreshActiveLiveActivityRemoteRegistration = Effect.fn(
   "remoteRegistration.refreshActiveLiveActivityRemoteRegistration",
 )(function* (): Effect.fn.Return<void, never, ManagedRelay.ManagedRelayClient> {
+  if (usesExpoPush()) {
+    endLocalLiveActivities("unsupported live activity cleanup failed");
+    return;
+  }
   if (!canRegisterRemoteLiveActivities() || !relayTokenProvider) {
     return;
   }

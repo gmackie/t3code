@@ -1,4 +1,4 @@
-import { usesExpoPush } from "../agent-awareness/ExpoPushCoordinator";
+import { usesExpoPush } from "../agent-awareness/capabilities";
 import { SettingsExpoNotifications } from "./SettingsExpoNotifications";
 import * as Dialog from "../../components/ui/Dialog";
 import { AuthRelayWriteScope } from "@t3tools/contracts";

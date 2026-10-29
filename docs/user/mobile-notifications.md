@@ -18,4 +18,6 @@ direct and Tailscale connections work. Each environment must stay running with i
 but the phone does not need to keep its connection open. Check the registration status below the
 switch. If an environment is offline when you change the setting, reconnect to finish applying it.
 Revoking the phone’s paired session on an environment also stops its alerts. Live Activities are
-not included in this notification mode.
+not included in this notification mode; signing in to T3 Connect does not enable them for GMACKO.
+If you also use another T3 Code app on the same phone, manage its notifications separately in
+that app or in iOS Settings to avoid receiving both apps’ alerts.

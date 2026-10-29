@@ -1,4 +1,4 @@
-import { usesExpoPush } from "../agent-awareness/ExpoPushCoordinator";
+import { usesExpoPush } from "../agent-awareness/capabilities";
 import {
   navigationCustomizationAvailable,
   overflowNavigationTabs,

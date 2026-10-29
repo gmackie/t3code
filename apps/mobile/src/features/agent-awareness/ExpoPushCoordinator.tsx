@@ -11,10 +11,7 @@ import { createExpoPushRegistration, type ExpoPushConnection } from "./expoPushR
 import { runtime } from "../../lib/runtime";
 import { mobilePreferencesAtom } from "../../state/preferences";
 import { useSavedRemoteConnections } from "../../state/use-remote-environment-registry";
-
-export function usesExpoPush(): boolean {
-  return Constants.expoConfig?.extra?.appVariant === "gmacko";
-}
+import { usesExpoPush } from "./capabilities";
 
 export function expoPushProjectId(): string | null {
   const id: unknown = Constants.expoConfig?.extra?.eas?.projectId;

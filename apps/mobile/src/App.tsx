@@ -1,4 +1,5 @@
-import { ExpoPushCoordinator, usesExpoPush } from "./features/agent-awareness/ExpoPushCoordinator";
+import { ExpoPushCoordinator } from "./features/agent-awareness/ExpoPushCoordinator";
+import { usesExpoPush } from "./features/agent-awareness/capabilities";
 import { installPermissionUpdateNotice } from "./features/connection/permissionUpdateNotice";
 import { installComposerAttachmentUploads } from "./state/composer-attachment-uploads";
 import { installThreadOutboxDelivery } from "./state/threadOutboxDelivery";
