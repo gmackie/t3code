@@ -1,0 +1,46 @@
+name: Knip Entries CI
+
+on:
+  pull_request:
+    branches:
+      - custom-local
+    paths:
+      - knip.jsonc
+      - apps/server/package.json
+      - scripts/lib/cli-external-packages.ts
+      - apps/web/src/components/chat/ChatHeader.tsx
+      - apps/web/src/components/plugins/PluginQuickNav.tsx
+      - .forgejo/workflows/knip-entries-ci.yml
+      - pnpm-lock.yaml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  knip-entries:
+    runs-on: forgegraph-ci
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.14.0
+      - name: Install pinned dependencies
+        run: |
+          corepack enable
+          corepack prepare pnpm@12.14.0 --activate
+          pnpm install --frozen-lockfile
+      # External CLI packages must not drag in dependencies the bundle would inline.
+      - name: Verify the CLI's external package closure
+        run: pnpm exec vp test run scripts/lib/cli-external-packages.test.ts
+      - name: Verify the chat header with plugin quick nav
+        working-directory: apps/web
+        run: |
+          pnpm exec vp test run src/components/chat --project unit
+          pnpm exec tsc --noEmit
+      # Lint from the root: oxlint resolves the repo's local plugin relative to it.
+      - name: Lint the chat header and plugin quick nav
+        run: |
+          pnpm exec vp lint apps/web/src/components/chat/ChatHeader.tsx apps/web/src/components/plugins/PluginQuickNav.tsx
+          pnpm exec vp fmt --check knip.jsonc apps/web/src/components/chat/ChatHeader.tsx apps/web/src/components/plugins/PluginQuickNav.tsx
