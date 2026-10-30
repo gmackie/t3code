@@ -25,6 +25,8 @@ export const DESKTOP_FILE_EXCLUSIONS = [
   "!apps/desktop/prod-resources/cursor-sdk/**/*",
   // The installed Claude CLI is supplied explicitly; exclude optional bundled executables, retaining SDK JavaScript.
   "!**/node_modules/@anthropic-ai/claude-agent-sdk-*/**/*",
+  "!apps/desktop/prod-resources/cua-driver",
+  "!apps/desktop/prod-resources/cua-driver/**/*",
   "!**/*.map",
   "!**/*.d.cts",
   "!apps/desktop/resources/browser-secret",
@@ -72,6 +74,12 @@ export const WINDOWS_SERVER_ASAR_UNPACK_GLOBS = [
   "**/*.so.*",
   "**/*.dylib",
 ] as const;
+// The Cua SDK dlopens its native libraries, which cannot load from inside the archive. Our
+// @ubjs/node patch loads them from the .unpacked sibling, so only the platform packages go there.
+export const CUA_SDK_ASAR_UNPACK_GLOBS = [
+  "node_modules/@trycua/cua-driver-*/**/*",
+  "node_modules/@ubjs/node-*/**/*",
+];
 // Keep sidecar exclusions aligned with the app; .bin symlinks are unused and unsupported by ASAR extraction.
 export const WINDOWS_SERVER_ASAR_IGNORE_GLOBS = [
   "**/node_modules/@cursor/sdk-*",
@@ -126,7 +134,13 @@ export const WSL_RUNTIME_EXTRA_RESOURCES = [
   WSL_RUNTIME_ARCHIVE_EXTRA_RESOURCE,
   WSL_RUNTIME_ARCHIVE_HASH_EXTRA_RESOURCE,
 ] as const;
+export const CUA_DRIVER_EXTRA_RESOURCE = {
+  from: "apps/desktop/prod-resources/cua-driver",
+  to: "cua-driver",
+} as const;
+
 export const DESKTOP_EXTRA_RESOURCES = [
+  CUA_DRIVER_EXTRA_RESOURCE,
   {
     from: "apps/desktop/prod-resources/cursor-sdk",
     to: "node_modules/@cursor",
@@ -216,7 +230,12 @@ export function createDesktopElectronBuilderConfig(
     // Disable smart unpack so native packages' JS/metadata stay archived and avoid slowing NSIS with loose files.
     ...(platform === "win"
       ? { asar: { smartUnpack: false }, asarUnpack: [WINDOWS_NATIVE_ASAR_UNPACK_GLOB] }
-      : { asarUnpack: ["**/node_modules/@transcribe-cpp/**/*.{dylib,so,so.*}"] }),
+      : {
+          asarUnpack: [
+            "**/node_modules/@transcribe-cpp/**/*.{dylib,so,so.*}",
+            ...CUA_SDK_ASAR_UNPACK_GLOBS,
+          ],
+        }),
     extraResources: [
       ...DESKTOP_EXTRA_RESOURCES,
       ...(platform === "linux" ? LINUX_CAPTURE_EXTRA_RESOURCES : []),

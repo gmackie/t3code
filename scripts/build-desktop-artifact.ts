@@ -19,6 +19,7 @@ import { fromYaml } from "@t3tools/shared/schemaYaml";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import { clerkFrontendApiHostnameFromPublishableKey } from "@t3tools/shared/relayAuth";
 import { resolveSpawnCommand } from "@t3tools/shared/shell";
+import { CUA_DRIVER_VERSION, cuaDriverRelease } from "@t3tools/shared/cuaDriverRelease";
 import rootPackageJson from "../package.json" with { type: "json" };
 import desktopPackageJson from "../apps/desktop/package.json" with { type: "json" };
 import gnomeCaptureBundle from "../apps/desktop/gnome-extension/bundle.json" with { type: "json" };
@@ -191,6 +192,21 @@ const PLATFORM_CONFIG: Record<typeof BuildPlatform.Type, PlatformConfig> = {
   },
 };
 
+/** The pinned Cua Driver archive a desktop build bundles; macOS uses one universal build. */
+export function resolveCuaDriverAsset(
+  platform: typeof BuildPlatform.Type,
+  arch: typeof BuildArch.Type,
+) {
+  const release = cuaDriverRelease(
+    platform === "mac" ? "darwin" : platform === "win" ? "win32" : "linux",
+    platform === "mac" ? "arm64" : arch,
+  );
+  if (release === null) {
+    throw new Error(`Cua Driver has no release asset for ${platform}/${arch}.`);
+  }
+  return release;
+}
+
 interface BuildCliInput {
   readonly platform: Option.Option<typeof BuildPlatform.Type>;
   readonly target: Option.Option<string>;
@@ -330,6 +346,19 @@ export class DesktopBuildManifestRestoreError extends Schema.TaggedError<Desktop
 ) {
   override get message(): string {
     return `Failed to restore release manifests: ${this.failures.map((failure) => failure.filePath).join(", ")}`;
+  }
+}
+
+export class CuaDriverChecksumMismatchError extends Schema.TaggedError<CuaDriverChecksumMismatchError>()(
+  "CuaDriverChecksumMismatchError",
+  {
+    archiveName: Schema.String,
+    expected: Schema.String,
+    actual: Schema.String,
+  },
+) {
+  override get message(): string {
+    return `Cua Driver checksum mismatch for ${this.archiveName}.`;
   }
 }
 
@@ -2751,6 +2780,127 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
   return buildConfig;
 });
 
+export class CuaDriverBundleMissingFileError extends Schema.TaggedError<CuaDriverBundleMissingFileError>()(
+  "CuaDriverBundleMissingFileError",
+  { filePath: Schema.String },
+) {
+  override get message(): string {
+    return `Cua Driver release bundle is missing required file: ${this.filePath}`;
+  }
+}
+
+export const stageCuaDriverBundle = Effect.fn("stageCuaDriverBundle")(function* (input: {
+  readonly platform: typeof BuildPlatform.Type;
+  readonly arch: typeof BuildArch.Type;
+  readonly extractDir: string;
+  readonly stageResourcesDir: string;
+}) {
+  const fs = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
+  const asset = resolveCuaDriverAsset(input.platform, input.arch);
+  for (const member of asset.requiredFiles) {
+    const filePath = path.join(input.extractDir, member);
+    if (!(yield* fs.exists(filePath)) || (yield* fs.stat(filePath)).type !== "File") {
+      return yield* new CuaDriverBundleMissingFileError({ filePath });
+    }
+  }
+
+  yield* fs.makeDirectory(input.stageResourcesDir, { recursive: true });
+  const destination = path.join(input.stageResourcesDir, "cua-driver");
+  if (input.platform === "mac") {
+    // osx-sign discovers this Mach-O alongside the other external resources.
+    // The SDK's own dylib comes from its npm package, so only the executable ships.
+    yield* fs.copyFile(path.join(input.extractDir, asset.executable), destination);
+    yield* fs.chmod(destination, 0o755);
+  } else {
+    yield* fs.copy(input.extractDir, destination);
+    if (input.platform === "linux") {
+      yield* fs.chmod(path.join(destination, "cua-driver"), 0o755);
+      yield* fs.chmod(path.join(destination, "cua-cursor-theme"), 0o755);
+    }
+  }
+});
+
+export const stageCuaDriverExecutable = Effect.fn("stageCuaDriverExecutable")(function* (input: {
+  readonly platform: typeof BuildPlatform.Type;
+  readonly arch: typeof BuildArch.Type;
+  readonly repoRoot: string;
+  readonly stageRoot: string;
+  readonly stageResourcesDir: string;
+  readonly verbose: boolean;
+}) {
+  const fs = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
+  const asset = resolveCuaDriverAsset(input.platform, input.arch);
+  const cacheDir = path.join(input.repoRoot, "node_modules/.cache/t3code/cua-driver");
+  const archivePath = path.join(cacheDir, asset.archiveName);
+  const extractDir = path.join(input.stageRoot, "cua-driver/extract");
+  yield* fs.makeDirectory(cacheDir, { recursive: true });
+  yield* fs.makeDirectory(extractDir, { recursive: true });
+
+  const checksum = (filePath: string) =>
+    fs
+      .readFile(filePath)
+      .pipe(
+        Effect.map((contents) => NodeCrypto.createHash("sha256").update(contents).digest("hex")),
+      );
+  if ((yield* fs.exists(archivePath)) && (yield* checksum(archivePath)) !== asset.sha256) {
+    yield* fs.remove(archivePath, { force: true });
+  }
+
+  if (!(yield* fs.exists(archivePath))) {
+    const temporaryArchivePath = `${archivePath}.${process.pid}.tmp`;
+    yield* Effect.gen(function* () {
+      yield* runCommand(
+        ChildProcess.make("curl", [
+          "--fail",
+          "--location",
+          "--silent",
+          "--show-error",
+          "--output",
+          temporaryArchivePath,
+          asset.url,
+        ]),
+        { label: `download ${asset.archiveName}`, verbose: input.verbose },
+      );
+      const actualChecksum = yield* checksum(temporaryArchivePath);
+      if (actualChecksum !== asset.sha256) {
+        return yield* new CuaDriverChecksumMismatchError({
+          archiveName: asset.archiveName,
+          expected: asset.sha256,
+          actual: actualChecksum,
+        });
+      }
+      yield* fs.rename(temporaryArchivePath, archivePath);
+    }).pipe(Effect.ensuring(fs.remove(temporaryArchivePath, { force: true }).pipe(Effect.ignore)));
+  }
+
+  // Windows archives are zips, and Windows targets also build on Linux runners.
+  const hostPlatform = yield* HostProcess.Platform;
+  const extractCommand = !asset.archiveName.endsWith(".zip")
+    ? ChildProcess.make("tar", ["-xzf", archivePath, "-C", extractDir])
+    : hostPlatform === "win32"
+      ? ChildProcess.make("powershell.exe", [
+          "-NoProfile",
+          "-NonInteractive",
+          "-Command",
+          `Expand-Archive -LiteralPath '${archivePath.replaceAll("'", "''")}' -DestinationPath '${extractDir.replaceAll("'", "''")}' -Force`,
+        ])
+      : ChildProcess.make("unzip", ["-q", "-o", archivePath, "-d", extractDir]);
+  yield* runCommand(extractCommand, {
+    label: `extract ${asset.archiveName}`,
+    verbose: input.verbose,
+  });
+
+  yield* stageCuaDriverBundle({
+    platform: input.platform,
+    arch: input.arch,
+    extractDir,
+    stageResourcesDir: input.stageResourcesDir,
+  });
+  yield* Effect.log(`[desktop-artifact] Staged Cua Driver ${CUA_DRIVER_VERSION}.`);
+});
+
 const assertPlatformBuildResources = Effect.fn("assertPlatformBuildResources")(function* (
   platform: typeof BuildPlatform.Type,
   stageResourcesDir: string,
@@ -3602,6 +3752,15 @@ const buildDesktopArtifactUnlocked = Effect.fn("buildDesktopArtifactUnlocked")(f
     stageResourcesDir,
     platform: options.platform,
     arch: options.arch,
+    verbose: options.verbose,
+  });
+
+  yield* stageCuaDriverExecutable({
+    platform: options.platform,
+    arch: options.arch,
+    repoRoot,
+    stageRoot,
+    stageResourcesDir,
     verbose: options.verbose,
   });
 

@@ -80,6 +80,7 @@ export * from "./resourceTelemetry.ts";
 export * from "./rpc.ts";
 export * from "./externalEntities.ts";
 export * from "./workItems.ts";
+export * from "./cua.ts";
 export * from "./worktreeSetup.ts";
 
 export * from "./usageLimitSourceId.ts";
