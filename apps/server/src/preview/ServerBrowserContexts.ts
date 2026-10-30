@@ -19,6 +19,13 @@ interface Options {
   readonly executable: () => Promise<string>;
   /** Replaces headless Chrome's `HeadlessChrome` user agent, which sign-in pages refuse. */
   readonly userAgent?: string;
+  /**
+   * A path that starts `executable`, such as one that moves Chrome out of the server's cgroup.
+   * Released after the whole launch call, since Playwright retries the same path after a glibc race.
+   */
+  readonly launcher?: (
+    executable: string,
+  ) => Promise<{ readonly path: string; readonly release: () => Promise<void> } | undefined>;
   readonly diagnose?: (executable: string, cause: unknown) => Promise<unknown>;
   readonly env?: NodeJS.ProcessEnv;
   readonly onContextClose?: (context: BrowserContext) => void;
@@ -36,10 +43,10 @@ export class ServerBrowserContexts {
   }
 
   private async launchOptions() {
-    const executablePath = await this.options.executable();
+    const executable = await this.options.executable();
     const env = this.options.env ?? process.env;
     return {
-      executablePath,
+      executable,
       env,
       args: [
         "--disable-gpu",
@@ -54,19 +61,26 @@ export class ServerBrowserContexts {
     };
   }
 
-  private async launch<A>(options: { readonly executablePath: string }, start: () => Promise<A>) {
+  private async launch<A>(executable: string, start: (executablePath: string) => Promise<A>) {
+    let release: (() => Promise<void>) | undefined;
     try {
-      return await start();
+      const launcher = await this.options.launcher?.(executable);
+      release = launcher?.release;
+      return await start(launcher?.path ?? executable);
     } catch (cause) {
-      throw (await this.options.diagnose?.(options.executablePath, cause)) ?? cause;
+      throw (await this.options.diagnose?.(executable, cause)) ?? cause;
+    } finally {
+      await release?.().catch(constVoid);
     }
   }
 
   private sharedBrowser() {
     if (!this.browser) {
-      const launched = this.launchOptions().then(async (options) => {
+      const launched = this.launchOptions().then(async ({ executable, ...options }) => {
         const { chromium } = loadPlaywright();
-        const browser = await this.launch(options, () => chromium.launch(options));
+        const browser = await this.launch(executable, (executablePath) =>
+          chromium.launch({ ...options, executablePath }),
+        );
         browser.on("disconnected", () => {
           if (this.browser === launched) this.browser = undefined;
         });
@@ -141,11 +155,15 @@ export class ServerBrowserContexts {
         ],
       });
     }
-    const options = await this.launchOptions();
-    const { chromium } = loadPlaywright();
     await NodeFSP.mkdir(directory, { recursive: true });
-    return this.launch(options, () =>
-      chromium.launchPersistentContext(directory, { ...options, ...contextOptions }),
+    const { executable, ...options } = await this.launchOptions();
+    const { chromium } = loadPlaywright();
+    return this.launch(executable, (executablePath) =>
+      chromium.launchPersistentContext(directory, {
+        ...options,
+        ...contextOptions,
+        executablePath,
+      }),
     );
   }
 

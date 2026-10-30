@@ -76,11 +76,12 @@ import Migration0069 from "./Migrations/069_ThreadMessageSearch.ts";
 import PeerLinks from "./Migrations/070_PeerLinks.ts";
 import PeerLinkFence from "./Migrations/071_PeerLinkFence.ts";
 import WaitingLinkRequestIndex from "./Migrations/072_WaitingLinkRequestIndex.ts";
-// GMACKO lane migration, released as 59, 62, 65, 67, 71 and 72 before upstream claimed those ids.
-import BoundedShellLookups from "./Migrations/073_BoundedShellLookups.ts";
-// T3CODE-6 Bob admission; released as 59 on main and 63, 66, 68, 72 and 73 on custom-local
+import Migration0073 from "./Migrations/073_ActiveTurnItemIndexes.ts";
+// GMACKO lane migration, released as 59, 62, 65, 67, 71, 72 and 73 before upstream claimed those ids.
+import BoundedShellLookups from "./Migrations/074_BoundedShellLookups.ts";
+// T3CODE-6 Bob admission; released as 59 on main and 63, 66, 68, 72, 73 and 74 on custom-local
 // before upstream claimed those ids.
-import BobExecutionAdmission from "./Migrations/074_BobExecutionAdmission.ts";
+import BobExecutionAdmission from "./Migrations/075_BobExecutionAdmission.ts";
 
 /**
  * Upstream's ThreadFailureLookupIndex (62) and the lane's BoundedShellLookups both create
@@ -170,10 +171,11 @@ const migrationEntries = [
   [70, "PeerLinks", PeerLinks],
   [71, "PeerLinkFence", PeerLinkFence],
   [72, "WaitingLinkRequestIndex", WaitingLinkRequestIndex],
-  // Released as 59, 62, 65, 67, 71 and 72 on the GMACKO lane; re-keyed by name.
-  [73, "BoundedShellLookups", BoundedShellLookupsShared],
-  // Released as 59 on main and 63, 66, 68, 72 and 73 on custom-local; re-keyed by name.
-  [74, "BobExecutionAdmission", BobExecutionAdmission],
+  [73, "ActiveTurnItemIndexes", Migration0073],
+  // Released as 59, 62, 65, 67, 71, 72 and 73 on the GMACKO lane; re-keyed by name.
+  [74, "BoundedShellLookups", BoundedShellLookupsShared],
+  // Released as 59 on main and 63, 66, 68, 72, 73 and 74 on custom-local; re-keyed by name.
+  [75, "BobExecutionAdmission", BobExecutionAdmission],
 ] as const;
 
 export const migrationManifest = migrationEntries.map(([id, name]) => [id, name] as const);
