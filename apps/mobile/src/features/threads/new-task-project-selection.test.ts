@@ -198,11 +198,16 @@ describe("newTaskDestination", () => {
     });
   });
 
-  it("treats an unset preference as on", () => {
+  it("treats an unset preference as off", () => {
     const projects = [makeProject("first"), makeProject("current")];
-    expect(destination({ useLastProject: undefined, projects, current: projects[1] })).toEqual({
-      draft: { requestId: "request", environmentId: "environment", projectId: "current" },
-    });
+    expect(
+      destination({
+        useLastProject: undefined,
+        projects,
+        current: projects[1],
+        last: { environmentId: "environment", projectId: "first" },
+      }),
+    ).toEqual(picker);
   });
 
   it("starts in the remembered project of its own environment when there is no current one", () => {

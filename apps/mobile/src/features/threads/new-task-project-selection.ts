@@ -130,10 +130,11 @@ export function newTaskDestination(options: {
     options.projects.find(
       (project) => project.environmentId === ref.environmentId && project.id === ref.projectId,
     );
+  // GMACKO: the picker is the default; the preference opts in to the current or last project.
   const project =
-    options.useLastProject === false
-      ? undefined
-      : (find(options.currentProject) ?? find(options.lastProject));
+    options.useLastProject === true
+      ? (find(options.currentProject) ?? find(options.lastProject))
+      : undefined;
   return project
     ? {
         draft: {
