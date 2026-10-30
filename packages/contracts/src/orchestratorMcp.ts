@@ -37,6 +37,7 @@ import { ThreadTitleRegeneration } from "./threadTitle.ts";
 import {
   OrchestrationV2Actor,
   OrchestrationV2CreationSource,
+  OrchestrationV2PendingRuntimeRequestSummary,
   OrchestrationV2RunStatus,
   OrchestrationV2TurnItemStatus,
 } from "./orchestrationV2.ts";
@@ -445,7 +446,20 @@ export const OrchestratorMcpThreadDetail = Schema.Struct({
   relationshipToParent: Schema.NullOr(Schema.Literals(["fork", "subagent"])),
   runCount: NonNegativeInt,
   itemCount: NonNegativeInt,
-  pendingRequestCount: NonNegativeInt,
+  pendingRequestCount: NonNegativeInt.annotate({
+    description: "Pending runtime requests only; excludes secret and environment connection cards.",
+  }),
+  pendingRuntimeRequest: Schema.optional(
+    Schema.NullOr(
+      Schema.Struct({
+        ...OrchestrationV2PendingRuntimeRequestSummary.fields,
+        createdAt: IsoDateTime,
+      }),
+    ),
+  ).annotate({
+    description:
+      "The thread badge's pending interaction, including secret and environment connection cards. Its id identifies the request or activity card; a connection card can remain pending after its run finishes.",
+  }),
   archived: Schema.Boolean,
   settled: Schema.Boolean,
   settledAt: Schema.NullOr(IsoDateTime),

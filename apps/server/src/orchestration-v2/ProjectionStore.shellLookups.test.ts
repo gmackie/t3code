@@ -199,6 +199,61 @@ it.effect("keeps only waiting secrets from active runs and removes resolved requ
   }).pipe(Effect.provide(layer)),
 );
 
+it.effect("only unresolved connection cards hold Input across later runs and shell reloads", () =>
+  Effect.gen(function* () {
+    yield* seedThread;
+    const store = yield* ProjectionStore.ProjectionStoreV2;
+    const finished = yield* seedRun("historical", "completed", 1);
+    const link = (name: string): Extract<OrchestrationV2TurnItem, { type: "link_request" }> => {
+      const { label: _label, secretStatus: _secretStatus, ...base } = secret(name, finished);
+      return { ...base, type: "link_request", linkStatus: "pending" };
+    };
+    for (let index = 0; index < 40; index++) {
+      yield* saveItem({
+        ...link(`historical-${index}`),
+        status: index % 2 === 0 ? "completed" : "cancelled",
+        linkStatus: index % 2 === 0 ? "linked" : "cancelled",
+        completedAt: now,
+      });
+    }
+    const assertPending = Effect.fn(function* (id: string | null) {
+      const snapshot = (yield* store.getShellSnapshot()).threads[0]!;
+      const detail = (yield* store.getThreadShell(threadId))!;
+      const projection = yield* store.getThreadProjection(threadId);
+      const rebuilt = ProjectionStore.threadShellFromProjection(projection);
+      for (const shell of [snapshot, detail, rebuilt]) {
+        assert.equal(shell.pendingRuntimeRequest?.id ?? null, id);
+        if (id !== null) assert.equal(shell.pendingRuntimeRequest?.kind, "user_input");
+      }
+    });
+    yield* assertPending(null);
+    yield* saveItem(link("unanswered-connection"));
+    yield* assertPending("unanswered-connection");
+    const laterRunId = yield* seedRun("later-run", "running", 2);
+    yield* assertPending("unanswered-connection");
+    const laterRun = (yield* store.getThreadProjection(threadId)).runs.find(
+      (run) => run.id === laterRunId,
+    )!;
+    yield* store.apply({
+      id: EventId.make("later-run-completed"),
+      type: "run.updated",
+      threadId,
+      occurredAt: later,
+      payload: { ...laterRun, status: "completed", completedAt: later },
+    });
+    yield* assertPending("unanswered-connection");
+    yield* saveItem({
+      ...link("unanswered-connection"),
+      status: "cancelled",
+      linkStatus: "cancelled",
+      completedAt: later,
+      updatedAt: later,
+    });
+    yield* assertPending(null);
+    assert.equal((yield* store.getThreadShell(threadId))?.status, "completed");
+  }).pipe(Effect.provide(layer)),
+);
+
 it.effect("preserves the newest root failure while ignoring other nodes and resolved errors", () =>
   Effect.gen(function* () {
     yield* seedThread;
