@@ -283,6 +283,7 @@ export const makeAcpRegistryAdapterV2 = Effect.fn("makeAcpRegistryAdapterV2")(fu
     ...(options.assertComplete === undefined ? {} : { assertComplete: options.assertComplete }),
   };
   return yield* makeAcpAdapterV2({
+    environment: options.environment,
     instanceId: options.instanceId,
     flavor,
     selfInvocation: options.selfInvocation,

@@ -8,6 +8,7 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
 import type { OpencodeClient, ToolPart } from "@opencode-ai/sdk/v2";
 import {
   CheckpointId,
+  EnvironmentId,
   NodeId,
   ProjectId,
   ProviderInstanceId,
@@ -28,6 +29,7 @@ import * as DateTime from "effect/DateTime";
 import * as Deferred from "effect/Deferred";
 import * as Fiber from "effect/Fiber";
 import * as Exit from "effect/Exit";
+import * as Scope from "effect/Scope";
 import * as Queue from "effect/Queue";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
@@ -347,6 +349,60 @@ describe("OpenCodeAdapterV2", () => {
     ),
   );
 
+  it.effect("keeps skills switched off in Tools when a policy change rewrites the rules", () =>
+    Effect.gen(function* () {
+      const sessions = yield* McpProviderSessions.McpProviderSessions;
+      yield* sessions.set({
+        environmentId: EnvironmentId.make("test"),
+        threadId: ThreadId.make("thread-opencode-skill-policy"),
+        providerInstanceId: ProviderInstanceId.make("opencode"),
+        providerSessionId: "skill-policy",
+        endpoint: "https://t3.example/mcp",
+        authorizationHeader: "Bearer test",
+        browserToolsAvailable: false,
+        tools: { servers: [], disabledSkills: ["review"], fingerprint: "skills" },
+      });
+      const updates: Array<{ sessionID: string; permission: unknown }> = [];
+      const fullAccess = runtimePolicy("full-access", { cwd: "/workspace" });
+      const supervised = runtimePolicy("approval-required", { cwd: "/workspace" });
+      const harness = yield* makeOpenCodeRuntimeHarness("skill-policy", "root", {
+        event: { subscribe: async () => ({ stream: asyncEventStream().stream }) },
+        session: {
+          create: async (input: { permission: unknown }) => ({
+            data: { id: "root", permission: input.permission, time: { created: 1, updated: 1 } },
+          }),
+          get: async () => ({
+            data: {
+              id: "root",
+              permission: openCodePermissionRules(fullAccess),
+              time: { created: 1, updated: 1 },
+            },
+          }),
+          update: async (input: { sessionID: string; permission: unknown }) => {
+            updates.push(input);
+            return { data: { id: input.sessionID, time: { created: 1, updated: 2 } } };
+          },
+          promptAsync: async () => ({ data: true }),
+          abort: async () => ({ data: true }),
+          children: async () => ({ data: [] }),
+        },
+      });
+
+      yield* harness.runtime.resumeThread({
+        providerThread: harness.providerThread,
+        runtimePolicy: supervised,
+      });
+      yield* harness.startTurn("hello", harness.providerThread, fullAccess);
+      assert.deepStrictEqual(updates, [
+        { sessionID: "root", permission: openCodePermissionRules(supervised, ["review"]) },
+        { sessionID: "root", permission: openCodePermissionRules(fullAccess, ["review"]) },
+      ]);
+    }).pipe(
+      Effect.provide(Layer.merge(IdAllocator.layer, McpProviderSessions.layer)),
+      Effect.scoped,
+    ),
+  );
+
   it.effect("applies a changed runtime policy to existing subagent sessions", () =>
     Effect.gen(function* () {
       const nativeEvents = asyncEventStream();
@@ -659,6 +715,68 @@ describe("OpenCodeAdapterV2", () => {
         answers: { "question-0-drinks": ["Tea", "Water"] },
       });
       assert.deepInclude(delivered, { answers: [["Tea", "Water"]] });
+    }).pipe(
+      Effect.provide(Layer.merge(IdAllocator.layer, McpProviderSessions.layer)),
+      Effect.scoped,
+    ),
+  );
+
+  it.effect("leaves external MCP configuration untouched through add, disable and reopen", () =>
+    Effect.gen(function* () {
+      const sessions = yield* McpProviderSessions.McpProviderSessions;
+      const threadId = ThreadId.make("thread-opencode-external-tools");
+      const nativeConfig = { type: "remote", url: "https://native.example/mcp" };
+      const registry = new Map([["native", nativeConfig]]);
+      const added: string[] = [];
+      const injected = {
+        name: "docs",
+        transport: {
+          type: "http" as const,
+          url: "https://tools.example/mcp",
+          headers: [{ name: "Authorization", value: "must-not-retain", sensitive: true }],
+        },
+      };
+      const client = {
+        event: {
+          subscribe: async (_input: unknown, options: { signal: AbortSignal }) => {
+            const events = asyncEventStream();
+            options.signal.addEventListener("abort", () => events.close());
+            return { stream: events.stream };
+          },
+        },
+        session: {
+          create: async () => ({ data: { id: "root", time: { created: 1, updated: 1 } } }),
+          abort: async () => ({ data: true }),
+          children: async () => ({ data: [] }),
+        },
+        mcp: {
+          add: async ({ name, config }: { name: string; config: typeof nativeConfig }) => {
+            added.push(name);
+            registry.set(name, config);
+            return { data: Object.fromEntries(registry) };
+          },
+        },
+      };
+      for (const servers of [[injected], [], []]) {
+        yield* sessions.set({
+          environmentId: EnvironmentId.make("test"),
+          threadId,
+          providerInstanceId: ProviderInstanceId.make("opencode-external-tools"),
+          providerSessionId: "external-tools",
+          endpoint: "https://t3.example/mcp",
+          authorizationHeader: "Bearer test",
+          browserToolsAvailable: false,
+          tools: { servers, disabledSkills: [], fingerprint: String(servers.length) },
+        });
+        const scope = yield* Scope.make();
+        yield* makeOpenCodeRuntimeHarness("external-tools", "root", client).pipe(
+          Effect.provideService(Scope.Scope, scope),
+        );
+        yield* Scope.close(scope, Exit.void);
+        assert.isFalse(registry.has("docs"));
+        assert.deepEqual(Array.from(registry), [["native", nativeConfig]]);
+      }
+      assert.deepEqual(added, []);
     }).pipe(
       Effect.provide(Layer.merge(IdAllocator.layer, McpProviderSessions.layer)),
       Effect.scoped,
