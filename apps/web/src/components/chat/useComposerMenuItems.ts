@@ -70,6 +70,7 @@ export function useComposerMenuItems({
   selectedProviderSkills,
   selectedProviderSlashCommands,
   showSkillsInSlashMenu,
+  disabledSkills,
   questionAttachmentTarget,
 }: {
   readonly composerTrigger: ComposerTrigger | null;
@@ -88,6 +89,8 @@ export function useComposerMenuItems({
   readonly selectedProviderSkills: ServerProvider["skills"];
   readonly selectedProviderSlashCommands: ServerProvider["slashCommands"];
   readonly showSkillsInSlashMenu: boolean;
+  /** Skills switched off in Settings → Tools; their provider slash commands are hidden too. */
+  readonly disabledSkills: ReadonlyArray<string>;
   readonly questionAttachmentTarget: DraftId | null;
 }) {
   // Thread mentions rank by recency as of when the composer mounted.
@@ -242,10 +245,12 @@ export function useComposerMenuItems({
       const slashMenuSkills = getProviderSkillsForSlashMenu(
         selectedProviderSkills,
         showSkillsInSlashMenu,
+        disabledSkills,
       );
       const providerSlashCommandItems = getProviderSlashCommandsForSlashMenu(
         selectedProviderSlashCommands,
         slashMenuSkills,
+        disabledSkills,
       ).map((command) => ({
         id: `provider-slash-command:${selectedProvider}:${command.name}`,
         type: "provider-slash-command" as const,

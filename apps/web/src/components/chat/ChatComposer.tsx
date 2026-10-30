@@ -1,3 +1,4 @@
+import { resolveProjectSettings } from "@t3tools/shared/projectSettings";
 import { useComposerTypingGuard } from "./useComposerTypingGuard";
 import { ComposerReviewCard } from "./ComposerReviewCard";
 import type {
@@ -936,9 +937,13 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const isSendDisabled = sendDisabledReason !== null;
   const selectedProviderStatus = selectedProviderEntry?.snapshot ?? null;
   const compactCommandAvailable = providerSupportsManualCompaction(selectedProviderEntry);
-  const selectedProviderSkills = selectedProviderStatus
-    ? resolveProviderSkillsForCwd(selectedProviderStatus, gitCwd)
-    : NO_PROVIDER_SKILLS;
+  const disabledSkills = resolveProjectSettings(settings, activeProjectId).settings.disabledSkills;
+  const disabledSkillNames = new Set(disabledSkills.map((name) => name.toLowerCase()));
+  const selectedProviderSkills = (
+    selectedProviderStatus
+      ? resolveProviderSkillsForCwd(selectedProviderStatus, gitCwd)
+      : NO_PROVIDER_SKILLS
+  ).filter((skill) => !disabledSkillNames.has(skill.name.toLowerCase()));
   const selectedProviderSlashCommands = selectedProviderStatus
     ? resolveProviderSlashCommandsForCwd(selectedProviderStatus, gitCwd)
     : NO_PROVIDER_SLASH_COMMANDS;
@@ -1142,6 +1147,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     selectedProviderSkills,
     selectedProviderSlashCommands,
     showSkillsInSlashMenu: settings.showSkillsInSlashMenu,
+    disabledSkills,
     questionAttachmentTarget,
   });
 
