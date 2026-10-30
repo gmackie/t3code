@@ -34,6 +34,13 @@
         "sign-macos.ts",
         "smoke-desktop-app.ts",
         "verify-windows-desktop-artifact.ts",
+        // Forgejo workflows and the TestFlight script run these by path.
+        "gmacko-bundle-check.mjs",
+        "gmacko-ios-profiles.ts",
+        "sync-bob-contract.mjs",
+        // Run by hand per docs/operations/metamask.md.
+        "build-wallet-bridge.ts",
+        "install-wallet-bridge.ts",
       ],
       "ignoreDependencies": ["agent-device", "esbuild"],
       // The `t3` npm package's files: copied into the package, never imported.
@@ -46,6 +53,10 @@
       "entry": [
         "src/bin.ts!",
         "src/claude-history-worker.ts!",
+        // SystemsService starts it with `new Worker(new URL(...))`.
+        "src/systems-worker.ts!",
+        // engine-ci.yml runs the contention bench directly.
+        "scripts/engine-contention-bench.ts",
         "scripts/cli.ts",
         "scripts/fetch-expo-schema.ts",
         "scripts/probe-claude-fork-local-rollback-replay.ts",
@@ -87,7 +98,14 @@
     "apps/web": {
       // Worktree setup (scripts/setup-worktree.ts) runs this directly, and evidence
       // fixtures run under node.
-      "entry": ["scripts/warm-dep-cache.ts", "test/fixtures/**/*.mjs"],
+      "entry": [
+        "scripts/warm-dep-cache.ts",
+        "test/fixtures/**/*.mjs",
+        // kicad.html, a second Vite HTML input that mobile opens by URL, loads this module.
+        "src/kicad/standalone.tsx!",
+      ],
+      // Vendored viewer bundles that kicad-viewer/runtime.html loads by path.
+      "ignore": ["public/kicad-viewer/**"],
       // UI component modules are copied and adapted as cohesive sets. Keep their
       // named subcomponents even before they have callers; the file audit still
       // reports an entire component module when nothing imports it.
@@ -106,6 +124,7 @@
         "scripts/generate-device-stream.mts",
         "src/features/devices/device-stream.browser.ts!",
         "src/features/browser/preview-stream.browser.ts!",
+        "src/features/threads/mermaid.browser.ts!",
       ],
       // Fonts are configured as asset paths; Expo autolinks the native packages.
       "ignoreDependencies": [
@@ -134,7 +153,14 @@
     },
     "infra/relay": {
       // Alchemy loads src/worker.ts as the Worker entry and reads its default export.
-      "entry": ["alchemy.run.ts!", "src/persistence/schema.ts!", "src/worker.ts!"],
+      // The edge canary is deployed and exercised by hand per docs/operations/t3-relay-canary.md.
+      "entry": [
+        "alchemy.run.ts!",
+        "alchemy.edge-canary.run.ts!",
+        "scripts/test-edge-canary.mjs",
+        "src/persistence/schema.ts!",
+        "src/worker.ts!",
+      ],
     },
     "packages/*": {
       // These workspace packages are private to this monorepo.
