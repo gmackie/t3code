@@ -4,6 +4,7 @@ import * as NodeModule from "node:module";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 import * as NodeURL from "node:url";
+import { resolveDesktopAppDisplayName } from "../../../scripts/lib/desktopAppIdentity.ts";
 import { ensureElectronRuntime } from "./ensure-electron-runtime.mjs";
 
 const isDevelopment = Boolean(process.env.VITE_DEV_SERVER_URL);
@@ -13,7 +14,9 @@ const repoRoot = NodePath.resolve(desktopDir, "..", "..");
 const devBundleIdSuffix = NodePath.basename(repoRoot)
   .toLowerCase()
   .replaceAll(/[^a-z0-9]+/g, "");
-const APP_DISPLAY_NAME = isDevelopment ? "T3 Code (Dev)" : "T3 Code (Beta)";
+const APP_DISPLAY_NAME = isDevelopment
+  ? resolveDesktopAppDisplayName({ cwd: repoRoot, baseDisplayName: "T3 Code (Dev)" })
+  : "T3 Code (Beta)";
 const APP_BUNDLE_ID = isDevelopment
   ? `com.t3tools.t3code.dev.${devBundleIdSuffix || "local"}`
   : "com.t3tools.t3code";
@@ -174,11 +177,11 @@ export function writeDevelopmentLauncherScript(targetBinaryPath, electronBinaryP
   return true;
 }
 
+const LSREGISTER_PATH =
+  "/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister";
+
 function registerMacLauncherBundle(appBundlePath) {
-  runChecked(
-    "/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister",
-    ["-f", appBundlePath],
-  );
+  runChecked(LSREGISTER_PATH, ["-f", appBundlePath]);
 
   if (!isDevelopment) {
     return;
@@ -361,6 +364,7 @@ function buildMacLauncher(electronBinaryPath) {
     sourceAppMtimeMs: NodeFS.statSync(sourceAppBundlePath).mtimeMs,
     iconMtimeMs: NodeFS.statSync(iconPath).mtimeMs,
     appBundleId: APP_BUNDLE_ID,
+    appDisplayName: APP_DISPLAY_NAME,
     appProtocolSchemes: APP_PROTOCOL_SCHEMES,
   };
 
@@ -382,7 +386,15 @@ function buildMacLauncher(electronBinaryPath) {
     return launcherBinaryPath;
   }
 
-  NodeFS.rmSync(targetAppBundlePath, { recursive: true, force: true });
+  // A renamed bundle would leave the old one registered for the same bundle ID and protocol.
+  for (const entry of NodeFS.readdirSync(runtimeDir)) {
+    if (!entry.endsWith(".app")) continue;
+    const staleBundlePath = NodePath.join(runtimeDir, entry);
+    if (staleBundlePath !== targetAppBundlePath) {
+      NodeChildProcess.spawnSync(LSREGISTER_PATH, ["-u", staleBundlePath], { stdio: "ignore" });
+    }
+    NodeFS.rmSync(staleBundlePath, { recursive: true, force: true });
+  }
   // Without verbatimSymlinks, cpSync makes framework symlinks point outside the bundle and crashes helpers.
   NodeFS.cpSync(sourceAppBundlePath, targetAppBundlePath, {
     recursive: true,
