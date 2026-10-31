@@ -34,6 +34,7 @@ import {
   useEnvironmentsWithScope,
 } from "../../state/session";
 import { useAtomCommand } from "../../state/use-atom-command";
+import { usePluginPanelMenu } from "../plugins/usePluginPanelMenu";
 import { SettingsScreen } from "./components/SettingsScreen";
 import { SettingsSection } from "./components/SettingsSection";
 import { ListActionRow as SettingsActionRow } from "../../components/ui/ListActionRow";
@@ -143,6 +144,11 @@ function ProjectOverviewContent(props: {
 }) {
   const { isRemoving, setIsRemoving, startRemoval, finishRemoval } = props;
   const representative = props.members[0]!;
+  // Project panels need no thread; this is how to reach one without opening a thread first.
+  const pluginPanels = usePluginPanelMenu({
+    environmentId: representative.environmentId,
+    projectId: representative.id,
+  });
   const displayName = deriveProjectGroupLabel({ representative, members: props.members });
   const [draftName, setDraftName] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -349,6 +355,19 @@ function ProjectOverviewContent(props: {
         </View>
       </SettingsSection>
 
+      {pluginPanels.length === 0 ? null : (
+        <SettingsSection title="Plugin panels">
+          {pluginPanels.map((panel) => (
+            <SettingsActionRow
+              key={panel.key}
+              icon="square.grid.2x2"
+              label={panel.title}
+              description={panel.pluginName}
+              onPress={panel.onPress}
+            />
+          ))}
+        </SettingsSection>
+      )}
       {canOrganize ? (
         <SettingsSection title="Organize">
           <SettingsSwitchRow

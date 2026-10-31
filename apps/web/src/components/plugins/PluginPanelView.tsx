@@ -9,9 +9,11 @@ import type {
 import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
 import { useEffect, useState } from "react";
 
-import { mcpAppEnvironment } from "~/state/mcpApps";
+import { mcpAppEnvironment, mcpPluginEnvironment } from "~/state/mcpApps";
+import { useEnvironmentQuery } from "~/state/query";
 import { useAtomCommand } from "~/state/use-atom-command";
 import { McpAppFrame, type McpAppFrameSource } from "../chat/McpAppFrame";
+import { McpOAuthSignIn } from "../settings/McpOAuthSignIn";
 
 type Opened =
   | { readonly status: "opening" }
@@ -38,11 +40,22 @@ export function PluginPanelView(props: {
 }) {
   const openPanel = useAtomCommand(mcpAppEnvironment.openPanel, { reportFailure: false });
   const [opened, setOpened] = useState<Opened>({ status: "opening" });
+  // A finished sign-in bumps this to open the panel again.
+  const [attempt, setAttempt] = useState(0);
+  const plugins = useEnvironmentQuery(
+    mcpPluginEnvironment.list({ environmentId: props.environmentId, input: {} }),
+  ).data;
+  const transport = plugins?.find((plugin) => plugin.manifest.id === props.pluginId)?.manifest
+    .mcpServer.transport;
+  const signsInWithOAuth = transport?.type === "http" && transport.oauth !== undefined;
   const { environmentId, pluginId, panelId, projectId } = props;
 
-  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- opening runs the panel's opening tool on the server, once per panel and project
+  // Opening runs the panel's opening tool on the server: once per panel and project, and again
+  // after a sign-in (`attempt`). The active thread reaches an open view as host context instead.
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- see above
   useEffect(() => {
     let current = true;
+    // oxlint-disable-next-line react/exhaustive-effect-dependencies -- see above; the thread id is read once per open
     void openPanel({
       environmentId,
       input: {
@@ -78,8 +91,7 @@ export function PluginPanelView(props: {
     return () => {
       current = false;
     };
-    // oxlint-disable-next-line react/exhaustive-effect-dependencies -- The active thread reaches an open view as host context.
-  }, [environmentId, pluginId, panelId, projectId]);
+  }, [environmentId, pluginId, panelId, projectId, attempt]);
 
   switch (opened.status) {
     case "opening":
@@ -87,7 +99,24 @@ export function PluginPanelView(props: {
     case "failed":
       return <PanelNotice>{opened.message}</PanelNotice>;
     case "needs-auth":
-      return <PanelNotice>Sign in to {opened.server} to use this panel.</PanelNotice>;
+      return (
+        <div className="flex size-full flex-col items-center justify-center gap-3 p-4">
+          <p className="text-center text-muted-foreground text-sm">
+            Sign in to {opened.server} to use this panel.
+          </p>
+          {signsInWithOAuth ? (
+            <McpOAuthSignIn
+              environmentId={environmentId}
+              projectId={projectId}
+              server={opened.server}
+              status={{ status: "signed-out" }}
+              // The server checks permission when the sign-in starts.
+              canManage
+              onChanged={() => setAttempt((value) => value + 1)}
+            />
+          ) : null}
+        </div>
+      );
     case "ready": {
       const { result } = opened;
       return (

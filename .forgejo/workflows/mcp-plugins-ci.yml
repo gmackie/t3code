@@ -26,6 +26,8 @@ on:
       - apps/mobile/src/features/plugins/**
       - apps/mobile/src/features/threads/McpAppWebView.tsx
       - apps/mobile/src/features/threads/mcpAppSource*
+      - apps/mobile/src/features/settings/SettingsProjectOverviewRouteScreen.tsx
+      - apps/server/src/server.ts
       - .forgejo/workflows/mcp-plugins-ci.yml
       - pnpm-lock.yaml
   workflow_dispatch:

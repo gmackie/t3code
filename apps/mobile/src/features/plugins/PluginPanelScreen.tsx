@@ -9,17 +9,19 @@ import {
 } from "@t3tools/contracts";
 import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
 import type { McpAppReference } from "@t3tools/shared/mcpApp";
-import { useEffect, useEffectEvent, useState } from "react";
+import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { AppActivityIndicator } from "../../components/ui/AppActivityIndicator";
 import { AppText as Text } from "../../components/ui/AppText";
+import { Button } from "../../components/ui/Button";
 import { NativeStackScreenOptions } from "../../native/StackHeader";
 import { mcpAppEnvironment, mcpPluginEnvironment } from "../../state/mcpApps";
 import { useEnvironmentQuery } from "../../state/query";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { McpAppView } from "../threads/McpAppWebView";
+import { useMcpOAuthSignIn } from "../tools/mcpOAuthSignIn";
 import type { McpAppViewSource } from "../threads/mcpAppSource";
 
 type PluginPanelScreenProps = StaticScreenProps<{
@@ -62,9 +64,11 @@ export function PluginPanelScreen({ route }: PluginPanelScreenProps) {
   const params = route.params;
   const environmentId = EnvironmentId.make(params.environmentId);
   const plugins = useEnvironmentQuery(mcpPluginEnvironment.list({ environmentId, input: {} }));
-  const panelTitle = plugins.data
-    ?.find((entry) => entry.manifest.id === params.pluginId)
-    ?.manifest.contributes.panels.find((panel) => panel.id === params.panelId)?.title;
+  const manifest = plugins.data?.find((entry) => entry.manifest.id === params.pluginId)?.manifest;
+  const panelTitle = manifest?.contributes.panels.find(
+    (panel) => panel.id === params.panelId,
+  )?.title;
+  const transport = manifest?.mcpServer.transport;
   return (
     <View className="flex-1 bg-screen">
       <NativeStackScreenOptions options={{ title: panelTitle ?? "Plugin" }} />
@@ -76,6 +80,7 @@ export function PluginPanelScreen({ route }: PluginPanelScreenProps) {
         panelId={McpPluginPanelId.make(params.panelId)}
         projectId={ProjectId.make(params.projectId)}
         {...(params.threadId === undefined ? {} : { threadId: ThreadId.make(params.threadId) })}
+        signsInWithOAuth={transport?.type === "http" && transport.oauth !== undefined}
       />
     </View>
   );
@@ -87,8 +92,14 @@ function PluginPanel(props: {
   readonly panelId: McpPluginPanelId;
   readonly projectId: ProjectId;
   readonly threadId?: ThreadId;
+  /** Only an OAuth server can be signed in to from here; others just report the state. */
+  readonly signsInWithOAuth: boolean;
 }) {
   const navigation = useNavigation();
+  const signIn = useMcpOAuthSignIn(props.environmentId);
+  const [signingIn, setSigningIn] = useState(false);
+  const [signInMessage, setSignInMessage] = useState<string | null>(null);
+  const mounted = useRef(true);
   const insets = useSafeAreaInsets();
   const [size, setSize] = useState({ width: 0, height: 0 });
   const [state, setState] = useState<PanelState>({ _tag: "loading" });
@@ -118,12 +129,28 @@ function PluginPanel(props: {
   });
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- opening a panel is a server request that runs once per mounted panel
   useEffect(() => {
-    let active = true;
-    open(() => active);
+    mounted.current = true;
+    open(() => mounted.current);
     return () => {
-      active = false;
+      mounted.current = false;
     };
   }, []);
+
+  const signInAndReopen = (server: string) => {
+    if (signIn === null) return;
+    setSigningIn(true);
+    setSignInMessage(null);
+    void signIn(server, props.projectId).then((outcome) => {
+      if (!mounted.current) return;
+      setSigningIn(false);
+      if (outcome.status === "connected") {
+        setState({ _tag: "loading" });
+        open(() => mounted.current);
+      } else if (outcome.status === "failed") {
+        setSignInMessage(outcome.message);
+      }
+    });
+  };
 
   const close = () => {
     if (navigation.isFocused() && navigation.canGoBack()) navigation.goBack();
@@ -154,6 +181,19 @@ function PluginPanel(props: {
           <Text className="mt-1 text-center text-sm text-foreground-muted">
             This panel needs you to sign in to its server first.
           </Text>
+          {props.signsInWithOAuth && signIn !== null ? (
+            <View className="mt-4">
+              <Button
+                label="Sign in"
+                loading={signingIn}
+                disabled={signingIn}
+                onPress={() => signInAndReopen(state.server)}
+              />
+            </View>
+          ) : null}
+          {signInMessage === null ? null : (
+            <Text className="mt-3 text-center text-sm text-foreground-muted">{signInMessage}</Text>
+          )}
         </View>
       ) : size.width > 0 ? (
         <McpAppView
