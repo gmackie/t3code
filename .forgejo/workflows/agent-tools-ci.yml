@@ -1,0 +1,107 @@
+name: Agent Tools CI
+
+on:
+  pull_request:
+    branches:
+      - custom-local
+    paths:
+      - packages/contracts/src/agentTools.ts
+      - packages/contracts/src/settings.ts
+      - packages/shared/src/projectSettings.ts
+      - packages/shared/src/serverSettings.ts
+      - packages/client-runtime/src/providerSkills.ts
+      - packages/provider-core/src/server/mcpSession.ts
+      - packages/provider-acp/src/server/**
+      - packages/provider-acp-registry/src/server/**
+      - packages/provider-cursor/src/server/**
+      - packages/provider-grok/src/server/**
+      - packages/provider-opencode/src/server/**
+      - apps/server/src/mcp/resolveAgentTools.ts
+      - apps/server/src/serverSettings.ts
+      - apps/server/src/settingsSecrets.ts
+      - apps/server/src/auth/RpcAuthorization.ts
+      - apps/server/src/orchestration-v2/ProviderSessionManager.ts
+      - apps/server/src/orchestration-v2/Adapters/**
+      - apps/web/src/components/settings/ToolsSettings.tsx
+      - apps/web/src/components/settings/McpServerDialog.tsx
+      - apps/web/src/components/settings/toolsSettings.logic.ts
+      - apps/web/src/components/chat/useComposerMenuItems.ts
+      - apps/mobile/src/features/threads/use-composer-command-menu.ts
+      - .forgejo/workflows/agent-tools-ci.yml
+      - pnpm-lock.yaml
+      - pnpm-workspace.yaml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  # Settings storage, permissions and per-session injection into every adapter.
+  server-tools:
+    runs-on: forgegraph-ci
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.14.0
+      - name: Install pinned dependencies
+        run: |
+          corepack enable
+          corepack prepare pnpm@12.14.0 --activate
+          pnpm install --frozen-lockfile
+      - name: Verify tools settings and provider injection
+        run: |
+          pnpm exec vp test run packages/shared/src/projectSettings.test.ts packages/shared/src/serverSettings.test.ts packages/contracts/src/settings.test.ts apps/server/src/auth/RpcAuthorization.test.ts apps/server/src/serverSettings.test.ts apps/server/src/orchestration-v2/ProviderSessionManager.test.ts apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.test.ts apps/server/src/orchestration-v2/Adapters/CodexAdapterV2.test.ts apps/server/src/orchestration-v2/Adapters/OpenCode2AdapterV2.test.ts apps/server/src/orchestration-v2/Adapters/AcpAdapterV2.test.ts apps/server/src/orchestration-v2/Adapters/AntigravityAdapterV2.test.ts
+      - name: Typecheck contracts, shared and server
+        run: |
+          (cd packages/contracts && pnpm exec tsc --noEmit)
+          (cd packages/shared && pnpm exec tsc --noEmit)
+          (cd apps/server && pnpm exec tsc --noEmit)
+
+  provider-packages:
+    runs-on: forgegraph-ci
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.14.0
+      - name: Install pinned dependencies
+        run: |
+          corepack enable
+          corepack prepare pnpm@12.14.0 --activate
+          pnpm install --frozen-lockfile
+      # Use the root config like each package's own test script; without it slow
+      # tests hit vitest's 5s default. OpenCodeServerLedger's process-group tests
+      # fail only in the runner's job container (its PID 1 never reaps exited
+      # children), and this change doesn't touch the ledger, so they're left out.
+      - name: Verify provider packages that receive user MCP servers
+        run: |
+          for pkg in provider-core provider-acp provider-acp-registry provider-cursor provider-grok provider-opencode; do
+            (cd packages/$pkg && pnpm exec vp test run --config ../../vite.config.ts --dir . --exclude 'src/server/OpenCodeServerLedger.test.ts' && pnpm exec tsc --noEmit)
+          done
+
+  clients:
+    runs-on: forgegraph-ci
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.14.0
+      - name: Install pinned dependencies
+        run: |
+          corepack enable
+          corepack prepare pnpm@12.14.0 --activate
+          pnpm install --frozen-lockfile
+      - name: Verify Settings → Tools and composer skill filtering
+        run: |
+          (cd apps/web && pnpm exec vp test run src/components/settings/toolsSettings.logic.test.ts src/components/settings/settingsSearch.test.ts && pnpm exec tsc --noEmit)
+          (cd apps/mobile && pnpm exec vp test run src/features/threads/use-composer-command-menu.test.ts && pnpm exec tsc --noEmit)
+          (cd packages/client-runtime && pnpm exec vp test run src/providerSkills.test.ts && pnpm exec tsc --noEmit)
+      # Lint from the root: oxlint resolves the repo's local plugin relative to it.
+      - name: Lint the Tools editor
+        run: |
+          pnpm exec vp lint apps/web/src/components/settings/ToolsSettings.tsx apps/web/src/components/settings/McpServerDialog.tsx apps/web/src/components/settings/toolsSettings.logic.ts
+          pnpm exec vp fmt --check apps/web/src/components/settings/ToolsSettings.tsx apps/web/src/components/settings/McpServerDialog.tsx apps/web/src/components/settings/toolsSettings.logic.ts

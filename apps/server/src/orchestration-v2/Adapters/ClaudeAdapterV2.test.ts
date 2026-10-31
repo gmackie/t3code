@@ -565,6 +565,46 @@ describe("ClaudeAdapterV2 MCP query overrides", () => {
       }),
     );
     assert.notEqual(rotatedKey, initialKey);
+    const tools = (stdioSecret: string, httpSecret: string, url: string) => ({
+      servers: [
+        {
+          name: "command",
+          transport: {
+            type: "stdio" as const,
+            command: "node",
+            args: ["mcp.js"],
+            env: [{ name: "API_TOKEN", value: stdioSecret, sensitive: true }],
+          },
+        },
+        {
+          name: "docs",
+          transport: {
+            type: "http" as const,
+            url,
+            headers: [{ name: "Authorization", value: httpSecret, sensitive: true }],
+          },
+        },
+      ],
+      disabledSkills: [],
+      fingerprint: "unchanged",
+    });
+    const keyFor = (userTools: McpProviderSession.McpProviderSessionTools) =>
+      ClaudeAdapterV2.claudeEffectiveQueryPolicyKey(
+        queryPolicy,
+        ClaudeAdapterV2.claudeMcpQueryOverrides({
+          mcpSession: { ...mcpSession, tools: userTools },
+          readOnlySandbox: false,
+        }),
+      );
+    const userKey = keyFor(tools("stdio-token", "http-token", "https://example.com/mcp"));
+    assert.notEqual(userKey, initialKey);
+    for (const changed of [
+      tools("rotated-stdio", "http-token", "https://example.com/mcp"),
+      tools("stdio-token", "rotated-http", "https://example.com/mcp"),
+      tools("stdio-token", "http-token", "https://example.com/other"),
+    ]) {
+      assert.notEqual(keyFor(changed), userKey);
+    }
   });
 
   it("matches the read-only allowlist to the orchestrator toolkit annotations", () => {
@@ -2510,7 +2550,47 @@ describe("ClaudeAdapterV2 MCP credential channel", () => {
             resume: false,
             cwd: null,
             environment: { PATH: "/usr/bin" },
-            mcpServers: { "t3-code": t3McpServer },
+            ...ClaudeAdapterV2.claudeMcpQueryOverrides({
+              readOnlySandbox: false,
+              mcpSession: {
+                environmentId: EnvironmentId.make("environment-claude-mcp-channel"),
+                threadId: ThreadId.make("thread-claude-mcp-channel"),
+                providerSessionId: "mcp-session-claude-mcp-channel",
+                providerInstanceId: ClaudeAdapterV2.CLAUDE_DEFAULT_INSTANCE_ID,
+                endpoint: t3McpServer.url,
+                browserToolsAvailable: true,
+                authorizationHeader: t3McpServer.headers.Authorization,
+                tools: {
+                  servers: [
+                    {
+                      name: "command",
+                      transport: {
+                        type: "stdio",
+                        command: "node",
+                        args: ["mcp.js"],
+                        env: [
+                          { name: "API_TOKEN", value: "superseded-token", sensitive: true },
+                          { name: "API_TOKEN", value: "stdin-stdio-secret", sensitive: true },
+                        ],
+                      },
+                    },
+                    {
+                      name: "docs",
+                      transport: {
+                        type: "http",
+                        url: "https://example.com/mcp",
+                        headers: [
+                          { name: "Authorization", value: "superseded-token", sensitive: true },
+                          { name: "Authorization", value: "stdin-http-secret", sensitive: true },
+                        ],
+                      },
+                    },
+                  ],
+                  disabledSkills: [],
+                  fingerprint: "stdin-tools",
+                },
+              },
+            }),
           }),
           pathToClaudeCodeExecutable: "/opt/claude/cli.js",
           spawnClaudeCodeProcess: cli.spawn,
@@ -2554,16 +2634,47 @@ describe("ClaudeAdapterV2 MCP credential channel", () => {
   it.effect("sends MCP servers over stdin, not argv or the environment", () =>
     Effect.gen(function* () {
       const cli = makeFakeClaudeCli();
-      const session = yield* openWith(cli);
+      const protocolEvents: unknown[] = [];
+      const session = yield* openWith(cli, {
+        filePath: "/tmp/claude-mcp-channel-events.log",
+        write: (event) =>
+          Effect.sync(() => {
+            protocolEvents.push(event);
+          }),
+        close: () => Effect.void,
+      });
       yield* session.close;
 
       assert.deepInclude(cli.controlRequests, {
         subtype: "mcp_set_servers",
-        servers: { "t3-code": t3McpServer },
+        servers: {
+          "t3-code": { ...t3McpServer, timeout: ClaudeAdapterV2.CLAUDE_T3_MCP_TOOL_TIMEOUT_MS },
+          command: {
+            type: "stdio",
+            command: "node",
+            args: ["mcp.js"],
+            env: { API_TOKEN: "stdin-stdio-secret" },
+          },
+          docs: {
+            type: "http",
+            url: "https://example.com/mcp",
+            headers: { Authorization: "stdin-http-secret" },
+          },
+        },
       });
       const spawned = JSON.stringify(cli.spawns);
       assert.notInclude(spawned, "--mcp-config");
-      assert.notInclude(spawned, "dummy-mcp-credential");
+      assert.isNotEmpty(protocolEvents);
+      const logged = JSON.stringify(protocolEvents);
+      for (const secret of [
+        "dummy-mcp-credential",
+        "stdin-stdio-secret",
+        "stdin-http-secret",
+        "superseded-token",
+      ]) {
+        assert.notInclude(spawned, secret);
+        assert.notInclude(logged, secret);
+      }
     }),
   );
 });
@@ -16152,5 +16263,156 @@ describe("ClaudeAdapterV2 query message stream", () => {
       yield* Scope.close(scope, Exit.void);
       assert.isTrue(closed);
     }),
+  );
+});
+
+describe("ClaudeAdapterV2 user tools", () => {
+  it.effect("injects Tools settings into a turn without granting user-server approval", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const fileSystem = yield* FileSystem.FileSystem;
+        const idAllocator = yield* IdAllocator.IdAllocatorV2;
+        const mcpSessions = yield* McpProviderSessions.McpProviderSessions;
+        const attachmentsDir = yield* fileSystem.makeTempDirectoryScoped({
+          prefix: "t3-claude-user-tools-",
+        });
+        let openedOptions: ClaudeAdapterV2.ClaudeAgentSdkQueryOptions | undefined;
+        const adapter = yield* ClaudeAdapterV2.makeClaudeAdapterV2({
+          instanceId: ClaudeAdapterV2.CLAUDE_DEFAULT_INSTANCE_ID,
+          settings: DEFAULT_CLAUDE_SETTINGS,
+          environment: {},
+          attachmentsDir,
+          fileSystem,
+          path: yield* Path.Path,
+          crypto: yield* Crypto.Crypto,
+          idAllocator,
+          queryRunner: {
+            allocateSessionId: Effect.succeed("native-thread-claude-user-tools"),
+            open: (input) =>
+              Effect.sync(() => {
+                openedOptions = input.options;
+                return {
+                  messages: Stream.never,
+                  offer: () => Effect.void,
+                  setModel: () => Effect.void,
+                  applyFlagSettings: () => Effect.void,
+                  backgroundTasks: () => Effect.succeed(false),
+                  stopTask: () => Effect.void,
+                  setPermissionMode: () => Effect.void,
+                  interrupt: Effect.void,
+                  close: Effect.void,
+                };
+              }),
+            forkSession: () => Effect.die("unused"),
+            subagentLaunchToolUseId: () => Effect.succeed(null),
+            assertComplete: Effect.void,
+          },
+        });
+        const threadId = ThreadId.make("thread-claude-user-tools-turn");
+        yield* mcpSessions.set({
+          environmentId: EnvironmentId.make("environment-claude-user-tools"),
+          threadId,
+          providerSessionId: "mcp-session-claude-user-tools",
+          providerInstanceId: ClaudeAdapterV2.CLAUDE_DEFAULT_INSTANCE_ID,
+          endpoint: "http://127.0.0.1:43123/mcp",
+          authorizationHeader: "Bearer secret-claude-token",
+          browserToolsAvailable: true,
+          tools: {
+            servers: [
+              {
+                name: "context7",
+                transport: {
+                  type: "stdio",
+                  command: "npx",
+                  args: ["context7"],
+                  env: [{ name: "API_TOKEN", value: "stdio-token", sensitive: true }],
+                },
+              },
+              {
+                name: "docs",
+                transport: {
+                  type: "http",
+                  url: "https://example.com/mcp",
+                  headers: [
+                    { name: "Authorization", value: "superseded-token", sensitive: true },
+                    { name: "Authorization", value: "winning-token", sensitive: true },
+                  ],
+                },
+              },
+            ],
+            disabledSkills: ["grill-me"],
+            fingerprint: "a",
+          },
+        });
+        const runtimePolicy = ProviderAdapter.ProviderAdapterV2RuntimePolicy.make({
+          runtimeMode: "approval-required",
+          interactionMode: "default",
+          cwd: "/workspace",
+        });
+        const runtime = yield* adapter.openSession({
+          threadId,
+          providerSessionId: ProviderSessionId.make("provider-session-claude-user-tools"),
+          modelSelection: CLAUDE_TEST_MODEL_SELECTION,
+          runtimePolicy,
+        });
+        const providerThread = yield* runtime.ensureThread({
+          threadId,
+          modelSelection: CLAUDE_TEST_MODEL_SELECTION,
+          runtimePolicy,
+        });
+        yield* runtime.startTurn(
+          makeClaudeTestTurnInput({
+            threadId,
+            providerThread,
+            now: yield* DateTime.now,
+            attemptId: RunAttemptId.make("attempt-claude-user-tools"),
+            text: "Hello.",
+            attachments: [],
+            runtimePolicy,
+          }),
+        );
+
+        const servers = openedOptions?.mcpServers;
+        assert.isDefined(servers?.["t3-code"]);
+        const commandServer = servers?.context7;
+        const httpServer = servers?.docs;
+        assert.isDefined(commandServer);
+        assert.isDefined(httpServer);
+        if (
+          !commandServer ||
+          !("command" in commandServer) ||
+          !httpServer ||
+          !("headers" in httpServer)
+        ) {
+          throw new Error("Expected both user MCP transports in query options");
+        }
+        assert.equal(commandServer.command, "npx");
+        assert.deepEqual(commandServer.args, ["context7"]);
+        const environment = JSON.stringify(openedOptions?.env);
+        assert.notInclude(environment, "stdio-token");
+        assert.notInclude(environment, "winning-token");
+        assert.equal(commandServer.env?.API_TOKEN, "stdio-token");
+        assert.equal(httpServer.headers?.Authorization, "winning-token");
+        assert.equal(openedOptions?.permissionMode, "default");
+        assert.isFunction(openedOptions?.canUseTool);
+        assert.include(
+          openedOptions?.allowedTools ?? [],
+          ClaudeAdapterV2.CLAUDE_T3_MCP_TOOL_WILDCARD,
+        );
+        assert.isFalse(
+          (openedOptions?.allowedTools ?? []).some(
+            (tool) => tool.startsWith("mcp__context7__") || tool.startsWith("mcp__docs__"),
+          ),
+        );
+        const settings = openedOptions?.settings;
+        assert.deepEqual(typeof settings === "object" ? settings.skillOverrides : undefined, {
+          "grill-me": "off",
+        });
+      }).pipe(
+        Effect.provide(
+          Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
+        ),
+      ),
+    ),
   );
 });

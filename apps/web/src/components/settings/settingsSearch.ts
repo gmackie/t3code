@@ -27,6 +27,7 @@ export type SettingsPath =
   | "/settings/providers"
   | "/settings/plugins"
   | "/settings/threads"
+  | "/settings/tools"
   | "/settings/browser"
   | "/settings/devices"
   | "/settings/scheduled-tasks"
@@ -98,6 +99,7 @@ export const SETTINGS_SECTION_LABELS: Readonly<Record<SettingsPath, string>> = {
   "/settings/snap-shot": "SnapShots",
   "/settings/providers": "Providers",
   "/settings/threads": "Threads",
+  "/settings/tools": "Tools",
   "/settings/browser": "Browser",
   "/settings/devices": "Devices",
   "/settings/scheduled-tasks": "Scheduled tasks",
@@ -136,6 +138,7 @@ export const SETTINGS_NAV_GROUPS: ReadonlyArray<{
       "/settings/providers",
       "/settings/plugins",
       "/settings/threads",
+      "/settings/tools",
       "/settings/browser",
       "/settings/devices",
       "/settings/scheduled-tasks",
@@ -854,6 +857,24 @@ export const SETTINGS_SEARCH_ITEMS = [
     to: "/settings/plugins",
   },
   {
+    id: "tools-skills",
+    title: "Skills",
+    to: "/settings/tools",
+    scope: "project-defaults",
+    searchTerms: [
+      "agent skills SKILL.md disable enable hide turn off slash commands .agents claude codex cursor",
+    ],
+  },
+  {
+    id: "tools-mcp-servers",
+    title: "MCP servers",
+    to: "/settings/tools",
+    scope: "project-defaults",
+    searchTerms: [
+      "model context protocol mcp add server command url stdio http headers env tools agents",
+    ],
+  },
+  {
     id: "agent-browser-access",
     title: "Agent browser access",
     to: "/settings/browser",
@@ -1221,6 +1242,7 @@ const SETTINGS_CATEGORY_SCOPES: Readonly<Record<SettingsPath, SettingsSearchScop
   "/settings/keybindings": null,
   "/settings/providers": null,
   "/settings/threads": null,
+  "/settings/tools": null,
   "/settings/browser": null,
   "/settings/devices": null,
   "/settings/source-control": "environment-defaults",

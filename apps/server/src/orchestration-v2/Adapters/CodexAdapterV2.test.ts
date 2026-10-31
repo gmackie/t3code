@@ -325,6 +325,96 @@ describe("CodexAdapterV2 native protocol logging", () => {
   );
 });
 
+describe("CodexAdapterV2 user MCP servers", () => {
+  const mcpSession = {
+    environmentId: EnvironmentId.make("environment-user-mcp"),
+    threadId: ThreadId.make("thread-user-mcp"),
+    providerSessionId: "mcp-session-user-mcp",
+    providerInstanceId: ProviderInstanceId.make("codex"),
+    endpoint: "http://127.0.0.1:43123/mcp",
+    authorizationHeader: "Bearer t3-token",
+    browserToolsAvailable: false,
+    tools: {
+      servers: [
+        {
+          name: "local",
+          transport: {
+            type: "stdio" as const,
+            command: "node",
+            args: ["mcp.js"],
+            env: [{ name: "DATABASE_URL", value: "database-credential", sensitive: true }],
+          },
+        },
+        {
+          name: "remote",
+          transport: {
+            type: "http" as const,
+            url: "https://example.com/mcp",
+            headers: [{ name: "X-Auth-Key", value: "header-credential", sensitive: true }],
+          },
+        },
+      ],
+      disabledSkills: ["review"],
+      fingerprint: "user-tools",
+    },
+  };
+
+  // regression: #15839 user servers are named one at a time, so launch-arg servers survive
+  it("adds each user server under its own dotted key next to t3-code", () => {
+    const { config } = CodexAdapterV2.codexThreadRuntimeParams({ mcpSession });
+    assert.notProperty(config, "mcp_servers");
+    assert.deepEqual(config["mcp_servers.local"], {
+      command: "node",
+      args: ["mcp.js"],
+      env: { DATABASE_URL: "database-credential" },
+    });
+    assert.deepEqual(config["mcp_servers.remote"], {
+      url: "https://example.com/mcp",
+      http_headers: { "X-Auth-Key": "header-credential" },
+    });
+    assert.deepEqual(config["mcp_servers.t3-code"], {
+      url: mcpSession.endpoint,
+      tool_timeout_sec: 3_900,
+      http_headers: { Authorization: mcpSession.authorizationHeader },
+    });
+    assert.deepEqual(config.skills, { config: [{ name: "review", enabled: false }] });
+  });
+
+  it.effect("redacts user server env and headers from protocol logs", () =>
+    Effect.gen(function* () {
+      const events: Array<unknown> = [];
+      const protocolLogger = CodexAdapterV2.makeCodexAppServerProtocolLogger({
+        nativeEventLogger: {
+          filePath: "/tmp/events.log",
+          write: (event) =>
+            Effect.sync(() => {
+              events.push(event);
+            }),
+          close: () => Effect.void,
+        },
+        threadId: mcpSession.threadId,
+        providerSessionId: ProviderSessionId.make("provider-session-user-mcp"),
+      });
+      if (protocolLogger === undefined) return assert.fail("expected a protocol logger");
+      const params = CodexAdapterV2.codexThreadRuntimeParams({ mcpSession });
+      yield* protocolLogger({
+        direction: "outgoing",
+        stage: "decoded",
+        payload: { method: "thread/start", params, configJson: JSON.stringify(params.config) },
+      });
+      const logged = JSON.stringify(events);
+      for (const secret of ["database-credential", "header-credential", "t3-token"]) {
+        assert.notInclude(logged, secret);
+      }
+      assert.deepNestedPropertyVal(
+        events[0],
+        "event.payload.params.config.mcp_servers\\.local.env",
+        { DATABASE_URL: "[REDACTED]" },
+      );
+    }),
+  );
+});
+
 describe("CodexAdapterV2 rollback mapping", () => {
   it.effect("derives native rollback count from durable provider turns", () =>
     Effect.gen(function* () {

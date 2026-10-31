@@ -25,6 +25,7 @@ import * as ReverseWorkbench from "./reverse/ReverseWorkbench.ts";
 import * as SystemsService from "./systems/SystemsService.ts";
 import { subscribeChatGptHandoff } from "./provider/CodexChatGptHandoff.ts";
 import {
+  type ServerSettings as ServerSettingsValue,
   AcpRegistryOperationError,
   CommandId,
   authScopeResponse,
@@ -2825,9 +2826,20 @@ export const layerWsRpc = (
                 )
               : undefined;
             const nextPatch = { ...patch, ...(deviceHosts ? { deviceHosts } : {}) };
+            const authorize = (current: ServerSettingsValue) =>
+              RpcAuthorization.authorizeSettingsUpdate(
+                currentSession.scopes,
+                nextPatch,
+                current,
+                providerInstanceMutation,
+              );
             const settings = yield* providerInstanceMutation === undefined
-              ? serverSettings.updateSettings(nextPatch)
-              : serverSettings.updateProviderInstance(providerInstanceMutation, nextPatch);
+              ? serverSettings.updateSettings(nextPatch, authorize)
+              : serverSettings.updateProviderInstance(
+                  providerInstanceMutation,
+                  nextPatch,
+                  authorize,
+                );
             return ServerSettings.redactServerSettingsForClient(settings);
           }),
         [WS_METHODS.serverValidateLinearIssues]: (_input) =>
@@ -3652,6 +3664,7 @@ export const layer = Layer.unwrap(
     const serverBrowser = yield* ServerBrowser.ServerBrowser;
     const serverSelfUpdate = yield* ServerSelfUpdate.ServerSelfUpdate;
     const npmRelease = yield* NpmRelease.NpmRelease;
+    const serverSettings = yield* ServerSettings.ServerSettingsService;
     const pullRequests = yield* PullRequestService.PullRequestService;
     const reviewGuides = yield* PullRequestReviewGuideService.PullRequestReviewGuideService;
     const reverseWorkbench = yield* ReverseWorkbench.ReverseWorkbench;
@@ -3698,21 +3711,25 @@ export const layer = Layer.unwrap(
             Effect.provideService(RpcServer.Protocol, withTerminalOutputWindow(protocol)),
             Effect.provide(
               Layer.merge(
-                RpcAuthorization.layer(session.scopes, (method, payload) => {
-                  // Anonymous product signal: the feature and its enum variant,
-                  // credited to the connecting client's surface only.
-                  const usage = featureUsage(method, payload);
-                  return usage === undefined
-                    ? Effect.void
-                    : analytics
-                        .record("feature.used", {
-                          ...usage,
-                          ...(clientAnalyticsProps.surface === undefined
-                            ? {}
-                            : { surface: clientAnalyticsProps.surface }),
-                        })
-                        .pipe(Effect.ignore);
-                }),
+                RpcAuthorization.layer(
+                  session.scopes,
+                  (method, payload) => {
+                    // Anonymous product signal: the feature and its enum variant,
+                    // credited to the connecting client's surface only.
+                    const usage = featureUsage(method, payload);
+                    return usage === undefined
+                      ? Effect.void
+                      : analytics
+                          .record("feature.used", {
+                            ...usage,
+                            ...(clientAnalyticsProps.surface === undefined
+                              ? {}
+                              : { surface: clientAnalyticsProps.surface }),
+                          })
+                          .pipe(Effect.ignore);
+                  },
+                  serverSettings.getSettings.pipe(Effect.orElseSucceed(() => undefined)),
+                ),
                 rpcInstrumentationLayer,
               ),
             ),

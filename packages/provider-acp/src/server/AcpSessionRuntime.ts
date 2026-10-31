@@ -2096,16 +2096,20 @@ export const make = Effect.fn("AcpSessionRuntime.make")(function* (
     initializeResult: EffectAcpSchema.InitializeResponse,
     activationOptions?: AcpSessionActivationOptions,
   ): ReadonlyArray<EffectAcpSchema.McpServer> => {
-    const mcpCapabilities = initializeResult.agentCapabilities?.mcpCapabilities;
+    const capabilities = initializeResult.agentCapabilities?.mcpCapabilities;
     const acpServers = activationOptions?.acpMcpServers ?? options.acpMcpServers ?? [];
-    if (mcpCapabilities?.acp === true && acpServers.length > 0) {
-      return acpServers;
-    }
     const httpServers = activationOptions?.httpMcpServers ?? options.httpMcpServers ?? [];
-    if (mcpCapabilities?.http === true && httpServers.length > 0) {
-      return httpServers;
-    }
-    return activationOptions?.mcpServers ?? options.mcpServers ?? [];
+    const selected =
+      capabilities?.acp === true && acpServers.length > 0
+        ? acpServers
+        : capabilities?.http === true && httpServers.length > 0
+          ? httpServers
+          : (activationOptions?.mcpServers ?? options.mcpServers ?? []);
+    // Stdio is the only transport every agent must accept; an agent that
+    // does not advertise http rejects the whole session over one entry.
+    return capabilities?.http === true
+      ? selected
+      : selected.filter((server) => !("type" in server) || server.type !== "http");
   };
 
   const startOnce = Effect.gen(function* () {

@@ -1,4 +1,3 @@
-import { pipe } from "effect/Function";
 import * as DocumentText from "../../provider/DocumentText.ts";
 import { revertCodexThread } from "../../provider/CodexThreadRevert.ts";
 import { historyResponseItems } from "@t3tools/provider-core/server/handoffBudget";
@@ -33,6 +32,7 @@ import {
   defaultInstanceIdForDriver,
   isOrchestrationV2WorkActive,
   type OrchestrationV2GoalCommand,
+  mcpServerVariableRecord,
   OrchestrationV2ProviderGoal,
   parseGoalCommand,
   ProviderDriverKind,
@@ -74,6 +74,7 @@ import type {
   ProviderThreadId,
   ProviderTurnId,
   ProviderInstanceId,
+  ResolvedMcpServer,
   RuntimeMode,
   ThreadId,
 } from "@t3tools/contracts";
@@ -1333,7 +1334,7 @@ export const CODEX_THREAD_CONFIG = {
 // T3 waits can block for an hour; keep Codex's MCP timeout above that.
 const CODEX_T3_MCP_TOOL_TIMEOUT_SEC = 65 * 60;
 
-function codexThreadRuntimeParams(input: {
+export function codexThreadRuntimeParams(input: {
   readonly mcpSession: McpProviderSession.McpProviderSessionConfig | undefined;
   readonly modelSelection?: { readonly model: string };
   readonly runtimePolicy?: ProviderAdapter.ProviderAdapterV2RuntimePolicy;
@@ -1343,6 +1344,7 @@ function codexThreadRuntimeParams(input: {
   readonly config: Readonly<Record<string, Schema.Json>>;
 } {
   const { mcpSession } = input;
+  const tools = mcpSession?.tools ?? McpProviderSession.EMPTY_MCP_PROVIDER_SESSION_TOOLS;
   return {
     ...(input.runtimePolicy?.cwd == null ? {} : { cwd: input.runtimePolicy.cwd }),
     ...(input.modelSelection === undefined ? {} : { model: input.modelSelection.model }),
@@ -1351,7 +1353,13 @@ function codexThreadRuntimeParams(input: {
       ...(mcpSession === undefined
         ? {}
         : {
-            // Override only T3's server so launch-argument MCP servers survive.
+            // Override only named servers so launch-argument MCP servers survive.
+            ...Object.fromEntries(
+              Object.entries(codexUserMcpServers(tools.servers)).map(([name, server]) => [
+                `mcp_servers.${name}`,
+                server,
+              ]),
+            ),
             "mcp_servers.t3-code": {
               url: mcpSession.endpoint,
               tool_timeout_sec: CODEX_T3_MCP_TOOL_TIMEOUT_SEC,
@@ -1360,8 +1368,37 @@ function codexThreadRuntimeParams(input: {
               },
             },
           }),
+      // Thread config is Codex's session-flags layer, which its skill rules
+      // read alongside the user's config.toml; a later name rule wins.
+      ...(tools.disabledSkills.length === 0
+        ? {}
+        : {
+            skills: {
+              config: tools.disabledSkills.map((name) => ({ name, enabled: false })),
+            },
+          }),
     },
   };
+}
+
+function codexUserMcpServers(
+  servers: ReadonlyArray<ResolvedMcpServer>,
+): Record<string, Schema.Json> {
+  return Object.fromEntries(
+    servers.map((server) => [
+      server.name,
+      server.transport.type === "stdio"
+        ? {
+            command: server.transport.command,
+            args: [...server.transport.args],
+            env: mcpServerVariableRecord(server.transport.env),
+          }
+        : {
+            url: server.transport.url,
+            http_headers: mcpServerVariableRecord(server.transport.headers),
+          },
+    ]),
+  );
 }
 
 const decodeCodexResumeMetadata = Schema.decodeUnknownEffect(
@@ -1443,9 +1480,9 @@ export function makeCodexAppServerProtocolLogger(input: {
   };
 }
 
-function redactCodexProtocolValue(value: unknown): unknown {
+function redactCodexProtocolValue(value: unknown, context?: "mcp" | "values"): unknown {
   if (Array.isArray(value)) {
-    return value.map(redactCodexProtocolValue);
+    return value.map((nested) => redactCodexProtocolValue(nested, context));
   }
   if (value === null || typeof value !== "object") {
     if (typeof value !== "string") {
@@ -1464,11 +1501,11 @@ function redactCodexProtocolValue(value: unknown): unknown {
       return value;
     }
     try {
-      return pipe(
-        JSON.parse(trimmed) as unknown,
-        boundProviderEventForLogging,
-        redactCodexProtocolValue,
-        JSON.stringify,
+      return JSON.stringify(
+        redactCodexProtocolValue(
+          boundProviderEventForLogging(JSON.parse(trimmed) as unknown),
+          context,
+        ),
       );
     } catch {
       return value;
@@ -1477,7 +1514,17 @@ function redactCodexProtocolValue(value: unknown): unknown {
   return Object.fromEntries(
     Object.entries(value).map(([key, nested]) => [
       key,
-      isSensitiveCodexProtocolKey(key) ? "[REDACTED]" : redactCodexProtocolValue(nested),
+      context === "values" || isSensitiveCodexProtocolKey(key)
+        ? "[REDACTED]"
+        : redactCodexProtocolValue(
+            nested,
+            // Thread config also names servers one at a time as `mcp_servers.<name>`.
+            key === "mcp_servers" || key.startsWith("mcp_servers.")
+              ? "mcp"
+              : context === "mcp" && (key === "env" || key === "http_headers")
+                ? "values"
+                : context,
+          ),
     ]),
   );
 }

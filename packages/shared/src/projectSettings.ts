@@ -1,4 +1,9 @@
 import {
+  type DisabledSkills,
+  type DisabledSkillsProjectOverride,
+  type McpServerConfig,
+  type McpServerProjectOverrides,
+  type McpServers,
   type ModelSelection,
   PROJECT_FILE_BACKED_SETTINGS,
   PROJECT_SCOPED_SERVER_SETTING_KEYS,
@@ -135,6 +140,24 @@ function resolveProjectOverrides(
     const value = overrides[key];
     // Forward-compatible decoding can leave a present undefined, which is not an override.
     if (value === undefined) continue;
+    // Sparse per-name overrides: the project adds to and switches the
+    // environment's entries instead of replacing the whole value, so a server
+    // or skill added to the environment later still reaches the project.
+    if (key === "mcpServers") {
+      effective[key] = mergeProjectMcpServers(settings.mcpServers, overrides.mcpServers);
+      sources[key] = "project";
+      continue;
+    }
+    if (key === "disabledSkills") {
+      effective[key] = mergeProjectDisabledSkills(
+        settings.disabledSkills,
+        overrides.disabledSkills,
+      );
+      sources[key] = "project";
+      continue;
+    }
+    // A model on a disabled provider falls back to the environment, like the
+    // environment-level guards do for these keys.
     if (
       (key === "textGenerationModelSelection" || key === "defaultModelSelection") &&
       value !== undefined &&
@@ -200,6 +223,53 @@ export function resolveSendEnvMode(input: {
   return input.isGitRepo ? input.requestedEnvMode : "local";
 }
 
+/**
+ * The environment's servers with a project's entries applied by name: an
+ * entry with a transport adds or replaces a server, one without only switches
+ * the inherited server. A switch for a server the environment no longer has
+ * is dropped.
+ */
+function mergeProjectMcpServers(
+  environment: McpServers,
+  project: McpServerProjectOverrides | undefined,
+): McpServers {
+  if (project === undefined) return environment;
+  const merged: Record<string, McpServerConfig> = { ...environment };
+  for (const [name, entry] of Object.entries(project)) {
+    if (entry.transport !== undefined) {
+      merged[name] = { enabled: entry.enabled, transport: entry.transport };
+      continue;
+    }
+    const inherited = Object.hasOwn(environment, name) ? environment[name] : undefined;
+    if (inherited !== undefined) merged[name] = { ...inherited, enabled: entry.enabled };
+  }
+  return merged as McpServers;
+}
+
+/** The environment's disabled skills with a project's per-name switches applied. */
+function mergeProjectDisabledSkills(
+  environment: DisabledSkills,
+  project: DisabledSkillsProjectOverride | undefined,
+): DisabledSkills {
+  if (project === undefined) return environment;
+  const disabled = new Map(environment.map((name) => [name.toLowerCase(), name]));
+  for (const [name, off] of Object.entries(project)) {
+    if (off) disabled.set(name.toLowerCase(), name);
+    else disabled.delete(name.toLowerCase());
+  }
+  return [...disabled.values()].sort();
+}
+
+/** Replace the project's entry, dropping it entirely when nothing is overridden. */
+export function withProjectSettingsOverrides(
+  settings: Pick<ServerSettings, "projectSettingsOverrides">,
+  projectId: ProjectId,
+  next: ProjectSettingsOverrides | null,
+): ServerSettings["projectSettingsOverrides"] {
+  const { [projectId]: _removed, ...rest } = settings.projectSettingsOverrides;
+  return next === null || Object.keys(next).length === 0 ? rest : { ...rest, [projectId]: next };
+}
+
 export function clearProjectSettingsOverrides(
   settings: Pick<ServerSettings, "projectSettingsOverrides">,
   projectId: ProjectId,
@@ -208,7 +278,10 @@ export function clearProjectSettingsOverrides(
   const current = settings.projectSettingsOverrides[projectId];
   if (current === undefined) return null;
   const next = { ...current };
-  for (const key of keys) delete next[key];
+  for (const key of keys) {
+    if (key === "mcpServers" || key === "disabledSkills") next[key] = {};
+    else delete next[key];
+  }
   return Object.keys(next).length === 0 ? null : next;
 }
 

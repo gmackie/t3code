@@ -12,6 +12,7 @@ import {
   ProviderSessionId,
   ThreadId,
   type ProviderThreadId,
+  type ProjectId,
 } from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
 import * as Clock from "effect/Clock";
@@ -43,6 +44,8 @@ import {
 import { ProviderWorkspaceMissingError } from "../provider/Errors.ts";
 import * as ProjectService from "../project/ProjectService.ts";
 import * as McpProviderSessions from "@t3tools/provider-core/server/McpProviderSessions";
+import { EMPTY_MCP_PROVIDER_SESSION_TOOLS } from "@t3tools/provider-core/server/mcpSession";
+import { resolveAgentTools } from "../mcp/resolveAgentTools.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import * as McpSessionRegistry from "../mcp/McpSessionRegistry.ts";
 import * as EventSink from "./EventSink.ts";
@@ -368,10 +371,17 @@ export const layerWithOptions = (
       const agentScope = yield* AgentScope;
       const agentAccessSettings = Effect.fn("ProviderSessionManagerV2.agentAccessSettings")(
         function* (threadId: ThreadId) {
-          if (Option.isNone(serverSettings)) return { browser: true, device: false };
+          if (Option.isNone(serverSettings))
+            return {
+              browser: true,
+              device: false,
+              tools: EMPTY_MCP_PROVIDER_SESSION_TOOLS,
+            };
+          const settings = yield* serverSettings.value.getSettings;
+          let projectId: ProjectId | null = null;
           return yield* Effect.gen(function* () {
-            const settings = yield* serverSettings.value.getSettings;
             const thread = yield* projectionStore.getThread(threadId);
+            projectId = thread.projectId;
             const entries = Object.values(settings.projectSettingsOverrides);
             const browserOverridden = entries.some(
               (entry) => entry.enableAgentBrowserAccess !== undefined,
@@ -387,20 +397,45 @@ export const layerWithOptions = (
                 return {
                   browser: browserOverridden ? false : settings.enableAgentBrowserAccess,
                   device: deviceOverridden ? false : settings.enableAgentDeviceAccess,
+                  // Like browser and device access, a missing project gets no user MCP servers.
+                  tools: resolveAgentTools(
+                    {
+                      ...resolveProjectSettings(settings, thread.projectId).settings,
+                      mcpServers: {},
+                    },
+                    null,
+                  ),
                 };
             }
             const effective = resolveProjectSettings(settings, thread.projectId).settings;
             return {
               browser: effective.enableAgentBrowserAccess,
               device: effective.enableAgentDeviceAccess,
+              tools: resolveAgentTools(settings, thread.projectId),
             };
           }).pipe(
-            Effect.catch((cause) =>
-              Effect.logWarning(
-                "Could not resolve agent access; withholding browser and device tools.",
+            Effect.catch((cause) => {
+              // Without a project ID, a fallback could enable a project-disabled skill.
+              if (
+                projectId === null &&
+                Object.values(settings.projectSettingsOverrides).some((entry) =>
+                  Object.values(entry.disabledSkills ?? {}).some(Boolean),
+                )
+              ) {
+                return Effect.fail(cause);
+              }
+              const effective = resolveProjectSettings(settings, projectId).settings;
+              return Effect.logWarning(
+                "Could not resolve agent access; withholding browser, device and user MCP servers.",
                 { threadId, cause },
-              ).pipe(Effect.as({ browser: false, device: false })),
-            ),
+              ).pipe(
+                Effect.as({
+                  browser: false,
+                  device: false,
+                  tools: resolveAgentTools({ ...effective, mcpServers: {} }, null),
+                }),
+              );
+            }),
           );
         },
       );
@@ -461,7 +496,10 @@ export const layerWithOptions = (
       const prepareMcpSession = (
         threadId: ThreadId,
         providerInstanceId: ProviderInstanceId,
-      ): Effect.Effect<PreparedMcpCredential> =>
+      ): Effect.Effect<
+        PreparedMcpCredential,
+        Effect.Error<ReturnType<typeof agentAccessSettings>>
+      > =>
         options.configureMcp === false
           ? mcpSessions
               .clear(threadId)
@@ -470,8 +508,11 @@ export const layerWithOptions = (
               threadId,
               Effect.gen(function* () {
                 // Live providers build MCP clients once; reuse credentials across workspace handoffs.
-                const { browser: browserToolsAvailable, device: deviceToolsAvailable } =
-                  yield* agentAccessSettings(threadId);
+                const {
+                  browser: browserToolsAvailable,
+                  device: deviceToolsAvailable,
+                  tools,
+                } = yield* agentAccessSettings(threadId);
                 const capabilities = new Set<
                   import("../mcp/McpInvocationContext.ts").McpCapability
                 >(["orchestration", "worktree", "pull-requests"]);
@@ -505,6 +546,9 @@ export const layerWithOptions = (
                     // A credential issued while the lineage read failed is replaced once it works.
                     (resolved.thread.subagent === true) === subagent
                   ) {
+                    // The credential stays; the user's tools are re-read on
+                    // every prepare so a reopened process picks up an edit.
+                    yield* mcpSessions.set({ ...existing, tools });
                     return { mcpCredentialId: existing.providerSessionId, issued: false };
                   }
                   dropMcpCredentialReservation(threadId, existing.providerSessionId);
@@ -517,7 +561,7 @@ export const layerWithOptions = (
                   capabilities,
                   subagent,
                 });
-                yield* mcpSessions.set(credential.config);
+                yield* mcpSessions.set({ ...credential.config, tools });
                 reserveMcpCredential(threadId, credential.config.providerSessionId);
                 return { mcpCredentialId: credential.config.providerSessionId, issued: true };
               }),
@@ -1372,7 +1416,19 @@ export const layerWithOptions = (
               Effect.uninterruptible,
             );
             if (attached !== undefined) {
-              const prepared = yield* prepareMcpSession(input.threadId, input.providerInstanceId);
+              const prepared = yield* prepareMcpSession(
+                input.threadId,
+                input.providerInstanceId,
+              ).pipe(
+                Effect.mapError(
+                  (cause) =>
+                    new ProviderSessionOpenError({
+                      instanceId: input.providerInstanceId,
+                      providerSessionId: input.providerSessionId,
+                      cause,
+                    }),
+                ),
+              );
               preparedForCleanup = prepared;
               if (prepared.mcpCredentialId !== undefined) {
                 const mcpCredentialId = prepared.mcpCredentialId;
@@ -1717,6 +1773,28 @@ export const layerWithOptions = (
         >,
       ): ProviderAdapter.ProviderAdapterV2SessionRuntime => {
         const providerSessionId = runtime.providerSessionId;
+        const ensureRuntimeThreadAttached = (threadId: ThreadId) =>
+          ensureThreadAttached({
+            providerSessionId,
+            threadId,
+            providerInstanceId: runtime.instanceId,
+          }).pipe(
+            Effect.catchTags({
+              ProviderSessionOpenError: (cause) =>
+                Effect.fail(
+                  new ProviderAdapter.ProviderAdapterEnsureThreadError({
+                    driver: runtime.driver,
+                    threadId,
+                    cause,
+                  }),
+                ),
+              ProviderSessionActivityError: (cause) =>
+                Effect.logWarning("orchestration-v2.driver-session.activity-failed", {
+                  providerSessionId,
+                  cause,
+                }),
+            }),
+          );
         const subscribeEvents = makeEventSubscription(eventSubscribers);
         const turnMetrics = (operation: string, model?: string) =>
           withMetrics({
@@ -1735,14 +1813,7 @@ export const layerWithOptions = (
             subscribeEvents.pipe(Effect.map((subscription) => subscription.events)),
           ),
           ensureThread: (input) =>
-            observeActivity(
-              providerSessionId,
-              ensureThreadAttached({
-                providerSessionId,
-                threadId: input.threadId,
-                providerInstanceId: runtime.instanceId,
-              }),
-            ).pipe(
+            ensureRuntimeThreadAttached(input.threadId).pipe(
               Effect.andThen(runtime.ensureThread(input)),
               Effect.tap((providerThread) =>
                 markProviderThreadLoaded({
@@ -1768,14 +1839,7 @@ export const layerWithOptions = (
                 : { modelSelection: input.modelSelection }),
               ...(input.runtimePolicy === undefined ? {} : { runtimePolicy: input.runtimePolicy }),
             });
-            return observeActivity(
-              providerSessionId,
-              ensureThreadAttached({
-                providerSessionId,
-                threadId,
-                providerInstanceId: runtime.instanceId,
-              }),
-            ).pipe(
+            return ensureRuntimeThreadAttached(threadId).pipe(
               Effect.andThen(
                 holdThreadLoaded({
                   providerSessionId,
@@ -1807,14 +1871,7 @@ export const layerWithOptions = (
             );
           },
           forkThread: (input) =>
-            observeActivity(
-              providerSessionId,
-              ensureThreadAttached({
-                providerSessionId,
-                threadId: input.targetThreadId,
-                providerInstanceId: runtime.instanceId,
-              }),
-            ).pipe(
+            ensureRuntimeThreadAttached(input.targetThreadId).pipe(
               Effect.andThen(runtime.forkThread(input)),
               Effect.tap((providerThread) =>
                 markProviderThreadLoaded({
@@ -1833,14 +1890,7 @@ export const layerWithOptions = (
               ),
             ),
           startTurn: (input) =>
-            observeActivity(
-              providerSessionId,
-              ensureThreadAttached({
-                providerSessionId,
-                threadId: input.threadId,
-                providerInstanceId: runtime.instanceId,
-              }),
-            ).pipe(
+            ensureRuntimeThreadAttached(input.threadId).pipe(
               // Failed or stopped starts may omit turn.terminal; clear their turns so sessions can idle.
               Effect.andThen(
                 holdThreadLoaded({
@@ -2188,6 +2238,15 @@ export const layerWithOptions = (
               const prepared = yield* prepareMcpSession(
                 input.threadId,
                 input.modelSelection.instanceId,
+              ).pipe(
+                Effect.mapError(
+                  (cause) =>
+                    new ProviderSessionOpenError({
+                      instanceId: input.modelSelection.instanceId,
+                      providerSessionId: input.providerSessionId,
+                      cause,
+                    }),
+                ),
               );
               const mcpCredentialId = prepared.mcpCredentialId;
               let reservationDropped = mcpCredentialId === undefined;

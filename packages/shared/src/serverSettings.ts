@@ -236,7 +236,7 @@ function pickOverrideKeys(entry: ProjectSettingsOverrides | undefined, known: bo
   );
 }
 
-// Older clients omit providerInstances during whole-entry replacement; preserve it to avoid wiping overrides.
+// Preserve fields added after clients began round-tripping whole project entries.
 function mergeProjectSettingsOverridesPatch(
   current: Readonly<Record<string, ProjectSettingsOverrides>>,
   patch: Readonly<Record<string, ProjectSettingsOverrides | null>>,
@@ -247,14 +247,16 @@ function mergeProjectSettingsOverridesPatch(
       next.delete(projectId);
       continue;
     }
-    const storedProviderInstances = current[projectId]?.providerInstances;
+    const stored = current[projectId];
     next.set(projectId, {
       // Preserve downgraded storage, but reject new unknown writes so clients can detect unsupported settings.
-      ...pickOverrideKeys(current[projectId], false),
+      ...pickOverrideKeys(stored, false),
       ...pickOverrideKeys(entry, true),
-      ...(Object.hasOwn(entry, "providerInstances") || storedProviderInstances === undefined
-        ? {}
-        : { providerInstances: storedProviderInstances }),
+      ...Object.fromEntries(
+        (["providerInstances", "mcpServers", "disabledSkills"] as const).flatMap((key) =>
+          entry[key] !== undefined || stored?.[key] === undefined ? [] : [[key, stored[key]]],
+        ),
+      ),
     });
   }
   return Object.fromEntries(next);
@@ -373,6 +375,7 @@ export function applyServerSettingsPatch(
     sourceControlHosts: sourceControlHostsPatch,
     usagePriceOverrides: usagePriceOverridesPatch,
     usageModelAliases: usageModelAliasesPatch,
+    mcpServers: mcpServersPatch,
     // Entry replacement: deepMerge would keep keys the client meant to clear.
     projectSettingsOverrides: projectSettingsOverridesPatch,
     projectAgentBrowserAccessOverrides: _legacyBrowserAccess,
@@ -586,6 +589,12 @@ export function applyServerSettingsPatch(
           ),
         }
       : {}),
+    // Each server is replaced whole: deepMerge would mix a stdio and an http
+    // transport, or keep a variable the client removed.
+    ...(mcpServersPatch !== undefined
+      ? { mcpServers: mergeSettingsEntries(current.mcpServers, mcpServersPatch) }
+      : {}),
+    ...(patch.disabledSkills !== undefined ? { disabledSkills: patch.disabledSkills } : {}),
     ...(patch.sourceControlWriterModelSelection !== undefined
       ? { sourceControlWriterModelSelection: patch.sourceControlWriterModelSelection }
       : {}),

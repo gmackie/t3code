@@ -62,6 +62,7 @@ const AntigravityProviderCapabilitiesV2 = {
 } satisfies OrchestrationV2ProviderCapabilities;
 
 export interface AntigravityAdapterV2Options {
+  readonly environment?: NodeJS.ProcessEnv;
   readonly instanceId: ProviderInstanceId;
   readonly selfInvocation: SelfInvocation;
   readonly makeRuntime: (
@@ -254,6 +255,7 @@ export const makeAntigravityAdapterV2 = Effect.fn("makeAntigravityAdapterV2")(fu
     host: yield* ProviderHost.ProviderHost,
   };
   return yield* makeAcpAdapterV2({
+    ...(options.environment === undefined ? {} : { environment: options.environment }),
     instanceId: options.instanceId,
     flavor: makeAntigravityAcpAdapterFlavor({ ...options, ...services }),
     selfInvocation: options.selfInvocation,
