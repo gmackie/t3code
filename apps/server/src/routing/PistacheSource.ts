@@ -7,6 +7,7 @@
 import {
   DEFAULT_PROVIDER_HEALTH_REFRESH_INTERVAL,
   ProviderInstanceId,
+  settingsSecretLiteral,
   type ProviderInstanceConfig,
   type RoutingDecision,
   type RoutingOverview,
@@ -48,8 +49,10 @@ export class PistacheSource extends Context.Service<
 >()("t3/routing/PistacheSource") {}
 
 function environmentValue(instance: ProviderInstanceConfig, name: string): string | undefined {
-  const value = instance.environment?.find((variable) => variable.name === name)?.value;
-  return value === undefined || value.length === 0 ? undefined : value;
+  const value = settingsSecretLiteral(
+    instance.environment?.find((variable) => variable.name === name)?.value,
+  );
+  return value.length === 0 ? undefined : value;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

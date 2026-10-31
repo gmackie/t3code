@@ -88,6 +88,8 @@ export * from "./unityHooks.ts";
 export * from "./unityGame.ts";
 export * from "./unityCommand.ts";
 export * from "./metamask.ts";
+export * from "./secretReference.ts";
+export * from "./settingsSecretValue.ts";
 export * from "./clientRpcPermissions.ts";
 
 export * from "./reverse.ts";
