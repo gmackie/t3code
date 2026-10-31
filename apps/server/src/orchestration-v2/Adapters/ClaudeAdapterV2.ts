@@ -72,6 +72,7 @@ import {
   TrimmedNonEmptyString,
   defaultInstanceIdForDriver,
   isCompactionCommandMessage,
+  mcpServerVariableRecord,
   type ModelSelection,
   type OrchestrationV2ConversationMessage,
   type OrchestrationV2ExecutionNode,
@@ -101,6 +102,7 @@ import {
   type ProviderRequestKind,
   type ProviderUserInputAnswers,
   type ProviderThreadId,
+  type ResolvedMcpServer,
   type RunId,
   type ThreadId,
   resolveIdleCompaction,
@@ -1579,7 +1581,7 @@ export function makeClaudeQueryOptions(input: {
       preset: "claude_code" as const,
       append: [
         buildRuntimeInstructions({ harness: "Claude Code" }) +
-          (input.mcpServers === undefined
+          (input.mcpServers?.["t3-code"] === undefined
             ? ""
             : T3_CODE_ORCHESTRATION_INSTRUCTIONS +
               CLAUDE_BACKGROUND_WAIT_INSTRUCTIONS +
@@ -1710,17 +1712,23 @@ export function claudeMcpQueryOverrides(input: {
 }): {
   readonly allowedTools?: ReadonlyArray<string>;
   readonly mcpServers?: ClaudeQueryOptions["mcpServers"];
+  readonly sdkSettings?: ClaudeSdkSettings;
 } {
   const session = input.mcpSession;
   if (session === undefined) {
     return input.allowedTools === undefined ? {} : { allowedTools: input.allowedTools };
   }
+  const tools = session.tools ?? McpProviderSession.EMPTY_MCP_PROVIDER_SESSION_TOOLS;
   const mcpAllowedTools = input.readOnlySandbox
     ? CLAUDE_READ_ONLY_T3_MCP_ALLOWED_TOOLS
     : [CLAUDE_T3_MCP_TOOL_WILDCARD];
+  // The user's servers are not pre-approved: full access already skips the
+  // prompt, so an allow rule would only bypass the modes that ask to approve.
+  const userServers = claudeUserMcpServers(tools.servers);
   return {
     allowedTools: Array.from(new Set([...(input.allowedTools ?? []), ...mcpAllowedTools])),
     mcpServers: {
+      ...userServers,
       "t3-code": {
         type: "http",
         url: session.endpoint,
@@ -1730,7 +1738,41 @@ export function claudeMcpQueryOverrides(input: {
         timeout: CLAUDE_T3_MCP_TOOL_TIMEOUT_MS,
       },
     },
+    ...(tools.disabledSkills.length === 0
+      ? {}
+      : {
+          // The flag-settings layer outranks the user's and project's
+          // settings files, so an "off" here hides the skill from both the
+          // model and the slash menu whatever those files say.
+          sdkSettings: {
+            skillOverrides: Object.fromEntries(
+              tools.disabledSkills.map((name) => [name, "off" as const]),
+            ),
+          },
+        }),
   };
+}
+
+function claudeUserMcpServers(
+  servers: ReadonlyArray<ResolvedMcpServer>,
+): NonNullable<ClaudeQueryOptions["mcpServers"]> {
+  return Object.fromEntries(
+    servers.map((server) => [
+      server.name,
+      server.transport.type === "stdio"
+        ? {
+            type: "stdio" as const,
+            command: server.transport.command,
+            args: [...server.transport.args],
+            env: mcpServerVariableRecord(server.transport.env),
+          }
+        : {
+            type: "http" as const,
+            url: server.transport.url,
+            headers: mcpServerVariableRecord(server.transport.headers),
+          },
+    ]),
+  );
 }
 
 function providerSession(input: {
@@ -2659,6 +2701,7 @@ export function claudeEffectiveQueryPolicyKey(
   mcpOverrides: {
     readonly allowedTools?: ReadonlyArray<string>;
     readonly mcpServers?: ClaudeQueryOptions["mcpServers"];
+    readonly sdkSettings?: ClaudeSdkSettings;
   },
 ): string {
   return JSON.stringify({
@@ -2669,6 +2712,8 @@ export function claudeEffectiveQueryPolicyKey(
         : { allowedTools: mcpOverrides.allowedTools }),
     }),
     mcpServers: mcpOverrides.mcpServers,
+    // Skill switches load at process start, so a change reopens the query.
+    sdkSettings: mcpOverrides.sdkSettings,
   });
 }
 
@@ -9915,6 +9960,18 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             turnInput.runtimePolicy.cwd,
             launchArgSettings,
           );
+          // T3's skill switches join the launch-arg settings; a T3 "off" wins per skill.
+          const sdkSettings =
+            mcpOverrides.sdkSettings === undefined
+              ? launchArgSettings
+              : {
+                  ...launchArgSettings,
+                  ...mcpOverrides.sdkSettings,
+                  skillOverrides: {
+                    ...launchArgSettings?.skillOverrides,
+                    ...mcpOverrides.sdkSettings.skillOverrides,
+                  },
+                };
           const queryOptions = makeClaudeQueryOptions({
             modelSelection: turnInput.modelSelection,
             nativeThreadId,
@@ -9923,7 +9980,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             cwd: turnInput.runtimePolicy.cwd,
             attachmentsDir,
             settings: adapterOptions.settings,
-            ...(launchArgSettings === undefined ? {} : { sdkSettings: launchArgSettings }),
+            ...(sdkSettings === undefined ? {} : { sdkSettings }),
             environment: claudeQueryEnvironment(
               adapterOptions.environment,
               turnInput.appThread,

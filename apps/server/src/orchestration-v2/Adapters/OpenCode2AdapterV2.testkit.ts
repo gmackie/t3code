@@ -60,12 +60,17 @@ const operationOf = (
   if (method === "POST" && path === "/api/session") return { type: "session.create", input: body };
   if (method === "GET" && path === "/api/session/active") return { type: "session.active" };
   if (method === "GET" && path === "/api/command") return { type: "command.list", input: query };
+  if (method === "GET" && path === "/api/mcp") return { type: "mcp.list", input: query };
   const mcp = /^\/api\/experimental\/mcp\/([^/]+)$/.exec(path);
   if (mcp !== null && method === "PUT") {
     return { type: "mcp.add", input: { server: mcp[1], ...query, ...(body as object) } };
   }
   if (mcp !== null && method === "DELETE") {
     return { type: "mcp.remove", input: { server: mcp[1], ...query } };
+  }
+  const connectMcp = /^\/api\/experimental\/mcp\/([^/]+)\/connect$/.exec(path);
+  if (connectMcp !== null && method === "POST") {
+    return { type: "mcp.connect", input: { server: connectMcp[1], ...query } };
   }
   const entry = /^\/api\/experimental\/session\/([^/]+)\/instructions\/entries\/([^/]+)$/.exec(
     path,
@@ -127,10 +132,60 @@ const operationOf = (
   return { type: `${method} ${path}`, input: { ...query, body } };
 };
 
+interface McpReplayState {
+  readonly servers: Map<string, { readonly config: unknown; status: "connected" | "failed" }>;
+  readonly failingConnections: Set<string>;
+  readonly failingRemovals: Set<string>;
+  readonly calls: Array<{ readonly type: string; readonly server: string }>;
+}
+
+const mcpResponse = (
+  state: McpReplayState,
+  operation: { readonly type: string; readonly input?: unknown },
+) => {
+  const input = operation.input as Record<string, unknown>;
+  if (operation.type === "mcp.list") {
+    return new Response(
+      encodeJson({
+        location: { directory: input["location[directory]"] },
+        data: [...state.servers].map(([name, entry]) => ({
+          name,
+          status: {
+            status: entry.status,
+            ...(entry.status === "failed" ? { error: "Unavailable" } : {}),
+          },
+        })),
+      }),
+      { headers: { "content-type": "application/json" } },
+    );
+  }
+  const server = String(input.server);
+  state.calls.push({ type: operation.type, server });
+  if (operation.type === "mcp.add") {
+    const previous = state.servers.get(server);
+    // OpenCode 2.0.28 reconciles only changed configs. Repeating add cannot heal.
+    if (JSON.stringify(previous?.config) !== JSON.stringify(input.config)) {
+      state.servers.set(server, {
+        config: input.config,
+        status: state.failingConnections.has(server) ? "failed" : "connected",
+      });
+    }
+  } else if (operation.type === "mcp.connect") {
+    const entry = state.servers.get(server);
+    if (entry !== undefined)
+      entry.status = state.failingConnections.has(server) ? "failed" : "connected";
+  } else if (operation.type === "mcp.remove") {
+    if (state.failingRemovals.has(server)) return new Response(null, { status: 500 });
+    state.servers.delete(server);
+  }
+  return new Response(null, { status: 204 });
+};
+
 const replayHttpClient = (
   controller: OpenCodeReplayController,
   replayGate: ProviderReplayGate | undefined,
   onPrompt: ((input: unknown) => void) | undefined,
+  mcp: McpReplayState | undefined,
 ) =>
   HttpClient.make((request, url) =>
     Effect.tryPromise({
@@ -152,6 +207,9 @@ const replayHttpClient = (
         // HTTP streams and requests use separate connections; deliver prior recorded inbound data before matching requests.
         if (operation.type !== "event.subscribe") await controller.untilInboundDelivered();
         if (operation.type === "session.prompt") onPrompt?.(operation.input);
+        if (mcp !== undefined && operation.type.startsWith("mcp.")) {
+          return mcpResponse(mcp, operation);
+        }
         await controller.expectOutbound(operation);
         if (operation.type === "event.subscribe") {
           controller.exited = false;
@@ -192,6 +250,7 @@ export const replayServer = (
   options?: {
     readonly external?: boolean;
     readonly onPrompt?: (input: unknown) => void;
+    readonly mcp?: McpReplayState;
     readonly replayGate?: ProviderReplayGate;
     readonly borrowers?: { current: number };
   },
@@ -207,7 +266,7 @@ export const replayServer = (
     const opencode = yield* OpenCode2Client.make.pipe(
       Effect.provideService(
         HttpClient.HttpClient,
-        replayHttpClient(controller, options?.replayGate, options?.onPrompt),
+        replayHttpClient(controller, options?.replayGate, options?.onPrompt, options?.mcp),
       ),
     );
     const connection = {
@@ -239,6 +298,7 @@ const makeReplayAdapter = (
   options?: {
     readonly external?: boolean;
     readonly onPrompt?: (input: unknown) => void;
+    readonly mcp?: McpReplayState;
     readonly replayGate?: ProviderReplayGate;
     readonly borrowers?: { current: number };
   },
@@ -286,6 +346,7 @@ export const openCode2ReplayRuntime = (
   options?: {
     readonly external?: boolean;
     readonly onPrompt?: (input: unknown) => void;
+    readonly mcp?: McpReplayState;
     readonly borrowers?: { current: number };
     readonly replayGate?: ProviderReplayGate;
     readonly attachmentsDir?: string;
