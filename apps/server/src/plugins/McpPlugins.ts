@@ -138,12 +138,13 @@ const make = Effect.gen(function* () {
   /** An OAuth server's current token rides on the pool's copy, like the agents' proxy adds it. */
   const withSignIn = Effect.fnUntraced(function* (server: ResolvedMcpServer) {
     const { transport } = server;
-    if (transport.type !== "http" || transport.oauth === undefined) return server;
+    if (transport.type !== "http" || transport.auth?.type !== "oauth") return server;
+    const auth = transport.auth;
     const signedOut = (cause: unknown) =>
       new McpClientPool.McpServerNeedsAuthError({ server: server.name, cause });
     if (Option.isNone(remoteAuth)) return yield* signedOut("OAuth is unavailable here.");
     const token = yield* remoteAuth.value
-      .accessToken({ name: server.name, transport: { ...transport, oauth: transport.oauth } })
+      .accessToken({ name: server.name, transport: { ...transport, auth } })
       .pipe(Effect.mapError(signedOut));
     return {
       ...server,

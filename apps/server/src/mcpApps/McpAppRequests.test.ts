@@ -584,7 +584,7 @@ describe("McpAppRequests plugin panels", () => {
                   type: "http",
                   url: `http://127.0.0.1:${port}/mcp`,
                   headers: [],
-                  oauth: { scopes: ["read"] },
+                  auth: { type: "oauth", scopes: ["read"] },
                 },
               },
             }),

@@ -58,7 +58,7 @@ export function PluginPanelView(props: {
     }),
   ).data;
   const cwd = panelContext?.cwd ?? props.cwd;
-  const signsInWithOAuth = transport?.type === "http" && transport.oauth !== undefined;
+  const signsInWithOAuth = transport?.type === "http" && transport.auth?.type === "oauth";
   const { environmentId, pluginId, panelId, projectId } = props;
 
   // Opening runs the panel's opening tool on the server: once per panel and project, and again

@@ -81,7 +81,7 @@ export function PluginPanelScreen({ route }: PluginPanelScreenProps) {
         panelId={McpPluginPanelId.make(params.panelId)}
         projectId={ProjectId.make(params.projectId)}
         {...(params.threadId === undefined ? {} : { threadId: ThreadId.make(params.threadId) })}
-        signsInWithOAuth={transport?.type === "http" && transport.oauth !== undefined}
+        signsInWithOAuth={transport?.type === "http" && transport.auth?.type === "oauth"}
       />
     </View>
   );
