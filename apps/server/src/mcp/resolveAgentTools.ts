@@ -40,12 +40,12 @@ export function proxyOAuthServers(
   tools: McpProviderSessionTools,
   session: { readonly endpoint: string; readonly authorizationHeader: string },
 ): McpProviderSessionTools {
-  if (!tools.servers.some((server) => server.transport.type === "http" && server.transport.oauth))
+  if (!tools.servers.some((server) => server.transport.type === "http" && server.transport.auth))
     return tools;
   return {
     ...tools,
     servers: tools.servers.map((server) =>
-      server.transport.type === "http" && server.transport.oauth !== undefined
+      server.transport.type === "http" && server.transport.auth !== undefined
         ? {
             name: server.name,
             transport: {

@@ -48,6 +48,7 @@ const makeProvider = () => {
         response_types_supported: ["code"],
         code_challenge_methods_supported: ["S256"],
         grant_types_supported: ["authorization_code", "refresh_token"],
+        authorization_response_iss_parameter_supported: true,
       });
     }
     if (url.href === "https://auth.example/register") {
@@ -102,7 +103,12 @@ const layer = (provider: ReturnType<typeof makeProvider>) =>
         mcpServers: {
           linear: {
             enabled: true,
-            transport: { type: "http", url: MCP_URL, headers: [], oauth: { scopes: [] } },
+            transport: {
+              type: "http",
+              url: MCP_URL,
+              headers: [],
+              auth: { type: "oauth", scopes: [] },
+            },
           },
           plain: {
             enabled: true,
@@ -114,7 +120,12 @@ const layer = (provider: ReturnType<typeof makeProvider>) =>
             mcpServers: {
               linear: {
                 enabled: true,
-                transport: { type: "http", url: PROJECT_URL, headers: [], oauth: { scopes: [] } },
+                transport: {
+                  type: "http",
+                  url: PROJECT_URL,
+                  headers: [],
+                  auth: { type: "oauth", scopes: [] },
+                },
               },
             },
           },
@@ -143,7 +154,11 @@ const startSignIn = (projectId?: typeof PROJECT) =>
 const signedIn = Effect.gen(function* () {
   const { authorizationUrl, events, fiber, remoteAuth } = yield* startSignIn();
   const server = yield* remoteAuth.complete(
-    new URLSearchParams({ code: "good-code", state: authorizationUrl.searchParams.get("state")! }),
+    new URLSearchParams({
+      code: "good-code",
+      state: authorizationUrl.searchParams.get("state")!,
+      iss: "https://auth.example",
+    }),
   );
   assert.equal(server, "linear");
   assert.equal((yield* Queue.take(events)).type, "connected");
@@ -171,6 +186,7 @@ it.effect("signs in with discovery, registration and PKCE, then hands out the to
     yield* remoteAuth.complete(
       new URLSearchParams({
         code: "good-code",
+        iss: "https://auth.example",
         state: authorizationUrl.searchParams.get("state")!,
       }),
     );
@@ -234,6 +250,23 @@ it.effect("signs in separately for a project override that points elsewhere", ()
     const { authorizationUrl, fiber } = yield* startSignIn(PROJECT);
     assert.equal(authorizationUrl.searchParams.get("resource"), PROJECT_URL);
     yield* Fiber.interrupt(fiber);
+  }).pipe(Effect.provide(layer(provider)), Effect.provide(NodeServices.layer));
+});
+
+it.effect("rejects a code returned with a wrong or missing issuer", () => {
+  const provider = makeProvider();
+  return Effect.gen(function* () {
+    for (const iss of ["https://evil.example", null]) {
+      const { authorizationUrl, fiber, remoteAuth } = yield* startSignIn();
+      const query = new URLSearchParams({
+        code: "good-code",
+        state: authorizationUrl.searchParams.get("state")!,
+      });
+      if (iss !== null) query.set("iss", iss);
+      assert.isTrue(Result.isFailure(yield* Effect.result(remoteAuth.complete(query))));
+      assert.isTrue(Result.isFailure(yield* Effect.result(Fiber.join(fiber))));
+    }
+    assert.isFalse(provider.seen.tokenGrants.some((grant) => grant.get("code") === "good-code"));
   }).pipe(Effect.provide(layer(provider)), Effect.provide(NodeServices.layer));
 });
 

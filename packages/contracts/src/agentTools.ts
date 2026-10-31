@@ -52,6 +52,7 @@ export type McpStdioTransport = typeof McpStdioTransport.Type;
  * is for servers without dynamic client registration.
  */
 export const McpOAuthSettings = Schema.Struct({
+  type: Schema.Literal("oauth"),
   scopes: Schema.Array(TrimmedNonEmptyString).pipe(Schema.withDecodingDefault(Effect.succeed([]))),
   clientId: Schema.optionalKey(TrimmedNonEmptyString),
 });
@@ -61,7 +62,7 @@ export const McpHttpTransport = Schema.Struct({
   type: Schema.Literal("http"),
   url: TrimmedNonEmptyString,
   headers: Schema.Array(McpServerVariable).pipe(Schema.withDecodingDefault(Effect.succeed([]))),
-  oauth: Schema.optionalKey(McpOAuthSettings),
+  auth: Schema.optionalKey(McpOAuthSettings),
 });
 export type McpHttpTransport = typeof McpHttpTransport.Type;
 

@@ -30,7 +30,7 @@ describe("MCP server editor", () => {
         type: "http" as const,
         url: "https://mcp.example/mcp",
         headers: [],
-        oauth: { scopes: ["read", "write"], clientId: "t3" },
+        auth: { type: "oauth" as const, scopes: ["read", "write"], clientId: "t3" },
       },
     };
     const draft = mcpServerDraftFrom("example", config);
@@ -39,7 +39,7 @@ describe("MCP server editor", () => {
       transport: config.transport,
     });
     expect(mcpServerFromDraft({ ...draft, oauth: false }, new Set(), "example")).not.toHaveProperty(
-      "transport.oauth",
+      "transport.auth",
     );
   });
 
@@ -137,7 +137,7 @@ describe("MCP server editor", () => {
                 type: "http",
                 url: "https://example.com/mcp",
                 headers: [],
-                oauth: { scopes: [] },
+                auth: { type: "oauth", scopes: [] },
               };
         expect(mcpServerFromDraft(imported, new Set())).toEqual({
           ok: true,

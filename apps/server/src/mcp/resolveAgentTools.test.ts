@@ -12,7 +12,7 @@ describe("proxyOAuthServers", () => {
             type: "http" as const,
             url: "https://mcp.example/mcp",
             headers: [],
-            oauth: { scopes: [] },
+            auth: { type: "oauth" as const, scopes: [] },
           },
         },
         {

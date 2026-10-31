@@ -309,9 +309,9 @@ export function mcpServerDraftFrom(name: string, config: McpServerConfig): McpSe
         type: "http",
         url: transport.url,
         headers: variableDrafts(transport.headers),
-        oauth: transport.oauth !== undefined,
-        oauthScopes: transport.oauth?.scopes.join(" ") ?? "",
-        oauthClientId: transport.oauth?.clientId ?? "",
+        oauth: transport.auth !== undefined,
+        oauthScopes: transport.auth?.scopes.join(" ") ?? "",
+        oauthClientId: transport.auth?.clientId ?? "",
       };
 }
 
@@ -613,7 +613,7 @@ export function mcpServerFromDraft(
       type: "http",
       url,
       headers: variablesFromDrafts(draft.headers, { name, storedName }),
-      ...(draft.oauth ? { oauth: oauthFromDraft(draft) } : {}),
+      ...(draft.oauth ? { auth: oauthFromDraft(draft) } : {}),
     },
   };
 }
@@ -621,7 +621,7 @@ export function mcpServerFromDraft(
 function oauthFromDraft(draft: McpServerDraft): McpOAuthSettings {
   const scopes = draft.oauthScopes.split(/\s+/).filter((scope) => scope.length > 0);
   const clientId = draft.oauthClientId.trim();
-  return clientId.length > 0 ? { scopes, clientId } : { scopes };
+  return clientId.length > 0 ? { type: "oauth", scopes, clientId } : { type: "oauth", scopes };
 }
 
 /**

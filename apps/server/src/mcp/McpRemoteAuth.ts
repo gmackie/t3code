@@ -43,7 +43,7 @@ export const MCP_OAUTH_CALLBACK_PATH = "/oauth/mcp-client/callback";
 /** An http server from settings that signs in with OAuth. */
 export interface McpOAuthServer {
   readonly name: string;
-  readonly transport: McpHttpTransport & { readonly oauth: NonNullable<McpHttpTransport["oauth"]> };
+  readonly transport: McpHttpTransport & { readonly auth: NonNullable<McpHttpTransport["auth"]> };
 }
 
 export interface McpRemoteAuthShape {
@@ -107,8 +107,8 @@ const isOAuthServer = (
   name: string,
   transport: McpHttpTransport | { readonly type: "stdio" },
 ): McpOAuthServer | undefined =>
-  transport.type === "http" && transport.oauth !== undefined
-    ? { name, transport: { ...transport, oauth: transport.oauth } }
+  transport.type === "http" && transport.auth !== undefined
+    ? { name, transport: { ...transport, auth: transport.auth } }
     : undefined;
 
 const describe = (cause: unknown): string =>
@@ -164,7 +164,7 @@ export const make = Effect.fn("McpRemoteAuth.make")(function* (options: McpRemot
     },
   ): OAuthClientProvider => {
     let verifier = hooks.codeVerifier ?? "";
-    const { scopes, clientId } = server.transport.oauth;
+    const { scopes, clientId } = server.transport.auth;
     return {
       get redirectUrl() {
         return redirectUrl;
@@ -222,8 +222,8 @@ export const make = Effect.fn("McpRemoteAuth.make")(function* (options: McpRemot
         auth(provider, {
           serverUrl: server.transport.url,
           ...(authorizationCode === undefined ? {} : { authorizationCode }),
-          ...(server.transport.oauth.scopes.length > 0
-            ? { scope: server.transport.oauth.scopes.join(" ") }
+          ...(server.transport.auth.scopes.length > 0
+            ? { scope: server.transport.auth.scopes.join(" ") }
             : {}),
           ...(fetchFn === undefined ? {} : { fetchFn }),
         }),
@@ -350,6 +350,18 @@ export const make = Effect.fn("McpRemoteAuth.make")(function* (options: McpRemot
         }
         if (code === null) return yield* fail(server.name, "The sign-in returned no code.");
         const record = yield* load(server);
+        // RFC 9207: a returned `iss` must be the issuer we started with, and a
+        // server that promises one must send it, so a mix-up attack can't swap
+        // in a code from another authorization server.
+        const metadata = record.discovery?.authorizationServerMetadata;
+        const iss = query.get("iss");
+        const issRequired =
+          metadata !== undefined &&
+          "authorization_response_iss_parameter_supported" in metadata &&
+          metadata.authorization_response_iss_parameter_supported === true;
+        if (iss === null ? issRequired : iss !== metadata?.issuer) {
+          return yield* fail(server.name, "The sign-in came back from an unexpected issuer.");
+        }
         const provider = makeProvider(
           server,
           record,

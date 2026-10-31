@@ -17,7 +17,7 @@ const SERVER: McpRemoteAuth.McpOAuthServer = {
     type: "http",
     url: "https://mcp.example/mcp",
     headers: [{ name: "x-team", value: "core", sensitive: false }],
-    oauth: { scopes: [] },
+    auth: { type: "oauth", scopes: [] },
   },
 };
 

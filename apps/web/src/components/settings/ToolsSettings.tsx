@@ -531,7 +531,7 @@ function McpServersPanel({
       : null,
   );
   const oauthControl = (row: McpServerRow) =>
-    target && row.config.transport.type === "http" && row.config.transport.oauth ? (
+    target && row.config.transport.type === "http" && row.config.transport.auth ? (
       <McpOAuthSignIn
         environmentId={target.environmentId}
         projectId={projectId}
