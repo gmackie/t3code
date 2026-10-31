@@ -432,7 +432,7 @@ describe("McpAppRequests plugin panels", () => {
         },
       });
       const error = yield* Effect.flip(plugins.install({ manifest, directory: fixtureDir }));
-      assert.equal(error._tag, "McpPluginServerConflictError");
+      assert.equal(error.reason, "server-name-taken");
       assert.isUndefined((yield* settings.getSettings).mcpServers.fixture?.plugin);
     }).pipe(Effect.provide(layer())),
   );

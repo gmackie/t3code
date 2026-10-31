@@ -124,6 +124,7 @@ import * as ThreadManagementService from "./orchestration-v2/ThreadManagementSer
 import * as ThreadViewers from "./orchestration-v2/ThreadViewers.ts";
 import * as CommandOutputHub from "./orchestration-v2/CommandOutputHub.ts";
 import * as McpAppRequests from "./mcpApps/McpAppRequests.ts";
+import * as McpPlugins from "./plugins/McpPlugins.ts";
 import * as ProviderSessionManager from "./orchestration-v2/ProviderSessionManager.ts";
 import * as ThreadLaunchService from "./orchestration-v2/ThreadLaunchService.ts";
 import * as BobCoordination from "./coordination/BobCoordination.ts";
@@ -1284,6 +1285,7 @@ export const layerWsRpc = (
 
       const providerSessionsV2 = yield* ProviderSessionManager.ProviderSessionManagerV2;
       const mcpAppRequests = yield* McpAppRequests.McpAppRequests;
+      const mcpPlugins = yield* McpPlugins.McpPlugins;
       const analytics = yield* AnalyticsService.AnalyticsService;
       const originProps = clientAnalyticsProps;
       const recordClientCommandAnalytics = (command: OrchestrationV2Command) => {
@@ -2689,6 +2691,11 @@ export const layerWsRpc = (
         [WS_METHODS.mcpAppsUpdateModelContext]: (input) => mcpAppRequests.updateModelContext(input),
         [WS_METHODS.mcpAppsReadResource]: (input) => mcpAppRequests.readResource(input),
         [WS_METHODS.mcpAppsOpenPanel]: (input) => mcpAppRequests.openPanel(input),
+        [WS_METHODS.mcpPluginsList]: (_input) => mcpPlugins.list,
+        [WS_METHODS.mcpPluginsInstall]: (input) => mcpPlugins.installFromDirectory(input),
+        [WS_METHODS.mcpPluginsUninstall]: (input) => mcpPlugins.uninstall(input.pluginId),
+        [WS_METHODS.mcpPluginsSetEnabled]: (input) =>
+          mcpPlugins.setEnabled(input.pluginId, input.enabled),
         [WS_METHODS.providerUploadFeedback]:
           /* Request instrumentation already owns the span; keep this helper in that context. */
           Effect.fnUntraced(
@@ -2831,7 +2838,10 @@ export const layerWsRpc = (
                   Effect.provide(deviceHostContext),
                 )
               : undefined;
-            const nextPatch = { ...patch, ...(deviceHosts ? { deviceHosts } : {}) };
+            const nextPatch = yield* mcpPlugins.guardSettingsPatch({
+              ...patch,
+              ...(deviceHosts ? { deviceHosts } : {}),
+            });
             const authorize = (current: ServerSettingsValue) =>
               RpcAuthorization.authorizeSettingsUpdate(
                 currentSession.scopes,

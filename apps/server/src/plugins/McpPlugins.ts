@@ -1,4 +1,6 @@
 import {
+  McpPluginEntry,
+  McpPluginError,
   McpPluginManifest,
   type McpPluginId,
   type McpPluginPanel,
@@ -8,7 +10,8 @@ import {
   type McpServerVariable,
   type ProjectId,
   type ResolvedMcpServer,
-  type ServerSettingsError,
+  type ServerSettings as ServerSettingsValue,
+  type ServerSettingsPatch,
 } from "@t3tools/contracts";
 import { resolveProjectSettings } from "@t3tools/shared/projectSettings";
 import { writeFileStringAtomically } from "@t3tools/shared/atomicWrite";
@@ -25,44 +28,14 @@ import * as ServerConfig from "../config.ts";
 import * as McpClientPool from "../mcp/McpClientPool.ts";
 import * as ServerSettings from "../serverSettings.ts";
 
-export const McpPluginRecord = Schema.Struct({
-  manifest: McpPluginManifest,
-  /** Where the plugin's files live; `${pluginRoot}` resolves to it. */
-  directory: Schema.optionalKey(Schema.String),
-  enabled: Schema.Boolean,
-});
-export type McpPluginRecord = typeof McpPluginRecord.Type;
+export type McpPluginRecord = McpPluginEntry;
 
-const McpPluginRecords = Schema.Array(McpPluginRecord);
+const McpPluginRecords = Schema.Array(McpPluginEntry);
 const decodeRecords = Schema.decodeUnknownEffect(Schema.fromJsonString(McpPluginRecords));
 const encodeRecords = Schema.encodeEffect(Schema.fromJsonString(McpPluginRecords));
+const decodeManifestJson = Schema.decodeUnknownEffect(Schema.fromJsonString(McpPluginManifest));
 
-export class McpPluginNotFoundError extends Schema.TaggedError<McpPluginNotFoundError>()(
-  "McpPluginNotFoundError",
-  { pluginId: Schema.String },
-) {
-  override get message(): string {
-    return `Plugin "${this.pluginId}" isn't installed.`;
-  }
-}
-
-export class McpPluginServerConflictError extends Schema.TaggedError<McpPluginServerConflictError>()(
-  "McpPluginServerConflictError",
-  { pluginId: Schema.String, server: Schema.String },
-) {
-  override get message(): string {
-    return `Settings → Tools already has a server named "${this.server}". Rename or remove it to install this plugin.`;
-  }
-}
-
-export class McpPluginStoreError extends Schema.TaggedError<McpPluginStoreError>()(
-  "McpPluginStoreError",
-  { operation: Schema.Literals(["read", "write"]), cause: Schema.Defect() },
-) {
-  override get message(): string {
-    return `Failed to ${this.operation} the installed plugin list.`;
-  }
-}
+const storageFailed = (cause: unknown) => new McpPluginError({ reason: "storage-failed", cause });
 
 /** The panel's plugin is missing or disabled, or its server is switched off for the project. */
 export class McpPluginPanelUnavailableError extends Schema.TaggedError<McpPluginPanelUnavailableError>()(
@@ -89,35 +62,36 @@ export interface McpPluginPanelTarget {
 export class McpPlugins extends Context.Service<
   McpPlugins,
   {
-    readonly list: Effect.Effect<ReadonlyArray<McpPluginRecord>, McpPluginStoreError>;
+    readonly list: Effect.Effect<ReadonlyArray<McpPluginRecord>, McpPluginError>;
     /** Installs or upgrades. Values fill the manifest's variables; omitted ones keep what's stored. */
     readonly install: (input: {
       readonly manifest: McpPluginManifest;
       readonly directory?: string;
       readonly variables?: Readonly<Record<string, string>>;
-    }) => Effect.Effect<
-      McpPluginRecord,
-      McpPluginServerConflictError | McpPluginStoreError | ServerSettingsError
-    >;
-    readonly uninstall: (
-      pluginId: McpPluginId,
-    ) => Effect.Effect<void, McpPluginNotFoundError | McpPluginStoreError | ServerSettingsError>;
+    }) => Effect.Effect<McpPluginRecord, McpPluginError>;
+    /** Installs the plugin whose `t3-plugin.json` is in `directory`. */
+    readonly installFromDirectory: (input: {
+      readonly directory: string;
+      readonly variables?: Readonly<Record<string, string>>;
+    }) => Effect.Effect<McpPluginRecord, McpPluginError>;
+    readonly uninstall: (pluginId: McpPluginId) => Effect.Effect<void, McpPluginError>;
     /** Disabling also switches the Tools entry off; enabling switches it back on. */
     readonly setEnabled: (
       pluginId: McpPluginId,
       enabled: boolean,
-    ) => Effect.Effect<
-      McpPluginRecord,
-      McpPluginNotFoundError | McpPluginStoreError | ServerSettingsError
-    >;
+    ) => Effect.Effect<McpPluginRecord, McpPluginError>;
     readonly resolvePanel: (input: {
       readonly pluginId: McpPluginId;
       readonly panelId: McpPluginPanelId;
       readonly projectId: ProjectId;
-    }) => Effect.Effect<
-      McpPluginPanelTarget,
-      McpPluginPanelUnavailableError | McpPluginStoreError | ServerSettingsError
-    >;
+    }) => Effect.Effect<McpPluginPanelTarget, McpPluginPanelUnavailableError | McpPluginError>;
+    /**
+     * Keeps a client's settings patch off plugin-owned Tools entries: it may
+     * switch one on or off, never edit or remove it, and can't claim a plugin.
+     */
+    readonly guardSettingsPatch: (
+      patch: ServerSettingsPatch,
+    ) => Effect.Effect<ServerSettingsPatch, McpPluginError>;
   }
 >()("t3/plugins/McpPlugins") {}
 
@@ -154,13 +128,26 @@ const make = Effect.gen(function* () {
   const recordsPath = path.join(stateDir, "mcp-plugins.json");
   const lock = yield* Semaphore.make(1);
 
+  const currentSettings = settings.getSettings.pipe(Effect.mapError(storageFailed));
+  const updateSettings = (
+    patch: ServerSettingsPatch,
+    authorize?: (current: ServerSettingsValue) => Effect.Effect<void, McpPluginError>,
+  ) =>
+    settings
+      .updateSettings(patch, authorize)
+      .pipe(
+        Effect.mapError((error) =>
+          error._tag === "McpPluginError" ? error : storageFailed(error),
+        ),
+      );
+
   const readRecords = fileSystem.readFileString(recordsPath).pipe(
     Effect.flatMap(decodeRecords),
     Effect.catchTags({
       PlatformError: (error) =>
         error.reason._tag === "NotFound" ? Effect.succeed([]) : Effect.fail(error),
     }),
-    Effect.mapError((cause) => new McpPluginStoreError({ operation: "read", cause })),
+    Effect.mapError(storageFailed),
   );
 
   const writeRecords = (records: ReadonlyArray<McpPluginRecord>) =>
@@ -170,13 +157,14 @@ const make = Effect.gen(function* () {
       ),
       Effect.provideService(FileSystem.FileSystem, fileSystem),
       Effect.provideService(Path.Path, path),
-      Effect.mapError((cause) => new McpPluginStoreError({ operation: "write", cause })),
+      Effect.mapError(storageFailed),
     );
 
   const findRecord = Effect.fnUntraced(function* (pluginId: McpPluginId) {
     const records = yield* readRecords;
     const record = records.find((candidate) => candidate.manifest.id === pluginId);
-    if (record === undefined) return yield* new McpPluginNotFoundError({ pluginId });
+    if (record === undefined)
+      return yield* new McpPluginError({ reason: "not-installed", pluginId });
     return { records, record };
   });
 
@@ -228,7 +216,7 @@ const make = Effect.gen(function* () {
             enabled: previous?.enabled ?? true,
             ...(input.directory === undefined ? {} : { directory: input.directory }),
           };
-          const current = yield* settings.getSettings;
+          const current = yield* currentSettings;
           const values = {
             ...storedValues(current.mcpServers[name]?.transport),
             ...input.variables,
@@ -238,13 +226,17 @@ const make = Effect.gen(function* () {
               ? { [previous.manifest.mcpServer.name]: null }
               : {};
           // Checked under the settings write lock, so a user's entry can't appear in between.
-          yield* settings.updateSettings(
+          yield* updateSettings(
             { mcpServers: { ...renamed, [name]: toolsEntry(record, values) } },
             (latest) => {
               const existing = latest.mcpServers[name];
               return existing !== undefined && existing.plugin?.id !== manifest.id
                 ? Effect.fail(
-                    new McpPluginServerConflictError({ pluginId: manifest.id, server: name }),
+                    new McpPluginError({
+                      reason: "server-name-taken",
+                      pluginId: manifest.id,
+                      server: name,
+                    }),
                   )
                 : Effect.void;
             },
@@ -268,9 +260,9 @@ const make = Effect.gen(function* () {
         Effect.gen(function* () {
           const { records, record } = yield* findRecord(pluginId);
           const name = record.manifest.mcpServer.name;
-          const current = yield* settings.getSettings;
+          const current = yield* currentSettings;
           if (current.mcpServers[name]?.plugin?.id === pluginId) {
-            yield* settings.updateSettings({ mcpServers: { [name]: null } });
+            yield* updateSettings({ mcpServers: { [name]: null } });
           }
           yield* writeRecords(records.filter((candidate) => candidate !== record));
           yield* pool.closeServer(name);
@@ -287,10 +279,10 @@ const make = Effect.gen(function* () {
           const { records, record } = yield* findRecord(pluginId);
           const next: McpPluginRecord = { ...record, enabled };
           const name = record.manifest.mcpServer.name;
-          const current = yield* settings.getSettings;
+          const current = yield* currentSettings;
           const entry = current.mcpServers[name];
           if (entry?.plugin?.id === pluginId) {
-            yield* settings.updateSettings({ mcpServers: { [name]: { ...entry, enabled } } });
+            yield* updateSettings({ mcpServers: { [name]: { ...entry, enabled } } });
           }
           yield* writeRecords(
             records.map((candidate) => (candidate === record ? next : candidate)),
@@ -317,10 +309,7 @@ const make = Effect.gen(function* () {
         return yield* unavailable;
       }
       const name = record.manifest.mcpServer.name;
-      const effective = resolveProjectSettings(
-        yield* settings.getSettings,
-        input.projectId,
-      ).settings;
+      const effective = resolveProjectSettings(yield* currentSettings, input.projectId).settings;
       const entry = effective.mcpServers[name];
       if (entry === undefined || !entry.enabled || entry.plugin?.id !== input.pluginId) {
         return yield* unavailable;
@@ -329,7 +318,59 @@ const make = Effect.gen(function* () {
     },
   );
 
-  return McpPlugins.of({ list: readRecords, install, uninstall, setEnabled, resolvePanel });
+  const installFromDirectory: McpPlugins["Service"]["installFromDirectory"] = Effect.fn(
+    "McpPlugins.installFromDirectory",
+  )(function* (input) {
+    const directory = path.resolve(input.directory);
+    const manifest = yield* fileSystem.readFileString(path.join(directory, "t3-plugin.json")).pipe(
+      Effect.flatMap(decodeManifestJson),
+      Effect.mapError((cause) => new McpPluginError({ reason: "invalid-manifest", cause })),
+    );
+    return yield* install({
+      manifest,
+      directory,
+      ...(input.variables === undefined ? {} : { variables: input.variables }),
+    });
+  });
+
+  const guardSettingsPatch: McpPlugins["Service"]["guardSettingsPatch"] = Effect.fn(
+    "McpPlugins.guardSettingsPatch",
+  )(function* (patch) {
+    if (patch.mcpServers === undefined) return patch;
+    const current = (yield* currentSettings).mcpServers;
+    const mcpServers: Record<string, McpServerConfig | null> = {};
+    for (const [name, next] of Object.entries(patch.mcpServers)) {
+      const owned = current[name];
+      if (owned?.plugin === undefined) {
+        if (next === null || next.plugin === undefined) {
+          mcpServers[name] = next;
+        } else {
+          const { plugin: _claimed, ...unclaimed } = next;
+          mcpServers[name] = unclaimed;
+        }
+        continue;
+      }
+      if (next === null) {
+        return yield* new McpPluginError({
+          reason: "plugin-owned-server",
+          pluginId: owned.plugin.id,
+          server: name,
+        });
+      }
+      mcpServers[name] = { ...owned, enabled: next.enabled };
+    }
+    return { ...patch, mcpServers };
+  });
+
+  return McpPlugins.of({
+    list: readRecords,
+    install,
+    installFromDirectory,
+    uninstall,
+    setEnabled,
+    resolvePanel,
+    guardSettingsPatch,
+  });
 });
 
 export const layer = Layer.effect(McpPlugins, make);

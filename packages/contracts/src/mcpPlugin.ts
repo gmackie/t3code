@@ -82,3 +82,54 @@ export const McpPluginManifest = Schema.Struct({
   }),
 );
 export type McpPluginManifest = typeof McpPluginManifest.Type;
+
+export const McpPluginEntry = Schema.Struct({
+  manifest: McpPluginManifest,
+  directory: Schema.optionalKey(Schema.String),
+  enabled: Schema.Boolean,
+});
+export type McpPluginEntry = typeof McpPluginEntry.Type;
+
+/** Installs or upgrades the plugin whose `t3-plugin.json` is in `directory` on the server. */
+export const McpPluginInstallInput = Schema.Struct({
+  directory: TrimmedNonEmptyString,
+  variables: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
+});
+export type McpPluginInstallInput = typeof McpPluginInstallInput.Type;
+
+export const McpPluginIdInput = Schema.Struct({ pluginId: McpPluginId });
+export type McpPluginIdInput = typeof McpPluginIdInput.Type;
+
+export const McpPluginSetEnabledInput = Schema.Struct({
+  pluginId: McpPluginId,
+  enabled: Schema.Boolean,
+});
+export type McpPluginSetEnabledInput = typeof McpPluginSetEnabledInput.Type;
+
+export class McpPluginError extends Schema.TaggedError<McpPluginError>()("McpPluginError", {
+  reason: Schema.Literals([
+    "not-installed",
+    "invalid-manifest",
+    "server-name-taken",
+    "plugin-owned-server",
+    "storage-failed",
+  ]),
+  pluginId: Schema.optionalKey(Schema.String),
+  server: Schema.optionalKey(Schema.String),
+  cause: Schema.optional(Schema.Defect()),
+}) {
+  override get message(): string {
+    switch (this.reason) {
+      case "not-installed":
+        return `Plugin "${this.pluginId}" isn't installed.`;
+      case "invalid-manifest":
+        return "The directory has no valid v2 t3-plugin.json.";
+      case "server-name-taken":
+        return `Settings → Tools already has a server named "${this.server}". Rename or remove it to install this plugin.`;
+      case "plugin-owned-server":
+        return `"${this.server}" belongs to a plugin. Switch it off here, or uninstall the plugin to remove it.`;
+      case "storage-failed":
+        return "Failed to save the installed plugins.";
+    }
+  }
+}
