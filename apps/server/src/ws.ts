@@ -189,6 +189,7 @@ import * as ProviderLatestVersions from "@t3tools/provider-core/server/ProviderL
 import { latestProviderVersionCacheKeys } from "@t3tools/provider-core/server/maintenanceResolver";
 import * as ProviderMaintenanceRunner from "./provider/providerMaintenanceRunner.ts";
 import * as ProviderAuthService from "./provider/ProviderAuthService.ts";
+import * as McpRemoteAuth from "./mcp/McpRemoteAuth.ts";
 import { makeProviderInstallation } from "./provider/providerInstallation.ts";
 import * as ServerSelfUpdate from "./cloud/selfUpdate.ts";
 import * as NpmRelease from "./cloud/npmRelease.ts";
@@ -1368,6 +1369,7 @@ export const layerWsRpc = (
         yield* AcpRegistryRuntimeCoordinator.AcpRegistryRuntimeCoordinator;
       const providerMaintenanceRunner = yield* ProviderMaintenanceRunner.ProviderMaintenanceRunner;
       const providerAuth = yield* ProviderAuthService.ProviderAuthService;
+      const mcpRemoteAuth = yield* McpRemoteAuth.McpRemoteAuth;
       const providerInstallation = yield* makeProviderInstallation();
       const serverSelfUpdate = yield* ServerSelfUpdate.ServerSelfUpdate;
       const npmRelease = yield* NpmRelease.NpmRelease;
@@ -2769,6 +2771,9 @@ export const layerWsRpc = (
             return { outcome };
           }),
         [WS_METHODS.providerAuthStart]: (input) => providerAuth.start(input, currentSessionId),
+        [WS_METHODS.agentToolsOAuthStatus]: (input) => mcpRemoteAuth.status(input),
+        [WS_METHODS.agentToolsOAuthSignIn]: (input) => mcpRemoteAuth.signIn(input),
+        [WS_METHODS.agentToolsOAuthSignOut]: (input) => mcpRemoteAuth.signOut(input),
         [WS_METHODS.providerAuthRespond]: (input) =>
           Effect.annotateCurrentSpan({ instanceId: input.instanceId }).pipe(
             Effect.andThen(providerAuth.respond(input, currentSessionId)),

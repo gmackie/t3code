@@ -89,6 +89,8 @@ import * as ProviderInstanceRegistryHydration from "./provider/ProviderInstanceR
 import * as ProjectSettingsOverrideSweep from "./provider/ProjectSettingsOverrideSweep.ts";
 import * as TerminalManager from "./terminal/Manager.ts";
 import * as McpHttpServer from "./mcp/McpHttpServer.ts";
+import * as McpRemoteAuth from "./mcp/McpRemoteAuth.ts";
+import * as McpRemoteAuthHttp from "./mcp/mcpRemoteAuthHttp.ts";
 import * as PeerForwarding from "./peer/PeerForwarding.ts";
 import * as RemoteDelegation from "./peer/RemoteDelegation.ts";
 import * as PeerLinkRequests from "./peer/PeerLinkRequests.ts";
@@ -790,6 +792,8 @@ const layerMakeRoutes = Layer.mergeAll(
       Layer.provide(AuthHttp.layerAuthenticatedAuth),
     ),
     ServerHttp.layerOtlpTracesProxyRoute,
+    McpRemoteAuthHttp.layerCallbackRoute,
+    McpRemoteAuthHttp.layerProxyRoute.pipe(Layer.provide(ProjectionStoreV2.layer)),
     ServerHttp.layerAssetRoute,
     ServerHttp.layerAttachmentUploadRoute,
     GuestHttp.layer,
@@ -1169,6 +1173,8 @@ const layerMakeServer = Layer.unwrap(
 
     return layerServerApplication.pipe(
       Layer.provide(CloudLink.layer.pipe(Layer.provideMerge(ConnectReachability.layer))),
+      // One instance, so a sign-in started over the WebSocket completes at the callback route.
+      Layer.provideMerge(McpRemoteAuth.layer),
       Layer.provideMerge(layerRuntimeServices),
       Layer.provideMerge(
         McpSessionRegistry.layer.pipe(

@@ -123,6 +123,10 @@ export const RPC_REQUIRED_SCOPES = {
   [WS_METHODS.pluginSettingsReset]: AuthOrchestrationOperateScope,
   [WS_METHODS.serverUpdateProvider]: AuthProvidersManageScope,
   [WS_METHODS.providerAuthStart]: AuthProvidersManageScope,
+  // Signing in hands every agent here the account, like adding the server does.
+  [WS_METHODS.agentToolsOAuthSignIn]: AuthProvidersManageScope,
+  [WS_METHODS.agentToolsOAuthSignOut]: AuthProvidersManageScope,
+  [WS_METHODS.agentToolsOAuthStatus]: AuthOrchestrationReadScope,
   [WS_METHODS.providerConsumeResetCredit]: AuthProvidersManageScope,
   [WS_METHODS.providerAuthComplete]: AuthProvidersManageScope,
   [WS_METHODS.chatGptReconnectProfile]: AuthProvidersManageScope,
