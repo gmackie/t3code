@@ -10,6 +10,8 @@ import { BobOperationInput, BobConnectionState, BobCoordinationError } from "./b
 import {
   McpAppCallToolInput,
   McpAppCallToolResult,
+  McpAppOpenPanelInput,
+  McpAppOpenPanelResult,
   McpAppReadResourceInput,
   McpAppReadResourceResult,
   McpAppRequestError,
@@ -620,6 +622,7 @@ export const WS_METHODS = {
   mcpAppsToolInfo: "mcpApps.toolInfo",
   mcpAppsReadResource: "mcpApps.readResource",
   mcpAppsUpdateModelContext: "mcpApps.updateModelContext",
+  mcpAppsOpenPanel: "mcpApps.openPanel",
 
   providerUploadFeedback: "provider.uploadFeedback",
   providerAuthStart: "provider.auth.start",
@@ -2104,6 +2107,12 @@ const WsMcpAppsUpdateModelContextRpc = Rpc.make(WS_METHODS.mcpAppsUpdateModelCon
   error: Schema.Union([McpAppRequestError, EnvironmentAuthorizationError]),
 });
 
+const WsMcpAppsOpenPanelRpc = Rpc.make(WS_METHODS.mcpAppsOpenPanel, {
+  payload: McpAppOpenPanelInput,
+  success: McpAppOpenPanelResult,
+  error: Schema.Union([McpAppRequestError, EnvironmentAuthorizationError]),
+});
+
 const WsMcpAppsReadResourceRpc = Rpc.make(WS_METHODS.mcpAppsReadResource, {
   payload: McpAppReadResourceInput,
   success: McpAppReadResourceResult,
@@ -2877,6 +2886,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsAttachmentsDeleteRpc,
   WsMcpAppsCallToolRpc,
   WsMcpAppsToolInfoRpc,
+  WsMcpAppsOpenPanelRpc,
   WsMcpAppsReadResourceRpc,
   WsMcpAppsUpdateModelContextRpc,
   WsProviderUploadFeedbackRpc,

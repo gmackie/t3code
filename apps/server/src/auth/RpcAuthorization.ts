@@ -244,6 +244,8 @@ export const RPC_REQUIRED_SCOPES = {
   [WS_METHODS.mcpAppsToolInfo]: AuthOrchestrationReadScope,
   [WS_METHODS.mcpAppsReadResource]: AuthOrchestrationReadScope,
   [WS_METHODS.mcpAppsUpdateModelContext]: AuthOrchestrationOperateScope,
+  // Opening runs the panel's opening tool, which may act.
+  [WS_METHODS.mcpAppsOpenPanel]: AuthOrchestrationOperateScope,
   [WS_METHODS.subscribeVcsStatus]: AuthOrchestrationReadScope,
   [WS_METHODS.subscribeWorktreeSetup]: AuthOrchestrationReadScope,
   [WS_METHODS.worktreeSetupCancel]: AuthOrchestrationOperateScope,

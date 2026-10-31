@@ -8,6 +8,8 @@ import * as OrchestrationEventStore from "../persistence/OrchestrationEventStore
 import * as McpAppModelContext from "../mcpApps/McpAppModelContext.ts";
 import * as PreviewAgentActivity from "../preview/PreviewAgentActivity.ts";
 import * as McpAppRequests from "../mcpApps/McpAppRequests.ts";
+import * as McpClientPool from "../mcp/McpClientPool.ts";
+import * as McpPlugins from "../plugins/McpPlugins.ts";
 import * as ProviderSessionRuntime from "../persistence/ProviderSessionRuntime.ts";
 import * as TextGeneration from "../textGeneration/TextGeneration.ts";
 import * as ProviderAuthService from "../provider/ProviderAuthService.ts";
@@ -343,10 +345,16 @@ const layerProviderRuntimeRecoveryProvided = ProviderRuntimeRecoveryService.laye
   ),
 );
 
+// One pool serves plugin panels and plugin lifecycle, so disabling a plugin closes the panel's connection.
+export const layerMcpPluginsProvided = McpPlugins.layer.pipe(
+  Layer.provideMerge(McpClientPool.layer),
+);
+
 const layerMcpAppRequestsProvided = McpAppRequests.layer.pipe(
   Layer.provide(
     Layer.mergeAll(
       McpAppModelContext.layer,
+      layerMcpPluginsProvided,
       layerOrchestratorProvided,
       layerThreadManagementProvided,
       layerProviderSessionManagerProvided,

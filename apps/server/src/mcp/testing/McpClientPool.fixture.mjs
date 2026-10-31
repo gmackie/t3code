@@ -18,6 +18,12 @@ server.registerTool("whoami", { description: "Process facts" }, async () => {
   };
 });
 
+server.registerTool(
+  "model_only",
+  { description: "Hidden from views", _meta: { ui: { visibility: ["model"] } } },
+  async () => ({ content: [{ type: "text", text: "model only" }] }),
+);
+
 // Exits before answering, so the caller sees the connection close.
 server.registerTool("crash", { description: "Exit the process" }, async () => process.exit(1));
 

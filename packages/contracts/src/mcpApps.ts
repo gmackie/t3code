@@ -1,15 +1,36 @@
 import * as Schema from "effect/Schema";
 
-import { ThreadId, TrimmedNonEmptyString, TurnItemId } from "./baseSchemas.ts";
+import { ProjectId, ThreadId, TrimmedNonEmptyString, TurnItemId } from "./baseSchemas.ts";
+import { McpPluginId, McpPluginPanelId } from "./mcpPlugin.ts";
 
 // The producing tool call restricts each app to its source server.
-const McpAppTarget = {
+const McpAppThreadItemSource = {
   threadId: ThreadId,
   itemId: TurnItemId,
 };
 
-export const McpAppCallToolInput = Schema.Struct({
-  ...McpAppTarget,
+// A plugin panel is restricted to its plugin's server, resolved with the project's overrides.
+const McpAppPluginPanelSource = {
+  pluginId: McpPluginId,
+  panelId: McpPluginPanelId,
+  projectId: ProjectId,
+};
+
+/**
+ * Thread items keep their original flat shape so older clients still decode;
+ * plugin panels are told apart by `pluginId`.
+ */
+const fromSource = <Fields extends Schema.Struct.Fields>(fields: Fields) =>
+  Schema.Union([
+    Schema.Struct({ ...McpAppThreadItemSource, ...fields }),
+    Schema.Struct({ ...McpAppPluginPanelSource, ...fields }),
+  ]);
+
+export const isMcpAppPluginPanelSource = <Input extends object>(
+  input: Input,
+): input is Extract<Input, { readonly pluginId: McpPluginId }> => "pluginId" in input;
+
+export const McpAppCallToolInput = fromSource({
   name: TrimmedNonEmptyString,
   arguments: Schema.Record(Schema.String, Schema.Unknown),
 });
@@ -23,8 +44,7 @@ export const McpAppCallToolResult = Schema.Struct({
 });
 export type McpAppCallToolResult = typeof McpAppCallToolResult.Type;
 
-export const McpAppToolInfoInput = Schema.Struct({
-  ...McpAppTarget,
+export const McpAppToolInfoInput = fromSource({
   name: TrimmedNonEmptyString,
 });
 export type McpAppToolInfoInput = typeof McpAppToolInfoInput.Type;
@@ -37,8 +57,7 @@ export const McpAppToolInfo = Schema.Struct({
 });
 export type McpAppToolInfo = typeof McpAppToolInfo.Type;
 
-export const McpAppReadResourceInput = Schema.Struct({
-  ...McpAppTarget,
+export const McpAppReadResourceInput = fromSource({
   uri: TrimmedNonEmptyString,
 });
 export type McpAppReadResourceInput = typeof McpAppReadResourceInput.Type;
@@ -48,17 +67,68 @@ export const McpAppReadResourceResult = Schema.Struct({
 });
 export type McpAppReadResourceResult = typeof McpAppReadResourceResult.Type;
 
-/** Replaces prior context; no content clears it. */
+/** Replaces prior context; no content clears it. Thread items only. */
 export const McpAppUpdateModelContextInput = Schema.Struct({
-  ...McpAppTarget,
+  ...McpAppThreadItemSource,
   conversationThreadId: ThreadId,
   content: Schema.optional(Schema.Array(Schema.Unknown)),
   structuredContent: Schema.optional(Schema.Record(Schema.String, Schema.Unknown)),
 });
 export type McpAppUpdateModelContextInput = typeof McpAppUpdateModelContextInput.Type;
 
+/** Renders a plugin panel's view; the active thread rides along for thread-scoped panels. */
+export const McpAppOpenPanelInput = Schema.Struct({
+  ...McpAppPluginPanelSource,
+  threadId: Schema.optionalKey(ThreadId),
+});
+export type McpAppOpenPanelInput = typeof McpAppOpenPanelInput.Type;
+
+const McpAppCspSchema = Schema.Struct({
+  connectDomains: Schema.optionalKey(Schema.Array(Schema.String)),
+  resourceDomains: Schema.optionalKey(Schema.Array(Schema.String)),
+  frameDomains: Schema.optionalKey(Schema.Array(Schema.String)),
+  baseUriDomains: Schema.optionalKey(Schema.Array(Schema.String)),
+});
+
+const McpAppPermissionSchema = Schema.optionalKey(Schema.Struct({}));
+
+export const McpAppOpenPanelResult = Schema.Union([
+  Schema.Struct({
+    status: Schema.Literal("ready"),
+    attachmentId: TrimmedNonEmptyString,
+    server: TrimmedNonEmptyString,
+    resourceUri: TrimmedNonEmptyString,
+    csp: Schema.optionalKey(McpAppCspSchema),
+    permissions: Schema.optionalKey(
+      Schema.Struct({
+        camera: McpAppPermissionSchema,
+        microphone: McpAppPermissionSchema,
+        geolocation: McpAppPermissionSchema,
+        clipboardWrite: McpAppPermissionSchema,
+      }),
+    ),
+    prefersBorder: Schema.optionalKey(Schema.Boolean),
+    /** The panel's opening tool call, delivered to the view as tool input and result. */
+    toolCall: Schema.optionalKey(
+      Schema.Struct({
+        name: TrimmedNonEmptyString,
+        arguments: Schema.Record(Schema.String, Schema.Unknown),
+        result: McpAppCallToolResult,
+      }),
+    ),
+  }),
+  // The host renders "Sign in to <server>" in place of the view.
+  Schema.Struct({
+    status: Schema.Literal("needs-auth"),
+    server: TrimmedNonEmptyString,
+  }),
+]);
+export type McpAppOpenPanelResult = typeof McpAppOpenPanelResult.Type;
+
 export const McpAppRequestErrorReason = Schema.Literals([
   "not-an-app",
+  "plugin-unavailable",
+  "needs-auth",
   "provider-unsupported",
   "session-stopped",
   "tool-not-callable",
@@ -70,7 +140,8 @@ export type McpAppRequestErrorReason = typeof McpAppRequestErrorReason.Type;
 export class McpAppRequestError extends Schema.TaggedError<McpAppRequestError>()(
   "McpAppRequestError",
   {
-    threadId: ThreadId,
+    threadId: Schema.optionalKey(ThreadId),
+    pluginId: Schema.optionalKey(McpPluginId),
     reason: McpAppRequestErrorReason,
     cause: Schema.optional(Schema.Defect()),
   },
@@ -79,6 +150,10 @@ export class McpAppRequestError extends Schema.TaggedError<McpAppRequestError>()
     switch (this.reason) {
       case "not-an-app":
         return "This tool call has no MCP app.";
+      case "plugin-unavailable":
+        return "This plugin panel isn't available. The plugin may be disabled, uninstalled, or switched off for this project.";
+      case "needs-auth":
+        return "Sign in to this plugin's server to use the panel.";
       case "provider-unsupported":
         return "This thread's provider cannot run MCP app requests.";
       case "session-stopped":

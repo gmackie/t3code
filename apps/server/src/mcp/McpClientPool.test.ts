@@ -58,7 +58,7 @@ it.effect("talks to a stdio server with its secrets and the MCP Apps extension",
       const server = fixtureServer();
 
       const tools = yield* pool.listTools(server);
-      expect(tools.map((tool) => tool.name).toSorted()).toEqual(["crash", "whoami"]);
+      expect(tools.map((tool) => tool.name).toSorted()).toEqual(["crash", "model_only", "whoami"]);
 
       const facts = yield* whoami(server);
       expect(facts.token).toBe("first");
