@@ -9,6 +9,7 @@ import * as Path from "effect/Path";
 import * as ServerSecretStore from "../auth/ServerSecretStore.ts";
 import * as ServerConfig from "../config.ts";
 import * as McpClientPool from "../mcp/McpClientPool.ts";
+import * as McpRemoteAuth from "../mcp/McpRemoteAuth.ts";
 import * as McpSessionRegistryTestkit from "../mcp/McpSessionRegistry.testkit.ts";
 import * as SqlitePersistence from "../persistence/Sqlite.ts";
 import * as ServerSettings from "../serverSettings.ts";
@@ -18,8 +19,9 @@ const layer = () =>
   McpPlugins.layer.pipe(
     Layer.provideMerge(McpClientPool.layer),
     Layer.provide(McpSessionRegistryTestkit.layer),
+    Layer.provideMerge(McpRemoteAuth.layer),
     Layer.provideMerge(ServerSettings.layer),
-    Layer.provide(ServerSecretStore.layer),
+    Layer.provideMerge(ServerSecretStore.layer),
     Layer.provideMerge(Layer.fresh(SqlitePersistence.layerMemory)),
     Layer.provideMerge(
       Layer.fresh(ServerConfig.layerTest(process.cwd(), { prefix: "t3code-mcp-plugins-" })),

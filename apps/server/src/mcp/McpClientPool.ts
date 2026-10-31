@@ -43,6 +43,8 @@ export class McpServerNeedsAuthError extends Schema.TaggedError<McpServerNeedsAu
   }
 }
 
+export const isMcpServerNeedsAuthError = Schema.is(McpServerNeedsAuthError);
+
 export type McpClientPoolFailure = McpClientPoolError | McpServerNeedsAuthError;
 
 // The SDK costs ~95 ms to import, so it loads on the first connection, not at server start.

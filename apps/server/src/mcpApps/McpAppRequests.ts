@@ -180,7 +180,9 @@ const make = Effect.gen(function* () {
         Effect.mapError((error) =>
           error._tag === "McpPluginPanelUnavailableError"
             ? fail(input, "plugin-unavailable", error)
-            : fail(input, "request-failed", error),
+            : error._tag === "McpServerNeedsAuthError"
+              ? fail(input, "needs-auth", error)
+              : fail(input, "request-failed", error),
         ),
       );
   });
@@ -243,9 +245,9 @@ const make = Effect.gen(function* () {
       panelId: input.panelId,
       projectId: input.projectId,
     };
-    const { record, panel, server } = yield* resolvePanel(source);
     const failed = pluginFailure(source);
     const opened = Effect.gen(function* () {
+      const { record, panel, server } = yield* resolvePanel(source);
       const resource = yield* pool
         .readResource(server, panel.resourceUri)
         .pipe(Effect.mapError(failed));
@@ -287,13 +289,15 @@ const make = Effect.gen(function* () {
         ...(toolCall === undefined ? {} : { toolCall }),
       } satisfies McpAppOpenPanelResult;
     });
+    // The registry name, not the plugin's: sign-in is keyed by the Tools entry.
     return yield* opened.pipe(
       Effect.catchIf(
-        (error) => error.reason === "needs-auth",
-        () =>
+        (error) =>
+          error.reason === "needs-auth" && McpClientPool.isMcpServerNeedsAuthError(error.cause),
+        (error) =>
           Effect.succeed({
             status: "needs-auth",
-            server: record.manifest.displayName,
+            server: (error.cause as McpClientPool.McpServerNeedsAuthError).server,
           } satisfies McpAppOpenPanelResult),
       ),
     );

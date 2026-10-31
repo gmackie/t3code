@@ -1173,9 +1173,15 @@ const layerMakeServer = Layer.unwrap(
 
     return layerServerApplication.pipe(
       Layer.provide(CloudLink.layer.pipe(Layer.provideMerge(ConnectReachability.layer))),
-      // One instance, so a sign-in started over the WebSocket completes at the callback route.
-      Layer.provideMerge(McpRemoteAuth.layer),
       Layer.provideMerge(layerRuntimeServices),
+      // One instance, so a sign-in started over the WebSocket completes at the callback
+      // route, provided below the runtime so plugin panels can use its tokens too.
+      Layer.provideMerge(
+        McpRemoteAuth.layer.pipe(
+          Layer.provide(layerServerSettings),
+          Layer.provide(ServerSecretStore.layer),
+        ),
+      ),
       Layer.provideMerge(
         McpSessionRegistry.layer.pipe(
           Layer.provide(ServerEnvironment.layer.pipe(Layer.provide(ServerSecretStore.layer))),

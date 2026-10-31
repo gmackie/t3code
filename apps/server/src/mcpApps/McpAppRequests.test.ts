@@ -26,6 +26,7 @@ import * as Schema from "effect/Schema";
 import * as ServerSecretStore from "../auth/ServerSecretStore.ts";
 import * as ServerConfig from "../config.ts";
 import * as McpClientPool from "../mcp/McpClientPool.ts";
+import * as McpRemoteAuth from "../mcp/McpRemoteAuth.ts";
 import * as McpSessionRegistryTestkit from "../mcp/McpSessionRegistry.testkit.ts";
 import * as SqlitePersistence from "../persistence/Sqlite.ts";
 import * as McpPlugins from "../plugins/McpPlugins.ts";
@@ -87,8 +88,9 @@ const layerPluginStack = () =>
   McpPlugins.layer.pipe(
     Layer.provideMerge(McpClientPool.layer),
     Layer.provide(McpSessionRegistryTestkit.layer),
+    Layer.provideMerge(McpRemoteAuth.layer),
     Layer.provideMerge(ServerSettings.layer),
-    Layer.provide(ServerSecretStore.layer),
+    Layer.provideMerge(ServerSecretStore.layer),
     Layer.provideMerge(Layer.fresh(SqlitePersistence.layerMemory)),
     Layer.provideMerge(
       Layer.fresh(ServerConfig.layerTest(process.cwd(), { prefix: "t3code-mcp-app-requests-" })),
@@ -490,7 +492,31 @@ describe("McpAppRequests plugin panels", () => {
               ...source,
               pluginId: McpPluginId.make("com.example.remote"),
             }),
-            { status: "needs-auth", server: "Remote" },
+            { status: "needs-auth", server: "remote" },
+          );
+          // An OAuth server with no stored sign-in asks for one before any request.
+          yield* plugins.install({
+            manifest: decodeManifest({
+              ...manifest,
+              id: "com.example.oauth",
+              displayName: "OAuth",
+              mcpServer: {
+                name: "oauth-remote",
+                transport: {
+                  type: "http",
+                  url: `http://127.0.0.1:${port}/mcp`,
+                  headers: [],
+                  oauth: { scopes: ["read"] },
+                },
+              },
+            }),
+          });
+          assert.deepEqual(
+            yield* requests.openPanel({
+              ...source,
+              pluginId: McpPluginId.make("com.example.oauth"),
+            }),
+            { status: "needs-auth", server: "oauth-remote" },
           );
         }).pipe(Effect.provide(layer())),
       (http) => Effect.promise(() => new Promise<void>((resolve) => http.close(() => resolve()))),

@@ -19,6 +19,7 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
 import * as Semaphore from "effect/Semaphore";
@@ -26,6 +27,7 @@ import * as Semaphore from "effect/Semaphore";
 import { toSafeThreadAttachmentSegment } from "../attachmentStore.ts";
 import * as ServerConfig from "../config.ts";
 import * as McpClientPool from "../mcp/McpClientPool.ts";
+import * as McpRemoteAuth from "../mcp/McpRemoteAuth.ts";
 import * as McpSessionRegistry from "../mcp/McpSessionRegistry.ts";
 import * as ServerSettings from "../serverSettings.ts";
 
@@ -85,7 +87,10 @@ export class McpPlugins extends Context.Service<
       readonly pluginId: McpPluginId;
       readonly panelId: McpPluginPanelId;
       readonly projectId: ProjectId;
-    }) => Effect.Effect<McpPluginPanelTarget, McpPluginPanelUnavailableError | McpPluginError>;
+    }) => Effect.Effect<
+      McpPluginPanelTarget,
+      McpPluginPanelUnavailableError | McpPluginError | McpClientPool.McpServerNeedsAuthError
+    >;
     /**
      * Keeps a client's settings patch off plugin-owned Tools entries: it may
      * switch one on or off, never edit or remove it, and can't claim a plugin.
@@ -127,6 +132,30 @@ const make = Effect.gen(function* () {
   const settings = yield* ServerSettings.ServerSettingsService;
   const pool = yield* McpClientPool.McpClientPool;
   const credentials = yield* McpSessionRegistry.McpSessionRegistry;
+  // Optional so harnesses without OAuth still build; there, OAuth servers read as signed out.
+  const remoteAuth = yield* Effect.serviceOption(McpRemoteAuth.McpRemoteAuth);
+
+  /** An OAuth server's current token rides on the pool's copy, like the agents' proxy adds it. */
+  const withSignIn = Effect.fnUntraced(function* (server: ResolvedMcpServer) {
+    const { transport } = server;
+    if (transport.type !== "http" || transport.oauth === undefined) return server;
+    const signedOut = (cause: unknown) =>
+      new McpClientPool.McpServerNeedsAuthError({ server: server.name, cause });
+    if (Option.isNone(remoteAuth)) return yield* signedOut("OAuth is unavailable here.");
+    const token = yield* remoteAuth.value
+      .accessToken({ name: server.name, transport: { ...transport, oauth: transport.oauth } })
+      .pipe(Effect.mapError(signedOut));
+    return {
+      ...server,
+      transport: {
+        ...transport,
+        headers: [
+          ...transport.headers.filter((header) => header.name.toLowerCase() !== "authorization"),
+          { name: "Authorization", value: `Bearer ${token}`, sensitive: true },
+        ],
+      },
+    } satisfies ResolvedMcpServer;
+  });
   // One token per plugin keeps the pool's connection key stable between panels.
   const pluginTokens = new Map<string, { readonly endpoint: string; readonly token: string }>();
 
@@ -358,7 +387,9 @@ const make = Effect.gen(function* () {
       if (entry === undefined || !entry.enabled || entry.plugin?.id !== input.pluginId) {
         return yield* unavailable;
       }
-      const server = yield* withT3Callback(record, { name, transport: entry.transport });
+      const server = yield* withSignIn(
+        yield* withT3Callback(record, { name, transport: entry.transport }),
+      );
       return { record, panel, server };
     },
   );
