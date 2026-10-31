@@ -1,0 +1,112 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+      body {
+        font:
+          15px/1.4 system-ui,
+          sans-serif;
+        margin: 0;
+        padding: 20px;
+        color: var(--color-text-primary, #222);
+        background: transparent;
+      }
+      h1 {
+        font-size: 20px;
+        margin: 0 0 8px;
+      }
+      .muted {
+        opacity: 0.7;
+        font-size: 13px;
+      }
+      button {
+        margin-top: 16px;
+        font: inherit;
+        padding: 8px 14px;
+        border-radius: 8px;
+        border: 1px solid currentColor;
+        background: none;
+        color: inherit;
+      }
+      dl {
+        margin: 16px 0 0;
+        display: grid;
+        grid-template-columns: auto 1fr;
+        gap: 4px 12px;
+        font-size: 13px;
+      }
+      dt {
+        opacity: 0.7;
+      }
+      dd {
+        margin: 0;
+        word-break: break-all;
+      }
+    </style>
+  </head>
+  <body>
+    <h1 id="greeting">Hello…</h1>
+    <div class="muted" id="answered">Waiting for the server</div>
+    <dl>
+      <dt>Project</dt>
+      <dd id="project">–</dd>
+      <dt>Thread</dt>
+      <dd id="thread">–</dd>
+    </dl>
+    <button id="refresh" type="button">Ask again</button>
+    <script>
+      // A minimal MCP Apps client: JSON-RPC to the host over postMessage.
+      let nextId = 1;
+      const pending = new Map();
+      const post = (message) => window.parent.postMessage({ jsonrpc: "2.0", ...message }, "*");
+      const request = (method, params) =>
+        new Promise((resolve, reject) => {
+          const id = nextId++;
+          pending.set(id, { resolve, reject });
+          post({ id, method, params });
+        });
+      const show = (result) => {
+        const data = result && result.structuredContent;
+        if (!data) return;
+        document.getElementById("greeting").textContent = data.greeting;
+        document.getElementById("answered").textContent = `Answered at ${data.answeredAt}`;
+      };
+      const showContext = (context) => {
+        const t3 = context && context.t3;
+        if (!t3) return;
+        if (t3.projectId) document.getElementById("project").textContent = t3.projectId;
+        document.getElementById("thread").textContent = t3.threadId || "none (project panel)";
+      };
+      const refresh = () =>
+        request("tools/call", { name: "hello_status", arguments: {} }).then(show);
+      window.addEventListener("message", (event) => {
+        const message = event.data;
+        if (!message || message.jsonrpc !== "2.0") return;
+        if (message.id !== undefined && pending.has(message.id)) {
+          const { resolve, reject } = pending.get(message.id);
+          pending.delete(message.id);
+          message.error ? reject(message.error) : resolve(message.result);
+          return;
+        }
+        if (message.method === "ui/notifications/tool-result") show(message.params);
+        if (message.method === "ui/notifications/host-context-changed") showContext(message.params);
+      });
+      document.getElementById("refresh").addEventListener("click", refresh);
+      request("ui/initialize", {
+        protocolVersion: "2026-01-26",
+        appInfo: { name: "hello", version: "0.1.0" },
+        appCapabilities: {},
+      }).then((result) => {
+        showContext(result && result.hostContext);
+        post({ method: "ui/notifications/initialized", params: {} });
+        // A panel without an opening tool fetches its own data.
+        setTimeout(() => {
+          if (document.getElementById("answered").textContent === "Waiting for the server")
+            refresh();
+        }, 300);
+      });
+    </script>
+  </body>
+</html>

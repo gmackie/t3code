@@ -5,6 +5,7 @@ import type * as NodeNet from "node:net";
 import {
   McpPluginId,
   McpPluginManifest,
+  McpPluginPanelId,
   ProjectId,
   ProviderSessionId,
   ProviderThreadId,
@@ -351,6 +352,26 @@ describe("McpAppRequests plugin panels", () => {
       assert.include(yield* fileSystem.readFileString(viewPath), "<p>panel</p>");
       const reopened = yield* requests.openPanel(source);
       assert.equal(reopened.status === "ready" && reopened.attachmentId, opened.attachmentId);
+    }).pipe(Effect.provide(layer())),
+  );
+
+  it.effect("opens the example plugin's panel from its folder with no thread", () =>
+    Effect.gen(function* () {
+      const plugins = yield* McpPlugins.McpPlugins;
+      const requests = yield* McpAppRequests.McpAppRequests;
+      const directory = new URL("../../../../examples/plugins/hello", import.meta.url).pathname;
+      yield* plugins.installFromDirectory({ directory, variables: { HELLO_NAME: "tests" } });
+      const opened = yield* requests.openPanel({
+        pluginId: McpPluginId.make("com.t3code.hello"),
+        panelId: McpPluginPanelId.make("status"),
+        projectId,
+      });
+      assert.equal(opened.status, "ready");
+      assert.deepEqual(
+        opened.status === "ready" &&
+          (opened.toolCall?.result.structuredContent as { readonly greeting: string }).greeting,
+        "Hello, tests!",
+      );
     }).pipe(Effect.provide(layer())),
   );
 
