@@ -1,6 +1,6 @@
-import { useNavigation } from "@react-navigation/native";
+import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import { EnvironmentId } from "@t3tools/contracts";
-import { useMemo } from "react";
+import { useCallback, useMemo } from "react";
 
 import { mcpPluginEnvironment } from "../../state/mcpApps";
 import { useEnvironmentQuery } from "../../state/query";
@@ -22,14 +22,18 @@ export function usePluginPanelMenu(
   } | null,
 ): ReadonlyArray<PluginPanelMenuEntry> {
   const navigation = useNavigation();
-  const plugins = useEnvironmentQuery(
+  const query = useEnvironmentQuery(
     target === null
       ? null
       : mcpPluginEnvironment.list({
           environmentId: EnvironmentId.make(target.environmentId),
           input: {},
         }),
-  ).data;
+  );
+  const plugins = query.data;
+  // Plugins can be installed or switched off while the app is open; check again on each visit.
+  const refresh = query.refresh;
+  useFocusEffect(useCallback(() => refresh(), [refresh]));
   const environmentId = target?.environmentId;
   const projectId = target?.projectId;
   const threadId = target?.threadId;

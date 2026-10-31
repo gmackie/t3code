@@ -9,8 +9,9 @@ import {
 } from "@t3tools/contracts";
 import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
 import type { McpAppReference } from "@t3tools/shared/mcpApp";
-import { useEffect, useEffectEvent, useRef, useState } from "react";
-import { View } from "react-native";
+import { HeaderHeightContext } from "@react-navigation/elements";
+import { useContext, useEffect, useEffectEvent, useRef, useState } from "react";
+import { Platform, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { AppActivityIndicator } from "../../components/ui/AppActivityIndicator";
@@ -101,6 +102,9 @@ function PluginPanel(props: {
   const [signInMessage, setSignInMessage] = useState<string | null>(null);
   const mounted = useRef(true);
   const insets = useSafeAreaInsets();
+  // The workspace lays iOS screens out under the navigation bar; start the panel below it.
+  const headerHeight = useContext(HeaderHeightContext) ?? insets.top + 44;
+  const topInset = Platform.OS === "ios" ? headerHeight : 0;
   const [size, setSize] = useState({ width: 0, height: 0 });
   const [state, setState] = useState<PanelState>({ _tag: "loading" });
   const openPanel = useAtomCommand(mcpAppEnvironment.openPanel, { reportFailure: false });
@@ -159,11 +163,11 @@ function PluginPanel(props: {
   return (
     <View
       className="flex-1"
-      style={{ paddingBottom: insets.bottom }}
+      style={{ paddingTop: topInset, paddingBottom: insets.bottom }}
       onLayout={(event) =>
         setSize({
           width: Math.round(event.nativeEvent.layout.width),
-          height: Math.round(event.nativeEvent.layout.height - insets.bottom),
+          height: Math.round(event.nativeEvent.layout.height - topInset - insets.bottom),
         })
       }
     >

@@ -18,6 +18,7 @@ import {
 } from "@t3tools/client-runtime/state/vcs";
 import { useNavigation } from "@react-navigation/native";
 import { sourceControlClients } from "@t3tools/client-runtime/source-control-clients";
+import type { PluginPanelMenuEntry } from "../plugins/usePluginPanelMenu";
 
 import { useEnvironmentScope } from "../../state/session";
 import { PullRequestGlyph } from "../pull-requests/pullRequestGlyphs";
@@ -101,6 +102,8 @@ export type ThreadGitMenuProps = {
 };
 
 type ThreadGitControlsProps = ThreadGitMenuProps & {
+  /** Plugin panels, for headers that render these controls instead of native items. */
+  readonly pluginPanels?: ReadonlyArray<PluginPanelMenuEntry>;
   readonly auxiliaryPaneControl?: {
     readonly accessibilityLabel: string;
     readonly onPress: () => void;
@@ -510,6 +513,15 @@ export function ThreadGitControls(props: ThreadGitControlsProps) {
           onPress={model.openFiles}
           separateBackground
         />
+      ) : null}
+      {showActionControls && props.pluginPanels && props.pluginPanels.length > 0 ? (
+        <Toolbar.Menu accessibilityLabel="Plugin panels" icon="square.grid.2x2" separateBackground>
+          {props.pluginPanels.map((panel) => (
+            <Toolbar.MenuAction key={panel.key} onPress={panel.onPress} subtitle={panel.pluginName}>
+              <Toolbar.Label>{panel.title}</Toolbar.Label>
+            </Toolbar.MenuAction>
+          ))}
+        </Toolbar.Menu>
       ) : null}
       {showActionControls ? createNativeHeaderMenu(threadGitMenuDefinition(props, model)) : null}
     </Toolbar>

@@ -10,7 +10,7 @@
           sans-serif;
         margin: 0;
         padding: 20px;
-        color: var(--color-text-primary, #222);
+        color: var(--color-text-primary, CanvasText);
         background: transparent;
       }
       h1 {
@@ -73,7 +73,16 @@
         document.getElementById("greeting").textContent = data.greeting;
         document.getElementById("answered").textContent = `Answered at ${data.answeredAt}`;
       };
+      // Hosts send their theme as CSS variables; the view applies them itself.
+      const applyStyles = (context) => {
+        const variables = context && context.styles && context.styles.variables;
+        for (const [name, value] of Object.entries(variables || {})) {
+          document.documentElement.style.setProperty(name, value);
+        }
+        if (context && context.theme) document.documentElement.style.colorScheme = context.theme;
+      };
       const showContext = (context) => {
+        applyStyles(context);
         const t3 = context && context.t3;
         if (!t3) return;
         if (t3.projectId) document.getElementById("project").textContent = t3.projectId;

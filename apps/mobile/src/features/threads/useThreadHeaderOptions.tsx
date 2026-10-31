@@ -226,7 +226,11 @@ export function useThreadHeaderOptions(props: {
     sidebar: false,
     fallback:
       !layout.usesSplitView && !props.usesNativeHeaderGlass ? (
-        <ThreadGitControls {...props.gitControls} showActionControls />
+        <ThreadGitControls
+          {...props.gitControls}
+          showActionControls
+          {...(pluginPanels === undefined ? {} : { pluginPanels })}
+        />
       ) : null,
   };
 }
