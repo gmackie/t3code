@@ -114,6 +114,7 @@ import {
 } from "./thread-inspector-preview";
 import type { ThreadInspectorTarget } from "./thread-inspector-navigation";
 import { useSelectWorkspaceDetail } from "../workspace/useSelectWorkspaceDetail";
+import { usePluginPanelMenu } from "../plugins/usePluginPanelMenu";
 
 function InspectorPaneRoleActivation() {
   useAdaptiveWorkspacePaneRole("inspector");
@@ -586,6 +587,15 @@ function ThreadRouteContent(
       cwd: selectedThreadCwd,
     });
   };
+  const pluginPanels = usePluginPanelMenu(
+    selectedThread === null
+      ? null
+      : {
+          environmentId: String(selectedThread.environmentId),
+          projectId: String(selectedThread.projectId),
+          threadId: String(selectedThread.id),
+        },
+  );
   const handleOpenSystems = () => {
     if (selectedThread === null) return;
     navigation.navigate("SystemsWorkspace", {
@@ -1013,6 +1023,7 @@ function ThreadRouteContent(
                   ? { onOpenCad: handleOpenCad, onOpenGame: handleOpenGame }
                   : {})}
                 {...(selectedThreadProject !== null ? { onOpenSystems: handleOpenSystems } : {})}
+                pluginPanels={pluginPanels}
                 onOpenWork={() =>
                   navigation.navigate("ThreadWork", {
                     environmentId: selectedThread.environmentId,

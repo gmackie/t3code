@@ -8,6 +8,7 @@ import { useDeviceType } from "../../native/native-layout-metrics";
 import { useNativeWorkspaceColumnsSupported } from "../../native/NativeWorkspaceColumns";
 import { useAdaptiveWorkspaceLayout } from "../layout/AdaptiveWorkspaceLayout";
 import { withNativeGlassHeaderItem } from "../layout/native-glass-header-items";
+import type { PluginPanelMenuEntry } from "../plugins/usePluginPanelMenu";
 import {
   ThreadGitControls,
   useThreadGitCenterHeaderItems,
@@ -28,6 +29,8 @@ export function useThreadHeaderOptions(props: {
   readonly onOpenGame?: () => void;
   /** Opens the Systems Workbench for the thread's project; omitted without a project. */
   readonly onOpenSystems?: () => void;
+  /** Enabled plugins' panels; the menu is hidden when empty. */
+  readonly pluginPanels?: ReadonlyArray<PluginPanelMenuEntry>;
   readonly draft?: boolean;
 }) {
   const usesNativeWorkspaceColumns = useNativeWorkspaceColumnsSupported();
@@ -86,18 +89,58 @@ export function useThreadHeaderOptions(props: {
         : [],
     [onOpenSystems],
   );
+  const pluginPanels = props.pluginPanels;
+  const pluginHeaderItems = useMemo<NativeHeaderItems>(
+    () =>
+      pluginPanels && pluginPanels.length > 0
+        ? [
+            {
+              accessibilityLabel: "Plugin panels",
+              icon: { name: "square.grid.2x2", type: "sfSymbol" as const },
+              identifier: "thread-right-plugins",
+              label: "Plugins",
+              menu: {
+                items: pluginPanels.map((panel) => ({
+                  description: panel.pluginName,
+                  label: panel.title,
+                  onPress: panel.onPress,
+                  type: "action" as const,
+                })),
+                title: "Plugin panels",
+              },
+              sharesBackground: true,
+              type: "menu" as const,
+              variant: "plain" as const,
+            },
+          ]
+        : [],
+    [pluginPanels],
+  );
   const splitRightHeaderItems = useMemo(
     () => [
       ...threadCenterHeaderItems,
       ...cadHeaderItems,
       ...gameHeaderItems,
       ...systemsHeaderItems,
+      ...pluginHeaderItems,
     ],
-    [threadCenterHeaderItems, cadHeaderItems, gameHeaderItems, systemsHeaderItems],
+    [
+      threadCenterHeaderItems,
+      cadHeaderItems,
+      gameHeaderItems,
+      systemsHeaderItems,
+      pluginHeaderItems,
+    ],
   );
   const compactRightHeaderItems = useMemo(
-    () => [...gitRightHeaderItems, ...cadHeaderItems, ...gameHeaderItems, ...systemsHeaderItems],
-    [gitRightHeaderItems, cadHeaderItems, gameHeaderItems, systemsHeaderItems],
+    () => [
+      ...gitRightHeaderItems,
+      ...cadHeaderItems,
+      ...gameHeaderItems,
+      ...systemsHeaderItems,
+      ...pluginHeaderItems,
+    ],
+    [gitRightHeaderItems, cadHeaderItems, gameHeaderItems, systemsHeaderItems, pluginHeaderItems],
   );
   const splitLeftHeaderItems = useMemo<NativeHeaderItems>(
     () => [

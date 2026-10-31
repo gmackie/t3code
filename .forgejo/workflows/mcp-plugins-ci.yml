@@ -25,6 +25,7 @@ on:
       - apps/web/src/rightPanelStore.ts
       - apps/mobile/src/features/plugins/**
       - apps/mobile/src/features/threads/McpAppWebView.tsx
+      - apps/mobile/src/features/threads/mcpAppSource*
       - .forgejo/workflows/mcp-plugins-ci.yml
       - pnpm-lock.yaml
   workflow_dispatch:
@@ -73,7 +74,7 @@ jobs:
         run: |
           (cd packages/client-runtime && pnpm exec vp test run src/mcpApps && pnpm exec tsc --noEmit)
           (cd apps/web && pnpm exec vp test run src/components/CommandPalette.logic.test.ts src/rightPanelStore.test.ts src/components/RightPanelTabs.test.tsx src/components/settings --project unit && pnpm exec tsc --noEmit)
-          (cd apps/mobile && pnpm exec tsc --noEmit)
+          (cd apps/mobile && pnpm exec vp test run src/features/plugins src/features/threads/mcpAppSource.test.ts && pnpm exec tsc --noEmit)
       # Lint from the root: oxlint resolves the repo's local plugin relative to it.
       - name: Lint the plugin surfaces
         run: |
