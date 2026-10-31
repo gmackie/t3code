@@ -1233,6 +1233,22 @@ export function createServerEnvironmentAtoms<R, E>(
         runStream(WS_METHODS.chatGptHandoffSubscribe, input),
       idleTtlMs: 0,
     }),
+    mcpOAuthStatus: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:agent-tools:oauth-status",
+      tag: WS_METHODS.agentToolsOAuthStatus,
+    }),
+    mcpOAuthSignIn: createEnvironmentSubscriptionAtomFamily(runtime, {
+      label: "environment-data:agent-tools:oauth-sign-in",
+      sensitiveInput: true,
+      // A sign-in must not be replayed when the connection recovers.
+      subscribe: (input: EnvironmentRpcInput<typeof WS_METHODS.agentToolsOAuthSignIn>) =>
+        runStream(WS_METHODS.agentToolsOAuthSignIn, input),
+      idleTtlMs: 0,
+    }),
+    mcpOAuthSignOut: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:agent-tools:oauth-sign-out",
+      tag: WS_METHODS.agentToolsOAuthSignOut,
+    }),
     cancelProviderAuth: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:provider:auth-cancel",
       tag: WS_METHODS.providerAuthCancel,

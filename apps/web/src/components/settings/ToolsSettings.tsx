@@ -13,8 +13,9 @@ import { useAtomValue } from "@effect/atom-react";
 import { appAtomRegistry } from "../../rpc/atomRegistry";
 import { toastManager } from "../ui/toast";
 import { MoreHorizontalIcon, PlusIcon, RefreshCwIcon, SearchIcon } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 
+import { useEnvironmentQuery } from "../../state/query";
 import { serverEnvironment } from "../../state/server";
 import { readEnvironmentScope, useEnvironmentsWithScope } from "../../state/session";
 import { useAtomCommand } from "../../state/use-atom-command";
@@ -35,6 +36,7 @@ import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../ui/menu";
 import { Switch } from "../ui/switch";
 import { Toggle, ToggleGroup } from "../ui/toggle-group";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+import { McpOAuthSignIn } from "./McpOAuthSignIn";
 import { McpServerDialog } from "./McpServerDialog";
 import { useSettingsScope } from "./SettingsScopeContext";
 import { SettingsPageContainer, SettingsRow, SettingsSection } from "./settingsLayout";
@@ -519,6 +521,26 @@ function McpServersPanel({
         ? null
         : (environmentSettings?.projectSettingsOverrides[projectId]?.mcpServers ?? {}),
   });
+  // Sign-ins belong to one environment; with several targets the selected one is shown.
+  const oauthStatus = useEnvironmentQuery(
+    target
+      ? serverEnvironment.mcpOAuthStatus({
+          environmentId: target.environmentId,
+          input: projectId === null ? {} : { projectId },
+        })
+      : null,
+  );
+  const oauthControl = (row: McpServerRow) =>
+    target && row.config.transport.type === "http" && row.config.transport.oauth ? (
+      <McpOAuthSignIn
+        environmentId={target.environmentId}
+        projectId={projectId}
+        server={row.name}
+        status={oauthStatus.data?.[row.name]}
+        canManage={canManageServers}
+        onChanged={oauthStatus.refresh}
+      />
+    ) : null;
   const [editor, setEditor] = useState<ServerEditor | null>(null);
   const [removing, setRemoving] = useState<McpServerRow | null>(null);
   // A successful destination may already have moved its secrets; retry only the failed ones.
@@ -700,6 +722,7 @@ function McpServersPanel({
               // The environment's own switch is part of the server definition.
               canSwitch={isProjectScope ? canWriteSettings : canEditServers}
               canEdit={canEditServers}
+              oauthControl={oauthControl(row)}
               onEnabledChange={(enabled) => setEnabled(row, enabled)}
               onEdit={() => setEditor({ mode: "edit", row, targets })}
               onRemove={() => setRemoving(row)}
@@ -715,6 +738,7 @@ function McpServersPanel({
               row={row}
               canSwitch={canWriteSettings}
               canEdit={false}
+              oauthControl={oauthControl(row)}
               onEnabledChange={(enabled) => setEnabled(row, enabled)}
               {...(row.origin === "project-switch" ? { onReset: () => resetSwitch(row) } : {})}
             />
@@ -814,6 +838,7 @@ function McpServerSettingsRow({
   row,
   canSwitch,
   canEdit,
+  oauthControl,
   onEnabledChange,
   onEdit,
   onRemove,
@@ -822,6 +847,7 @@ function McpServerSettingsRow({
   readonly row: McpServerRow;
   readonly canSwitch: boolean;
   readonly canEdit: boolean;
+  readonly oauthControl: ReactNode;
   readonly onEnabledChange: (enabled: boolean) => void;
   readonly onEdit?: () => void;
   readonly onRemove?: () => void;
@@ -854,6 +880,7 @@ function McpServerSettingsRow({
       className={row.config.enabled ? undefined : "[&_h3]:text-muted-foreground"}
       control={
         <>
+          {oauthControl}
           {onReset ? (
             <Button size="xs" variant="ghost" onClick={onReset} disabled={!canSwitch}>
               Reset

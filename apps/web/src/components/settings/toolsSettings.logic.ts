@@ -1,5 +1,6 @@
 import {
   isValidMcpServerName,
+  type McpOAuthSettings,
   type McpServerConfig,
   type McpServerProjectOverride,
   type McpServerTransport,
@@ -258,6 +259,11 @@ export interface McpServerDraft {
   readonly url: string;
   readonly env: ReadonlyArray<McpVariableDraft>;
   readonly headers: ReadonlyArray<McpVariableDraft>;
+  /** http only: T3 signs in with OAuth and holds the token. */
+  readonly oauth: boolean;
+  /** Space-separated; empty asks for what the server advertises. */
+  readonly oauthScopes: string;
+  readonly oauthClientId: string;
 }
 
 let variableDraftId = 0;
@@ -281,6 +287,9 @@ export const EMPTY_MCP_SERVER_DRAFT: McpServerDraft = {
   url: "",
   env: [],
   headers: [],
+  oauth: false,
+  oauthScopes: "",
+  oauthClientId: "",
 };
 
 export function mcpServerDraftFrom(name: string, config: McpServerConfig): McpServerDraft {
@@ -300,6 +309,9 @@ export function mcpServerDraftFrom(name: string, config: McpServerConfig): McpSe
         type: "http",
         url: transport.url,
         headers: variableDrafts(transport.headers),
+        oauth: transport.oauth !== undefined,
+        oauthScopes: transport.oauth?.scopes.join(" ") ?? "",
+        oauthClientId: transport.oauth?.clientId ?? "",
       };
 }
 
@@ -601,8 +613,15 @@ export function mcpServerFromDraft(
       type: "http",
       url,
       headers: variablesFromDrafts(draft.headers, { name, storedName }),
+      ...(draft.oauth ? { oauth: oauthFromDraft(draft) } : {}),
     },
   };
+}
+
+function oauthFromDraft(draft: McpServerDraft): McpOAuthSettings {
+  const scopes = draft.oauthScopes.split(/\s+/).filter((scope) => scope.length > 0);
+  const clientId = draft.oauthClientId.trim();
+  return clientId.length > 0 ? { scopes, clientId } : { scopes };
 }
 
 /**
@@ -663,12 +682,15 @@ export function parseMcpServerJson(text: string): McpServerDraft | null {
   if (typeof url === "string") {
     const headers = toVariables(server.headers);
     if (headers === null) return null;
+    // Vendor snippets for hosted servers give only a URL and leave sign-in to
+    // OAuth; one that sends its own headers authenticates with those instead.
     return {
       ...EMPTY_MCP_SERVER_DRAFT,
       name: name.toLowerCase(),
       type: "http",
       url,
       headers,
+      oauth: headers.length === 0,
     };
   }
   const commandValue = server.command;

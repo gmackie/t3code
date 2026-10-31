@@ -31,6 +31,20 @@ marked secret by default: secret values are stored on the environment and never 
 leave the field empty to keep one or type a new value to replace it. Adding or editing a server
 needs permission to manage providers, because a server runs on the environment for every agent.
 
+### Servers that sign in with OAuth
+
+Hosted servers such as Linear, Sentry or ForgeGraph sign you in with your account instead of a key.
+Turn on **Sign in with OAuth** for a URL server (pasting a snippet that gives only a URL turns it on
+for you), save, then use **Sign in** on its row. Your browser opens the server's sign-in page and
+returns to T3 Code when you approve. The environment keeps the sign-in and refreshes it, so every
+agent session on that environment uses the account you signed in with; agents never see the token.
+If a refresh stops working the row shows **Reconnect**, and **Sign out** removes access.
+
+The sign-in page returns to the address your client uses to reach the environment. Some servers only
+accept `https` or `localhost` return addresses, so on a plain-http remote connection sign in from
+the desktop app on that machine, or over an `https` address. A project that points the server at a
+different URL signs in separately.
+
 With a project selected, servers you add belong to that project. Giving one the same name as an
 environment server replaces it for the project, which is how to point a project at a different
 account. Inherited servers can be switched off for the project without removing them elsewhere.
