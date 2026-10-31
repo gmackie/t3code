@@ -29,5 +29,34 @@ export function createMcpAppEnvironmentAtoms<R, E>(
       label: "environment-command:mcp-apps:update-model-context",
       tag: WS_METHODS.mcpAppsUpdateModelContext,
     }),
+    /** Runs on each open, since a panel's opening tool may return fresh data. */
+    openPanel: createEnvironmentRpcCommand(runtime, {
+      label: "environment-command:mcp-apps:open-panel",
+      tag: WS_METHODS.mcpAppsOpenPanel,
+    }),
+  };
+}
+
+export function createMcpPluginEnvironmentAtoms<R, E>(
+  runtime: Atom.AtomRuntime<EnvironmentRegistry | R, E>,
+) {
+  return {
+    list: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:mcp-plugins:list",
+      tag: WS_METHODS.mcpPluginsList,
+      staleTimeMs: 1_000,
+    }),
+    install: createEnvironmentRpcCommand(runtime, {
+      label: "environment-command:mcp-plugins:install",
+      tag: WS_METHODS.mcpPluginsInstall,
+    }),
+    uninstall: createEnvironmentRpcCommand(runtime, {
+      label: "environment-command:mcp-plugins:uninstall",
+      tag: WS_METHODS.mcpPluginsUninstall,
+    }),
+    setEnabled: createEnvironmentRpcCommand(runtime, {
+      label: "environment-command:mcp-plugins:set-enabled",
+      tag: WS_METHODS.mcpPluginsSetEnabled,
+    }),
   };
 }

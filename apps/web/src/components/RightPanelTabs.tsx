@@ -50,6 +50,7 @@ import {
   Globe2,
   MessagesSquare,
   Plus,
+  Puzzle,
   TerminalSquare,
 } from "lucide-react";
 import { Volume2, VolumeOff } from "lucide";
@@ -663,6 +664,8 @@ function surfaceTitle(
       return "Pull requests";
     case "work":
       return "Work";
+    case "plugin":
+      return surface.title;
     case "device":
       return surface.title ?? surface.target?.name ?? "Device";
     case "game":
@@ -775,6 +778,8 @@ function SurfaceIcon({
       return <ClipboardList className="size-3.5 shrink-0" />;
     case "side-chat":
       return <SideChatTabIcon environmentId={environmentId} threadId={surface.threadId} />;
+    case "plugin":
+      return <Puzzle className="size-3.5 shrink-0" />;
     case "device":
       return surface.target?.platform === "ios" ? (
         <AppleIcon className="size-3 shrink-0" />

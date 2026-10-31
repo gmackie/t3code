@@ -872,6 +872,11 @@ function McpServerSettingsRow({
               {row.config.enabled ? "On" : "Off"} for this project
             </Badge>
           ) : null}
+          {row.config.plugin ? (
+            <Badge variant="outline" size="sm">
+              From plugin {row.config.plugin.displayName}
+            </Badge>
+          ) : null}
         </span>
       }
       description={
@@ -886,7 +891,7 @@ function McpServerSettingsRow({
               Reset
             </Button>
           ) : null}
-          {canEdit && onEdit && onRemove ? (
+          {canEdit && onEdit && onRemove && row.config.plugin === undefined ? (
             <Menu>
               <MenuTrigger
                 render={

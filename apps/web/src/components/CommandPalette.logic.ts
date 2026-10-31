@@ -24,6 +24,7 @@ import {
   type EnvironmentMachineKind,
   type FilesystemBrowseEntry,
   type KeybindingCommand,
+  type McpPluginEntry,
   type PluginCommand,
   type PluginCommandSurface,
   type SourceControlDiscoveryResult,
@@ -237,6 +238,56 @@ export function buildPluginCommandActionItems(input: {
       icon: input.icon,
       run: async () => input.run(command),
     }));
+}
+
+/**
+ * Palette entries that open plugin panels beside the active thread: one per
+ * contributed command, plus "Open <panel>" for panels no command opens.
+ */
+export function buildPluginPanelActionItems(input: {
+  readonly plugins: ReadonlyArray<McpPluginEntry>;
+  readonly icon: ReactNode;
+  readonly open: (target: {
+    readonly pluginId: string;
+    readonly panelId: string;
+    readonly title: string;
+  }) => void;
+}): CommandPaletteActionItem[] {
+  return input.plugins
+    .filter((plugin) => plugin.enabled)
+    .flatMap(({ manifest }) => {
+      const { panels, commands } = manifest.contributes;
+      const panelTitle = (panelId: string) =>
+        panels.find((panel) => panel.id === panelId)?.title ?? panelId;
+      const opened = new Set(commands.map((command) => command.panel));
+      const entries = [
+        ...commands.map((command) => ({
+          id: command.id,
+          title: command.title,
+          panel: command.panel,
+        })),
+        ...panels
+          .filter((panel) => !opened.has(panel.id))
+          .map((panel) => ({
+            id: `open-${panel.id}`,
+            title: `${manifest.displayName}: Open ${panel.title}`,
+            panel: panel.id,
+          })),
+      ];
+      return entries.map((entry): CommandPaletteActionItem => ({
+        kind: "action",
+        value: `plugin-panel:${manifest.id}:${entry.id}`,
+        searchTerms: [entry.title, manifest.displayName, manifest.id, "plugin", "panel"],
+        title: entry.title,
+        icon: input.icon,
+        run: async () =>
+          input.open({
+            pluginId: manifest.id,
+            panelId: entry.panel,
+            title: panelTitle(entry.panel),
+          }),
+      }));
+    });
 }
 
 export const resolvePluginCommandEnvironmentId = (input: {

@@ -1,3 +1,4 @@
+import { McpPluginId, McpPluginPanelId } from "@t3tools/contracts";
 import type {
   EditorId,
   EnvironmentId,
@@ -23,6 +24,7 @@ import { pullRequestPanelContext } from "../pullRequest/pullRequestDetail.logic"
 import { PullRequestDetailPanel } from "../pullRequest/PullRequestDetailPanel";
 import { PullRequestDetailGhost } from "../pullRequest/PullRequestGhosts";
 import { PullRequestsUnavailableState } from "../pullRequest/PullRequestsUnavailableState";
+import { PluginPanelView } from "../plugins/PluginPanelView";
 import { ThreadPullRequestsPanel } from "../pullRequest/ThreadPullRequestsPanel";
 
 const PreviewPanel = lazy(() =>
@@ -221,6 +223,20 @@ export function RightPanelSurfaceContent(props: {
             projectId={props.projectId}
           />
         </Suspense>
+      );
+    case "plugin":
+      // Hidden panels keep no frame alive; reopening the tab reopens the view.
+      if (props.projectId === null || !visible) return null;
+      return (
+        <PluginPanelView
+          key={`${props.environmentId}:${surface.id}:${props.projectId}`}
+          environmentId={props.environmentId}
+          pluginId={McpPluginId.make(surface.pluginId)}
+          panelId={McpPluginPanelId.make(surface.panelId)}
+          projectId={props.projectId}
+          threadId={threadRef.threadId}
+          {...(props.files.workspaceRoot === undefined ? {} : { cwd: props.files.workspaceRoot })}
+        />
       );
     case "game":
       return (
