@@ -3,16 +3,8 @@ import * as NodeCrypto from "node:crypto";
 
 import { mcpServerVariableRecord, type ResolvedMcpServer } from "@t3tools/contracts";
 import { MCP_APP_EXTENSION_ID, MCP_APP_MIME_TYPE } from "@t3tools/shared/mcpApp";
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import {
-  type OAuthClientProvider,
-  UnauthorizedError,
-} from "@modelcontextprotocol/sdk/client/auth.js";
-import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
-import {
-  StreamableHTTPClientTransport,
-  StreamableHTTPError,
-} from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import type { OAuthClientProvider } from "@modelcontextprotocol/sdk/client/auth.js";
+import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import * as Context from "effect/Context";
 import * as Deferred from "effect/Deferred";
@@ -53,9 +45,28 @@ export class McpServerNeedsAuthError extends Schema.TaggedError<McpServerNeedsAu
 
 export type McpClientPoolFailure = McpClientPoolError | McpServerNeedsAuthError;
 
+// The SDK costs ~95 ms to import, so it loads on the first connection, not at server start.
+const loadSdk = () =>
+  Promise.all([
+    import("@modelcontextprotocol/sdk/client/index.js"),
+    import("@modelcontextprotocol/sdk/client/auth.js"),
+    import("@modelcontextprotocol/sdk/client/stdio.js"),
+    import("@modelcontextprotocol/sdk/client/streamableHttp.js"),
+  ]).then(([client, auth, stdio, http]) => ({ ...client, ...auth, ...stdio, ...http }));
+type Sdk = Awaited<ReturnType<typeof loadSdk>>;
+let sdk: Promise<Sdk> | undefined;
+let loadedSdk: Sdk | undefined;
+const getSdk = () =>
+  (sdk ??= loadSdk().then((loaded) => {
+    loadedSdk = loaded;
+    return loaded;
+  }));
+
+// Auth failures come from an open or opening connection, so the SDK is loaded by then.
 const isAuthFailure = (cause: unknown) =>
-  cause instanceof UnauthorizedError ||
-  (cause instanceof StreamableHTTPError && cause.code === 401);
+  loadedSdk !== undefined &&
+  (cause instanceof loadedSdk.UnauthorizedError ||
+    (cause instanceof loadedSdk.StreamableHTTPError && cause.code === 401));
 
 export interface McpPoolTool {
   readonly name: string;
@@ -97,8 +108,6 @@ export class McpClientPool extends Context.Service<
 
 export interface McpClientPoolOptions {
   readonly idleTimeout?: Duration.Input;
-  /** Extra environment for stdio servers the pool spawns, such as T3's callback credentials. */
-  readonly stdioEnvironment?: (server: ResolvedMcpServer) => Record<string, string>;
   /** Signs requests to http servers; the SDK runs refresh and reports a missing sign-in. */
   readonly authProvider?: (server: ResolvedMcpServer) => OAuthClientProvider | undefined;
 }
@@ -134,10 +143,10 @@ const failureFor = (
 const connectionKey = (server: ResolvedMcpServer): string =>
   NodeCrypto.createHash("sha256").update(JSON.stringify(server)).digest("hex");
 
-const transportFor = (server: ResolvedMcpServer, options: McpClientPoolOptions) => {
+const transportFor = (sdk: Sdk, server: ResolvedMcpServer, options: McpClientPoolOptions) => {
   const { transport } = server;
   if (transport.type === "stdio") {
-    return new StdioClientTransport({
+    return new sdk.StdioClientTransport({
       command: transport.command,
       args: [...transport.args],
       // Inherit the server's environment as provider CLIs do, so the pool's copy and
@@ -145,14 +154,13 @@ const transportFor = (server: ResolvedMcpServer, options: McpClientPoolOptions) 
       env: {
         ...inheritedEnvironment(),
         ...mcpServerVariableRecord(transport.env),
-        ...options.stdioEnvironment?.(server),
       },
       // Server stderr can echo secrets from its environment, so it isn't forwarded.
       stderr: "ignore",
     });
   }
   const authProvider = options.authProvider?.(server);
-  return new StreamableHTTPClientTransport(new URL(transport.url), {
+  return new sdk.StreamableHTTPClientTransport(new URL(transport.url), {
     requestInit: { headers: mcpServerVariableRecord(transport.headers) },
     ...(authProvider ? { authProvider } : {}),
   });
@@ -177,13 +185,14 @@ const make = Effect.fn("McpClientPool.make")(function* (options: McpClientPoolOp
   const connect = (server: ResolvedMcpServer, key: string, entry: Entry) =>
     Effect.tryPromise({
       try: async () => {
-        const client = new Client(CLIENT_INFO, {
+        const loaded = await getSdk();
+        const client = new loaded.Client(CLIENT_INFO, {
           capabilities: {
             extensions: { [MCP_APP_EXTENSION_ID]: { mimeTypes: [MCP_APP_MIME_TYPE] } },
           },
         });
         // The SDK's transport classes predate exactOptionalPropertyTypes.
-        await client.connect(transportFor(server, options) as Transport);
+        await client.connect(transportFor(loaded, server, options) as Transport);
         return client;
       },
       catch: (cause) => failureFor(server, "connect", cause),

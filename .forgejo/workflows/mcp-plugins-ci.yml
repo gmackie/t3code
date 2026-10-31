@@ -1,0 +1,81 @@
+name: MCP Plugins CI
+
+on:
+  pull_request:
+    branches:
+      - custom-local
+    paths:
+      - packages/contracts/src/mcpPlugin.ts
+      - packages/contracts/src/mcpApps.ts
+      - packages/contracts/src/agentTools.ts
+      - packages/contracts/src/rpc.ts
+      - packages/client-runtime/src/mcpApps/**
+      - packages/client-runtime/src/state/mcpApps.ts
+      - apps/server/src/mcp/**
+      - apps/server/src/mcpApps/**
+      - apps/server/src/plugins/McpPlugins*
+      - apps/server/src/orchestration-v2/runtimeLayer.ts
+      - apps/server/src/ws.ts
+      - apps/web/src/components/plugins/**
+      - apps/web/src/components/chat/McpAppFrame.tsx
+      - apps/web/src/components/chat/RightPanelSurfaceContent.tsx
+      - apps/web/src/components/settings/McpPluginsSettings.tsx
+      - apps/web/src/components/settings/ToolsSettings.tsx
+      - apps/web/src/components/CommandPalette*
+      - apps/web/src/rightPanelStore.ts
+      - apps/mobile/src/features/plugins/**
+      - apps/mobile/src/features/threads/McpAppWebView.tsx
+      - .forgejo/workflows/mcp-plugins-ci.yml
+      - pnpm-lock.yaml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  # The pool, thread-less panels, plugin lifecycle and the T3 tool allowlist.
+  server:
+    runs-on: forgegraph-ci
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.14.0
+      - name: Install pinned dependencies
+        run: |
+          corepack enable
+          corepack prepare pnpm@12.14.0 --activate
+          pnpm install --frozen-lockfile
+      - name: Verify MCP plugins on the server
+        run: |
+          pnpm exec vp test run apps/server/src/mcp apps/server/src/mcpApps apps/server/src/plugins/McpPlugins.test.ts apps/server/src/peer apps/server/src/ws.test.ts apps/server/src/auth/RpcAuthorization.test.ts apps/server/src/orchestration-v2/Adapters/CodexAdapterV2.test.ts
+          pnpm exec vp test run packages/contracts/src
+      - name: Typecheck contracts and server
+        run: |
+          (cd packages/contracts && pnpm exec tsc --noEmit)
+          (cd apps/server && pnpm exec tsc --noEmit)
+
+  clients:
+    runs-on: forgegraph-ci
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.14.0
+      - name: Install pinned dependencies
+        run: |
+          corepack enable
+          corepack prepare pnpm@12.14.0 --activate
+          pnpm install --frozen-lockfile
+      - name: Verify plugin panels on web and the shared host
+        run: |
+          (cd packages/client-runtime && pnpm exec vp test run src/mcpApps && pnpm exec tsc --noEmit)
+          (cd apps/web && pnpm exec vp test run src/components/CommandPalette.logic.test.ts src/rightPanelStore.test.ts src/components/RightPanelTabs.test.tsx src/components/settings --project unit && pnpm exec tsc --noEmit)
+          (cd apps/mobile && pnpm exec tsc --noEmit)
+      # Lint from the root: oxlint resolves the repo's local plugin relative to it.
+      - name: Lint the plugin surfaces
+        run: |
+          pnpm exec vp lint apps/web/src/components/plugins apps/web/src/components/settings/McpPluginsSettings.tsx apps/web/src/components/chat/McpAppFrame.tsx apps/server/src/mcp/McpClientPool.ts apps/server/src/plugins/McpPlugins.ts apps/server/src/mcpApps
+          pnpm exec vp fmt --check apps/web/src/components/plugins apps/web/src/components/settings/McpPluginsSettings.tsx apps/web/src/components/chat/McpAppFrame.tsx apps/server/src/mcp/McpClientPool.ts apps/server/src/plugins/McpPlugins.ts apps/server/src/mcpApps

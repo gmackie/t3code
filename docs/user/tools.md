@@ -53,3 +53,17 @@ Claude, Codex, Cursor, OpenCode, Grok and other ACP agents get these servers. AC
 support URL servers only get command servers. Pi and Muse aren't supported yet. OpenCode 1
 connections using an external server URL don't receive these servers: that server retains dynamic
 configuration after the T3 session ends. Configure MCP in that external server directly.
+
+## Plugins
+
+A plugin is an MCP server packaged with views. Install one in **Settings → Plugins → MCP plugins**
+from a folder on the environment that contains a `t3-plugin.json`. Its server then appears under
+**MCP servers** as "From plugin …", so agents get its tools like any other server. You can switch it
+off there, or for one project, but its settings live with the plugin: use **Configure** on the
+plugin to set its variables, such as an API token. Installing needs permission to manage providers.
+
+A plugin's panels open in the right panel beside a thread, from the command palette. A thread panel
+follows you as you switch threads; a project panel shows the project as a whole. A panel can call
+its own plugin's tools without asking, because installing the plugin allowed that; disable or
+uninstall the plugin to stop it. If the plugin's server needs you to sign in, the panel says so
+instead of loading.
