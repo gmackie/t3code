@@ -26,6 +26,7 @@ import * as Semaphore from "effect/Semaphore";
 import { toSafeThreadAttachmentSegment } from "../attachmentStore.ts";
 import * as ServerConfig from "../config.ts";
 import * as McpClientPool from "../mcp/McpClientPool.ts";
+import * as McpSessionRegistry from "../mcp/McpSessionRegistry.ts";
 import * as ServerSettings from "../serverSettings.ts";
 
 export type McpPluginRecord = McpPluginEntry;
@@ -125,6 +126,44 @@ const make = Effect.gen(function* () {
   const { stateDir, attachmentsDir } = yield* ServerConfig.ServerConfig;
   const settings = yield* ServerSettings.ServerSettingsService;
   const pool = yield* McpClientPool.McpClientPool;
+  const credentials = yield* McpSessionRegistry.McpSessionRegistry;
+  // One token per plugin keeps the pool's connection key stable between panels.
+  const pluginTokens = new Map<string, { readonly endpoint: string; readonly token: string }>();
+
+  const revokeToken = (pluginId: string) =>
+    Effect.suspend(() => {
+      pluginTokens.delete(pluginId);
+      return credentials.revokePlugin(pluginId);
+    });
+
+  /** Only T3's own copy of a stdio plugin gets the callback; provider copies never see it. */
+  const withT3Callback = Effect.fnUntraced(function* (
+    record: McpPluginRecord,
+    server: ResolvedMcpServer,
+  ) {
+    const { t3Tools, id, displayName } = record.manifest;
+    if (t3Tools.length === 0 || server.transport.type !== "stdio") return server;
+    let issued = pluginTokens.get(id);
+    if (issued === undefined) {
+      issued = yield* credentials.issuePlugin({
+        pluginId: id,
+        label: displayName,
+        allowedTools: t3Tools,
+      });
+      pluginTokens.set(id, issued);
+    }
+    return {
+      ...server,
+      transport: {
+        ...server.transport,
+        env: [
+          ...server.transport.env,
+          { name: "T3_MCP_URL", value: issued.endpoint, sensitive: false },
+          { name: "T3_MCP_TOKEN", value: issued.token, sensitive: true },
+        ],
+      },
+    } satisfies ResolvedMcpServer;
+  });
   const recordsPath = path.join(stateDir, "mcp-plugins.json");
   const lock = yield* Semaphore.make(1);
 
@@ -247,6 +286,7 @@ const make = Effect.gen(function* () {
           ]);
           if (previous !== undefined) {
             yield* pool.closeServer(previous.manifest.mcpServer.name);
+            yield* revokeToken(manifest.id);
           }
           return record;
         }),
@@ -266,6 +306,7 @@ const make = Effect.gen(function* () {
           }
           yield* writeRecords(records.filter((candidate) => candidate !== record));
           yield* pool.closeServer(name);
+          yield* revokeToken(pluginId);
           yield* removeViews(pluginId);
         }),
       );
@@ -287,7 +328,10 @@ const make = Effect.gen(function* () {
           yield* writeRecords(
             records.map((candidate) => (candidate === record ? next : candidate)),
           );
-          if (!enabled) yield* pool.closeServer(name);
+          if (!enabled) {
+            yield* pool.closeServer(name);
+            yield* revokeToken(pluginId);
+          }
           return next;
         }),
       );
@@ -314,7 +358,8 @@ const make = Effect.gen(function* () {
       if (entry === undefined || !entry.enabled || entry.plugin?.id !== input.pluginId) {
         return yield* unavailable;
       }
-      return { record, panel, server: { name, transport: entry.transport } };
+      const server = yield* withT3Callback(record, { name, transport: entry.transport });
+      return { record, panel, server };
     },
   );
 

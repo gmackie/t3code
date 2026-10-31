@@ -26,6 +26,7 @@ import * as Schema from "effect/Schema";
 import * as ServerSecretStore from "../auth/ServerSecretStore.ts";
 import * as ServerConfig from "../config.ts";
 import * as McpClientPool from "../mcp/McpClientPool.ts";
+import * as McpSessionRegistryTestkit from "../mcp/McpSessionRegistry.testkit.ts";
 import * as SqlitePersistence from "../persistence/Sqlite.ts";
 import * as McpPlugins from "../plugins/McpPlugins.ts";
 import * as ServerSettings from "../serverSettings.ts";
@@ -85,6 +86,7 @@ const storedContext = new Map<string, string>();
 const layerPluginStack = () =>
   McpPlugins.layer.pipe(
     Layer.provideMerge(McpClientPool.layer),
+    Layer.provide(McpSessionRegistryTestkit.layer),
     Layer.provideMerge(ServerSettings.layer),
     Layer.provide(ServerSecretStore.layer),
     Layer.provideMerge(Layer.fresh(SqlitePersistence.layerMemory)),
@@ -347,6 +349,29 @@ describe("McpAppRequests plugin panels", () => {
       assert.include(yield* fileSystem.readFileString(viewPath), "<p>panel</p>");
       const reopened = yield* requests.openPanel(source);
       assert.equal(reopened.status === "ready" && reopened.attachmentId, opened.attachmentId);
+    }).pipe(Effect.provide(layer())),
+  );
+
+  it.effect("gives only T3's own copy of the plugin its T3 callback token", () =>
+    Effect.gen(function* () {
+      const plugins = yield* McpPlugins.McpPlugins;
+      const requests = yield* McpAppRequests.McpAppRequests;
+      const settings = yield* ServerSettings.ServerSettingsService;
+      yield* plugins.install({
+        manifest: decodeManifest({ ...manifest, t3Tools: ["t3_thread_read"] }),
+        directory: fixtureDir,
+      });
+      const called = yield* requests.callTool({ ...source, name: "whoami", arguments: {} });
+      assert.deepEqual((called.structuredContent as { readonly t3Callback: unknown }).t3Callback, {
+        url: "http://127.0.0.1/mcp",
+        token: `mcp-test:plugin:${pluginId}`,
+      });
+      // The Tools entry is what provider sessions get; it never carries the token.
+      const entry = (yield* settings.getSettings).mcpServers.fixture;
+      assert.isTrue(
+        entry?.transport.type === "stdio" &&
+          entry.transport.env.every((variable) => !variable.name.startsWith("T3_MCP_")),
+      );
     }).pipe(Effect.provide(layer())),
   );
 

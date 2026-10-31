@@ -13,6 +13,9 @@ server.registerTool("whoami", { description: "Process facts" }, async () => {
       pid: process.pid,
       token: process.env.FIXTURE_TOKEN ?? null,
       stateHome: process.env.XDG_STATE_HOME ?? null,
+      t3Callback: process.env.T3_MCP_TOKEN
+        ? { url: process.env.T3_MCP_URL, token: process.env.T3_MCP_TOKEN }
+        : null,
       uiExtension: extensions["io.modelcontextprotocol/ui"] ?? null,
     },
   };

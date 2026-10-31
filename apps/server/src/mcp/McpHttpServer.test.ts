@@ -778,6 +778,8 @@ it.effect("terminates HTTP MCP sessions with DELETE", () =>
         Layer.provide(ServerSettings.layerTest()),
         Layer.provide(
           Layer.mock(McpSessionRegistry.McpSessionRegistry)({
+            // @effect-diagnostics-next-line effectSucceedWithVoid:off - The optional result requires undefined.
+            resolvePlugin: () => Effect.succeed(undefined),
             resolve: (presented) =>
               Effect.succeed(
                 presented === token
@@ -885,6 +887,8 @@ it.effect("admits provider and OAuth client credentials and points only clients 
         ),
         Layer.provide(
           Layer.mock(McpSessionRegistry.McpSessionRegistry)({
+            // @effect-diagnostics-next-line effectSucceedWithVoid:off - The optional result requires undefined.
+            resolvePlugin: () => Effect.succeed(undefined),
             resolve: (token) =>
               Effect.succeed(
                 token === providerToken
@@ -957,6 +961,83 @@ it.effect("admits provider and OAuth client credentials and points only clients 
   ).pipe(Effect.provide(NodeHttpServer.layerTest)),
 );
 
+it.effect("shows and runs only a plugin token's allowlisted tools", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const pluginScope: McpInvocationContext.McpInvocationScope = {
+        environmentId,
+        requestNamespace: "plugin:com.example.board",
+        thread: undefined,
+        client: { sessionId: "plugin:com.example.board", label: "Board", access: "auto" },
+        capabilities: new Set(["pull-requests"]),
+        toolAllowlist: new Set(["link_pull_request"]),
+        issuedAt: 1,
+      };
+      const serverLayer = McpHttpServer.layerPullRequestsToolkit.pipe(
+        Layer.provideMerge(
+          McpHttpServer.layerMcpTransport.pipe(Layer.provide(ServerSettings.layerTest())),
+        ),
+        Layer.provide(
+          Layer.mock(McpSessionRegistry.McpSessionRegistry)({
+            // @effect-diagnostics-next-line effectSucceedWithVoid:off - The optional result requires undefined.
+            resolve: () => Effect.succeed(undefined),
+            resolvePlugin: (token) =>
+              Effect.succeed(token === "pluginToken" ? pluginScope : undefined),
+          }),
+        ),
+        Layer.provide(
+          Layer.mergeAll(
+            McpToolAccessTestkit.liveThreadsLayer,
+            Layer.mock(ProjectService.ProjectService)({}),
+            Layer.mock(PullRequestReviewGuideService.PullRequestReviewGuideService)({}),
+            Layer.mock(PullRequestService.PullRequestService)({}),
+            Layer.mock(RepositoryIdentityResolver.RepositoryIdentityResolver)({}),
+            Layer.mock(Orchestrator.OrchestratorV2)({}),
+            Layer.mock(ProjectionStore.ProjectionStoreV2)({}),
+            NodeServices.layer,
+          ),
+        ),
+      );
+      yield* HttpRouter.serve(serverLayer, { disableListenLog: true, disableLogger: true }).pipe(
+        Layer.build,
+      );
+      const httpClient = yield* HttpClient.HttpClient;
+      const headers = {
+        accept: "application/json, text/event-stream",
+        authorization: "Bearer pluginToken",
+      };
+      const initialize = yield* httpClient.post("/mcp", {
+        headers,
+        body: HttpBody.text(
+          `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"plugin","version":"1.0.0"}}}`,
+          "application/json",
+        ),
+      });
+      const session = {
+        ...headers,
+        "mcp-session-id": initialize.headers["mcp-session-id"]!,
+        "mcp-protocol-version": "2025-06-18",
+      };
+      const post = (body: string) =>
+        httpClient
+          .post("/mcp", { headers: session, body: HttpBody.text(body, "application/json") })
+          .pipe(Effect.flatMap((response) => response.json));
+
+      const listed = (yield* post(
+        `{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}`,
+      )) as {
+        readonly result: { readonly tools: ReadonlyArray<{ readonly name: string }> };
+      };
+      expect(listed.result.tools.map((tool) => tool.name)).toEqual(["link_pull_request"]);
+
+      const refused = (yield* post(
+        `{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"watch_pull_request","arguments":{}}}`,
+      )) as { readonly error?: unknown; readonly result?: { readonly isError?: boolean } };
+      expect(refused.error !== undefined || refused.result?.isError === true).toBe(true);
+    }),
+  ).pipe(Effect.provide(NodeHttpServer.layerTest)),
+);
+
 it.effect(
   "narrows an OAuth client's modes to the T3-Mode-Limit it sends, and never widens them",
   () =>
@@ -1005,6 +1086,8 @@ it.effect(
           Layer.provide(McpToolAccessTestkit.liveThreadsLayer),
           Layer.provide(
             Layer.mock(McpSessionRegistry.McpSessionRegistry)({
+              // @effect-diagnostics-next-line effectSucceedWithVoid:off - The optional result requires undefined.
+              resolvePlugin: () => Effect.succeed(undefined),
               // @effect-diagnostics-next-line effectSucceedWithVoid:off - This optional result requires undefined, not the wider void type.
               resolve: () => Effect.succeed(undefined),
             }),
@@ -1151,6 +1234,8 @@ it.effect("hides tools for links and refuses another environment while the beta 
         Layer.provide(McpToolAccessTestkit.liveThreadsLayer),
         Layer.provide(
           Layer.mock(McpSessionRegistry.McpSessionRegistry)({
+            // @effect-diagnostics-next-line effectSucceedWithVoid:off - The optional result requires undefined.
+            resolvePlugin: () => Effect.succeed(undefined),
             resolve: (presented) => Effect.succeed(presented === token ? scope : undefined),
           }),
         ),
@@ -1256,6 +1341,8 @@ it.effect("lists pull request watch tools only to threads that are not delegated
         ),
         Layer.provide(
           Layer.mock(McpSessionRegistry.McpSessionRegistry)({
+            // @effect-diagnostics-next-line effectSucceedWithVoid:off - The optional result requires undefined.
+            resolvePlugin: () => Effect.succeed(undefined),
             resolve: (token) => Effect.succeed(scopes.get(token)),
           }),
         ),
@@ -1366,6 +1453,8 @@ it.effect(
           Layer.provide(McpToolAccessTestkit.liveThreadsLayer),
           Layer.provide(
             Layer.mock(McpSessionRegistry.McpSessionRegistry)({
+              // @effect-diagnostics-next-line effectSucceedWithVoid:off - The optional result requires undefined.
+              resolvePlugin: () => Effect.succeed(undefined),
               // @effect-diagnostics-next-line effectSucceedWithVoid:off - This optional result requires undefined, not the wider void type.
               resolve: () => Effect.succeed(undefined),
             }),
