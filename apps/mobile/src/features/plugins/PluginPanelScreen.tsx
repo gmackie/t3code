@@ -108,6 +108,15 @@ function PluginPanel(props: {
   const [size, setSize] = useState({ width: 0, height: 0 });
   const [state, setState] = useState<PanelState>({ _tag: "loading" });
   const openPanel = useAtomCommand(mcpAppEnvironment.openPanel, { reportFailure: false });
+  const panelContext = useEnvironmentQuery(
+    mcpAppEnvironment.panelContext({
+      environmentId: props.environmentId,
+      input: {
+        projectId: props.projectId,
+        ...(props.threadId === undefined ? {} : { threadId: props.threadId }),
+      },
+    }),
+  ).data;
   const open = useEffectEvent((isActive: () => boolean) => {
     const input = {
       pluginId: props.pluginId,
@@ -201,6 +210,7 @@ function PluginPanel(props: {
         </View>
       ) : size.width > 0 ? (
         <McpAppView
+          {...(panelContext === null ? {} : { panelContext })}
           environmentId={props.environmentId}
           source={state.source}
           app={state.app}

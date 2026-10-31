@@ -125,6 +125,28 @@ export const McpAppOpenPanelResult = Schema.Union([
 ]);
 export type McpAppOpenPanelResult = typeof McpAppOpenPanelResult.Type;
 
+/** Where a plugin panel is shown; clients ask again when the active thread changes. */
+export const McpAppPanelContextInput = Schema.Struct({
+  projectId: ProjectId,
+  threadId: Schema.optionalKey(ThreadId),
+});
+export type McpAppPanelContextInput = typeof McpAppPanelContextInput.Type;
+
+/**
+ * The project's (or thread's worktree's) directory and git state, sent to the
+ * view in host context so a plugin can map the repository to its own records.
+ */
+export const McpAppPanelContext = Schema.Struct({
+  cwd: Schema.optionalKey(Schema.String),
+  git: Schema.optionalKey(
+    Schema.Struct({
+      branch: Schema.optionalKey(Schema.String),
+      remotes: Schema.Array(Schema.Struct({ name: Schema.String, url: Schema.String })),
+    }),
+  ),
+});
+export type McpAppPanelContext = typeof McpAppPanelContext.Type;
+
 export const McpAppRequestErrorReason = Schema.Literals([
   "not-an-app",
   "plugin-unavailable",

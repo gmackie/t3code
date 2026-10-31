@@ -1,4 +1,5 @@
 import type {
+  McpAppPanelContext,
   McpPluginId,
   McpPluginPanelId,
   ProjectId,
@@ -42,10 +43,16 @@ export function mcpAppSourceInput(source: McpAppViewSource) {
     : { pluginId: source.pluginId, panelId: source.panelId, projectId: source.projectId };
 }
 
-export function mcpAppT3Context(source: McpAppViewSource): McpAppHostContext["t3"] {
+/** A panel's T3 block: where it is shown, plus the server's directory and git state for it. */
+export function mcpAppT3Context(
+  source: McpAppViewSource,
+  panelContext?: McpAppPanelContext,
+): McpAppHostContext["t3"] {
   if (source.kind !== "plugin-panel") return undefined;
   return {
     projectId: source.projectId,
     ...(source.threadId === undefined ? {} : { threadId: source.threadId }),
+    ...(panelContext?.cwd === undefined ? {} : { cwd: panelContext.cwd }),
+    ...(panelContext?.git === undefined ? {} : { git: panelContext.git }),
   };
 }

@@ -29,6 +29,12 @@ export function createMcpAppEnvironmentAtoms<R, E>(
       label: "environment-command:mcp-apps:update-model-context",
       tag: WS_METHODS.mcpAppsUpdateModelContext,
     }),
+    /** Directory and git state for a panel's host context; keyed by project and thread. */
+    panelContext: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:mcp-apps:panel-context",
+      tag: WS_METHODS.mcpAppsPanelContext,
+      staleTimeMs: 30_000,
+    }),
     /** Runs on each open, since a panel's opening tool may return fresh data. */
     openPanel: createEnvironmentRpcCommand(runtime, {
       label: "environment-command:mcp-apps:open-panel",

@@ -30,6 +30,8 @@ import * as McpClientPool from "../mcp/McpClientPool.ts";
 import * as McpRemoteAuth from "../mcp/McpRemoteAuth.ts";
 import * as McpSessionRegistryTestkit from "../mcp/McpSessionRegistry.testkit.ts";
 import * as SqlitePersistence from "../persistence/Sqlite.ts";
+import * as ProjectService from "../project/ProjectService.ts";
+import * as VcsDriverRegistry from "../vcs/VcsDriverRegistry.ts";
 import * as McpPlugins from "../plugins/McpPlugins.ts";
 import * as ServerSettings from "../serverSettings.ts";
 
@@ -45,6 +47,7 @@ const itemId = TurnItemId.make("item-app");
 const providerThreadId = ProviderThreadId.make("provider-thread-app");
 const providerSessionId = ProviderSessionId.make("provider-session-app");
 const forkId = ThreadId.make("thread-fork");
+const branchThreadId = ThreadId.make("thread-branch");
 const unrelatedId = ThreadId.make("thread-unrelated");
 const deepForkId = (depth: number) => ThreadId.make(`thread-deep-${depth}`);
 const deepParent = (id: ThreadId): ThreadId | null => {
@@ -119,10 +122,39 @@ function makeLayer(input: {
         Layer.mock(Orchestrator.OrchestratorV2)({
           getTurnItem: () => Effect.succeed(input.item),
         }),
+        Layer.mock(ProjectService.ProjectService)({
+          getById: (id) =>
+            Effect.succeed(
+              id === "project-plugins"
+                ? Option.some({ workspaceRoot: "/repo/main" } as never)
+                : Option.none(),
+            ),
+        }),
+        Layer.mock(VcsDriverRegistry.VcsDriverRegistry)({
+          resolve: ({ cwd }) =>
+            Effect.succeed({
+              driver: {
+                listRemotes: () =>
+                  Effect.succeed({
+                    remotes: [
+                      {
+                        name: "origin",
+                        url: `https://git.example/${cwd.split("/").at(-1)}.git`,
+                        pushUrl: Option.none(),
+                        isPrimary: true,
+                      },
+                    ],
+                  }),
+              },
+            } as never),
+        }),
         Layer.mock(ThreadManagementService.ThreadManagementService)({
           getThreadRecords: (id: ThreadId) =>
             Effect.succeed({
               thread: {
+                ...(id === branchThreadId
+                  ? { branch: "feature/checks", worktreePath: "/repo/worktrees/checks" }
+                  : { branch: null, worktreePath: null }),
                 lineage:
                   deepParent(id) !== null
                     ? {
@@ -367,10 +399,35 @@ describe("McpAppRequests plugin panels", () => {
         projectId,
       });
       assert.equal(opened.status, "ready");
+      const greeting =
+        opened.status === "ready"
+          ? (
+              opened.toolCall?.result.structuredContent as
+                | { readonly greeting?: string }
+                | undefined
+            )?.greeting
+          : undefined;
+      assert.equal(greeting, "Hello, tests!");
+    }).pipe(Effect.provide(layer())),
+  );
+
+  it.effect("tells a panel its directory and git remotes, and a thread panel its branch", () =>
+    Effect.gen(function* () {
+      const requests = yield* McpAppRequests.McpAppRequests;
+      assert.deepEqual(yield* requests.panelContext({ projectId }), {
+        cwd: "/repo/main",
+        git: { remotes: [{ name: "origin", url: "https://git.example/main.git" }] },
+      });
+      assert.deepEqual(yield* requests.panelContext({ projectId, threadId: branchThreadId }), {
+        cwd: "/repo/worktrees/checks",
+        git: {
+          branch: "feature/checks",
+          remotes: [{ name: "origin", url: "https://git.example/checks.git" }],
+        },
+      });
       assert.deepEqual(
-        opened.status === "ready" &&
-          (opened.toolCall?.result.structuredContent as { readonly greeting: string }).greeting,
-        "Hello, tests!",
+        yield* requests.panelContext({ projectId: ProjectId.make("project-missing") }),
+        {},
       );
     }).pipe(Effect.provide(layer())),
   );

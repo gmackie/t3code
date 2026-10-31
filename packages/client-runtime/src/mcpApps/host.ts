@@ -43,6 +43,11 @@ export interface McpAppHostContext {
     readonly projectId?: string;
     readonly threadId?: string;
     readonly cwd?: string;
+    /** The thread's branch (thread panels) and the repository's remotes, for mapping to plugin records. */
+    readonly git?: {
+      readonly branch?: string;
+      readonly remotes: ReadonlyArray<{ readonly name: string; readonly url: string }>;
+    };
   };
 }
 

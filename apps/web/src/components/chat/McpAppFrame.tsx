@@ -103,6 +103,7 @@ export type McpAppFrameSource =
       /** The active thread, for thread-scoped panels. */
       readonly threadId?: ThreadId;
       readonly cwd?: string;
+      readonly git?: NonNullable<McpAppHostContext["t3"]>["git"];
       readonly toolCall?: {
         readonly arguments: unknown;
         readonly result: McpAppCallToolResult | undefined;
@@ -196,6 +197,7 @@ export function McpAppFrame(props: {
           projectId: source.projectId,
           ...(source.threadId === undefined ? {} : { threadId: source.threadId }),
           ...(source.cwd === undefined ? {} : { cwd: source.cwd }),
+          ...(source.git === undefined ? {} : { git: source.git }),
         }
       : undefined;
 
@@ -454,11 +456,27 @@ export function McpAppFrame(props: {
     };
   };
 
-  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- pushes theme, width, display mode and tool definition to the MCP app host in the iframe
+  // A panel's git block is rebuilt each render; compare it by value.
+  const gitKey =
+    t3Context?.git === undefined
+      ? ""
+      : [t3Context.git.branch ?? "", ...t3Context.git.remotes.map((remote) => remote.url)].join(
+          "\n",
+        );
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- pushes theme, width, display mode, tool definition and panel context to the MCP app host in the iframe
   useEffect(() => {
     hostRef.current?.updateHostContext();
+  }, [
     // oxlint-disable-next-line react/exhaustive-effect-dependencies -- Context changes trigger a resend.
-  }, [theme, width, boxHeight, displayMode, toolDefinition, t3Context?.threadId, t3Context?.cwd]);
+    theme,
+    width,
+    boxHeight,
+    displayMode,
+    toolDefinition,
+    t3Context?.threadId,
+    t3Context?.cwd,
+    gitKey,
+  ]);
 
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- sends the current tool call to the MCP app host, again for each new iframe document
   useEffect(() => {

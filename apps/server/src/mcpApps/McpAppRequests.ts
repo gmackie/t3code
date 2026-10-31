@@ -5,6 +5,8 @@ import {
   type McpAppCallToolResult,
   type McpAppOpenPanelInput,
   type McpAppOpenPanelResult,
+  type McpAppPanelContext,
+  type McpAppPanelContextInput,
   type McpAppReadResourceInput,
   type McpAppReadResourceResult,
   type McpAppToolInfo,
@@ -34,6 +36,8 @@ import type * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAda
 import * as ProviderSessionManager from "../orchestration-v2/ProviderSessionManager.ts";
 import * as ThreadManagementService from "../orchestration-v2/ThreadManagementService.ts";
 import * as McpPlugins from "../plugins/McpPlugins.ts";
+import * as ProjectService from "../project/ProjectService.ts";
+import * as VcsDriverRegistry from "../vcs/VcsDriverRegistry.ts";
 import * as McpAppModelContext from "./McpAppModelContext.ts";
 import { snapshotMcpApp } from "./McpAppSnapshot.ts";
 
@@ -61,6 +65,8 @@ export class McpAppRequests extends Context.Service<
     readonly openPanel: (
       input: McpAppOpenPanelInput,
     ) => Effect.Effect<McpAppOpenPanelResult, McpAppRequestError>;
+    /** Best effort: a missing project, thread or repository just leaves fields out. */
+    readonly panelContext: (input: McpAppPanelContextInput) => Effect.Effect<McpAppPanelContext>;
   }
 >()("t3/mcpApps/McpAppRequests") {}
 
@@ -107,6 +113,9 @@ const make = Effect.gen(function* () {
   const pool = yield* McpClientPool.McpClientPool;
   const { attachmentsDir } = yield* ServerConfig.ServerConfig;
   const fileSystem = yield* FileSystem.FileSystem;
+  const projects = yield* ProjectService.ProjectService;
+  // Optional so harnesses without VCS still build; panels then get no remotes.
+  const vcs = yield* Effect.serviceOption(VcsDriverRegistry.VcsDriverRegistry);
 
   const fail = (
     source: { readonly threadId: ThreadId } | { readonly pluginId: McpPluginId },
@@ -354,7 +363,45 @@ const make = Effect.gen(function* () {
       .pipe(Effect.mapError((cause) => fail(input, "request-failed", cause)));
   });
 
-  return McpAppRequests.of({ callTool, toolInfo, readResource, updateModelContext, openPanel });
+  const panelContext = Effect.fn("McpAppRequests.panelContext")(function* (
+    input: McpAppPanelContextInput,
+  ) {
+    const project = Option.getOrUndefined(
+      yield* projects.getById(input.projectId).pipe(Effect.orElseSucceed(() => Option.none())),
+    );
+    const thread =
+      input.threadId === undefined
+        ? undefined
+        : yield* threadManagement.getThreadRecords(input.threadId, []).pipe(
+            Effect.map((records) => records.thread),
+            Effect.orElseSucceed(() => undefined),
+          );
+    const cwd = thread?.worktreePath ?? project?.workspaceRoot;
+    if (cwd === undefined) return {};
+    const remotes = Option.isNone(vcs)
+      ? undefined
+      : yield* vcs.value.resolve({ cwd }).pipe(
+          Effect.flatMap((handle) => handle.driver.listRemotes(cwd)),
+          Effect.map((result) => result.remotes.map(({ name, url }) => ({ name, url }))),
+          Effect.orElseSucceed(() => undefined),
+        );
+    const branch = thread?.branch ?? undefined;
+    return {
+      cwd,
+      ...(remotes === undefined
+        ? {}
+        : { git: { remotes, ...(branch === undefined ? {} : { branch }) } }),
+    } satisfies McpAppPanelContext;
+  });
+
+  return McpAppRequests.of({
+    callTool,
+    toolInfo,
+    readResource,
+    updateModelContext,
+    openPanel,
+    panelContext,
+  });
 });
 
 export const layer = Layer.effect(McpAppRequests, make);

@@ -247,6 +247,7 @@ export const RPC_REQUIRED_SCOPES = {
   // Opening runs the panel's opening tool, which may act.
   [WS_METHODS.mcpAppsOpenPanel]: AuthOrchestrationOperateScope,
   [WS_METHODS.mcpPluginsList]: AuthOrchestrationReadScope,
+  [WS_METHODS.mcpAppsPanelContext]: AuthOrchestrationReadScope,
   // A plugin's server is a command T3 runs for every agent, like a Tools entry.
   [WS_METHODS.mcpPluginsInstall]: AuthProvidersManageScope,
   [WS_METHODS.mcpPluginsUninstall]: AuthProvidersManageScope,

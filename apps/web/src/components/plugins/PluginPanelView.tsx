@@ -47,6 +47,17 @@ export function PluginPanelView(props: {
   ).data;
   const transport = plugins?.find((plugin) => plugin.manifest.id === props.pluginId)?.manifest
     .mcpServer.transport;
+  // Directory and git state follow the active thread without reopening the view.
+  const panelContext = useEnvironmentQuery(
+    mcpAppEnvironment.panelContext({
+      environmentId: props.environmentId,
+      input: {
+        projectId: props.projectId,
+        ...(props.threadId === undefined ? {} : { threadId: props.threadId }),
+      },
+    }),
+  ).data;
+  const cwd = panelContext?.cwd ?? props.cwd;
   const signsInWithOAuth = transport?.type === "http" && transport.oauth !== undefined;
   const { environmentId, pluginId, panelId, projectId } = props;
 
@@ -129,7 +140,8 @@ export function PluginPanelView(props: {
             panelId,
             projectId,
             ...(props.threadId === undefined ? {} : { threadId: props.threadId }),
-            ...(props.cwd === undefined ? {} : { cwd: props.cwd }),
+            ...(cwd === undefined ? {} : { cwd }),
+            ...(panelContext?.git === undefined ? {} : { git: panelContext.git }),
             ...(opened.toolCall === undefined ? {} : { toolCall: opened.toolCall }),
           }}
           app={{

@@ -178,6 +178,7 @@ const RPC_AGGREGATES = {
   [WS_METHODS.mcpAppsReadResource]: "provider",
   [WS_METHODS.mcpAppsOpenPanel]: "provider",
   [WS_METHODS.mcpPluginsList]: "provider",
+  [WS_METHODS.mcpAppsPanelContext]: "provider",
   [WS_METHODS.mcpPluginsInstall]: "provider",
   [WS_METHODS.mcpPluginsUninstall]: "provider",
   [WS_METHODS.mcpPluginsSetEnabled]: "provider",

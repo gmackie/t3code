@@ -1,7 +1,7 @@
 import { Button } from "../../components/ui/Button";
 import { AppActivityIndicator } from "../../components/ui/AppActivityIndicator";
 import * as Dialog from "../../components/ui/Dialog";
-import type { EnvironmentId, ThreadId, TurnItemId } from "@t3tools/contracts";
+import type { EnvironmentId, McpAppPanelContext, ThreadId, TurnItemId } from "@t3tools/contracts";
 import {
   makeMcpAppHost,
   McpAppHostRefusal,
@@ -138,6 +138,8 @@ export function McpAppView(props: {
   readonly onExitFullscreen?: () => void;
   readonly onClose?: () => void;
   readonly height?: number;
+  /** A plugin panel's directory and git state, refreshed as the active thread changes. */
+  readonly panelContext?: McpAppPanelContext;
 }) {
   const { source } = props;
   const panel = source.kind === "plugin-panel";
@@ -279,7 +281,8 @@ export function McpAppView(props: {
       previous.props.width !== live.props.width ||
       previous.props.height !== live.props.height ||
       previous.props.displayMode !== live.props.displayMode ||
-      previous.props.source.threadId !== live.props.source.threadId
+      previous.props.source.threadId !== live.props.source.threadId ||
+      previous.props.panelContext !== live.props.panelContext
     ) {
       host?.updateHostContext();
     }
@@ -328,7 +331,7 @@ export function McpAppView(props: {
       const current = latest.current;
       const isPanel = current.props.source.kind === "plugin-panel";
       const isFullscreen = current.props.displayMode === "fullscreen";
-      const t3 = mcpAppT3Context(current.props.source);
+      const t3 = mcpAppT3Context(current.props.source, current.props.panelContext);
       return {
         theme: current.theme.appearance,
         styles: { variables: mcpAppStyleVariables(current.theme.variables) },

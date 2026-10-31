@@ -32,6 +32,24 @@ describe("mcpAppSourceInput", () => {
 });
 
 describe("mcpAppT3Context", () => {
+  it("adds the server's directory and git state to a panel's block", () => {
+    expect(
+      mcpAppT3Context(panel, {
+        cwd: "/repo/worktrees/checks",
+        git: {
+          branch: "feature/checks",
+          remotes: [{ name: "origin", url: "https://git.example/r.git" }],
+        },
+      }),
+    ).toMatchObject({
+      cwd: "/repo/worktrees/checks",
+      git: {
+        branch: "feature/checks",
+        remotes: [{ name: "origin", url: "https://git.example/r.git" }],
+      },
+    });
+  });
+
   it("is absent for thread apps", () => {
     expect(mcpAppT3Context(threadItem)).toBeUndefined();
   });

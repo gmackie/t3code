@@ -2691,6 +2691,7 @@ export const layerWsRpc = (
         [WS_METHODS.mcpAppsUpdateModelContext]: (input) => mcpAppRequests.updateModelContext(input),
         [WS_METHODS.mcpAppsReadResource]: (input) => mcpAppRequests.readResource(input),
         [WS_METHODS.mcpAppsOpenPanel]: (input) => mcpAppRequests.openPanel(input),
+        [WS_METHODS.mcpAppsPanelContext]: (input) => mcpAppRequests.panelContext(input),
         [WS_METHODS.mcpPluginsList]: (_input) => mcpPlugins.list,
         [WS_METHODS.mcpPluginsInstall]: (input) => mcpPlugins.installFromDirectory(input),
         [WS_METHODS.mcpPluginsUninstall]: (input) => mcpPlugins.uninstall(input.pluginId),

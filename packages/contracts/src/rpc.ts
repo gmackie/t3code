@@ -12,6 +12,8 @@ import {
   McpAppCallToolResult,
   McpAppOpenPanelInput,
   McpAppOpenPanelResult,
+  McpAppPanelContext,
+  McpAppPanelContextInput,
   McpAppReadResourceInput,
   McpAppReadResourceResult,
   McpAppRequestError,
@@ -630,6 +632,7 @@ export const WS_METHODS = {
   mcpAppsReadResource: "mcpApps.readResource",
   mcpAppsUpdateModelContext: "mcpApps.updateModelContext",
   mcpAppsOpenPanel: "mcpApps.openPanel",
+  mcpAppsPanelContext: "mcpApps.panelContext",
   mcpPluginsList: "mcpPlugins.list",
   mcpPluginsInstall: "mcpPlugins.install",
   mcpPluginsUninstall: "mcpPlugins.uninstall",
@@ -2124,6 +2127,12 @@ const WsMcpAppsOpenPanelRpc = Rpc.make(WS_METHODS.mcpAppsOpenPanel, {
   error: Schema.Union([McpAppRequestError, EnvironmentAuthorizationError]),
 });
 
+const WsMcpAppsPanelContextRpc = Rpc.make(WS_METHODS.mcpAppsPanelContext, {
+  payload: McpAppPanelContextInput,
+  success: McpAppPanelContext,
+  error: Schema.Union([McpAppRequestError, EnvironmentAuthorizationError]),
+});
+
 const WsMcpPluginsListRpc = Rpc.make(WS_METHODS.mcpPluginsList, {
   payload: Schema.Struct({}),
   success: Schema.Array(McpPluginEntry),
@@ -2921,6 +2930,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsMcpAppsCallToolRpc,
   WsMcpAppsToolInfoRpc,
   WsMcpAppsOpenPanelRpc,
+  WsMcpAppsPanelContextRpc,
   WsMcpPluginsListRpc,
   WsMcpPluginsInstallRpc,
   WsMcpPluginsUninstallRpc,
