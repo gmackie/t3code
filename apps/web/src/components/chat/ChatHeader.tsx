@@ -1,4 +1,5 @@
 import { WorkspaceModeSwitcher } from "./WorkspaceModeSwitcher";
+import { PluginQuickNav } from "../plugins/PluginQuickNav";
 import {
   AuthOrchestrationOperateScope,
   type EnvironmentId,
@@ -430,7 +431,12 @@ export const ChatHeader = memo(function ChatHeader({
       </WorkspaceBreadcrumb>
       {isServerThread ? <GuestShareIndicator threadRef={activeThreadRef} /> : null}
       {activeProjectName ? (
-        <div className="ml-auto flex shrink-0 items-center">
+        <div className="ml-auto flex shrink-0 items-center gap-1">
+          <PluginQuickNav
+            environmentId={activeThreadEnvironmentId}
+            threadId={activeThreadId}
+            {...(activeProject ? { projectId: activeProject.id } : {})}
+          />
           <WorkspaceModeSwitcher threadRef={activeThreadRef} />
         </div>
       ) : null}

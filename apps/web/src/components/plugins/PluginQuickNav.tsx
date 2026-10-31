@@ -1,7 +1,6 @@
 import type { EnvironmentId, PluginRegistryEntry } from "@t3tools/contracts";
 import { listPluginQuickNavFromEntries } from "@t3tools/client-runtime/plugins";
 import { ExternalLinkIcon, PanelsTopLeftIcon } from "lucide-react";
-import { useMemo } from "react";
 
 import { useEnvironmentQuery } from "../../state/query";
 import { pluginEnvironment } from "../../state/plugins";
@@ -16,14 +15,13 @@ type PluginQuickNavProps = {
 
 export function PluginQuickNav({ environmentId, projectId, threadId }: PluginQuickNavProps) {
   const query = useEnvironmentQuery(pluginEnvironment.list({ environmentId, input: {} }));
-  const items = useMemo(
-    () =>
-      listPluginQuickNavFromEntries(query.data ?? ([] as readonly PluginRegistryEntry[]), {
-        ...(projectId ? { projectId } : {}),
-        threadId,
-      }).filter((item) => item.surface === undefined || item.surface === "thread.sidePanel"),
-    [projectId, query.data, threadId],
-  );
+  const items = listPluginQuickNavFromEntries(
+    query.data ?? ([] as readonly PluginRegistryEntry[]),
+    {
+      ...(projectId ? { projectId } : {}),
+      threadId,
+    },
+  ).filter((item) => item.surface === undefined || item.surface === "thread.sidePanel");
 
   if (items.length === 0) return null;
 
