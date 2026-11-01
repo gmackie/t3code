@@ -138,6 +138,7 @@ export async function reopenClosedView(
       break;
     case "side-chat":
       panels.openSideChat(ref, surface.threadId);
+      break;
     case "plugin":
       panels.openPluginPanel(ref, surface);
       break;
