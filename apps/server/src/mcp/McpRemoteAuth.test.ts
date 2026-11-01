@@ -132,6 +132,7 @@ const layer = (provider: ReturnType<typeof makeProvider>) =>
         },
       }),
     ),
+    Layer.provideMerge(NodeServices.layer),
   );
 
 /** Starts a sign-in and returns the authorize URL plus the rest of the stream. */
@@ -201,7 +202,7 @@ it.effect("signs in with discovery, registration and PKCE, then hands out the to
     });
     const server = yield* remoteAuth.resolveServer("linear", null);
     assert.equal(yield* remoteAuth.accessToken(server), "at-1");
-  }).pipe(Effect.provide(layer(provider)), Effect.provide(NodeServices.layer));
+  }).pipe(Effect.provide(layer(provider)));
 });
 
 it.effect("refreshes near expiry and marks the sign-in needs-auth when refresh is refused", () => {
@@ -219,7 +220,7 @@ it.effect("refreshes near expiry and marks the sign-in needs-auth when refresh i
     assert.isTrue(Result.isFailure(refused));
     assert.deepEqual(yield* remoteAuth.status({}), { linear: { status: "needs-auth" } });
     assert.isTrue(Result.isFailure(yield* Effect.result(remoteAuth.accessToken(server))));
-  }).pipe(Effect.provide(layer(provider)), Effect.provide(NodeServices.layer));
+  }).pipe(Effect.provide(layer(provider)));
 });
 
 it.effect(
@@ -235,7 +236,7 @@ it.effect(
       yield* remoteAuth.signOut({ server: "linear" });
       assert.deepEqual(provider.seen.revoked, ["rt-1"]);
       assert.deepEqual(yield* remoteAuth.status({}), { linear: { status: "signed-out" } });
-    }).pipe(Effect.provide(layer(provider)), Effect.provide(NodeServices.layer));
+    }).pipe(Effect.provide(layer(provider)));
   },
 );
 
@@ -250,7 +251,7 @@ it.effect("signs in separately for a project override that points elsewhere", ()
     const { authorizationUrl, fiber } = yield* startSignIn(PROJECT);
     assert.equal(authorizationUrl.searchParams.get("resource"), PROJECT_URL);
     yield* Fiber.interrupt(fiber);
-  }).pipe(Effect.provide(layer(provider)), Effect.provide(NodeServices.layer));
+  }).pipe(Effect.provide(layer(provider)));
 });
 
 it.effect("rejects a code returned with a wrong or missing issuer", () => {
@@ -267,7 +268,7 @@ it.effect("rejects a code returned with a wrong or missing issuer", () => {
       assert.isTrue(Result.isFailure(yield* Effect.result(Fiber.join(fiber))));
     }
     assert.isFalse(provider.seen.tokenGrants.some((grant) => grant.get("code") === "good-code"));
-  }).pipe(Effect.provide(layer(provider)), Effect.provide(NodeServices.layer));
+  }).pipe(Effect.provide(layer(provider)));
 });
 
 it.effect("rejects an unknown state and a declined sign-in without connecting", () => {
@@ -290,5 +291,5 @@ it.effect("rejects an unknown state and a declined sign-in without connecting", 
     assert.isTrue(Result.isFailure(declined));
     assert.isTrue(Result.isFailure(yield* Effect.result(Fiber.join(fiber))));
     assert.deepEqual(yield* remoteAuth.status({}), { linear: { status: "signed-out" } });
-  }).pipe(Effect.provide(layer(provider)), Effect.provide(NodeServices.layer));
+  }).pipe(Effect.provide(layer(provider)));
 });
