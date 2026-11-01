@@ -500,13 +500,16 @@ jobs:
               --github-env-file "$PWD/relay-config/relay-client-tracing.env"
           fi
 
+      # Forgejo's midnight cleanup expires a 1-day artifact at the next UTC
+      # midnight, and build_macos_x64 queues behind the Mini's other jobs, so it
+      # can start hours after this upload.
       - name: Upload relay client tracing config
         uses: https://code.forgejo.org/forgejo/upload-artifact@v4
         with:
           name: relay-client-tracing-config
           path: relay-config/relay-client-tracing.env
           if-no-files-found: error
-          retention-days: 1
+          retention-days: 7
 
       - id: public_config
         name: Resolve production relay public config
