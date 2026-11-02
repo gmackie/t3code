@@ -37,9 +37,16 @@ export function isRuntimeExternalCliDependency(id: string): boolean {
   );
 }
 
+// Staged for Cursor, which loads them from disk, but bundled code may inline its own copy:
+// the MCP SDK imports zod/v4, and a single executable cannot resolve a file-backed import.
+const BUNDLEABLE_RUNTIME_DEPENDENCIES = ["zod"] as const;
+
 /** Use neverBundle: false from alwaysBundle means no opinion and leaves transitive packages bundled. */
 export function isExternalCliDependency(id: string): boolean {
-  return isRuntimeExternalCliDependency(id);
+  return (
+    isRuntimeExternalCliDependency(id) &&
+    !BUNDLEABLE_RUNTIME_DEPENDENCIES.some((name) => id === name || id.startsWith(`${name}/`))
+  );
 }
 
 export function shouldBundleCliDependency(id: string): boolean {
