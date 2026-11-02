@@ -105,6 +105,7 @@ export interface PreviewTabState {
   controller: "human" | "agent" | "none";
   capturing: boolean;
   favicon?: DesktopPreviewFavicon;
+  securityKeyRequest?: { readonly origin: string };
   serverTab?: { readonly threadId: string; readonly tabId: string };
   updatedAt: string;
 }
@@ -927,6 +928,37 @@ const makeNativeOperations = Effect.fn("PreviewManager.makeOperations")(function
     if (Option.isSome(next)) yield* emitIfCurrent(tabId, next.value);
   });
 
+  const syncTabSecurityKeyRequest = Effect.fn("PreviewManager.syncTabSecurityKeyRequest")(
+    function* (tabId: string, wc: Electron.WebContents, origin: string | null) {
+      if (wc.isDestroyed()) return;
+      const updatedAt = yield* currentIso;
+      const next = yield* SynchronizedRef.modify(tabsRef, (tabs) => {
+        const current = tabs.get(tabId);
+        if (
+          !current ||
+          current.webContentsId !== wc.id ||
+          webContents.fromId(wc.id) !== wc ||
+          (current.securityKeyRequest?.origin ?? null) === origin
+        ) {
+          return [Option.none<PreviewTabState>(), tabs] as const;
+        }
+        const { securityKeyRequest: _previous, ...rest } = current;
+        const state: PreviewTabState = {
+          ...rest,
+          ...(origin === null ? {} : { securityKeyRequest: { origin } }),
+          updatedAt,
+        };
+        return [
+          Option.some(state),
+          replaceMap(tabs, (copy) => {
+            copy.set(tabId, state);
+          }),
+        ] as const;
+      });
+      if (Option.isSome(next)) yield* emitIfCurrent(tabId, next.value);
+    },
+  );
+
   const requireWebContents = Effect.fn("PreviewManager.requireWebContents")(function* (
     tabId: string,
   ) {
@@ -1539,7 +1571,9 @@ const makeNativeOperations = Effect.fn("PreviewManager.makeOperations")(function
         wc.ipc.on(HUMAN_INPUT_CHANNEL, humanInput);
         wc.ipc.on(RECORDING_INPUT_CHANNEL, recordingInput);
         wc.ipc.on(MOUSE_NAVIGATE_CHANNEL, mouseNavigate);
-        detachPasskeys = passkeys.attachGuest(wc);
+        detachPasskeys = passkeys.attachGuest(wc, (origin) =>
+          runFork(syncTabSecurityKeyRequest(tabId, wc, origin)),
+        );
         wc.setWindowOpenHandler((details) => {
           const action = previewWindowOpenAction(details);
           if (action === "popup") {
@@ -1698,8 +1732,9 @@ const makeNativeOperations = Effect.fn("PreviewManager.makeOperations")(function
       );
     }
     const updatedAt = yield* currentIso;
+    const { securityKeyRequest: _securityKeyRequest, ...closedTabWithoutRequest } = closedTab;
     const closed: PreviewTabState = {
-      ...closedTab,
+      ...closedTabWithoutRequest,
       webContentsId: null,
       navStatus: { kind: "Idle" },
       canGoBack: false,
@@ -1823,7 +1858,11 @@ const makeNativeOperations = Effect.fn("PreviewManager.makeOperations")(function
           ] as const;
         }
         const pendingUrl = current.navStatus.kind === "Loading" ? current.navStatus.url : null;
-        const { favicon: _favicon, ...currentWithoutFavicon } = current;
+        const {
+          favicon: _favicon,
+          securityKeyRequest: _securityKeyRequest,
+          ...currentWithoutFavicon
+        } = current;
         const next: PreviewTabState = {
           ...currentWithoutFavicon,
           webContentsId,
@@ -1934,6 +1973,8 @@ const makeNativeOperations = Effect.fn("PreviewManager.makeOperations")(function
         controller: current?.controller ?? "none",
         capturing: current?.capturing ?? false,
         ...(current?.favicon ? { favicon: current.favicon } : {}),
+        // The request lives until the next document commits; a failed navigation keeps it.
+        ...(current?.securityKeyRequest ? { securityKeyRequest: current.securityKeyRequest } : {}),
         ...(current?.serverTab ? { serverTab: current.serverTab } : {}),
         updatedAt,
       };
@@ -1976,7 +2017,11 @@ const makeNativeOperations = Effect.fn("PreviewManager.makeOperations")(function
             if (current?.webContentsId !== webContentsId) {
               return [Option.none<PreviewTabState>(), tabs] as const;
             }
-            const { favicon: _favicon, ...currentWithoutFavicon } = current;
+            const {
+              favicon: _favicon,
+              securityKeyRequest: _securityKeyRequest,
+              ...currentWithoutFavicon
+            } = current;
             const next: PreviewTabState = { ...currentWithoutFavicon, webContentsId: null };
             return [
               Option.some(next),

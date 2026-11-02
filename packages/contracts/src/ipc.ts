@@ -614,6 +614,8 @@ export interface DesktopPreviewTabState {
   /** A screenshot or stream of the guest is pending, so the client keeps it painting while hidden. */
   capturing: boolean;
   favicon?: DesktopPreviewFavicon;
+  /** The guest's committed origin while Chromium waits for a security key with no UI of its own. */
+  securityKeyRequest?: { readonly origin: string };
   updatedAt: string;
 }
 
