@@ -102,7 +102,10 @@ export type ThreadGitMenuProps = {
 };
 
 type ThreadGitControlsProps = ThreadGitMenuProps & {
-  /** Plugin panels, for headers that render these controls instead of native items. */
+  /** Header-only items, for headers that render these controls instead of native items. */
+  readonly onOpenCad?: () => void;
+  readonly onOpenGame?: () => void;
+  readonly onOpenSystems?: () => void;
   readonly pluginPanels?: ReadonlyArray<PluginPanelMenuEntry>;
   readonly auxiliaryPaneControl?: {
     readonly accessibilityLabel: string;
@@ -511,6 +514,30 @@ export function ThreadGitControls(props: ThreadGitControlsProps) {
           disabled={!props.canOpenFiles}
           icon="folder"
           onPress={model.openFiles}
+          separateBackground
+        />
+      ) : null}
+      {showActionControls && props.onOpenCad ? (
+        <Toolbar.Button
+          accessibilityLabel="Switch to CAD mode"
+          icon="cpu"
+          onPress={props.onOpenCad}
+          separateBackground
+        />
+      ) : null}
+      {showActionControls && props.onOpenGame ? (
+        <Toolbar.Button
+          accessibilityLabel="Open Unity game"
+          icon="gamecontroller"
+          onPress={props.onOpenGame}
+          separateBackground
+        />
+      ) : null}
+      {showActionControls && props.onOpenSystems ? (
+        <Toolbar.Button
+          accessibilityLabel="Open Systems"
+          icon="waveform.path.ecg"
+          onPress={props.onOpenSystems}
           separateBackground
         />
       ) : null}

@@ -229,6 +229,9 @@ export function useThreadHeaderOptions(props: {
         <ThreadGitControls
           {...props.gitControls}
           showActionControls
+          {...(onOpenCad === undefined ? {} : { onOpenCad })}
+          {...(onOpenGame === undefined ? {} : { onOpenGame })}
+          {...(onOpenSystems === undefined ? {} : { onOpenSystems })}
           {...(pluginPanels === undefined ? {} : { pluginPanels })}
         />
       ) : null,
