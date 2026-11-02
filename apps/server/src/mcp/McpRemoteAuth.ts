@@ -11,6 +11,7 @@ import {
   type McpOAuthStatusInput,
   type McpOAuthStatusResult,
   type ProjectId,
+  type ServerSettings,
 } from "@t3tools/contracts";
 import { resolveProjectSettings } from "@t3tools/shared/projectSettings";
 import {
@@ -110,6 +111,20 @@ const isOAuthServer = (
   transport.type === "http" && transport.auth !== undefined
     ? { name, transport: { ...transport, auth: transport.auth } }
     : undefined;
+
+/** OAuth servers some Tools entry still points at, keyed by their stored sign-in. */
+const referencedServers = (settings: ServerSettings) => {
+  const servers = new Map<string, McpOAuthServer>();
+  const projectIds = [null, ...(Object.keys(settings.projectSettingsOverrides) as ProjectId[])];
+  for (const projectId of projectIds) {
+    const { mcpServers } = resolveProjectSettings(settings, projectId).settings;
+    for (const [name, config] of Object.entries(mcpServers)) {
+      const server = isOAuthServer(name, config.transport);
+      if (server !== undefined) servers.set(secretName(server), server);
+    }
+  }
+  return servers;
+};
 
 const describe = (cause: unknown): string =>
   cause instanceof Error && cause.message.length > 0 ? cause.message : String(cause);
@@ -430,34 +445,53 @@ export const make = Effect.fn("McpRemoteAuth.make")(function* (options: McpRemot
     },
   );
 
+  /** Revokes the grant where the provider supports it, then deletes the stored sign-in. */
+  const forget = Effect.fn("McpRemoteAuth.forget")(function* (server: McpOAuthServer) {
+    const record = yield* load(server);
+    // RFC 8414 lists the revocation endpoint; the SDK's metadata type omits it.
+    const metadata = record.discovery?.authorizationServerMetadata;
+    const revocation =
+      metadata !== undefined && "revocation_endpoint" in metadata
+        ? metadata.revocation_endpoint
+        : undefined;
+    const endpoint = typeof revocation === "string" ? revocation : undefined;
+    const client =
+      record.redirectUrl === undefined ? undefined : record.clients[record.redirectUrl];
+    const token = record.tokens?.refresh_token ?? record.tokens?.access_token;
+    if (endpoint !== undefined && token !== undefined && client !== undefined) {
+      // Best effort (RFC 7009): the local tokens go either way.
+      yield* Effect.tryPromise(() =>
+        (fetchFn ?? fetch)(endpoint, {
+          method: "POST",
+          headers: { "content-type": "application/x-www-form-urlencoded" },
+          body: new URLSearchParams({ token, client_id: client.client_id }).toString(),
+        }),
+      ).pipe(Effect.ignore);
+    }
+    yield* secrets
+      .remove(secretName(server))
+      .pipe(Effect.mapError(() => fail(server.name, "Could not remove the stored sign-in.")));
+  });
+
   const signOut: McpRemoteAuthShape["signOut"] = Effect.fn("McpRemoteAuth.signOut")(
     function* (input) {
-      const server = yield* findServer(input.server, input.projectId ?? null, false);
-      const record = yield* load(server);
-      // RFC 8414 lists the revocation endpoint; the SDK's metadata type omits it.
-      const metadata = record.discovery?.authorizationServerMetadata;
-      const revocation =
-        metadata !== undefined && "revocation_endpoint" in metadata
-          ? metadata.revocation_endpoint
-          : undefined;
-      const endpoint = typeof revocation === "string" ? revocation : undefined;
-      const client =
-        record.redirectUrl === undefined ? undefined : record.clients[record.redirectUrl];
-      const token = record.tokens?.refresh_token ?? record.tokens?.access_token;
-      if (endpoint !== undefined && token !== undefined && client !== undefined) {
-        // Best effort (RFC 7009): the local tokens go either way.
-        yield* Effect.tryPromise(() =>
-          (fetchFn ?? fetch)(endpoint, {
-            method: "POST",
-            headers: { "content-type": "application/x-www-form-urlencoded" },
-            body: new URLSearchParams({ token, client_id: client.client_id }).toString(),
-          }),
-        ).pipe(Effect.ignore);
-      }
-      yield* secrets
-        .remove(secretName(server))
-        .pipe(Effect.mapError(() => fail(server.name, "Could not remove the stored sign-in.")));
+      yield* forget(yield* findServer(input.server, input.projectId ?? null, false));
     },
+  );
+
+  // A sign-in belongs to a server name and URL. Once no Tools entry (environment,
+  // project override or plugin) points at that pair, the grant goes with it.
+  const changes = yield* settingsService.subscribeChanges;
+  let lastReferenced = referencedServers(yield* settingsService.getSettings.pipe(Effect.orDie));
+  yield* Effect.forkScoped(
+    Stream.runForEach(changes, (settings) => {
+      const previous = lastReferenced;
+      lastReferenced = referencedServers(settings);
+      const removed = [...previous].filter(([key]) => !lastReferenced.has(key));
+      return Effect.forEach(removed, ([, server]) => forget(server).pipe(Effect.ignore), {
+        discard: true,
+      });
+    }),
   );
 
   return McpRemoteAuth.of({

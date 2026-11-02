@@ -1,10 +1,12 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
-import { ProjectId, type McpOAuthSignInEvent } from "@t3tools/contracts";
+import { ProjectId, type McpOAuthSignInEvent, type ServerSettings } from "@t3tools/contracts";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as PubSub from "effect/PubSub";
 import * as Queue from "effect/Queue";
 import * as Result from "effect/Result";
 import * as Stream from "effect/Stream";
@@ -82,55 +84,83 @@ const makeProvider = () => {
   return { fetch, seen, control };
 };
 
-const layerMemorySecrets = Layer.sync(ServerSecretStore.ServerSecretStore, () => {
-  const values = new Map<string, Uint8Array>();
-  return ServerSecretStore.ServerSecretStore.of({
-    get: (name) => Effect.sync(() => Option.fromNullishOr(values.get(name))),
-    set: (name, value) => Effect.sync(() => void values.set(name, value)),
-    create: (name, value) => Effect.sync(() => void values.set(name, value)),
-    getOrCreateRandom: () => Effect.succeed(new Uint8Array()),
-    remove: (name) => Effect.sync(() => void values.delete(name)),
+const layerMemorySecrets = (onRemove?: (name: string) => Effect.Effect<void>) =>
+  Layer.sync(ServerSecretStore.ServerSecretStore, () => {
+    const values = new Map<string, Uint8Array>();
+    return ServerSecretStore.ServerSecretStore.of({
+      get: (name) => Effect.sync(() => Option.fromNullishOr(values.get(name))),
+      set: (name, value) => Effect.sync(() => void values.set(name, value)),
+      create: (name, value) => Effect.sync(() => void values.set(name, value)),
+      getOrCreateRandom: () => Effect.succeed(new Uint8Array()),
+      remove: (name) =>
+        Effect.sync(() => void values.delete(name)).pipe(
+          Effect.andThen(onRemove?.(name) ?? Effect.void),
+        ),
+    });
   });
-});
 
 const PROJECT = ProjectId.make("project-1");
 
-const layer = (provider: ReturnType<typeof makeProvider>) =>
+/** Test settings whose updates reach `subscribeChanges`, as the real service's do. */
+const layerChangingSettings = Layer.effect(
+  ServerSettingsService,
+  Effect.gen(function* () {
+    const settings = yield* ServerSettingsService;
+    const changes = yield* PubSub.unbounded<ServerSettings>();
+    return ServerSettingsService.of({
+      ...settings,
+      updateSettings: (patch, authorize) =>
+        settings
+          .updateSettings(patch, authorize)
+          .pipe(Effect.tap((next) => PubSub.publish(changes, next))),
+      subscribeChanges: PubSub.subscribe(changes).pipe(Effect.map(Stream.fromSubscription)),
+    });
+  }),
+);
+
+const layer = (
+  provider: ReturnType<typeof makeProvider>,
+  onRemoveSecret?: (name: string) => Effect.Effect<void>,
+) =>
   Layer.effect(McpRemoteAuth.McpRemoteAuth, McpRemoteAuth.make({ fetch: provider.fetch })).pipe(
-    Layer.provide(layerMemorySecrets),
-    Layer.provide(
-      ServerSettingsService.layerTest({
-        mcpServers: {
-          linear: {
-            enabled: true,
-            transport: {
-              type: "http",
-              url: MCP_URL,
-              headers: [],
-              auth: { type: "oauth", scopes: [] },
-            },
-          },
-          plain: {
-            enabled: true,
-            transport: { type: "http", url: "https://plain.example", headers: [] },
-          },
-        },
-        projectSettingsOverrides: {
-          [PROJECT]: {
+    Layer.provide(layerMemorySecrets(onRemoveSecret)),
+    Layer.provideMerge(
+      layerChangingSettings.pipe(
+        Layer.provide(
+          ServerSettingsService.layerTest({
             mcpServers: {
               linear: {
                 enabled: true,
                 transport: {
                   type: "http",
-                  url: PROJECT_URL,
+                  url: MCP_URL,
                   headers: [],
                   auth: { type: "oauth", scopes: [] },
                 },
               },
+              plain: {
+                enabled: true,
+                transport: { type: "http", url: "https://plain.example", headers: [] },
+              },
             },
-          },
-        },
-      }),
+            projectSettingsOverrides: {
+              [PROJECT]: {
+                mcpServers: {
+                  linear: {
+                    enabled: true,
+                    transport: {
+                      type: "http",
+                      url: PROJECT_URL,
+                      headers: [],
+                      auth: { type: "oauth", scopes: [] },
+                    },
+                  },
+                },
+              },
+            },
+          }),
+        ),
+      ),
     ),
     Layer.provideMerge(NodeServices.layer),
   );
@@ -292,4 +322,38 @@ it.effect("rejects an unknown state and a declined sign-in without connecting", 
     assert.isTrue(Result.isFailure(yield* Effect.result(Fiber.join(fiber))));
     assert.deepEqual(yield* remoteAuth.status({}), { linear: { status: "signed-out" } });
   }).pipe(Effect.provide(layer(provider)));
+});
+
+it.effect("revokes and forgets a sign-in once its server is removed from Tools", () => {
+  const provider = makeProvider();
+  return Effect.gen(function* () {
+    const forgotten = yield* Deferred.make<string>();
+    return yield* Effect.gen(function* () {
+      const remoteAuth = yield* signedIn;
+      const settings = yield* ServerSettingsService;
+      // The project override keeps its own `linear` (another URL), so only this sign-in goes.
+      yield* settings.updateSettings({ mcpServers: { linear: null } });
+      assert.match(yield* Deferred.await(forgotten), /^mcp-oauth-/);
+      assert.deepEqual(provider.seen.revoked, ["rt-1"]);
+      // Adding the same server back starts signed out instead of reusing the old grant.
+      yield* settings.updateSettings({
+        mcpServers: {
+          linear: {
+            enabled: true,
+            transport: {
+              type: "http",
+              url: MCP_URL,
+              headers: [],
+              auth: { type: "oauth", scopes: [] },
+            },
+          },
+        },
+      });
+      assert.deepEqual(yield* remoteAuth.status({}), { linear: { status: "signed-out" } });
+    }).pipe(
+      Effect.provide(
+        layer(provider, (name) => Deferred.succeed(forgotten, name).pipe(Effect.asVoid)),
+      ),
+    );
+  });
 });
