@@ -403,6 +403,7 @@ describe("DesktopBrowserHost", () => {
       yield* command(host, 2, "Page.captureScreenshot");
       yield* settle;
       debuggee.navigate();
+      yield* Effect.promise(() => debuggee.untilSent(2));
       expect(debuggee.sent).toEqual([1, 2]);
       yield* TestClock.adjust("1 minute");
       expect(debuggee.focusEmulation).toEqual([true]);
