@@ -1,11 +1,11 @@
 // A dependency-free MCP server over stdio: one tool and one MCP Apps view.
 // Run it with any Node; T3 Code starts it from the plugin's t3-plugin.json.
-import { readFileSync } from "node:fs";
-import { createInterface } from "node:readline";
+import * as NodeFS from "node:fs";
+import * as NodeReadline from "node:readline";
 
 const VIEW_URI = "ui://hello/status";
 const VIEW_MIME = "text/html;profile=mcp-app";
-const view = readFileSync(new URL("./view.html", import.meta.url), "utf8");
+const view = NodeFS.readFileSync(new URL("./view.html", import.meta.url), "utf8");
 
 const tool = {
   name: "hello_status",
@@ -43,7 +43,7 @@ const handlers = {
 
 const send = (message) => process.stdout.write(`${JSON.stringify(message)}\n`);
 
-createInterface({ input: process.stdin }).on("line", (line) => {
+NodeReadline.createInterface({ input: process.stdin }).on("line", (line) => {
   let message;
   try {
     message = JSON.parse(line);

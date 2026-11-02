@@ -346,9 +346,7 @@ const layerProviderRuntimeRecoveryProvided = ProviderRuntimeRecoveryService.laye
 );
 
 // One pool serves plugin panels and plugin lifecycle, so disabling a plugin closes the panel's connection.
-const layerMcpPluginsProvided = McpPlugins.layer.pipe(
-  Layer.provideMerge(McpClientPool.layer),
-);
+const layerMcpPluginsProvided = McpPlugins.layer.pipe(Layer.provideMerge(McpClientPool.layer));
 
 const layerMcpAppRequestsProvided = McpAppRequests.layer.pipe(
   Layer.provide(
