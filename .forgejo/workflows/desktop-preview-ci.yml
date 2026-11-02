@@ -1,0 +1,31 @@
+name: Desktop preview CI
+
+on:
+  pull_request:
+    branches:
+      - custom-local
+    paths:
+      - apps/desktop/src/preview/**
+      - .forgejo/workflows/desktop-preview-ci.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  desktop-preview:
+    runs-on: forgegraph-ci
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.14.0
+      - name: Install pinned dependencies
+        run: |
+          corepack enable
+          corepack prepare pnpm@12.14.0 --activate
+          pnpm install --frozen-lockfile
+      - name: Verify the desktop preview host
+        working-directory: apps/desktop
+        run: pnpm exec vp test run src/preview/
