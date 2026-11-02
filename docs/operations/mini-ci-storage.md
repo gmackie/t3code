@@ -1,6 +1,8 @@
 # Mini CI storage
 
-The Mini release jobs require an external SSD for their workspace, compiler temporary files, and package caches. If the SSD is unavailable, unwritable, or has less than 30 GiB free, they fail before dependency installation instead of allocating on the internal drive. `MINI_CI_STORAGE_ROOT` selects the SSD root; its default is `/Volumes/FleetNativeFast-20261009/t3-ci`. The workspace must be on the same SSD volume as the cache root, so its 30 GiB capacity check covers both allocations. Existing cache data and recovery archives are never moved or removed by the job guard.
+The Mini release jobs keep their workspace, compiler temporary files, and package caches on the Mini's internal SSD under `/Users/mackieg/t3-ci`. `MINI_CI_STORAGE_ROOT` overrides that root. Before dependency installation, the job guard checks that the workspace and cache root share one volume and that the volume has at least 45 GiB free. That floor covers a job's own allocation plus the 25 GiB of internal headroom the fleet's native builds need (GMA-730). If the check fails, free space on the Mini rather than lowering the floor.
+
+Do not move this storage to a disk image on the T9. Both the `T9-APFS` sparse bundle and the `FleetNativeFast-20261009` sparse image live on the T9's exFAT filesystem. On them, creating files is about 100 times slower than on the internal SSD, and the Mac and iOS builds took 40 to 130 minutes instead of minutes.
 
 ## Activate the runner configuration
 
@@ -10,15 +12,11 @@ Use the installed runner's supported `host.workdir_parent` setting:
 
 ```yaml
 host:
-  workdir_parent: /Volumes/FleetNativeFast-20261009/t3-ci/workspaces
+  workdir_parent: /Users/mackieg/t3-ci/workspaces
 ```
 
-Create that directory on the mounted SSD with the runner account, preserving any existing workspaces at their original locations. Keep the existing runner capacity, credentials, labels, timeout, and shutdown timeout. Restart only after the idle checks pass. The workflow guard exports SSD paths through `GITHUB_ENV`, so desktop packaging, iOS `mktemp`, CocoaPods, Corepack, npm and pnpm share the validated root without changing global user configuration. The build steps must not override `TMPDIR` with `/tmp`.
-
-Verify the next job's checked workspace and guard receipt both name the SSD, package cache and native temporary files stay below that root, and internal free space remains above the fleet startup threshold. Code publication alone does not verify this operational activation. If the root must change, drain the runner again, preserve the old workspace/cache contents, and change both `host.workdir_parent` and `MINI_CI_STORAGE_ROOT`. Rollback restores the preserved runner configuration while idle; no bulk directory migration or cleanup is required.
+Keep the existing runner capacity, credentials, labels, timeout, and shutdown timeout. The workflow guard exports the storage paths through `GITHUB_ENV`, so desktop packaging, iOS `mktemp`, CocoaPods, Corepack, npm and pnpm share the validated root without changing global user configuration. The build steps must not override `TMPDIR` with `/tmp`. If the root changes, change both `host.workdir_parent` and `MINI_CI_STORAGE_ROOT`.
 
 ## Verify placement without a build
 
-Dispatch `mini-ci-storage.yml` on the merged revision. Its five-minute Mini job checks out that revision under the configured runner workspace, exports the guarded paths, and verifies actual Python/Node temporary allocation plus npm/pnpm cache resolution. The installed tools run without network-enabled Corepack or project package-manager switching. The receipt is printed to the job log; the small temporary directory is removed automatically. This job installs no dependencies and starts no native builds. The Linux storage regression suite also runs on dispatch.
-
-A passing placement job verifies storage routing; the fleet's internal startup reserve and native acceptance remain separate requirements.
+Dispatch `mini-ci-storage.yml` on the merged revision. Its five-minute Mini job checks out that revision under the configured runner workspace, exports the guarded paths, and verifies actual Python/Node temporary allocation plus npm/pnpm cache resolution. The installed tools run without network-enabled Corepack or project package-manager switching. The receipt is printed to the job log. This job installs no dependencies and starts no native builds. The Linux storage regression suite also runs on dispatch.
