@@ -8,8 +8,8 @@ import * as Path from "effect/Path";
 import * as SqlClient from "effect/sql/SqlClient";
 
 import { migrationManifest, reconcileMigrationLedger, runMigrations } from "./Migrations.ts";
-import BoundedShellLookups from "./Migrations/077_BoundedShellLookups.ts";
-import BobExecutionAdmission from "./Migrations/078_BobExecutionAdmission.ts";
+import BoundedShellLookups from "./Migrations/078_BoundedShellLookups.ts";
+import BobExecutionAdmission from "./Migrations/079_BobExecutionAdmission.ts";
 import PeerLinks from "./Migrations/070_PeerLinks.ts";
 import PeerLinkFence from "./Migrations/071_PeerLinkFence.ts";
 import WaitingLinkRequestIndex from "./Migrations/072_WaitingLinkRequestIndex.ts";
@@ -224,6 +224,7 @@ describe("migration ledger reconciliation", () => {
           [74, "ExcludeAttachmentPlaceholdersFromSearch"],
           [75, "SubagentDeliveryState"],
           [76, "ProjectionProjectsPinArchive"],
+          [77, "RepairBooleanSettledOverride"],
         ]);
         yield* assertLedgerMatchesManifest();
         const rows = yield* readLedger;
@@ -267,6 +268,7 @@ describe("migration ledger reconciliation", () => {
           [74, "ExcludeAttachmentPlaceholdersFromSearch"],
           [75, "SubagentDeliveryState"],
           [76, "ProjectionProjectsPinArchive"],
+          [77, "RepairBooleanSettledOverride"],
         ]);
         yield* assertLedgerMatchesManifest();
         const columns = yield* sql<{ readonly name: string }>`
@@ -307,6 +309,7 @@ describe("migration ledger reconciliation", () => {
           [74, "ExcludeAttachmentPlaceholdersFromSearch"],
           [75, "SubagentDeliveryState"],
           [76, "ProjectionProjectsPinArchive"],
+          [77, "RepairBooleanSettledOverride"],
         ]);
         yield* assertLedgerMatchesManifest();
         const rows = yield* readLedger;
@@ -352,6 +355,7 @@ describe("migration ledger reconciliation", () => {
           [74, "ExcludeAttachmentPlaceholdersFromSearch"],
           [75, "SubagentDeliveryState"],
           [76, "ProjectionProjectsPinArchive"],
+          [77, "RepairBooleanSettledOverride"],
         ]);
         yield* assertLedgerMatchesManifest();
         const triggers = yield* sql<{ readonly name: string }>`
@@ -385,6 +389,7 @@ describe("migration ledger reconciliation", () => {
           [74, "ExcludeAttachmentPlaceholdersFromSearch"],
           [75, "SubagentDeliveryState"],
           [76, "ProjectionProjectsPinArchive"],
+          [77, "RepairBooleanSettledOverride"],
         ]);
         yield* assertLedgerMatchesManifest();
         const indexes = yield* sql<{ readonly name: string }>`
@@ -417,6 +422,7 @@ describe("migration ledger reconciliation", () => {
           [74, "ExcludeAttachmentPlaceholdersFromSearch"],
           [75, "SubagentDeliveryState"],
           [76, "ProjectionProjectsPinArchive"],
+          [77, "RepairBooleanSettledOverride"],
         ]);
         yield* assertLedgerMatchesManifest();
         const rows = yield* readLedger;
@@ -429,6 +435,34 @@ describe("migration ledger reconciliation", () => {
           WHERE name IN ('pinned_at', 'archived_at')
         `;
         assert.strictEqual(projectColumns.length, 2);
+        assert.deepStrictEqual(yield* runMigrations(), []);
+        assert.deepEqual(yield* sql`PRAGMA quick_check`, [{ quick_check: "ok" }]);
+      }),
+    ),
+  );
+
+  it.effect("upgrades a custom-local profile after upstream claimed 77", () =>
+    withFreshDatabase(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* runMigrations({ toMigrationInclusive: 76 });
+        // custom-local released BoundedShellLookups and BobExecutionAdmission as 77 and 78.
+        yield* sql`DROP INDEX IF EXISTS orchestration_v2_projection_turn_items_failed_error_idx`;
+        yield* BoundedShellLookups;
+        yield* BobExecutionAdmission;
+        yield* sql`INSERT INTO effect_sql_migrations (migration_id, name, created_at) VALUES
+          (77, 'BoundedShellLookups', '2026-11-01 08:00:00'),
+          (78, 'BobExecutionAdmission', '2026-11-01 08:00:00')`;
+
+        const executed = yield* runMigrations();
+
+        assert.deepStrictEqual(executed, [[77, "RepairBooleanSettledOverride"]]);
+        yield* assertLedgerMatchesManifest();
+        const rows = yield* readLedger;
+        assert.deepStrictEqual(
+          rows.find((row) => row.name === "BoundedShellLookups")?.created_at,
+          "2026-11-01 08:00:00",
+        );
         assert.deepStrictEqual(yield* runMigrations(), []);
         assert.deepEqual(yield* sql`PRAGMA quick_check`, [{ quick_check: "ok" }]);
       }),

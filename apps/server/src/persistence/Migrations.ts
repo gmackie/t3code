@@ -80,11 +80,12 @@ import Migration0073 from "./Migrations/073_ActiveTurnItemIndexes.ts";
 import Migration0074 from "./Migrations/074_ExcludeAttachmentPlaceholdersFromSearch.ts";
 import Migration0075 from "./Migrations/075_SubagentDeliveryState.ts";
 import Migration0076 from "./Migrations/076_ProjectionProjectsPinArchive.ts";
-// GMACKO lane migration, released as 59, 62, 65, 67, 71, 72, 73 and 74 before upstream claimed those ids.
-import BoundedShellLookups from "./Migrations/077_BoundedShellLookups.ts";
-// T3CODE-6 Bob admission; released as 59 on main and 63, 66, 68, 72, 73, 74 and 75 on custom-local
+import Migration0077 from "./Migrations/077_RepairBooleanSettledOverride.ts";
+// GMACKO lane migration, released as 59, 62, 65, 67, 71, 72, 73, 74 and 77 before upstream claimed those ids.
+import BoundedShellLookups from "./Migrations/078_BoundedShellLookups.ts";
+// T3CODE-6 Bob admission; released as 59 on main and 63, 66, 68, 72, 73, 74, 75 and 78 on custom-local
 // before upstream claimed those ids.
-import BobExecutionAdmission from "./Migrations/078_BobExecutionAdmission.ts";
+import BobExecutionAdmission from "./Migrations/079_BobExecutionAdmission.ts";
 
 /**
  * Upstream's ThreadFailureLookupIndex (62) and the lane's BoundedShellLookups both create
@@ -178,10 +179,11 @@ const migrationEntries = [
   [74, "ExcludeAttachmentPlaceholdersFromSearch", Migration0074],
   [75, "SubagentDeliveryState", Migration0075],
   [76, "ProjectionProjectsPinArchive", Migration0076],
-  // Released as 59, 62, 65, 67, 71, 72, 73 and 74 on the GMACKO lane; re-keyed by name.
-  [77, "BoundedShellLookups", BoundedShellLookupsShared],
-  // Released as 59 on main and 63, 66, 68, 72, 73, 74 and 75 on custom-local; re-keyed by name.
-  [78, "BobExecutionAdmission", BobExecutionAdmission],
+  [77, "RepairBooleanSettledOverride", Migration0077],
+  // Released as 59, 62, 65, 67, 71, 72, 73, 74 and 77 on the GMACKO lane; re-keyed by name.
+  [78, "BoundedShellLookups", BoundedShellLookupsShared],
+  // Released as 59 on main and 63, 66, 68, 72, 73, 74, 75 and 78 on custom-local; re-keyed by name.
+  [79, "BobExecutionAdmission", BobExecutionAdmission],
 ] as const;
 
 export const migrationManifest = migrationEntries.map(([id, name]) => [id, name] as const);

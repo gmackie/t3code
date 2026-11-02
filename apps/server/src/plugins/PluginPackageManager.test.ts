@@ -14,6 +14,7 @@ import { PluginManifest } from "@t3tools/plugin-runtime/manifest";
 import * as ServerSecretStore from "../auth/ServerSecretStore.ts";
 import * as ServerConfig from "../config.ts";
 import * as Sqlite from "../persistence/Sqlite.ts";
+import * as ManagedPolicy from "../policy/ManagedPolicy.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import * as PluginCommandCatalog from "./PluginCommandCatalog.ts";
 import * as PluginPackageManager from "./PluginPackageManager.ts";
@@ -113,6 +114,7 @@ const makeEnvironmentLayer = (baseDir: string, options?: EnvironmentLayerOptions
   const liveSettingsLayer = ServerSettings.layer.pipe(
     Layer.provide(Sqlite.layerMemory),
     Layer.provide(ServerSecretStore.layer),
+    Layer.provide(ManagedPolicy.layerTest()),
     Layer.provideMerge(configLayer),
   );
   const persistenceFailures = options?.persistenceFailures;

@@ -33,6 +33,7 @@ import * as SqlitePersistence from "../persistence/Sqlite.ts";
 import * as ProjectService from "../project/ProjectService.ts";
 import * as VcsDriverRegistry from "../vcs/VcsDriverRegistry.ts";
 import * as McpPlugins from "../plugins/McpPlugins.ts";
+import * as ManagedPolicy from "../policy/ManagedPolicy.ts";
 import * as ServerSettings from "../serverSettings.ts";
 
 import * as Orchestrator from "../orchestration-v2/Orchestrator.ts";
@@ -95,6 +96,7 @@ const layerPluginStack = () =>
     Layer.provideMerge(McpRemoteAuth.layer),
     Layer.provideMerge(ServerSettings.layer),
     Layer.provideMerge(ServerSecretStore.layer),
+    Layer.provideMerge(ManagedPolicy.layerTest()),
     Layer.provideMerge(Layer.fresh(SqlitePersistence.layerMemory)),
     Layer.provideMerge(
       Layer.fresh(ServerConfig.layerTest(process.cwd(), { prefix: "t3code-mcp-app-requests-" })),
