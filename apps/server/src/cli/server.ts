@@ -9,7 +9,6 @@ import * as CliError from "effect/cli/CliError";
 import * as ServerConfig from "../config.ts";
 import { awaitLauncherLoss } from "../launcherWatch.ts";
 import { configureNetworkFamilyAutoselection } from "../networkFamilyAutoselection.ts";
-import { runServer } from "../server.ts";
 import { type CliServerFlags, resolveServerConfig, sharedServerCommandFlags } from "./config.ts";
 
 const encodeCommand = Schema.encodeEffect(Schema.fromJsonString(Schema.String));
@@ -32,6 +31,8 @@ const runServerCommand = Effect.fn("server.runServerCommand")(function* (
   // Every server launch passes here: `npx t3`, `t3 start`/`serve`, and the
   // desktop app's backend child process (bin.mjs with the default command).
   yield* configureNetworkFamilyAutoselection;
+  // Before config resolution, which claims a port and creates directories.
+  const { runServer } = yield* Effect.promise(() => import("../server.ts"));
   const logLevel = yield* GlobalFlag.LogLevel;
   const config = yield* resolveServerConfig(flags, logLevel, options);
   const run = runServer.pipe(Effect.provideService(ServerConfig.ServerConfig, config));

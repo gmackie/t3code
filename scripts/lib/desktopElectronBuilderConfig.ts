@@ -192,6 +192,7 @@ export function createDesktopElectronBuilderConfig(
     appDisplayName: productName,
   });
   const buildConfig: Record<string, unknown> = {
+    afterPack: NodePath.join(input.repoRoot, "scripts/prepare-server-compile-cache.cjs"),
     appId: appIdentity.appId,
     productName,
     artifactName: "T3-Code-${version}-${arch}.${ext}",
