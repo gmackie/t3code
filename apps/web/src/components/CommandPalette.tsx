@@ -45,6 +45,7 @@ import {
   type DesktopWslState,
   type EnvironmentId,
   type FilesystemBrowseResult,
+  type McpPluginEntry,
   type PluginCommand,
   type PluginCommandCatalog,
   SourceControlProviderKind,
@@ -114,6 +115,7 @@ import { desktopLocalBackendId } from "../connection/desktopLocal";
 import { filesystemEnvironment, useFilesystemReadAccess } from "../state/filesystem";
 import { projectEnvironment } from "../state/projects";
 import { useEnvironmentQuery } from "../state/query";
+import { mcpPluginEnvironment } from "../state/mcpApps";
 import { threadEnvironment } from "../state/threads";
 import { readEnvironmentScope, useEnvironmentScope } from "~/state/session";
 import { sourceControlEnvironment } from "../state/sourceControl";
@@ -174,6 +176,7 @@ import {
   browseInputEndPaddingClass,
   buildBrowseGroups,
   buildPluginCommandActionItems,
+  buildPluginPanelActionItems,
   buildRootGroups,
   buildLinkedThreadActionItems,
   buildCommandPaletteRows,
@@ -266,6 +269,7 @@ import { useThreadRouteTarget } from "../hooks/useThreadRouteTarget";
 import { threadRecentUse } from "@t3tools/shared/paletteSearch";
 
 const EMPTY_BROWSE_ENTRIES: FilesystemBrowseResult["entries"] = [];
+const EMPTY_MCP_PLUGINS: ReadonlyArray<McpPluginEntry> = [];
 const EMPTY_PLUGIN_COMMAND_CATALOG: PluginCommandCatalog = { commands: [], generation: 0 };
 const EMPTY_PLUGIN_COMMAND_CATALOG_ATOM = Atom.make(
   AsyncResult.success(EMPTY_PLUGIN_COMMAND_CATALOG),
@@ -479,6 +483,12 @@ function OpenCommandPaletteDialog(props: {
   const invokePluginCommand = useAtomCommand(serverEnvironment.invokePluginCommand, {
     reportFailure: false,
   });
+  const mcpPlugins =
+    useEnvironmentQuery(
+      activeThread
+        ? mcpPluginEnvironment.list({ environmentId: activeThread.environmentId, input: {} })
+        : null,
+    ).data ?? EMPTY_MCP_PLUGINS;
   const paletteRouteTarget = useThreadRouteTarget();
   const projects = useProjects();
   const referenceThreadRef =
@@ -1816,6 +1826,17 @@ function OpenCommandPaletteDialog(props: {
         });
       },
     });
+  }
+
+  if (activeThread !== undefined && activeThread !== null) {
+    const panelThreadRef = scopeThreadRef(activeThread.environmentId, activeThread.id);
+    actionItems.push(
+      ...buildPluginPanelActionItems({
+        plugins: mcpPlugins,
+        icon: <PuzzleIcon className={ITEM_ICON_CLASS} />,
+        open: (target) => useRightPanelStore.getState().openPluginPanel(panelThreadRef, target),
+      }),
+    );
   }
 
   if (pluginCommandEnvironmentId !== null) {

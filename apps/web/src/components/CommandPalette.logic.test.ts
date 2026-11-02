@@ -2,8 +2,11 @@ import { describe, expect, it, vi } from "vite-plus/test";
 import { EnvironmentId, ProjectId, ProviderInstanceId, ThreadId } from "@t3tools/contracts";
 import type { Thread } from "../types";
 import { makeThreadFixture } from "../test-fixtures";
+import { McpPluginManifest, type McpPluginEntry } from "@t3tools/contracts";
+import * as Schema from "effect/Schema";
 import {
   newThreadNoProjectIndex,
+  buildPluginPanelActionItems,
   buildNestedSearchItems,
   resolveCommandPaletteProject,
   buildThreadActionItems,
@@ -959,5 +962,46 @@ describe("newThreadNoProjectIndex", () => {
   it("keeps a pinned or current scratch project in its own place", () => {
     expect(newThreadNoProjectIndex([entry(false, true, true), entry()])).toBe(0);
     expect(newThreadNoProjectIndex([entry(true), entry(true, false, true), entry()])).toBe(1);
+  });
+});
+
+const decodeMcpPluginManifest = Schema.decodeSync(McpPluginManifest);
+
+describe("buildPluginPanelActionItems", () => {
+  const manifest = decodeMcpPluginManifest({
+    schemaVersion: 2,
+    id: "com.example.board",
+    displayName: "Board",
+    version: "1.0.0",
+    mcpServer: { name: "board", transport: { type: "http", url: "https://board.example/mcp" } },
+    contributes: {
+      panels: [
+        { id: "issues", title: "Issues", scope: "thread", resourceUri: "ui://board/issues" },
+        { id: "board", title: "Board", scope: "project", resourceUri: "ui://board/board" },
+      ],
+      commands: [{ id: "open-board", title: "Board: Show the board", panel: "board" }],
+    },
+  });
+  const entry = (enabled: boolean): McpPluginEntry => ({ manifest, enabled });
+
+  it("lists commands, then panels no command opens, and opens the right panel", async () => {
+    const opened: Array<unknown> = [];
+    const items = buildPluginPanelActionItems({
+      plugins: [entry(true)],
+      icon: null,
+      open: (target) => opened.push(target),
+    });
+    expect(items.map((item) => item.title)).toEqual([
+      "Board: Show the board",
+      "Board: Open Issues",
+    ]);
+    await items[0]?.run();
+    expect(opened).toEqual([{ pluginId: "com.example.board", panelId: "board", title: "Board" }]);
+  });
+
+  it("leaves out disabled plugins", () => {
+    expect(
+      buildPluginPanelActionItems({ plugins: [entry(false)], icon: null, open: () => undefined }),
+    ).toEqual([]);
   });
 });

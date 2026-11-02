@@ -30,6 +30,19 @@ export interface McpSessionRegistryShape {
   readonly resolve: (
     rawToken: string,
   ) => Effect.Effect<McpInvocationContext.McpThreadInvocationScope | undefined>;
+  readonly resolvePlugin: (
+    rawToken: string,
+  ) => Effect.Effect<McpInvocationContext.McpInvocationScope | undefined>;
+  /**
+   * A credential for the plugin process T3 itself runs (never a provider's
+   * copy): an outside client limited to the plugin's T3 tools, with no thread.
+   */
+  readonly issuePlugin: (request: {
+    readonly pluginId: string;
+    readonly label: string;
+    readonly allowedTools: ReadonlyArray<string>;
+  }) => Effect.Effect<{ readonly endpoint: string; readonly token: string }>;
+  readonly revokePlugin: (pluginId: string) => Effect.Effect<void>;
   readonly touch: (threadId: ThreadId) => Effect.Effect<void>;
   readonly revokeProviderSession: (providerSessionId: string) => Effect.Effect<void>;
   readonly revokeThread: (threadId: ThreadId) => Effect.Effect<void>;
@@ -47,8 +60,15 @@ interface CredentialRecord {
   readonly lastAliveAt: number;
 }
 
+interface PluginCredentialRecord {
+  readonly pluginId: string;
+  readonly scope: McpInvocationContext.McpInvocationScope;
+}
+
 interface RegistryState {
   readonly records: ReadonlyMap<string, CredentialRecord>;
+  /** Live as long as the plugin's process; revoked when the plugin is disabled or removed. */
+  readonly pluginRecords?: ReadonlyMap<string, PluginCredentialRecord>;
 }
 
 export interface McpSessionRegistryOptions {
@@ -142,14 +162,17 @@ const makeWithOptions = Effect.fn("McpSessionRegistry.make")(function* (
       if (rawToken.length === 0) return undefined;
       const tokenHash = yield* hashToken(rawToken);
       const timestamp = yield* currentTimeMillis;
-      return yield* SynchronizedRef.modify(state, ({ records }) => {
+      return yield* SynchronizedRef.modify(state, ({ records, pluginRecords }) => {
         const record = records.get(tokenHash);
         if (!record || timestamp - record.lastAliveAt > livenessWindowMs) {
-          return [undefined, { records }] as const;
+          return [undefined, { records, ...(pluginRecords ? { pluginRecords } : {}) }] as const;
         }
         const next = new Map(records);
         next.set(tokenHash, { ...record, lastAliveAt: timestamp });
-        return [record.scope, { records: next }] as const;
+        return [
+          record.scope,
+          { records: next, ...(pluginRecords ? { pluginRecords } : {}) },
+        ] as const;
       });
     },
   );
@@ -170,9 +193,37 @@ const makeWithOptions = Effect.fn("McpSessionRegistry.make")(function* (
   );
 
   const revokeWhere = (predicate: (record: CredentialRecord) => boolean) =>
-    SynchronizedRef.update(state, ({ records }) => ({
+    SynchronizedRef.update(state, ({ records, pluginRecords }) => ({
       records: new Map(Array.from(records).filter(([, record]) => !predicate(record))),
+      ...(pluginRecords === undefined ? {} : { pluginRecords }),
     }));
+
+  const issuePlugin: McpSessionRegistryShape["issuePlugin"] = Effect.fn(
+    "McpSessionRegistry.issuePlugin",
+  )(function* (request) {
+    const issuedAt = yield* currentTimeMillis;
+    const rawToken = yield* crypto.randomBytes(32).pipe(Effect.map(tokenFromBytes), Effect.orDie);
+    const tokenHash = yield* hashToken(rawToken);
+    const scope: McpInvocationContext.McpInvocationScope = {
+      environmentId,
+      requestNamespace: `plugin:${request.pluginId}`,
+      thread: undefined,
+      client: { sessionId: `plugin:${request.pluginId}`, label: request.label, access: "auto" },
+      capabilities: new Set<McpInvocationContext.McpCapability>([
+        "orchestration",
+        "worktree",
+        "pull-requests",
+      ]),
+      toolAllowlist: new Set(request.allowedTools),
+      issuedAt,
+    };
+    yield* SynchronizedRef.update(state, ({ records, pluginRecords }) => {
+      const next = new Map(pluginRecords);
+      next.set(tokenHash, { pluginId: request.pluginId, scope });
+      return { records, pluginRecords: next };
+    });
+    return { endpoint, token: rawToken };
+  });
 
   return McpSessionRegistry.of({
     issue,
@@ -185,6 +236,20 @@ const makeWithOptions = Effect.fn("McpSessionRegistry.make")(function* (
     ),
     revokeThread: Effect.fn("McpSessionRegistry.revokeThread")(function* (threadId) {
       yield* revokeWhere((record) => record.scope.thread.threadId === threadId);
+    }),
+    issuePlugin,
+    resolvePlugin: Effect.fn("McpSessionRegistry.resolvePlugin")(function* (rawToken) {
+      if (rawToken.length === 0) return undefined;
+      const tokenHash = yield* hashToken(rawToken);
+      return (yield* SynchronizedRef.get(state)).pluginRecords?.get(tokenHash)?.scope;
+    }),
+    revokePlugin: Effect.fn("McpSessionRegistry.revokePlugin")(function* (pluginId) {
+      yield* SynchronizedRef.update(state, ({ records, pluginRecords }) => ({
+        records,
+        pluginRecords: new Map(
+          Array.from(pluginRecords ?? []).filter(([, record]) => record.pluginId !== pluginId),
+        ),
+      }));
     }),
     revokeAll: SynchronizedRef.set(state, { records: new Map() }),
   });

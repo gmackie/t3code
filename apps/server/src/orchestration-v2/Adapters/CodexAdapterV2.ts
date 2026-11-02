@@ -3887,7 +3887,7 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
                         Effect.flatMap((response) =>
                           snapshotMcpApp({
                             attachmentsDir: serverConfig.attachmentsDir,
-                            threadId: context.projectionThreadId,
+                            owner: { threadId: context.projectionThreadId },
                             server: item.server,
                             tool: item.tool,
                             resourceUri,

@@ -220,3 +220,25 @@ it.effect.each(["provider-session", "thread", "all"] as const)(
       expect(yield* registry.resolve(token)).toBeUndefined();
     }),
 );
+
+it.effect("issues plugin tokens limited to their tools, never as thread credentials", () =>
+  Effect.gen(function* () {
+    const registry = yield* makeRegistry(() => 1_000);
+    const issued = yield* registry.issuePlugin({
+      pluginId: "com.example.board",
+      label: "Board",
+      allowedTools: ["t3_thread_read"],
+    });
+    expect(issued.endpoint).toBe("http://127.0.0.1:43123/mcp");
+
+    const scope = yield* registry.resolvePlugin(issued.token);
+    expect(scope?.thread).toBeUndefined();
+    expect(scope?.client?.label).toBe("Board");
+    expect([...(scope?.toolAllowlist ?? [])]).toEqual(["t3_thread_read"]);
+    expect(scope?.capabilities.has("preview")).toBe(false);
+    expect(yield* registry.resolve(issued.token)).toBeUndefined();
+
+    yield* registry.revokePlugin("com.example.board");
+    expect(yield* registry.resolvePlugin(issued.token)).toBeUndefined();
+  }),
+);

@@ -295,10 +295,13 @@ export function McpAppTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "
       <McpAppFrame
         key={row.mcpApp.attachmentId}
         environmentId={ctx.activeThreadEnvironmentId}
-        threadId={row.sourceThreadId}
-        conversationThreadId={ctx.threadRef?.threadId ?? row.sourceThreadId}
-        itemId={row.itemId}
-        revision={row.revision}
+        source={{
+          kind: "thread-item",
+          threadId: row.sourceThreadId,
+          conversationThreadId: ctx.threadRef?.threadId ?? row.sourceThreadId,
+          itemId: row.itemId,
+          revision: row.revision,
+        }}
         app={row.mcpApp}
         onSendMessage={ctx.onSendAppMessage}
         awaitingUser={awaitingUser}

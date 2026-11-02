@@ -1,3 +1,4 @@
+import { McpPluginsSettingsSection } from "./McpPluginsSettings";
 import { PluginApplicationsSettingsPanel } from "./PluginApplicationsSettings";
 import { useAtomValue } from "@effect/atom-react";
 import type { PluginPackageStatus } from "@t3tools/contracts";
@@ -287,6 +288,7 @@ export function PluginsSettingsPanel() {
           ))}
         </div>
       </SettingsSection>
+      <McpPluginsSettingsSection />
       <PluginApplicationsSettingsPanel />
     </SettingsPageContainer>
   );

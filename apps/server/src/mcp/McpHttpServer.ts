@@ -220,6 +220,7 @@ const makeMcpAuthMiddleware = Effect.gen(function* () {
         : "";
     const invocation =
       (yield* registry.resolve(token)) ??
+      (yield* registry.resolvePlugin(token)) ??
       (Option.isSome(clients) && token.length > 0
         ? yield* clients.value.authenticate(request)
         : undefined);
@@ -1041,6 +1042,34 @@ const withToolAnalytics =
     return yield* registration.pipe(Effect.provideService(McpServer.McpServer, recordingServer));
   });
 
+/**
+ * Every registration goes through this, so a plugin token's tool allowlist
+ * hides and refuses every other tool however it was registered. EnabledWhen
+ * gates both tools/list and tools/call.
+ */
+const withToolAllowlist = Effect.fn("McpHttpServer.withToolAllowlist")(function* <A, E, R>(
+  registration: Effect.Effect<A, E, R>,
+) {
+  const server = yield* McpServer.McpServer;
+  const allowlistedServer = McpServer.McpServer.of({
+    ...server,
+    addTool: Effect.fn("McpServer.addTool")(function (options) {
+      const enabledWhen = Context.getOrUndefined(options.annotations, McpSchema.EnabledWhen);
+      return server.addTool({
+        ...options,
+        annotations: Context.add(
+          options.annotations,
+          McpSchema.EnabledWhen,
+          (profile) =>
+            McpInvocationContext.allowedByToolAllowlist(options.tool.name) &&
+            (enabledWhen === undefined || enabledWhen(profile)),
+        ),
+      });
+    }),
+  });
+  return yield* registration.pipe(Effect.provideService(McpServer.McpServer, allowlistedServer));
+});
+
 /** `McpServer.registerToolkit` advertises the full codec schema; agents get the compact one. */
 const withAdvertisedSchemas = Effect.fn("McpHttpServer.withAdvertisedSchemas")(function* <
   Tools extends Record<string, Tool.Any>,
@@ -1082,7 +1111,10 @@ export const toolkitRegistration = <Tools extends Record<string, Tool.Any>, EX, 
 ) => {
   const registration = Layer.effectDiscard(
     withToolAnalytics(
-      withAdvertisedSchemas(toolkit, McpServer.registerToolkit(decodeAsAdvertised(toolkit))),
+      withAdvertisedSchemas(
+        toolkit,
+        withToolAllowlist(McpServer.registerToolkit(decodeAsAdvertised(toolkit))),
+      ),
     ),
   ).pipe(Layer.provide(McpServer.McpServer.layer));
   // @effect-diagnostics-next-line unsafeEffectTypeAssertion:off - the auth middleware provides it per request.
@@ -1103,7 +1135,9 @@ const callerCheckedToolkitRegistration = <Tools extends Record<string, Tool.Any>
   toolkit: Toolkit.Toolkit<Tools>,
   handlers: Layer.Layer<Tool.HandlersFor<Tools>, EX, RX>,
 ) => {
-  const registration = McpServer.toolkit(toolkit);
+  const registration = Layer.effectDiscard(
+    withToolAllowlist(McpServer.registerToolkit(toolkit)),
+  ).pipe(Layer.provide(McpServer.McpServer.layer));
   // @effect-diagnostics-next-line unsafeEffectTypeAssertion:off - the auth middleware provides it per request.
   const registered = registration as Layer.Layer<
     never,
@@ -1117,7 +1151,7 @@ const imageToolRegistration = <Tools extends Record<string, Tool.Any>, A, E, R, 
   register: Effect.Effect<A, E, R>,
   handlers: McpToolAccess.HandlersLayer<Tools, EX, RX>,
 ) =>
-  Layer.effectDiscard(withToolAnalytics(register)).pipe(
+  Layer.effectDiscard(withToolAnalytics(withToolAllowlist(register))).pipe(
     Layer.provide(McpToolAccess.HandlersLayer.layer(handlers)),
   );
 
@@ -1224,7 +1258,9 @@ export const layerTools = Layer.mergeAll(
   layerPullRequestsToolkit,
   layerDeviceToolkit,
   layerHtmlToolkit,
-  Layer.effectDiscard(registerUnitySnapshot()).pipe(Layer.provide(UnityHandlers.layerSnapshot)),
+  Layer.effectDiscard(withToolAllowlist(registerUnitySnapshot())).pipe(
+    Layer.provide(UnityHandlers.layerSnapshot),
+  ),
   callerCheckedToolkitRegistration(UnityToolkit, UnityHandlers.layer),
 );
 

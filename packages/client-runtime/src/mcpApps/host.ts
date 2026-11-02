@@ -38,6 +38,17 @@ export interface McpAppHostContext {
     readonly left: number;
   };
   readonly toolInfo?: { readonly tool: unknown };
+  /** Where a plugin panel is shown; a thread panel follows the active thread here. */
+  readonly t3?: {
+    readonly projectId?: string;
+    readonly threadId?: string;
+    readonly cwd?: string;
+    /** The thread's branch (thread panels) and the repository's remotes, for mapping to plugin records. */
+    readonly git?: {
+      readonly branch?: string;
+      readonly remotes: ReadonlyArray<{ readonly name: string; readonly url: string }>;
+    };
+  };
 }
 
 export type McpAppDownload =
@@ -74,7 +85,7 @@ export interface McpAppCallToolResult {
 export class McpAppHostRefusal extends Error {}
 
 export interface McpAppHostOptions {
-  readonly app: McpAppReference;
+  readonly app: Pick<McpAppReference, "csp" | "permissions">;
   readonly hostVersion: string;
   readonly post: (message: unknown) => void;
   readonly hostContext: () => McpAppHostContext;

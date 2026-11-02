@@ -202,6 +202,24 @@ describe("makeMcpAppHost", () => {
     });
   });
 
+  it("tells a thread panel when the active thread changes, sending only the T3 block", () => {
+    let threadId = "thread-a";
+    const { host, sent } = setup({
+      hostContext: () => ({ ...context(), t3: { projectId: "project-1", threadId } }),
+    });
+    initialize(host);
+    expect(sent.find((m) => m.id === "init")?.result).toMatchObject({
+      hostContext: { t3: { projectId: "project-1", threadId: "thread-a" } },
+    });
+    threadId = "thread-b";
+    host.updateHostContext();
+    expect(sent.at(-1)).toEqual({
+      jsonrpc: "2.0",
+      method: "ui/notifications/host-context-changed",
+      params: { t3: { projectId: "project-1", threadId: "thread-b" } },
+    });
+  });
+
   it("proxies tools/call and reports a refusal as a JSON-RPC error", async () => {
     const { host, sent } = setup({
       callTool: async (input) => {

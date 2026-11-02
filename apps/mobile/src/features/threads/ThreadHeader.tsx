@@ -2,7 +2,7 @@ import { View } from "react-native";
 import { useMemo } from "react";
 import { AppBar } from "../../components/ui/AppBar";
 import { ScreenHeaderButton } from "../../components/ui/ScreenHeaderButton";
-import type { AppBarAction } from "../../components/ui/AppBar.types";
+import type { AppBarAction, AppBarMenu } from "../../components/ui/AppBar.types";
 import { useAdaptiveWorkspaceLayout } from "../layout/AdaptiveWorkspaceLayout";
 import type { ThreadInspectorMode } from "./thread-inspector-content-stack";
 import { useThreadHeaderOptions } from "./useThreadHeaderOptions";
@@ -110,6 +110,27 @@ export function ThreadHeader(
     props.gitControls.canOpenTerminal,
   ]);
 
+  // iOS reads the native header items; AppBar renders menus on Android.
+  const pluginPanels = props.pluginPanels;
+  const pluginMenus = useMemo<ReadonlyArray<AppBarMenu>>(
+    () =>
+      pluginPanels && pluginPanels.length > 0
+        ? [
+            {
+              title: "Plugin panels",
+              icon: "square.grid.2x2",
+              items: pluginPanels.map((panel) => ({
+                id: panel.key,
+                title: panel.title,
+                subtitle: panel.pluginName,
+                onPress: panel.onPress,
+              })),
+            },
+          ]
+        : [],
+    [pluginPanels],
+  );
+
   return (
     <>
       <AppBar
@@ -143,6 +164,7 @@ export function ThreadHeader(
         }
         onBack={layout.usesSplitView ? undefined : goBack}
         actions={androidHeaderActions}
+        menus={pluginMenus}
         hideBottomBorder
         compact={composerKeyboardActive}
       />

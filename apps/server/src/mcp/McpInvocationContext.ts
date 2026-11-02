@@ -106,6 +106,8 @@ export interface McpInvocationScope {
   readonly client: McpClientCaller | undefined;
   /** False while the Linked environments beta is off here; `/mcp` reads it per request. */
   readonly linkedEnvironments?: boolean;
+  /** A plugin's token sees and calls only these tools; absent means no limit. */
+  readonly toolAllowlist?: ReadonlySet<string>;
 }
 
 /**
@@ -135,6 +137,13 @@ export const hiddenFromSubagents = (): boolean => {
   const fiber = Fiber.getCurrent();
   const scope = fiber && Context.getOrUndefined(fiber.context, McpInvocationContext);
   return scope?.thread?.subagent !== true;
+};
+
+/** Checked for every tool at registration, so an allowlisted token can't see or call the rest. */
+export const allowedByToolAllowlist = (toolName: string): boolean => {
+  const fiber = Fiber.getCurrent();
+  const scope = fiber && Context.getOrUndefined(fiber.context, McpInvocationContext);
+  return scope?.toolAllowlist === undefined || scope.toolAllowlist.has(toolName);
 };
 
 /** `McpSchema.EnabledWhen` for tools that only serve links, hidden while the beta is off. */

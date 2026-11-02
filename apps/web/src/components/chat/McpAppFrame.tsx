@@ -1,4 +1,11 @@
-import type { EnvironmentId, ThreadId, TurnItemId } from "@t3tools/contracts";
+import type {
+  EnvironmentId,
+  McpPluginId,
+  McpPluginPanelId,
+  ProjectId,
+  ThreadId,
+  TurnItemId,
+} from "@t3tools/contracts";
 import {
   makeMcpAppHost,
   McpAppHostRefusal,
@@ -75,22 +82,49 @@ function saveBlob(blob: Blob, name: string) {
   setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
 
+/**
+ * Where the view came from. A thread item's app sizes itself in the timeline;
+ * a plugin panel fills its container, needs no thread, and calls its own
+ * plugin's tools without a prompt, since installing the plugin was consent.
+ */
+export type McpAppFrameSource =
+  | {
+      readonly kind: "thread-item";
+      readonly threadId: ThreadId;
+      readonly conversationThreadId: ThreadId;
+      readonly itemId: TurnItemId;
+      readonly revision: string;
+    }
+  | {
+      readonly kind: "plugin-panel";
+      readonly pluginId: McpPluginId;
+      readonly panelId: McpPluginPanelId;
+      readonly projectId: ProjectId;
+      /** The active thread, for thread-scoped panels. */
+      readonly threadId?: ThreadId;
+      readonly cwd?: string;
+      readonly git?: NonNullable<McpAppHostContext["t3"]>["git"];
+      readonly toolCall?: {
+        readonly arguments: unknown;
+        readonly result: McpAppCallToolResult | undefined;
+      };
+    };
+
 export function McpAppFrame(props: {
   readonly environmentId: EnvironmentId;
-  readonly threadId: ThreadId;
-  readonly conversationThreadId: ThreadId;
-  readonly itemId: TurnItemId;
-  readonly revision: string;
+  readonly source: McpAppFrameSource;
   readonly app: McpAppReference;
   readonly onSendMessage: ((text: string) => Promise<void>) | undefined;
   readonly awaitingUser?: boolean;
   readonly onFullscreenChange?: (fullscreen: boolean) => void;
 }) {
-  const { app } = props;
+  const { app, source } = props;
+  const panel = source.kind === "plugin-panel";
   const theme = useHtmlRenderTheme();
   const frameRef = useRef<HTMLIFrameElement>(null);
   const boxRef = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(0);
+  const [boxHeight, setBoxHeight] = useState(0);
   const [height, setHeight] = useState(MCP_APP_DEFAULT_HEIGHT);
   const [navigatedAway, setNavigatedAway] = useState(false);
   const [displayMode, setDisplayMode] = useState<McpAppDisplayMode>("inline");
@@ -100,8 +134,12 @@ export function McpAppFrame(props: {
   const attachBox = (box: HTMLDivElement) => {
     boxRef.current = box;
     setWidth(box.clientWidth);
+    setBoxHeight(box.clientHeight);
     const stopResize = observeResize(box, ([entry]) => {
-      if (entry) setWidth(Math.round(entry.contentRect.width));
+      if (entry) {
+        setWidth(Math.round(entry.contentRect.width));
+        setBoxHeight(Math.round(entry.contentRect.height));
+      }
       // Full screen reports the viewport, which can change height alone.
       if (fullscreenSupported && box.matches(":popover-open")) {
         hostRef.current?.updateHostContext();
@@ -126,31 +164,52 @@ export function McpAppFrame(props: {
   const asset = useLongLivedAssetUrl(src === null ? props.environmentId : null, resource);
   if (src === null && asset._tag === "Success") setSrc(asset.url);
 
-  const detail = useTurnItemDetail({
-    environmentId: props.environmentId,
-    threadId: props.threadId,
-    itemId: props.itemId,
-    revision: props.revision,
-  });
+  const detail = useTurnItemDetail(
+    source.kind === "thread-item"
+      ? {
+          environmentId: props.environmentId,
+          threadId: source.threadId,
+          itemId: source.itemId,
+          revision: source.revision,
+        }
+      : null,
+  );
   const storedItem = detail.data?.item;
   // Keep tool-call identity stable for the host's delivery effect.
   const toolCall =
-    storedItem?.type === "dynamic_tool"
+    source.kind === "plugin-panel"
+      ? source.toolCall
+      : storedItem?.type === "dynamic_tool"
+        ? {
+            arguments: storedItem.input,
+            result: (storedItem.output as { readonly result?: unknown } | undefined)?.result as
+              | McpAppCallToolResult
+              | undefined,
+          }
+        : undefined;
+  const sourceInput =
+    source.kind === "thread-item"
+      ? { threadId: source.threadId, itemId: source.itemId }
+      : { pluginId: source.pluginId, panelId: source.panelId, projectId: source.projectId };
+  const t3Context =
+    source.kind === "plugin-panel"
       ? {
-          arguments: storedItem.input,
-          result: (storedItem.output as { readonly result?: unknown } | undefined)?.result as
-            | McpAppCallToolResult
-            | undefined,
+          projectId: source.projectId,
+          ...(source.threadId === undefined ? {} : { threadId: source.threadId }),
+          ...(source.cwd === undefined ? {} : { cwd: source.cwd }),
+          ...(source.git === undefined ? {} : { git: source.git }),
         }
       : undefined;
 
   const callTool = useAtomCommand(mcpAppEnvironment.callTool, { reportFailure: false });
   const toolInfo = useAtomCommand(mcpAppEnvironment.toolInfo, { reportFailure: false });
   const toolDefinition = useEnvironmentQuery(
-    mcpAppEnvironment.toolInfoQuery({
-      environmentId: props.environmentId,
-      input: { threadId: props.threadId, itemId: props.itemId, name: app.tool },
-    }),
+    app.tool === ""
+      ? null
+      : mcpAppEnvironment.toolInfoQuery({
+          environmentId: props.environmentId,
+          input: { ...sourceInput, name: app.tool },
+        }),
   ).data?.tool;
   const readResource = useAtomCommand(mcpAppEnvironment.readResource, { reportFailure: false });
   const updateModelContext = useAtomCommand(mcpAppEnvironment.updateModelContext, {
@@ -168,6 +227,9 @@ export function McpAppFrame(props: {
     updateModelContext,
     displayMode,
     toolDefinition,
+    boxHeight,
+    t3Context,
+    sourceInput,
   }));
   const hostRef = useRef<McpAppHost | null>(null);
 
@@ -233,7 +295,9 @@ export function McpAppFrame(props: {
                 width: frameRef.current?.clientWidth || window.innerWidth,
                 height: frameRef.current?.clientHeight || window.innerHeight,
               }
-            : { width: current.width, maxHeight: MCP_APP_MAX_HEIGHT },
+            : panel
+              ? { width: current.width, height: current.boxHeight }
+              : { width: current.width, maxHeight: MCP_APP_MAX_HEIGHT },
         platform: isElectron ? "desktop" : "web",
         locale: navigator.language,
         timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
@@ -246,6 +310,7 @@ export function McpAppFrame(props: {
         ...(current.toolDefinition === undefined
           ? {}
           : { toolInfo: { tool: current.toolDefinition } }),
+        ...(current.t3Context === undefined ? {} : { t3: current.t3Context }),
       };
     };
     // Return inline so approvals stay visible above the app.
@@ -259,8 +324,8 @@ export function McpAppFrame(props: {
     };
     const target = () => frameRef.current?.contentWindow ?? null;
     const scope = () => {
-      const { environmentId, threadId, itemId } = readLive().props;
-      return { environmentId, input: { threadId, itemId } };
+      const current = readLive();
+      return { environmentId: current.props.environmentId, input: current.sourceInput };
     };
     const host = makeMcpAppHost({
       app,
@@ -273,7 +338,7 @@ export function McpAppFrame(props: {
         const info = await readLive().toolInfo({ environmentId, input: { ...input, name } });
         if (info._tag !== "Success") throw commandFailure(info);
         if (!info.value.callable) throw new McpAppHostRefusal("This app cannot call that tool.");
-        if (!info.value.readOnly) {
+        if (!info.value.readOnly && !panel) {
           const approved = await ask(
             `Allow ${app.server} to run ${info.value.title ?? name}?\n${JSON.stringify(args, null, 2)}`,
           );
@@ -309,14 +374,14 @@ export function McpAppFrame(props: {
         await send(text);
       },
       updateModelContext: async (context) => {
-        const { environmentId, input } = scope();
-        const result = await readLive().updateModelContext({
-          environmentId,
-          input: {
-            ...input,
-            ...context,
-            conversationThreadId: readLive().props.conversationThreadId,
-          },
+        const current = readLive();
+        if (current.props.source.kind !== "thread-item") {
+          throw new McpAppHostRefusal("Plugin panels can't add context to a conversation.");
+        }
+        const { threadId, itemId, conversationThreadId } = current.props.source;
+        const result = await current.updateModelContext({
+          environmentId: current.props.environmentId,
+          input: { threadId, itemId, ...context, conversationThreadId },
         });
         if (result._tag !== "Success") throw commandFailure(result);
       },
@@ -391,11 +456,27 @@ export function McpAppFrame(props: {
     };
   };
 
-  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- pushes theme, width, display mode and tool definition to the MCP app host in the iframe
+  // A panel's git block is rebuilt each render; compare it by value.
+  const gitKey =
+    t3Context?.git === undefined
+      ? ""
+      : [t3Context.git.branch ?? "", ...t3Context.git.remotes.map((remote) => remote.url)].join(
+          "\n",
+        );
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- pushes theme, width, display mode, tool definition and panel context to the MCP app host in the iframe
   useEffect(() => {
     hostRef.current?.updateHostContext();
+  }, [
     // oxlint-disable-next-line react/exhaustive-effect-dependencies -- Context changes trigger a resend.
-  }, [theme, width, displayMode, toolDefinition]);
+    theme,
+    width,
+    boxHeight,
+    displayMode,
+    toolDefinition,
+    t3Context?.threadId,
+    t3Context?.cwd,
+    gitKey,
+  ]);
 
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- sends the current tool call to the MCP app host, again for each new iframe document
   useEffect(() => {
@@ -425,7 +506,7 @@ export function McpAppFrame(props: {
   const fullscreen = displayMode === "fullscreen";
   return (
     // Preserve inline row height during fullscreen to prevent timeline jumps.
-    <div style={{ height }}>
+    <div className={panel ? "h-full" : undefined} style={panel ? undefined : { height }}>
       <div
         ref={attachBox}
         // Preserve the frame's parent to avoid reloads; the top layer escapes timeline containment.

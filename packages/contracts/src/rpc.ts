@@ -10,6 +10,10 @@ import { BobOperationInput, BobConnectionState, BobCoordinationError } from "./b
 import {
   McpAppCallToolInput,
   McpAppCallToolResult,
+  McpAppOpenPanelInput,
+  McpAppOpenPanelResult,
+  McpAppPanelContext,
+  McpAppPanelContextInput,
   McpAppReadResourceInput,
   McpAppReadResourceResult,
   McpAppRequestError,
@@ -17,6 +21,13 @@ import {
   McpAppToolInfoInput,
   McpAppUpdateModelContextInput,
 } from "./mcpApps.ts";
+import {
+  McpPluginEntry,
+  McpPluginError,
+  McpPluginIdInput,
+  McpPluginInstallInput,
+  McpPluginSetEnabledInput,
+} from "./mcpPlugin.ts";
 import {
   PeerLink,
   PeerLinkCreateInput,
@@ -620,6 +631,12 @@ export const WS_METHODS = {
   mcpAppsToolInfo: "mcpApps.toolInfo",
   mcpAppsReadResource: "mcpApps.readResource",
   mcpAppsUpdateModelContext: "mcpApps.updateModelContext",
+  mcpAppsOpenPanel: "mcpApps.openPanel",
+  mcpAppsPanelContext: "mcpApps.panelContext",
+  mcpPluginsList: "mcpPlugins.list",
+  mcpPluginsInstall: "mcpPlugins.install",
+  mcpPluginsUninstall: "mcpPlugins.uninstall",
+  mcpPluginsSetEnabled: "mcpPlugins.setEnabled",
 
   providerUploadFeedback: "provider.uploadFeedback",
   providerAuthStart: "provider.auth.start",
@@ -1181,7 +1198,7 @@ const WsServerUpdateSettingsRpc = Rpc.make(WS_METHODS.serverUpdateSettings, {
     providerInstanceMutation: Schema.optionalKey(ProviderInstanceMutation),
   }),
   success: ServerSettings,
-  error: Schema.Union([ServerSettingsError, EnvironmentAuthorizationError]),
+  error: Schema.Union([ServerSettingsError, McpPluginError, EnvironmentAuthorizationError]),
 });
 
 const WsAgentToolsOAuthStatusRpc = Rpc.make(WS_METHODS.agentToolsOAuthStatus, {
@@ -2104,6 +2121,41 @@ const WsMcpAppsUpdateModelContextRpc = Rpc.make(WS_METHODS.mcpAppsUpdateModelCon
   error: Schema.Union([McpAppRequestError, EnvironmentAuthorizationError]),
 });
 
+const WsMcpAppsOpenPanelRpc = Rpc.make(WS_METHODS.mcpAppsOpenPanel, {
+  payload: McpAppOpenPanelInput,
+  success: McpAppOpenPanelResult,
+  error: Schema.Union([McpAppRequestError, EnvironmentAuthorizationError]),
+});
+
+const WsMcpAppsPanelContextRpc = Rpc.make(WS_METHODS.mcpAppsPanelContext, {
+  payload: McpAppPanelContextInput,
+  success: McpAppPanelContext,
+  error: Schema.Union([McpAppRequestError, EnvironmentAuthorizationError]),
+});
+
+const WsMcpPluginsListRpc = Rpc.make(WS_METHODS.mcpPluginsList, {
+  payload: Schema.Struct({}),
+  success: Schema.Array(McpPluginEntry),
+  error: Schema.Union([McpPluginError, EnvironmentAuthorizationError]),
+});
+
+const WsMcpPluginsInstallRpc = Rpc.make(WS_METHODS.mcpPluginsInstall, {
+  payload: McpPluginInstallInput,
+  success: McpPluginEntry,
+  error: Schema.Union([McpPluginError, EnvironmentAuthorizationError]),
+});
+
+const WsMcpPluginsUninstallRpc = Rpc.make(WS_METHODS.mcpPluginsUninstall, {
+  payload: McpPluginIdInput,
+  error: Schema.Union([McpPluginError, EnvironmentAuthorizationError]),
+});
+
+const WsMcpPluginsSetEnabledRpc = Rpc.make(WS_METHODS.mcpPluginsSetEnabled, {
+  payload: McpPluginSetEnabledInput,
+  success: McpPluginEntry,
+  error: Schema.Union([McpPluginError, EnvironmentAuthorizationError]),
+});
+
 const WsMcpAppsReadResourceRpc = Rpc.make(WS_METHODS.mcpAppsReadResource, {
   payload: McpAppReadResourceInput,
   success: McpAppReadResourceResult,
@@ -2877,6 +2929,12 @@ export const WsRpcGroup = RpcGroup.make(
   WsAttachmentsDeleteRpc,
   WsMcpAppsCallToolRpc,
   WsMcpAppsToolInfoRpc,
+  WsMcpAppsOpenPanelRpc,
+  WsMcpAppsPanelContextRpc,
+  WsMcpPluginsListRpc,
+  WsMcpPluginsInstallRpc,
+  WsMcpPluginsUninstallRpc,
+  WsMcpPluginsSetEnabledRpc,
   WsMcpAppsReadResourceRpc,
   WsMcpAppsUpdateModelContextRpc,
   WsProviderUploadFeedbackRpc,

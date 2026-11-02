@@ -78,6 +78,7 @@ import {
   ThreadRouteScreen,
 } from "./features/threads/ThreadRouteScreen";
 import { McpAppFullscreenScreen } from "./features/threads/McpAppFullscreenScreen";
+import { PluginPanelScreen } from "./features/plugins/PluginPanelScreen";
 import { ConnectionsRouteScreen } from "./features/connection/ConnectionsRouteScreen";
 import { ConnectionsNewRouteScreen } from "./features/connection/ConnectionsNewRouteScreen";
 import { AddProjectDestinationRoute } from "./features/projects/AddProjectDestinationRoute";
@@ -903,6 +904,12 @@ const RootStackConfig = createWorkspaceStackNavigator({
         headerShown: false,
         gestureEnabled: false,
       },
+    }),
+    PluginPanel: createNativeStackScreen({
+      screen: PluginPanelScreen,
+      // Thread panels add `?threadId=`; project panels need only the project.
+      linking: "plugins/:environmentId/:projectId/:pluginId/:panelId",
+      options: SOLID_HEADER_OPTIONS,
     }),
     ThreadAttachment: createNativeStackScreen({
       screen: AttachmentFileScreen,

@@ -244,6 +244,14 @@ export const RPC_REQUIRED_SCOPES = {
   [WS_METHODS.mcpAppsToolInfo]: AuthOrchestrationReadScope,
   [WS_METHODS.mcpAppsReadResource]: AuthOrchestrationReadScope,
   [WS_METHODS.mcpAppsUpdateModelContext]: AuthOrchestrationOperateScope,
+  // Opening runs the panel's opening tool, which may act.
+  [WS_METHODS.mcpAppsOpenPanel]: AuthOrchestrationOperateScope,
+  [WS_METHODS.mcpPluginsList]: AuthOrchestrationReadScope,
+  [WS_METHODS.mcpAppsPanelContext]: AuthOrchestrationReadScope,
+  // A plugin's server is a command T3 runs for every agent, like a Tools entry.
+  [WS_METHODS.mcpPluginsInstall]: AuthProvidersManageScope,
+  [WS_METHODS.mcpPluginsUninstall]: AuthProvidersManageScope,
+  [WS_METHODS.mcpPluginsSetEnabled]: AuthProvidersManageScope,
   [WS_METHODS.subscribeVcsStatus]: AuthOrchestrationReadScope,
   [WS_METHODS.subscribeWorktreeSetup]: AuthOrchestrationReadScope,
   [WS_METHODS.worktreeSetupCancel]: AuthOrchestrationOperateScope,

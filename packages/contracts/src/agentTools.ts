@@ -30,6 +30,9 @@ export const McpServerVariable = Schema.Struct({
   name: TrimmedNonEmptyString,
   value: Schema.String.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
   sensitive: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
+  /** Label and help shown where the value is filled in, e.g. a plugin's install form. */
+  title: Schema.optionalKey(TrimmedNonEmptyString),
+  description: Schema.optionalKey(Schema.String),
   valueRedacted: Schema.optionalKey(Schema.Boolean),
   storedAs: Schema.optionalKey(
     Schema.Struct({ server: TrimmedNonEmptyString, variable: TrimmedNonEmptyString }),
@@ -69,9 +72,17 @@ export type McpHttpTransport = typeof McpHttpTransport.Type;
 export const McpServerTransport = Schema.Union([McpStdioTransport, McpHttpTransport]);
 export type McpServerTransport = typeof McpServerTransport.Type;
 
+/** Marks a Tools entry a plugin installed: users can switch it off, but only the plugin changes it. */
+export const McpServerPluginOwner = Schema.Struct({
+  id: TrimmedNonEmptyString,
+  displayName: TrimmedNonEmptyString,
+});
+export type McpServerPluginOwner = typeof McpServerPluginOwner.Type;
+
 export const McpServerConfig = Schema.Struct({
   enabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
   transport: McpServerTransport,
+  plugin: Schema.optionalKey(McpServerPluginOwner),
 });
 export type McpServerConfig = typeof McpServerConfig.Type;
 

@@ -1,7 +1,7 @@
 import { Button } from "../../components/ui/Button";
 import { AppActivityIndicator } from "../../components/ui/AppActivityIndicator";
 import * as Dialog from "../../components/ui/Dialog";
-import type { EnvironmentId, ThreadId, TurnItemId } from "@t3tools/contracts";
+import type { EnvironmentId, McpAppPanelContext, ThreadId, TurnItemId } from "@t3tools/contracts";
 import {
   makeMcpAppHost,
   McpAppHostRefusal,
@@ -44,6 +44,7 @@ import { enqueueThreadOutboxMessage } from "../../state/thread-outbox";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { useAppearancePreferences } from "../settings/appearance/AppearancePreferencesProvider";
 import { MCP_APP_INLINE_MAX_HEIGHT, mcpAppInlineHeight } from "./mcpAppSizing";
+import { mcpAppSourceInput, mcpAppT3Context, type McpAppViewSource } from "./mcpAppSource";
 
 const ROW_BOTTOM_MARGIN = 8;
 
@@ -115,6 +116,33 @@ export function ThreadMcpApp(props: {
   readonly onExitFullscreen?: () => void;
   readonly height?: number;
 }) {
+  const { threadId, conversationThreadId, itemId, revision, ...rest } = props;
+  return (
+    <McpAppView
+      {...rest}
+      source={{ kind: "thread-item", threadId, conversationThreadId, itemId, revision }}
+    />
+  );
+}
+
+/**
+ * A plugin panel fills its screen at `height`, refuses to message or add
+ * context to a conversation, and calls `onClose` when the app asks to close.
+ */
+export function McpAppView(props: {
+  readonly environmentId: EnvironmentId;
+  readonly source: McpAppViewSource;
+  readonly app: McpAppReference;
+  readonly width: number;
+  readonly displayMode?: "inline" | "fullscreen";
+  readonly onExitFullscreen?: () => void;
+  readonly onClose?: () => void;
+  readonly height?: number;
+  /** A plugin panel's directory and git state, refreshed as the active thread changes. */
+  readonly panelContext?: McpAppPanelContext;
+}) {
+  const { source } = props;
+  const panel = source.kind === "plugin-panel";
   const [height, setHeight] = useState(MCP_APP_INLINE_MAX_HEIGHT);
   const [documentKey, setDocumentKeyState] = useState(0);
   // The view keeps its first URL: a re-minted one would reload the app.
@@ -134,6 +162,7 @@ export function ThreadMcpApp(props: {
     setDocumentKeyState((value) => value + 1);
   }
   const fullscreen = props.displayMode === "fullscreen";
+  const fills = fullscreen || panel;
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
   const [closed, setClosed] = useState(false);
@@ -189,15 +218,23 @@ export function ThreadMcpApp(props: {
     return navigation.addListener("focus", () => returnedFromFullscreen());
   }, [navigation, presentedFullscreen]);
 
-  const detailAtom = orchestrationEnvironment.turnItem({
-    environmentId: props.environmentId,
-    input: { threadId: props.threadId, itemId: props.itemId, revision: props.revision },
-  });
+  const detailAtom =
+    source.kind === "thread-item"
+      ? orchestrationEnvironment.turnItem({
+          environmentId: props.environmentId,
+          input: { threadId: source.threadId, itemId: source.itemId, revision: source.revision },
+        })
+      : null;
+  const panelToolCall = source.kind === "plugin-panel" ? source.toolCall : undefined;
+  // A panel without an opening tool has no tool definition to show.
+  const toolName = source.kind === "plugin-panel" ? source.toolCall?.name : app.tool;
   const toolInfo = useEnvironmentQuery(
-    mcpAppEnvironment.toolInfoQuery({
-      environmentId: props.environmentId,
-      input: { threadId: props.threadId, itemId: props.itemId, name: app.tool },
-    }),
+    toolName === undefined
+      ? null
+      : mcpAppEnvironment.toolInfoQuery({
+          environmentId: props.environmentId,
+          input: { ...mcpAppSourceInput(source), name: toolName },
+        }),
   );
   const toolDefinition = toolInfo.data?.tool;
 
@@ -209,7 +246,9 @@ export function ThreadMcpApp(props: {
   });
   // Read current context per message without rebuilding the host and losing its session.
   const conversation = useThreadShell(
-    scopeThreadRef(props.environmentId, props.conversationThreadId),
+    source.kind === "thread-item"
+      ? scopeThreadRef(props.environmentId, source.conversationThreadId)
+      : null,
   );
   const awaitingUser =
     conversation?.hasPendingApprovals === true || conversation?.hasPendingUserInput === true;
@@ -241,7 +280,9 @@ export function ThreadMcpApp(props: {
       previous.toolDefinition !== live.toolDefinition ||
       previous.props.width !== live.props.width ||
       previous.props.height !== live.props.height ||
-      previous.props.displayMode !== live.props.displayMode
+      previous.props.displayMode !== live.props.displayMode ||
+      previous.props.source.threadId !== live.props.source.threadId ||
+      previous.props.panelContext !== live.props.panelContext
     ) {
       host?.updateHostContext();
     }
@@ -252,6 +293,11 @@ export function ThreadMcpApp(props: {
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- subscribes the MCP host to the current tool call
   useEffect(() => {
     if (host === null) return;
+    if (panelToolCall !== undefined) {
+      host.setToolCall(panelToolCall);
+      return;
+    }
+    if (detailAtom === null) return;
     return appAtomRegistry.subscribe(
       detailAtom,
       (result) => {
@@ -260,7 +306,7 @@ export function ThreadMcpApp(props: {
       },
       { immediate: true },
     );
-  }, [host, detailAtom]);
+  }, [host, detailAtom, panelToolCall]);
   const userActive = useRef(false);
 
   // Each WebView document gets its own host: the view is keyed by document,
@@ -278,34 +324,40 @@ export function ThreadMcpApp(props: {
       setDocumentKeyState((value) => value + 1);
     };
     const scope = () => {
-      const { environmentId, threadId, itemId } = latest.current.props;
-      return { environmentId, input: { threadId, itemId } };
+      const { environmentId, source: current } = latest.current.props;
+      return { environmentId, input: mcpAppSourceInput(current) };
     };
     const hostContext = (): McpAppHostContext => {
       const current = latest.current;
+      const isPanel = current.props.source.kind === "plugin-panel";
       const isFullscreen = current.props.displayMode === "fullscreen";
+      const t3 = mcpAppT3Context(current.props.source, current.props.panelContext);
       return {
         theme: current.theme.appearance,
         styles: { variables: mcpAppStyleVariables(current.theme.variables) },
         displayMode: isFullscreen ? "fullscreen" : "inline",
-        availableDisplayModes: ["inline", "fullscreen"],
-        containerDimensions: isFullscreen
-          ? {
-              width: current.props.width,
-              height: current.props.height ?? MCP_APP_INLINE_MAX_HEIGHT,
-            }
-          : { width: current.props.width, maxHeight: MCP_APP_INLINE_MAX_HEIGHT },
+        // A panel already fills its screen; it has no other mode to switch to.
+        availableDisplayModes: isPanel ? ["inline"] : ["inline", "fullscreen"],
+        containerDimensions:
+          isFullscreen || isPanel
+            ? {
+                width: current.props.width,
+                height: current.props.height ?? MCP_APP_INLINE_MAX_HEIGHT,
+              }
+            : { width: current.props.width, maxHeight: MCP_APP_INLINE_MAX_HEIGHT },
         platform: "mobile",
         locale: Intl.DateTimeFormat().resolvedOptions().locale,
         timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
         userAgent: `t3-code/${Constants.expoConfig?.version ?? "0.0.0"}`,
         deviceCapabilities: { touch: true, hover: false },
-        safeAreaInsets: isFullscreen
-          ? { top: 0, right: current.insets.right, bottom: 0, left: current.insets.left }
-          : { top: 0, right: 0, bottom: 0, left: 0 },
+        safeAreaInsets:
+          isFullscreen || isPanel
+            ? { top: 0, right: current.insets.right, bottom: 0, left: current.insets.left }
+            : { top: 0, right: 0, bottom: 0, left: 0 },
         ...(current.toolDefinition === undefined
           ? {}
           : { toolInfo: { tool: current.toolDefinition } }),
+        ...(t3 === undefined ? {} : { t3 }),
       };
     };
     const documentHost: McpAppHost = makeMcpAppHost({
@@ -323,6 +375,7 @@ export function ThreadMcpApp(props: {
         if (!info.value.callable) throw new McpAppHostRefusal("This app cannot call that tool.");
         if (
           !info.value.readOnly &&
+          latest.current.props.source.kind === "thread-item" &&
           !(await confirm(
             `Allow ${app.server} to run ${info.value.title ?? name}?`,
             JSON.stringify(args, null, 2),
@@ -357,12 +410,16 @@ export function ThreadMcpApp(props: {
         }
       },
       sendMessage: async (text) => {
+        const current = latest.current.props.source;
+        if (current.kind !== "thread-item") {
+          throw new McpAppHostRefusal("Plugin panels can't send messages to a conversation.");
+        }
         if (!(await confirm(`Send this message from ${app.server}?`, text, "Send"))) {
           throw new McpAppHostRefusal("Declined by the user.");
         }
         await enqueueThreadOutboxMessage({
           environmentId: latest.current.props.environmentId,
-          threadId: latest.current.props.conversationThreadId,
+          threadId: current.conversationThreadId,
           messageId: MessageId.make(uuidv4()),
           commandId: CommandId.make(uuidv4()),
           text,
@@ -372,19 +429,21 @@ export function ThreadMcpApp(props: {
         });
       },
       updateModelContext: async (context) => {
-        const { environmentId, input } = scope();
+        const current = latest.current.props.source;
+        if (current.kind !== "thread-item") {
+          throw new McpAppHostRefusal("Plugin panels can't add context to a conversation.");
+        }
+        const { threadId, itemId, conversationThreadId } = current;
         const result = await latest.current.updateModelContext({
-          environmentId,
-          input: {
-            ...input,
-            ...context,
-            conversationThreadId: latest.current.props.conversationThreadId,
-          },
+          environmentId: latest.current.props.environmentId,
+          input: { threadId, itemId, ...context, conversationThreadId },
         });
         if (result._tag !== "Success") throw commandFailure(result);
       },
       requestDisplayMode: async (mode) => {
         const current = latest.current.props;
+        const currentSource = current.source;
+        if (currentSource.kind !== "thread-item") return "inline";
         // receive dispatches synchronously; read activation before awaiting teardown.
         if (
           mode === "fullscreen" &&
@@ -405,10 +464,10 @@ export function ThreadMcpApp(props: {
           setPresentedFullscreen(true);
           navigation.navigate("ThreadMcpApp", {
             environmentId: String(current.environmentId),
-            threadId: String(current.threadId),
-            conversationThreadId: String(current.conversationThreadId),
-            itemId: String(current.itemId),
-            revision: current.revision,
+            threadId: String(currentSource.threadId),
+            conversationThreadId: String(currentSource.conversationThreadId),
+            itemId: String(currentSource.itemId),
+            revision: currentSource.revision,
           });
           return "fullscreen";
         }
@@ -455,14 +514,21 @@ export function ThreadMcpApp(props: {
       },
       onRequestTeardown: () => {
         const current = latest.current.props;
-        if (current.displayMode === "fullscreen") {
+        if (current.source.kind === "plugin-panel") {
+          void documentHost.teardown().then(() => current.onClose?.());
+        } else if (current.displayMode === "fullscreen") {
           void documentHost.teardown().then(() => current.onExitFullscreen?.());
         } else {
           void documentHost.teardown().then(() => setClosed(true));
         }
       },
       onSizeChanged: (size) => {
-        if (latest.current.props.displayMode === "fullscreen") return;
+        if (
+          latest.current.props.displayMode === "fullscreen" ||
+          latest.current.props.source.kind === "plugin-panel"
+        ) {
+          return;
+        }
         const nextHeight = mcpAppInlineHeight(size.height);
         if (nextHeight !== undefined) setHeight(nextHeight);
       },
@@ -475,7 +541,7 @@ export function ThreadMcpApp(props: {
     };
   };
 
-  const source =
+  const webViewSource =
     uri === null
       ? null
       : { html: outerDocument(uri, mcpAppAllowAttribute(app.permissions), secret) };
@@ -515,7 +581,7 @@ export function ThreadMcpApp(props: {
   }
 
   return (
-    <View style={fullscreen ? { flex: 1 } : { height, marginBottom: ROW_BOTTOM_MARGIN }}>
+    <View style={fills ? { flex: 1 } : { height, marginBottom: ROW_BOTTOM_MARGIN }}>
       {navigatedAway ? (
         <View className="flex-1 items-center justify-center">
           <Text className="text-sm text-foreground-muted">
@@ -528,7 +594,7 @@ export function ThreadMcpApp(props: {
           ref={attachWebView}
           onContentProcessDidTerminate={restart}
           onRenderProcessGone={restart}
-          source={source!}
+          source={webViewSource!}
           accessibilityLabel={`${app.server} app`}
           style={{ flex: 1, backgroundColor: "transparent" }}
           nestedScrollEnabled
