@@ -564,11 +564,11 @@ jobs:
         with:
           ref: ${{ needs.sync.outputs.ref }}
 
-      - name: Require SSD-backed Mini build storage
+      - name: Require Mini build storage
         if: matrix.runner == 'gmacko-mini'
         shell: bash
         env:
-          T3CODE_MINI_CI_ROOT: ${{ vars.MINI_CI_STORAGE_ROOT || '/Volumes/FleetNativeFast-20261009/t3-ci' }}
+          T3CODE_MINI_CI_ROOT: ${{ vars.MINI_CI_STORAGE_ROOT || '/Users/mackieg/t3-ci' }}
         run: python3 scripts/mini-ci-storage.py
 
       - name: Setup Node
@@ -837,10 +837,10 @@ jobs:
         with:
           ref: ${{ needs.sync.outputs.ref }}
 
-      - name: Require SSD-backed Mini build storage
+      - name: Require Mini build storage
         shell: bash
         env:
-          T3CODE_MINI_CI_ROOT: ${{ vars.MINI_CI_STORAGE_ROOT || '/Volumes/FleetNativeFast-20261009/t3-ci' }}
+          T3CODE_MINI_CI_ROOT: ${{ vars.MINI_CI_STORAGE_ROOT || '/Users/mackieg/t3-ci' }}
         run: python3 scripts/mini-ci-storage.py
 
       - name: Setup Node
@@ -934,9 +934,9 @@ jobs:
           export T3CODE_MACOS_PROVISIONING_PROFILE="$profile_path"
           export CSC_IDENTITY_AUTO_DISCOVERY=true
 
-          # Forgejo job logs are unreadable with API tokens, so keep a copy on
-          # the Mini's CI SSD for diagnosing x64-only failures.
-          build_log="${T3CODE_MINI_CI_ROOT:-/Volumes/FleetNativeFast-20261009/t3-ci}/tmp/gmacko-mac-x64-build-${{ github.run_number }}.log"
+          # Forgejo job logs are unreadable with API tokens, so keep a copy in
+          # the Mini's CI storage for diagnosing x64-only failures.
+          build_log="$TMPDIR/gmacko-mac-x64-build-${{ github.run_number }}.log"
           pnpm vp run dist:desktop:artifact \
             --platform mac \
             --target dmg \
@@ -1029,10 +1029,10 @@ jobs:
         with:
           ref: ${{ needs.sync.outputs.ref }}
 
-      - name: Require SSD-backed Mini build storage
+      - name: Require Mini build storage
         shell: bash
         env:
-          T3CODE_MINI_CI_ROOT: ${{ vars.MINI_CI_STORAGE_ROOT || '/Volumes/FleetNativeFast-20261009/t3-ci' }}
+          T3CODE_MINI_CI_ROOT: ${{ vars.MINI_CI_STORAGE_ROOT || '/Users/mackieg/t3-ci' }}
         run: python3 scripts/mini-ci-storage.py
 
       - name: Setup Node
