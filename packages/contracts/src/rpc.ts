@@ -253,6 +253,14 @@ import {
 } from "./review.ts";
 import { KeybindingsConfigError } from "./keybindings.ts";
 import {
+  McpOAuthError,
+  McpOAuthServerInput,
+  McpOAuthSignInEvent,
+  McpOAuthSignInInput,
+  McpOAuthStatusInput,
+  McpOAuthStatusResult,
+} from "./agentTools.ts";
+import {
   ProjectIssueCreateInput,
   ProjectIssueCreateResult,
   IssueListResult,
@@ -710,6 +718,9 @@ export const WS_METHODS = {
   peerLinksUnlink: "peerLinks.unlink",
   peerLinksAnswerRequest: "peerLinks.answerRequest",
   serverUpdateSettings: "server.updateSettings",
+  agentToolsOAuthStatus: "agentTools.oauth.status",
+  agentToolsOAuthSignIn: "agentTools.oauth.signIn",
+  agentToolsOAuthSignOut: "agentTools.oauth.signOut",
   serverValidateLinearIssues: "server.validateLinearIssues",
   serverListProjectIssues: "server.listProjectIssues",
   serverBobCoordination: "server.bobCoordination",
@@ -1171,6 +1182,24 @@ const WsServerUpdateSettingsRpc = Rpc.make(WS_METHODS.serverUpdateSettings, {
   }),
   success: ServerSettings,
   error: Schema.Union([ServerSettingsError, EnvironmentAuthorizationError]),
+});
+
+const WsAgentToolsOAuthStatusRpc = Rpc.make(WS_METHODS.agentToolsOAuthStatus, {
+  payload: McpOAuthStatusInput,
+  success: McpOAuthStatusResult,
+  error: Schema.Union([McpOAuthError, EnvironmentAuthorizationError]),
+});
+
+const WsAgentToolsOAuthSignInRpc = Rpc.make(WS_METHODS.agentToolsOAuthSignIn, {
+  payload: McpOAuthSignInInput,
+  success: McpOAuthSignInEvent,
+  error: Schema.Union([McpOAuthError, EnvironmentAuthorizationError]),
+  stream: true,
+});
+
+const WsAgentToolsOAuthSignOutRpc = Rpc.make(WS_METHODS.agentToolsOAuthSignOut, {
+  payload: McpOAuthServerInput,
+  error: Schema.Union([McpOAuthError, EnvironmentAuthorizationError]),
 });
 
 export const WsServerValidateLinearIssuesRpc = Rpc.make(WS_METHODS.serverValidateLinearIssues, {
@@ -2725,6 +2754,9 @@ export const WsRpcGroup = RpcGroup.make(
   WsServerGetStorageCleanupReportRpc,
   WsServerGetDatabaseStorageRpc,
   WsServerUpdateSettingsRpc,
+  WsAgentToolsOAuthStatusRpc,
+  WsAgentToolsOAuthSignInRpc,
+  WsAgentToolsOAuthSignOutRpc,
   WsServerValidateLinearIssuesRpc,
   WsServerListProjectIssuesRpc,
   WsServerBobCoordinationRpc,

@@ -10,6 +10,39 @@ import {
 } from "./toolsSettings.logic";
 
 describe("MCP server editor", () => {
+  it("imports a bare hosted URL as OAuth and one with its own headers as not", () => {
+    expect(
+      parseMcpServerJson(JSON.stringify({ linear: { url: "https://mcp.linear.app/mcp" } }))?.oauth,
+    ).toBe(true);
+    expect(
+      parseMcpServerJson(
+        JSON.stringify({
+          docs: { url: "https://example.com/mcp", headers: { Authorization: "Bearer x" } },
+        }),
+      )?.oauth,
+    ).toBe(false);
+  });
+
+  it("keeps OAuth scopes and client ID through an edit", () => {
+    const config = {
+      enabled: true,
+      transport: {
+        type: "http" as const,
+        url: "https://mcp.example/mcp",
+        headers: [],
+        auth: { type: "oauth" as const, scopes: ["read", "write"], clientId: "t3" },
+      },
+    };
+    const draft = mcpServerDraftFrom("example", config);
+    expect(mcpServerFromDraft(draft, new Set(), "example")).toMatchObject({
+      ok: true,
+      transport: config.transport,
+    });
+    expect(mcpServerFromDraft({ ...draft, oauth: false }, new Set(), "example")).not.toHaveProperty(
+      "transport.auth",
+    );
+  });
+
   it("rejects an imported config whose variable values are not scalars", () => {
     for (const server of [
       { command: "node", env: { API_TOKEN: { toString: null } } },
@@ -100,7 +133,12 @@ describe("MCP server editor", () => {
         const transport =
           "command" in server
             ? { type: "stdio", command: "npx", args: ["my-mcp"], env: [] }
-            : { type: "http", url: "https://example.com/mcp", headers: [] };
+            : {
+                type: "http",
+                url: "https://example.com/mcp",
+                headers: [],
+                auth: { type: "oauth", scopes: [] },
+              };
         expect(mcpServerFromDraft(imported, new Set())).toEqual({
           ok: true,
           name: name.toLowerCase(),

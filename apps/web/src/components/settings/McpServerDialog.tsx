@@ -15,6 +15,7 @@ import {
 } from "../ui/dialog";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
+import { Switch } from "../ui/switch";
 import { Textarea } from "../ui/textarea";
 import { Toggle, ToggleGroup } from "../ui/toggle-group";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
@@ -198,21 +199,63 @@ export function McpServerDialog({
                 </div>
               </>
             ) : (
-              <div className="grid gap-1.5">
-                <Label htmlFor={`${id}-url`}>URL</Label>
-                <Input
-                  id={`${id}-url`}
-                  font="mono"
-                  placeholder="https://mcp.example.com/mcp"
-                  value={draft.url}
-                  onChange={(event) => update({ url: event.target.value })}
-                  aria-invalid={error?.field === "url" || undefined}
-                  spellCheck={false}
-                />
-                {error?.field === "url" ? (
-                  <p className="text-xs text-destructive-foreground">{error.message}</p>
+              <>
+                <div className="grid gap-1.5">
+                  <Label htmlFor={`${id}-url`}>URL</Label>
+                  <Input
+                    id={`${id}-url`}
+                    font="mono"
+                    placeholder="https://mcp.example.com/mcp"
+                    value={draft.url}
+                    onChange={(event) => update({ url: event.target.value })}
+                    aria-invalid={error?.field === "url" || undefined}
+                    spellCheck={false}
+                  />
+                  {error?.field === "url" ? (
+                    <p className="text-xs text-destructive-foreground">{error.message}</p>
+                  ) : null}
+                </div>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="grid gap-0.5">
+                    <Label htmlFor={`${id}-oauth`}>Sign in with OAuth</Label>
+                    <p className="text-xs text-muted-foreground">
+                      T3 signs in once for this environment and keeps the token; agents never see
+                      it.
+                    </p>
+                  </div>
+                  <Switch
+                    id={`${id}-oauth`}
+                    checked={draft.oauth}
+                    onCheckedChange={(oauth) => update({ oauth })}
+                  />
+                </div>
+                {draft.oauth ? (
+                  <>
+                    <div className="grid gap-1.5">
+                      <Label htmlFor={`${id}-oauth-scopes`}>Scopes</Label>
+                      <Input
+                        id={`${id}-oauth-scopes`}
+                        font="mono"
+                        placeholder="Leave empty for the server's defaults"
+                        value={draft.oauthScopes}
+                        onChange={(event) => update({ oauthScopes: event.target.value })}
+                        spellCheck={false}
+                      />
+                    </div>
+                    <div className="grid gap-1.5">
+                      <Label htmlFor={`${id}-oauth-client`}>Client ID</Label>
+                      <Input
+                        id={`${id}-oauth-client`}
+                        font="mono"
+                        placeholder="Only if the server can't register clients itself"
+                        value={draft.oauthClientId}
+                        onChange={(event) => update({ oauthClientId: event.target.value })}
+                        spellCheck={false}
+                      />
+                    </div>
+                  </>
                 ) : null}
-              </div>
+              </>
             )}
             <VariablesEditor
               label={draft.type === "stdio" ? "Environment variables" : "Headers"}

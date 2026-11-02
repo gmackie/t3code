@@ -17,6 +17,13 @@ on:
       - packages/provider-grok/src/server/**
       - packages/provider-opencode/src/server/**
       - apps/server/src/mcp/resolveAgentTools.ts
+      - apps/server/src/mcp/McpRemoteAuth.ts
+      - apps/server/src/mcp/mcpRemoteAuthHttp.ts
+      - apps/server/src/server.ts
+      - apps/server/src/ws.ts
+      - packages/contracts/src/rpc.ts
+      - packages/client-runtime/src/state/server.ts
+      - apps/web/src/components/settings/McpOAuthSignIn.tsx
       - apps/server/src/serverSettings.ts
       - apps/server/src/settingsSecrets.ts
       - apps/server/src/auth/RpcAuthorization.ts
@@ -52,7 +59,7 @@ jobs:
           pnpm install --frozen-lockfile
       - name: Verify tools settings and provider injection
         run: |
-          pnpm exec vp test run packages/shared/src/projectSettings.test.ts packages/shared/src/serverSettings.test.ts packages/contracts/src/settings.test.ts apps/server/src/auth/RpcAuthorization.test.ts apps/server/src/serverSettings.test.ts apps/server/src/orchestration-v2/ProviderSessionManager.test.ts apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.test.ts apps/server/src/orchestration-v2/Adapters/CodexAdapterV2.test.ts apps/server/src/orchestration-v2/Adapters/OpenCode2AdapterV2.test.ts apps/server/src/orchestration-v2/Adapters/AcpAdapterV2.test.ts apps/server/src/orchestration-v2/Adapters/AntigravityAdapterV2.test.ts
+          pnpm exec vp test run packages/shared/src/projectSettings.test.ts packages/shared/src/serverSettings.test.ts packages/contracts/src/settings.test.ts apps/server/src/auth/RpcAuthorization.test.ts apps/server/src/mcp/McpRemoteAuth.test.ts apps/server/src/mcp/mcpRemoteAuthHttp.test.ts apps/server/src/mcp/resolveAgentTools.test.ts apps/server/src/serverSettings.test.ts apps/server/src/orchestration-v2/ProviderSessionManager.test.ts apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.test.ts apps/server/src/orchestration-v2/Adapters/CodexAdapterV2.test.ts apps/server/src/orchestration-v2/Adapters/OpenCode2AdapterV2.test.ts apps/server/src/orchestration-v2/Adapters/AcpAdapterV2.test.ts apps/server/src/orchestration-v2/Adapters/AntigravityAdapterV2.test.ts
       - name: Typecheck contracts, shared and server
         run: |
           (cd packages/contracts && pnpm exec tsc --noEmit)
@@ -103,5 +110,5 @@ jobs:
       # Lint from the root: oxlint resolves the repo's local plugin relative to it.
       - name: Lint the Tools editor
         run: |
-          pnpm exec vp lint apps/web/src/components/settings/ToolsSettings.tsx apps/web/src/components/settings/McpServerDialog.tsx apps/web/src/components/settings/toolsSettings.logic.ts
-          pnpm exec vp fmt --check apps/web/src/components/settings/ToolsSettings.tsx apps/web/src/components/settings/McpServerDialog.tsx apps/web/src/components/settings/toolsSettings.logic.ts
+          pnpm exec vp lint apps/web/src/components/settings/ToolsSettings.tsx apps/web/src/components/settings/McpServerDialog.tsx apps/web/src/components/settings/McpOAuthSignIn.tsx apps/web/src/components/settings/toolsSettings.logic.ts
+          pnpm exec vp fmt --check apps/web/src/components/settings/ToolsSettings.tsx apps/web/src/components/settings/McpServerDialog.tsx apps/web/src/components/settings/McpOAuthSignIn.tsx apps/web/src/components/settings/toolsSettings.logic.ts

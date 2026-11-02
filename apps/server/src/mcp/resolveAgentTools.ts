@@ -29,3 +29,35 @@ export function resolveAgentTools(
           .digest("hex");
   return { servers, disabledSkills, fingerprint };
 }
+
+/**
+ * Points OAuth servers at T3's proxy (`/mcp/servers/<name>`) under the
+ * session's own `/mcp` credential, so a provider never holds an upstream
+ * token and refresh happens in one place. The fingerprint stays the
+ * settings one: a reissued session token is not a tools change.
+ */
+export function proxyOAuthServers(
+  tools: McpProviderSessionTools,
+  session: { readonly endpoint: string; readonly authorizationHeader: string },
+): McpProviderSessionTools {
+  if (!tools.servers.some((server) => server.transport.type === "http" && server.transport.auth))
+    return tools;
+  return {
+    ...tools,
+    servers: tools.servers.map((server) =>
+      server.transport.type === "http" && server.transport.auth !== undefined
+        ? {
+            name: server.name,
+            transport: {
+              type: "http",
+              url: new URL(`/mcp/servers/${encodeURIComponent(server.name)}`, session.endpoint)
+                .href,
+              headers: [
+                { name: "Authorization", value: session.authorizationHeader, sensitive: true },
+              ],
+            },
+          }
+        : server,
+    ),
+  };
+}
