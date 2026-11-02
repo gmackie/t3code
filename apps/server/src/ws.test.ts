@@ -32,7 +32,6 @@ import { RpcGroup, RpcMessage, RpcServer } from "effect/rpc";
 import * as SqlClient from "effect/sql/SqlClient";
 
 import * as PreviewAutomationBroker from "./mcp/PreviewAutomationBroker.ts";
-import * as PluginCommandCatalog from "./plugins/PluginCommandCatalog.ts";
 import * as BobCoordination from "./coordination/BobCoordination.ts";
 import * as EngineGateway from "./engine/EngineGateway.ts";
 import * as ServerConfigDiscovery from "./environment/ServerConfigDiscovery.ts";
@@ -41,7 +40,6 @@ import * as ForgeGraphSignIn from "./sourceControl/ForgeGraphSignIn.ts";
 import * as PistacheSource from "./routing/PistacheSource.ts";
 import * as ReverseWorkbench from "./reverse/ReverseWorkbench.ts";
 import * as SystemsService from "./systems/SystemsService.ts";
-import * as LegacyPluginPackageManager from "./plugins/PluginPackageManager.ts";
 import * as ServerBrowser from "./preview/ServerBrowser.ts";
 import * as AcpRegistryRuntimeCoordinator from "@t3tools/provider-acp-registry/server/AcpRegistryRuntimeCoordinator";
 import * as AcpRegistrySupport from "@t3tools/provider-acp-registry/server/AcpRegistrySupport";
@@ -765,8 +763,6 @@ it.effect.each(["pending", "cached"] as const)(
               scopes: [],
             },
             {},
-            yield* PluginCommandCatalog.PluginCommandCatalog,
-            yield* LegacyPluginPackageManager.PluginPackageManager,
             yield* ServerBrowser.ServerBrowser,
             () => Effect.void,
           ).pipe(Layer.provide(configRpcServices)),
@@ -846,8 +842,6 @@ it.effect.each(["pending", "cached"] as const)(
         Layer.mergeAll(
           Layer.fresh(layerConfigSources),
           Layer.mock(PreviewAutomationBroker.PreviewAutomationBroker)({}),
-          Layer.mock(PluginCommandCatalog.PluginCommandCatalog)({}),
-          Layer.mock(LegacyPluginPackageManager.PluginPackageManager)({}),
           Layer.mock(ServerBrowser.ServerBrowser)({}),
         ),
       ),
@@ -960,8 +954,6 @@ it.effect("on-demand clients get provider config without workspace snapshots", (
             scopes: [],
           },
           {},
-          yield* PluginCommandCatalog.PluginCommandCatalog,
-          yield* LegacyPluginPackageManager.PluginPackageManager,
           yield* ServerBrowser.ServerBrowser,
           () => Effect.void,
         ).pipe(Layer.provide(configRpcServices)),
@@ -1014,8 +1006,6 @@ it.effect("on-demand clients get provider config without workspace snapshots", (
       Layer.mergeAll(
         Layer.fresh(layerConfigSources),
         Layer.mock(PreviewAutomationBroker.PreviewAutomationBroker)({}),
-        Layer.mock(PluginCommandCatalog.PluginCommandCatalog)({}),
-        Layer.mock(LegacyPluginPackageManager.PluginPackageManager)({}),
         Layer.mock(ServerBrowser.ServerBrowser)({}),
       ),
     ),

@@ -302,19 +302,6 @@ describe("resolveIdleCompaction", () => {
   });
 });
 
-describe("ClientSettings composer review", () => {
-  it("keeps legacy settings enabled and preserves an explicit opt-out", () => {
-    expect(decodeClientSettings({}).composerReviewEnabled).toBe(true);
-    expect(decodeClientSettingsPatch({})).not.toHaveProperty("composerReviewEnabled");
-    expect(decodeClientSettings({ composerReviewEnabled: false }).composerReviewEnabled).toBe(
-      false,
-    );
-    expect(decodeClientSettingsPatch({ composerReviewEnabled: false })).toEqual({
-      composerReviewEnabled: false,
-    });
-  });
-});
-
 describe("ClientSettings notifications", () => {
   it("requires opt-in when existing settings omit notification preferences", () => {
     expect(decodeClientSettings({}).notificationMode).toBe("off");
@@ -395,19 +382,6 @@ describe("ClientSettings window opacity", () => {
   it.each([40, 75, 100])("accepts a window opacity within the supported range: %s", (value) => {
     expect(decodeClientSettings({ windowOpacity: value }).windowOpacity).toBe(value);
     expect(decodeClientSettingsPatch({ windowOpacity: value }).windowOpacity).toBe(value);
-  });
-});
-
-describe("ServerSettings enabled plugin packages", () => {
-  it("defaults to no enabled packages without exposing lifecycle state in public patches", () => {
-    expect(decodeServerSettings({}).enabledPluginIds).toEqual([]);
-    expect(
-      decodeServerSettings({ enabledPluginIds: ["com.acme.runtime-status"] }).enabledPluginIds,
-    ).toEqual(["com.acme.runtime-status"]);
-    expect(() => decodeServerSettings({ enabledPluginIds: ["runtime-status"] })).toThrow();
-    expect(decodeServerSettingsPatch({ enabledPluginIds: ["com.acme.runtime-status"] })).toEqual(
-      {},
-    );
   });
 });
 

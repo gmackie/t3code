@@ -46,18 +46,6 @@ describe("RPC authorization scopes", () => {
     }
   });
 
-  it("allows command discovery with read scope and invocation with operate scope", () => {
-    expect(requiredScopeForRpcMethod(WS_METHODS.pluginCommandsList)).toBe(
-      AuthOrchestrationReadScope,
-    );
-    expect(requiredScopeForRpcMethod(WS_METHODS.subscribePluginCommands)).toBe(
-      AuthOrchestrationReadScope,
-    );
-    expect(requiredScopeForRpcMethod(WS_METHODS.pluginCommandsInvoke)).toBe(
-      AuthOrchestrationOperateScope,
-    );
-  });
-
   it("requires the settings grant that saving a token needs to sign in to ForgeGraph", () => {
     for (const method of [
       WS_METHODS.sourceControlForgeGraphSignInStart,

@@ -6,8 +6,9 @@ import { ORCHESTRATION_V2_WS_METHODS } from "./orchestrationV2.ts";
 import { WS_METHODS, WsRpcGroup } from "./rpc.ts";
 
 describe("custom-local RPCs", () => {
-  it("exposes plugin lifecycle management", () => {
-    expect(WS_METHODS).toHaveProperty("pluginList", "plugin.list");
+  it("exposes MCP plugin management, not the removed plugin runtime", () => {
+    expect(WS_METHODS).toHaveProperty("mcpPluginsList");
+    expect(Object.values(WS_METHODS)).not.toContain("plugin.list");
   });
 
   it("exposes the project issue viewer", () => {

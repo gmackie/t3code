@@ -291,11 +291,6 @@ function makeMutableServerSettingsService(
           yield* PubSub.publish(changes, next);
           return next;
         }),
-      setEnabledPluginIds: (ids) =>
-        Ref.updateAndGet(settingsRef, (current) => ({
-          ...current,
-          enabledPluginIds: [...ids],
-        })),
       updateProviderInstance: (mutation, patch = {}) =>
         Effect.gen(function* () {
           const current = yield* Ref.get(settingsRef);

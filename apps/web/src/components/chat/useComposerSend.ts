@@ -42,19 +42,7 @@ import {
   scopeThreadRef,
 } from "@t3tools/client-runtime/environment";
 import { createModelSelection } from "@t3tools/shared/model";
-import { useAtomValue } from "@effect/atom-react";
-import { type SetStateAction, useLayoutEffect, useRef, useState } from "react";
-import {
-  gateComposerSend,
-  resolveComposerReviewAction,
-  shouldReviewComposerDraft,
-  type ComposerReviewAction,
-  type ComposerReviewSuggestion,
-} from "@t3tools/client-runtime/plugins";
-import { useComposerReviewMutes } from "../../composerReviewMutes";
-import { useStableCallback } from "../../hooks/useStableCallback";
-import { pluginEnvironment } from "../../state/plugins";
-import { useAtomCommand } from "../../state/use-atom-command";
+import { type SetStateAction, useLayoutEffect, useRef } from "react";
 import { flushSync } from "react-dom";
 import { useNavigate } from "@tanstack/react-router";
 import {
@@ -86,7 +74,6 @@ import {
   type ComposerFileAttachment,
   type ComposerImageAttachment,
   type DraftThreadEnvMode,
-  type ComposerThreadDraftState,
   useComposerDraftStore,
   DraftId,
 } from "../../composerDraftStore";
@@ -161,7 +148,6 @@ import type { useWorktreeSetup } from "./useWorktreeSetup";
 const ENVIRONMENT_UNAVAILABLE_SEND_TOAST_TRAIL_SIZE = 3;
 
 const selectPlanModeEnabled = (settings: UnifiedSettings) => settings.planModeEnabled;
-const selectComposerReviewEnabled = (settings: UnifiedSettings) => settings.composerReviewEnabled;
 
 function readEnvironmentPresentation(environmentId: EnvironmentId) {
   return appAtomRegistry.get(environmentPresentations.presentationsAtom).get(environmentId);
@@ -354,35 +340,6 @@ export function useComposerSend(input: ComposerSendInput) {
   const navigate = useNavigate();
   const clientSettingsHydrated = useClientSettingsHydrated();
   const planModeEnabled = useEnvironmentSettings(environmentId, selectPlanModeEnabled);
-  const composerReviewEnabled = useEnvironmentSettings(environmentId, selectComposerReviewEnabled);
-  const canReviewComposer = useAtomValue(
-    pluginEnvironment.composerReview.permissionAtom(environmentId),
-  );
-  const reviewDraft = useAtomCommand(pluginEnvironment.composerReview, {
-    reportFailure: false,
-    reportDefect: false,
-  });
-  const recordReviewDecision = useAtomCommand(pluginEnvironment.composerReviewDecision, {
-    reportFailure: false,
-    reportDefect: false,
-  });
-  const { mutedThreadKeys, muteThread, unmuteThread } = useComposerReviewMutes();
-  const [review, setReview] = useState<{
-    readonly threadKey: string;
-    readonly draft: ComposerThreadDraftState | null;
-    readonly suggestion: ComposerReviewSuggestion;
-    readonly dispatchMode: ComposerDispatchMode;
-    readonly submissionIntent: ComposerSubmissionIntent;
-  } | null>(null);
-  const currentReview =
-    composerReviewEnabled &&
-    canReviewComposer &&
-    !mutedThreadKeys.has(routeThreadKey) &&
-    !activePendingProgress &&
-    !queuedRunEdit.isEditing &&
-    review?.threadKey === routeThreadKey
-      ? review
-      : null;
   const startThreadTurn = useOrchestrationCommand(threadEnvironment.startTurn, {
     reportFailure: false,
   });
@@ -453,7 +410,6 @@ export function useComposerSend(input: ComposerSendInput) {
       annotation: PreviewAnnotationPayload;
       image: ComposerImageAttachment | null;
     },
-    skipComposerReview = false,
   ) => {
     e?.preventDefault();
     // What the user pressed send on; uploads below can take a while, and a redirect must not
@@ -886,49 +842,6 @@ export function useComposerSend(input: ComposerSendInput) {
       return;
     }
     const threadIdForSend = activeThread.id;
-    const reviewGate = {
-      enabled: composerReviewEnabled && canReviewComposer,
-      threadMuted: mutedThreadKeys.has(routeThreadKey),
-      bypass: skipComposerReview || directAnnotation !== undefined,
-      draft: promptForSend,
-    };
-    if (shouldReviewComposerDraft(reviewGate)) {
-      const draftAtReview = useComposerDraftStore.getState().getComposerDraft(composerDraftTarget);
-      sendInFlightRef.current = true;
-      const outcome = await gateComposerSend({
-        ...reviewGate,
-        isCurrent: () =>
-          currentRouteThreadKeyRef.current === routeThreadKey &&
-          promptRef.current === promptAtSend &&
-          useComposerDraftStore.getState().getComposerDraft(composerDraftTarget) === draftAtReview,
-        review: async () => {
-          const result = await reviewDraft({
-            environmentId,
-            input: {
-              threadId: threadIdForSend,
-              projectRoot: activeProject.workspaceRoot,
-              providerModel: ctxSelectedModel || null,
-              draft: promptForSend,
-            },
-          });
-          return result._tag === "Success" ? result.value : null;
-        },
-      }).finally(() => {
-        sendInFlightRef.current = false;
-      });
-      if (outcome.kind === "cancel") return;
-      if (outcome.kind === "suggest") {
-        setReview({
-          threadKey: routeThreadKey,
-          draft: draftAtReview,
-          suggestion: outcome.suggestion,
-          dispatchMode,
-          submissionIntent,
-        });
-        return;
-      }
-    }
-    setReview(null);
     const sendSnapshot = snapshotComposerSend({
       prompt: promptForSend,
       images: composerImages,
@@ -1600,61 +1513,5 @@ export function useComposerSend(input: ComposerSendInput) {
     }
   };
 
-  const onComposerReviewAction = useStableCallback((action: ComposerReviewAction) => {
-    if (!currentReview || !activeThread) return;
-    if (
-      currentRouteThreadKeyRef.current !== routeThreadKey ||
-      useComposerDraftStore.getState().getComposerDraft(composerDraftTarget) !== currentReview.draft
-    ) {
-      setReview(null);
-      return;
-    }
-    const effect = resolveComposerReviewAction(currentReview.suggestion, action);
-    setReview(null);
-    void recordReviewDecision({
-      environmentId,
-      input: {
-        pluginId: currentReview.suggestion.pluginId,
-        threadId: activeThread.id,
-        decision: effect.decision,
-      },
-    });
-    if (effect.muteThread) {
-      muteThread(routeThreadKey);
-      toastManager.add(
-        stackedThreadToast({
-          type: "info",
-          title: "Prompt coach muted for this thread",
-          actionProps: { children: "Undo", onClick: () => unmuteThread(routeThreadKey) },
-        }),
-      );
-    }
-    if (effect.nextDraft !== null) {
-      promptRef.current = effect.nextDraft;
-      setComposerDraftPrompt(composerDraftTarget, effect.nextDraft);
-    }
-    if (effect.send) {
-      void onSend(
-        undefined,
-        currentReview.dispatchMode,
-        currentReview.submissionIntent,
-        undefined,
-        true,
-      );
-    } else {
-      composerRef.current?.focusAtEnd();
-    }
-  });
-
-  return {
-    onSend,
-    composerReview:
-      currentReview === null
-        ? null
-        : {
-            draft: currentReview.draft,
-            suggestion: currentReview.suggestion,
-            onAction: onComposerReviewAction,
-          },
-  };
+  return { onSend };
 }

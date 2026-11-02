@@ -460,17 +460,9 @@
       "types": "./src/work-log/scrollAnchor.ts",
       "default": "./src/work-log/scrollAnchor.ts"
     },
-    "./plugins": {
-      "types": "./src/plugins/index.ts",
-      "default": "./src/plugins/index.ts"
-    },
     "./pull-request-link-input": {
       "types": "./src/pullRequestLinkInput.ts",
       "default": "./src/pullRequestLinkInput.ts"
-    },
-    "./state/plugins": {
-      "types": "./src/state/plugins.ts",
-      "default": "./src/state/plugins.ts"
     },
     "./change-request-links": {
       "types": "./src/changeRequestLinks.ts",
