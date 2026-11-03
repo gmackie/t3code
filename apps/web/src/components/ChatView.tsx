@@ -2889,7 +2889,7 @@ export default function ChatView(props: ChatViewProps) {
     activeEnvironmentUnavailable,
     defaultRuntimeMode,
   });
-  const { onSend, composerReview } = useComposerSend({
+  const { onSend } = useComposerSend({
     environmentId,
     routeThreadKey,
     currentRouteThreadKeyRef,
@@ -3640,7 +3640,6 @@ export default function ChatView(props: ChatViewProps) {
                                   ? EMPTY_COMPOSER_BANNER_ITEMS
                                   : composerBannerItems
                               }
-                              composerReview={composerReview}
                               resumeCompactionTokens={resumeCompactionTokens}
                               keepFullHistory={keepFullHistory}
                               onToggleKeepFullHistory={toggleKeepFullHistoryStable}

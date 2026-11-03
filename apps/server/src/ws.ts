@@ -21,7 +21,6 @@ import * as Result from "effect/Result";
 import * as Stream from "effect/Stream";
 import { rpcInitialItems } from "./rpcInitialItems.ts";
 // @effect-diagnostics nodeBuiltinImport:off - plugin state paths are resolved at the server boundary.
-import * as NodePath from "node:path";
 import * as ReverseWorkbench from "./reverse/ReverseWorkbench.ts";
 import * as SystemsService from "./systems/SystemsService.ts";
 import { subscribeChatGptHandoff } from "./provider/CodexChatGptHandoff.ts";
@@ -32,7 +31,6 @@ import {
   authScopeResponse,
   AuthAccessStreamError,
   AuthOrchestrationOperateScope,
-  AuthOrchestrationReadScope,
   type AuthAccessStreamEvent,
   type EditorId,
   type FileManagerRevealKind,
@@ -119,8 +117,6 @@ import * as NativeChildWorkQuery from "./orchestration-v2/NativeChildWorkQuery.t
 import * as ServerConfig from "./config.ts";
 import * as EnvironmentTheme from "./environmentTheme.ts";
 import * as Keybindings from "./keybindings.ts";
-import * as PluginCommandCatalog from "./plugins/PluginCommandCatalog.ts";
-import * as LegacyPluginPackageManager from "./plugins/PluginPackageManager.ts";
 import * as ExternalLauncher from "./process/externalLauncher.ts";
 import * as ThreadManagementService from "./orchestration-v2/ThreadManagementService.ts";
 import * as ThreadViewers from "./orchestration-v2/ThreadViewers.ts";
@@ -291,47 +287,12 @@ import * as AgentSessionScanner from "./project/AgentSessionScanner.ts";
 import * as AgentSessionImporter from "./project/AgentSessionImporter.ts";
 import * as UsageLimitSources from "./usage/UsageLimitSources.ts";
 import * as PistacheSource from "./routing/PistacheSource.ts";
-import { createLocalPluginPackageReader, PluginPackageManager } from "./plugins/packageManager.ts";
-import { BUNDLED_PLUGINS } from "./plugins/bundledCatalog.ts";
-import { PluginLifecycle } from "./plugins/lifecycle.ts";
-import { PluginStateStore } from "./plugins/stateStore.ts";
-import { PluginSettingsStore } from "./plugins/settingsStore.ts";
-import { PluginRuntimeHost } from "./plugins/runtimeHost.ts";
-import {
-  createNodeManagedPluginLauncher,
-  PluginRuntimeSupervisor,
-} from "./plugins/runtimeSupervisor.ts";
 
 const isProviderUploadFeedbackError = Schema.is(ProviderUploadFeedbackError);
 const CLIENT_MODEL_AUTHORITY: SystemsService.SystemsAuthority = new Set([
   "model.read",
   "model.edit",
 ]);
-
-const pluginRegistryEntry = (plugin: ReturnType<PluginLifecycle["snapshot"]>[number]) => ({
-  pluginId: plugin.manifest.id,
-  displayName: plugin.manifest.displayName,
-  version: plugin.manifest.version,
-  source: plugin.source,
-  health: { pluginId: plugin.manifest.id, state: plugin.state },
-  capabilities: [...plugin.manifest.capabilities],
-  grants: [...plugin.grants],
-  settings: [...(plugin.manifest.contributes.settings ?? [])],
-  settingsPanels: [...(plugin.manifest.contributes.settingsPanels ?? [])],
-  navigation: [...(plugin.manifest.contributes.navigation ?? [])],
-  panels: [...(plugin.manifest.contributes.panels ?? [])],
-  workflows: [...(plugin.manifest.contributes.workflows ?? [])],
-});
-const isSecretContribution = (item: import("@t3tools/contracts").PluginSettingContribution) =>
-  item.field.kind === "text" && item.field.secret === true;
-const pluginManifest = (
-  pluginId: string,
-  plugins: readonly ReturnType<PluginLifecycle["snapshot"]>[number][],
-) => {
-  const plugin = plugins.find((entry) => entry.manifest.id === pluginId);
-  if (!plugin) throw new Error(`plugin not installed: ${pluginId}`);
-  return plugin.manifest;
-};
 
 const CONFIG_DISCOVERY_TIMEOUT = Duration.seconds(5);
 
@@ -1302,8 +1263,6 @@ export const subscribeOrchestrationV2Shell = Effect.fn("ws.orchestrationV2.subsc
 export const layerWsRpc = (
   currentSession: EnvironmentAuth.AuthenticatedSession,
   clientAnalyticsProps: Readonly<Record<string, unknown>>,
-  pluginCommands: PluginCommandCatalog.PluginCommandCatalog["Service"],
-  pluginPackages: LegacyPluginPackageManager.PluginPackageManager["Service"],
   serverBrowser: ServerBrowser.ServerBrowser["Service"],
   reportProfiles: ServerBrowser.ProfileReporter,
 ) =>
@@ -1425,22 +1384,6 @@ export const layerWsRpc = (
       const config = yield* ServerConfig.ServerConfig;
       const reverseWorkbench = yield* ReverseWorkbench.ReverseWorkbench;
       const systems = yield* SystemsService.SystemsService;
-      const pluginPackageManager = new PluginPackageManager(
-        createLocalPluginPackageReader(config.stateDir),
-      );
-      const pluginLifecycle = new PluginLifecycle(
-        new PluginStateStore(NodePath.join(config.stateDir, "plugins.json")),
-      );
-      for (const bundled of BUNDLED_PLUGINS) {
-        if (!pluginLifecycle.has(bundled.manifest.id)) pluginLifecycle.install(bundled);
-      }
-      const pluginSettingsStore = new PluginSettingsStore(
-        NodePath.join(config.stateDir, "plugin-settings.json"),
-      );
-      const pluginRuntimeHost = new PluginRuntimeHost(
-        pluginLifecycle,
-        new PluginRuntimeSupervisor(createNodeManagedPluginLauncher()),
-      );
       const lifecycleEvents = yield* ServerLifecycleEvents.ServerLifecycleEvents;
       const storageCleanup = yield* StorageCleanup.StorageCleanup;
       const databaseStorage = yield* DatabaseStorage.DatabaseStorage;
@@ -2466,190 +2409,6 @@ export const layerWsRpc = (
               }),
             ),
           ),
-        [WS_METHODS.pluginList]: (_input) =>
-          Effect.succeed(pluginLifecycle.snapshot().map(pluginRegistryEntry)),
-        [WS_METHODS.pluginInstall]: (input) =>
-          Effect.tryPromise({
-            try: async () => {
-              const packageInfo = input.manifest
-                ? { manifest: input.manifest, source: input.source }
-                : await pluginPackageManager.install(input.source);
-              pluginLifecycle.install(packageInfo);
-              const plugin = pluginLifecycle
-                .snapshot()
-                .find((entry) => entry.manifest.id === packageInfo.manifest.id);
-              if (!plugin) throw new Error("plugin install did not register");
-              return pluginRegistryEntry(plugin);
-            },
-            catch: (error) =>
-              new EnvironmentAuthorizationError({
-                message: error instanceof Error ? error.message : "Plugin installation failed.",
-                requiredScope: AuthOrchestrationOperateScope,
-              }),
-          }),
-        [WS_METHODS.pluginEnable]: (input) =>
-          Effect.tryPromise({
-            try: () => pluginRuntimeHost.enable(input.pluginId),
-            catch: (error) =>
-              new EnvironmentAuthorizationError({
-                message: error instanceof Error ? error.message : "Plugin enable failed.",
-                requiredScope: AuthOrchestrationOperateScope,
-              }),
-          }),
-        [WS_METHODS.pluginDisable]: (input) =>
-          Effect.tryPromise({
-            try: () => pluginRuntimeHost.disable(input.pluginId),
-            catch: (error) =>
-              new EnvironmentAuthorizationError({
-                message: error instanceof Error ? error.message : "Plugin disable failed.",
-                requiredScope: AuthOrchestrationOperateScope,
-              }),
-          }),
-        [WS_METHODS.pluginGrant]: (input) =>
-          Effect.try({
-            try: () => {
-              pluginLifecycle.grant(input.pluginId, input.capability);
-              return pluginLifecycle.health(input.pluginId);
-            },
-            catch: (error) =>
-              new EnvironmentAuthorizationError({
-                message: error instanceof Error ? error.message : "Plugin capability grant failed.",
-                requiredScope: AuthOrchestrationOperateScope,
-              }),
-          }),
-        [WS_METHODS.pluginRevoke]: (input) =>
-          Effect.try({
-            try: () => {
-              pluginLifecycle.revoke(input.pluginId, input.capability);
-              return pluginLifecycle.health(input.pluginId);
-            },
-            catch: (error) =>
-              new EnvironmentAuthorizationError({
-                message:
-                  error instanceof Error ? error.message : "Plugin capability revoke failed.",
-                requiredScope: AuthOrchestrationOperateScope,
-              }),
-          }),
-        [WS_METHODS.pluginHealth]: (input) =>
-          Effect.try({
-            try: () => pluginRuntimeHost.health(input.pluginId),
-            catch: (error) =>
-              new EnvironmentAuthorizationError({
-                message: error instanceof Error ? error.message : "Plugin health lookup failed.",
-                requiredScope: AuthOrchestrationReadScope,
-              }),
-          }),
-        [WS_METHODS.pluginSurfaceGet]: (input) =>
-          Effect.tryPromise({
-            try: () => pluginRuntimeHost.surface(input),
-            catch: (error) =>
-              new EnvironmentAuthorizationError({
-                message: error instanceof Error ? error.message : "Plugin surface lookup failed.",
-                requiredScope: AuthOrchestrationReadScope,
-              }),
-          }),
-        [WS_METHODS.pluginPanelGet]: (input) =>
-          Effect.tryPromise({
-            try: () => pluginRuntimeHost.panel(input),
-            catch: (error) =>
-              new EnvironmentAuthorizationError({
-                message: error instanceof Error ? error.message : "Plugin panel lookup failed.",
-                requiredScope: AuthOrchestrationReadScope,
-              }),
-          }),
-        [WS_METHODS.pluginWorkflowGet]: (input) =>
-          Effect.tryPromise({
-            try: () => pluginRuntimeHost.workflow(input),
-            catch: (error) =>
-              new EnvironmentAuthorizationError({
-                message: error instanceof Error ? error.message : "Plugin workflow lookup failed.",
-                requiredScope: AuthOrchestrationReadScope,
-              }),
-          }),
-        [WS_METHODS.pluginWorkflowAction]: (input) =>
-          Effect.tryPromise({
-            try: () => pluginRuntimeHost.workflowAction(input),
-            catch: (error) =>
-              new EnvironmentAuthorizationError({
-                message: error instanceof Error ? error.message : "Plugin workflow action failed.",
-                requiredScope: AuthOrchestrationOperateScope,
-              }),
-          }),
-        [WS_METHODS.pluginAction]: (input) =>
-          Effect.tryPromise({
-            try: () => pluginRuntimeHost.action(input),
-            catch: (error) =>
-              new EnvironmentAuthorizationError({
-                message: error instanceof Error ? error.message : "Plugin action failed.",
-                requiredScope: AuthOrchestrationOperateScope,
-              }),
-          }),
-        [WS_METHODS.pluginComposerReview]: (input) =>
-          Effect.promise(() => pluginRuntimeHost.composerReview(input)),
-        [WS_METHODS.pluginComposerReviewDecision]: (input) =>
-          Effect.promise(() => pluginRuntimeHost.composerReviewDecision(input)),
-        [WS_METHODS.pluginSettingsGet]: (input) =>
-          Effect.try({
-            try: () => {
-              const contributions =
-                pluginManifest(input.pluginId, pluginLifecycle.snapshot()).contributes.settings ??
-                [];
-              return {
-                pluginId: input.pluginId,
-                ...(input.projectId !== undefined ? { projectId: input.projectId } : {}),
-                values: pluginSettingsStore.get(input.pluginId, input.projectId, contributions),
-                redacted: contributions.filter(isSecretContribution).map((item) => item.id),
-              };
-            },
-            catch: (error) =>
-              new EnvironmentAuthorizationError({
-                message: error instanceof Error ? error.message : "Plugin settings lookup failed.",
-                requiredScope: AuthOrchestrationReadScope,
-              }),
-          }),
-        [WS_METHODS.pluginSettingsUpdate]: (input) =>
-          Effect.try({
-            try: () => {
-              const contributions =
-                pluginManifest(input.pluginId, pluginLifecycle.snapshot()).contributes.settings ??
-                [];
-              return {
-                pluginId: input.pluginId,
-                ...(input.projectId !== undefined ? { projectId: input.projectId } : {}),
-                values: pluginSettingsStore.update(
-                  input.pluginId,
-                  input.projectId,
-                  contributions,
-                  input.values,
-                ),
-                redacted: contributions.filter(isSecretContribution).map((item) => item.id),
-              };
-            },
-            catch: (error) =>
-              new EnvironmentAuthorizationError({
-                message: error instanceof Error ? error.message : "Plugin settings update failed.",
-                requiredScope: AuthOrchestrationOperateScope,
-              }),
-          }),
-        [WS_METHODS.pluginSettingsReset]: (input) =>
-          Effect.try({
-            try: () => {
-              const contributions =
-                pluginManifest(input.pluginId, pluginLifecycle.snapshot()).contributes.settings ??
-                [];
-              return {
-                pluginId: input.pluginId,
-                ...(input.projectId !== undefined ? { projectId: input.projectId } : {}),
-                values: pluginSettingsStore.reset(input.pluginId, input.projectId, contributions),
-                redacted: [],
-              };
-            },
-            catch: (error) =>
-              new EnvironmentAuthorizationError({
-                message: error instanceof Error ? error.message : "Plugin settings reset failed.",
-                requiredScope: AuthOrchestrationOperateScope,
-              }),
-          }),
         [WS_METHODS.serverRefreshProviders]:
           /* Request instrumentation already owns the span; keep this helper in that context. */
           Effect.fnUntraced(function* (input) {
@@ -3723,13 +3482,6 @@ export const layerWsRpc = (
               Stream.concat(Stream.make(latest), changes),
             ),
           ),
-        [WS_METHODS.pluginCommandsList]: () => pluginCommands.list,
-        [WS_METHODS.pluginCommandsInvoke]: (input) => pluginCommands.invoke(input),
-        [WS_METHODS.pluginPackagesStatus]: () => pluginPackages.status,
-        [WS_METHODS.pluginPackagesEnable]: (input) => pluginPackages.enable(input.id),
-        [WS_METHODS.pluginPackagesDisable]: (input) => pluginPackages.disable(input.id),
-        [WS_METHODS.pluginPackagesReload]: (input) => pluginPackages.reload(input.id),
-        [WS_METHODS.subscribePluginCommands]: (_input) => pluginCommands.changes,
       });
       const splitHandlers: Pick<typeof handlers, SplitWsRpc["_tag"]> = handlers;
       const otherHandlers: Pick<typeof handlers, Exclude<ServerWsRpc, SplitWsRpc>["_tag"]> =
@@ -3749,8 +3501,6 @@ export const WS_RPC_SERVER_OPTIONS = {
 
 export const layer = Layer.unwrap(
   Effect.gen(function* () {
-    const pluginCommands = yield* PluginCommandCatalog.PluginCommandCatalog;
-    const pluginPackages = yield* LegacyPluginPackageManager.PluginPackageManager;
     const serverBrowser = yield* ServerBrowser.ServerBrowser;
     const serverSelfUpdate = yield* ServerSelfUpdate.ServerSelfUpdate;
     const npmRelease = yield* NpmRelease.NpmRelease;
@@ -3828,14 +3578,7 @@ export const layer = Layer.unwrap(
           return httpEffect;
         }).pipe(
           Effect.provide(
-            layerWsRpc(
-              session,
-              clientAnalyticsProps,
-              pluginCommands,
-              pluginPackages,
-              serverBrowser,
-              reportProfiles,
-            ).pipe(
+            layerWsRpc(session, clientAnalyticsProps, serverBrowser, reportProfiles).pipe(
               Layer.provideMerge(RpcSerialization.layerJson),
               // Handler-context reporters see only request defects, not server-wide defects.
               Layer.provide(DefectReporter.layer),
@@ -3898,11 +3641,4 @@ export const layer = Layer.unwrap(
       ),
     );
   }),
-).pipe(
-  Layer.provide(
-    Layer.mergeAll(
-      LegacyPluginPackageManager.layer.pipe(Layer.provideMerge(PluginCommandCatalog.layer)),
-      NpmRelease.layer,
-    ),
-  ),
-);
+).pipe(Layer.provide(NpmRelease.layer));

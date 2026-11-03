@@ -3,7 +3,6 @@ import {
   ModelSelection,
   ProjectId,
   ProjectScript,
-  type PluginPackageId,
   keepUnknownOverrideKeys,
   ProjectSettingsOverrides,
   type ProviderInstanceConfig,
@@ -239,11 +238,6 @@ export class ServerSettingsService extends Context.Service<
       authorize?: (current: ServerSettings) => Effect.Effect<void, E>,
     ) => Effect.Effect<ServerSettings, ServerSettingsError | NoInfer<E>>;
 
-    /** Replace the internal environment-scoped plugin enablement set. */
-    readonly setEnabledPluginIds: (
-      ids: ReadonlyArray<PluginPackageId>,
-    ) => Effect.Effect<ServerSettings, ServerSettingsError>;
-
     readonly updateProviderInstance: <E = never>(
       mutation: ProviderInstanceMutation,
       patch?: ServerSettingsPatch,
@@ -320,8 +314,6 @@ const makeTest = Effect.fn("serverSettings.makeTest")(function* (
       ),
     withSettingsSnapshot: (use) =>
       writeSemaphore.withPermits(1)(getSettings.pipe(Effect.flatMap(use))),
-    setEnabledPluginIds: (ids) =>
-      updateTestSettings((current) => Effect.succeed({ ...current, enabledPluginIds: [...ids] })),
     streamChanges: Stream.empty,
     subscribeChanges: Effect.succeed(Stream.empty),
   } satisfies ServerSettingsService["Service"];
@@ -1363,10 +1355,6 @@ const make = Effect.gen(function* () {
         }),
       ),
     withSettingsSnapshot,
-    setEnabledPluginIds: (ids) =>
-      updateAndPersistSettings({ enabledPluginIds: [...ids] }, (current) =>
-        Effect.succeed({ ...current, enabledPluginIds: [...ids] }),
-      ),
     get streamChanges() {
       return materializeChanges(Stream.fromPubSub(changesPubSub));
     },

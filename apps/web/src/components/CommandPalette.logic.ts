@@ -25,8 +25,6 @@ import {
   type FilesystemBrowseEntry,
   type KeybindingCommand,
   type McpPluginEntry,
-  type PluginCommand,
-  type PluginCommandSurface,
   type SourceControlDiscoveryResult,
   type SourceControlRepositoryInfo,
   THREAD_JUMP_KEYBINDING_COMMANDS,
@@ -221,25 +219,6 @@ export interface CommandPaletteItemPin {
   readonly toggle: () => void;
 }
 
-export function buildPluginCommandActionItems(input: {
-  readonly commands: ReadonlyArray<PluginCommand>;
-  readonly icon: ReactNode;
-  readonly run: (command: PluginCommand) => Promise<void>;
-  readonly surface: PluginCommandSurface;
-}): CommandPaletteActionItem[] {
-  return input.commands
-    .filter((command) => command.surfaces.includes(input.surface))
-    .map((command) => ({
-      kind: "action",
-      value: `plugin-command:${command.id}`,
-      searchTerms: [command.label, command.description ?? "", command.id, "plugin"],
-      title: command.label,
-      ...(command.description === undefined ? {} : { description: command.description }),
-      icon: input.icon,
-      run: async () => input.run(command),
-    }));
-}
-
 /**
  * Palette entries that open plugin panels beside the active thread: one per
  * contributed command, plus "Open <panel>" for panels no command opens.
@@ -289,13 +268,6 @@ export function buildPluginPanelActionItems(input: {
       }));
     });
 }
-
-export const resolvePluginCommandEnvironmentId = (input: {
-  readonly activeDraftEnvironmentId: EnvironmentId | null;
-  readonly activeThreadEnvironmentId: EnvironmentId | null;
-  readonly primaryEnvironmentId: EnvironmentId | null;
-}): EnvironmentId | null =>
-  input.activeThreadEnvironmentId ?? input.activeDraftEnvironmentId ?? input.primaryEnvironmentId;
 
 export interface CommandPaletteSubmenuItem extends CommandPaletteItem {
   readonly kind: "submenu";

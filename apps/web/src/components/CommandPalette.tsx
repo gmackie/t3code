@@ -48,8 +48,6 @@ import {
   type EnvironmentId,
   type FilesystemBrowseResult,
   type McpPluginEntry,
-  type PluginCommand,
-  type PluginCommandCatalog,
   SourceControlProviderKind,
   PRIMARY_LOCAL_ENVIRONMENT_ID,
   resolveEnvironmentMachineKind,
@@ -93,8 +91,6 @@ import {
 } from "react";
 import type { LegendListRef } from "@legendapp/list/react";
 import { useAtomValue } from "@effect/atom-react";
-import * as Option from "effect/Option";
-import { AsyncResult, Atom } from "effect/reactivity";
 
 import { isDesktopLocalConnectionTarget } from "../connection/desktopLocal";
 import { useDesktopLocalBootstraps } from "../connection/useDesktopLocalBootstraps";
@@ -187,7 +183,6 @@ import {
   ADDON_ICON_CLASS,
   browseInputEndPaddingClass,
   buildBrowseGroups,
-  buildPluginCommandActionItems,
   buildPluginPanelActionItems,
   buildRootGroups,
   buildLinkedThreadActionItems,
@@ -208,7 +203,6 @@ import {
   getCommandPaletteMode,
   ITEM_ICON_CLASS,
   RECENT_THREAD_LIMIT,
-  resolvePluginCommandEnvironmentId,
   createCommandPaletteSearchState,
   type CommandPaletteGroup,
   resolveAddProjectEntry,
@@ -282,10 +276,6 @@ import { threadRecentUse } from "@t3tools/shared/paletteSearch";
 
 const EMPTY_BROWSE_ENTRIES: FilesystemBrowseResult["entries"] = [];
 const EMPTY_MCP_PLUGINS: ReadonlyArray<McpPluginEntry> = [];
-const EMPTY_PLUGIN_COMMAND_CATALOG: PluginCommandCatalog = { commands: [], generation: 0 };
-const EMPTY_PLUGIN_COMMAND_CATALOG_ATOM = Atom.make(
-  AsyncResult.success(EMPTY_PLUGIN_COMMAND_CATALOG),
-).pipe(Atom.withLabel("plugin-commands:empty"));
 const ADD_PROJECT_ENTRY_GROUP = "add-project";
 const NEW_THREAD_IN_GROUP = "projects";
 
@@ -485,21 +475,6 @@ function OpenCommandPaletteDialog(props: {
   const availableSettingsSearchItems = useAvailableSettingsSearchItems();
   const { activeDraftThread, activeThread, defaultProjectRef, handleNewThread } =
     useHandleNewThread();
-  const pluginCommandEnvironmentId = resolvePluginCommandEnvironmentId({
-    activeDraftEnvironmentId: activeDraftThread?.environmentId ?? null,
-    activeThreadEnvironmentId: activeThread?.environmentId ?? null,
-    primaryEnvironmentId,
-  });
-  const pluginCommandCatalogResult = useAtomValue(
-    pluginCommandEnvironmentId === null
-      ? EMPTY_PLUGIN_COMMAND_CATALOG_ATOM
-      : serverEnvironment.pluginCommands({ environmentId: pluginCommandEnvironmentId, input: {} }),
-  );
-  const pluginCommandCatalog =
-    Option.getOrNull(AsyncResult.value(pluginCommandCatalogResult)) ?? EMPTY_PLUGIN_COMMAND_CATALOG;
-  const invokePluginCommand = useAtomCommand(serverEnvironment.invokePluginCommand, {
-    reportFailure: false,
-  });
   const mcpPlugins =
     useEnvironmentQuery(
       activeThread
@@ -1850,35 +1825,6 @@ function OpenCommandPaletteDialog(props: {
         plugins: mcpPlugins,
         icon: <PuzzleIcon className={ITEM_ICON_CLASS} />,
         open: (target) => useRightPanelStore.getState().openPluginPanel(panelThreadRef, target),
-      }),
-    );
-  }
-
-  if (pluginCommandEnvironmentId !== null) {
-    const commandEnvironmentId = pluginCommandEnvironmentId;
-    actionItems.push(
-      ...buildPluginCommandActionItems({
-        commands: pluginCommandCatalog.commands,
-        icon: <PuzzleIcon className={ITEM_ICON_CLASS} />,
-        surface:
-          typeof window !== "undefined" && window.desktopBridge !== undefined ? "desktop" : "web",
-        run: async (command: PluginCommand) => {
-          const result = await invokePluginCommand({
-            environmentId: commandEnvironmentId,
-            input: { generation: pluginCommandCatalog.generation, id: command.id },
-          });
-          if (result._tag === "Failure") {
-            if (isAtomCommandInterrupted(result)) return;
-            throw squashAtomCommandFailure(result);
-          }
-          toastManager.add(
-            stackedThreadToast({
-              type: result.value.tone === "success" ? "success" : "info",
-              title: command.label,
-              description: result.value.message,
-            }),
-          );
-        },
       }),
     );
   }

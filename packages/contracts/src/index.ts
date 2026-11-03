@@ -74,17 +74,11 @@ export * from "./worktreeMcp.ts";
 export * from "./resourceTelemetry.ts";
 export * from "./rpc.ts";
 export * from "./externalEntities.ts";
-export * from "./pluginCapabilities.ts";
-export * from "./pluginCatalog.ts";
-export * from "./pluginProtocol.ts";
-export * from "./pluginSettings.ts";
 export * from "./workItems.ts";
 export * from "./worktreeSetup.ts";
 
 export * from "./usageLimitSourceId.ts";
 export * from "./providerUsageLimits.ts";
-export * from "./pluginCommands.ts";
-export * from "./pluginPackages.ts";
 export * from "./kicad.ts";
 export * from "./veritasCad.ts";
 export * from "./secretRequest.ts";

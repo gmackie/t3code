@@ -57,7 +57,6 @@ import {
 import { loadRepoEnv } from "./lib/public-config.ts";
 import { selectDesktopRuntimeExternalDependencies } from "./lib/desktop-external-packages.ts";
 import { resolveCatalogDependencies } from "./lib/resolve-catalog.ts";
-import { stagePluginReleaseCatalog } from "./plugin-release-catalog.ts";
 
 import * as NodeRuntime from "@effect/platform-node/NodeRuntime";
 import * as NodeServices from "@effect/platform-node/NodeServices";
@@ -3520,10 +3519,6 @@ const buildDesktopArtifactUnlocked = Effect.fn("buildDesktopArtifactUnlocked")(f
     platform: options.platform,
     arch: options.arch,
     verbose: options.verbose,
-  });
-  stagePluginReleaseCatalog({
-    repoRoot,
-    stageResourcesDir,
   });
 
   yield* assertPlatformBuildResources(
