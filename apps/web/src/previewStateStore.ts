@@ -25,6 +25,7 @@ export interface DesktopPreviewOverlay {
   audible: boolean;
   controller: "human" | "agent" | "none";
   favicon: DesktopPreviewFavicon | null;
+  securityKeyOrigin: string | null;
 }
 
 export interface ThreadPreviewState {
@@ -432,6 +433,7 @@ function isPreviewStateEqual(
       previous.audioMuted === next.audioMuted &&
       previous.audible === next.audible &&
       previous.controller === next.controller &&
+      previous.securityKeyOrigin === next.securityKeyOrigin &&
       previous.favicon?.dataUrl === next.favicon?.dataUrl &&
       previous.favicon?.pageUrl === next.favicon?.pageUrl &&
       previous.favicon?.capturedAt === next.favicon?.capturedAt)

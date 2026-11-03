@@ -227,6 +227,8 @@ const layerFileSystem = FileSystem.layerNoop({
     }),
 });
 
+const securityKeyReporters = new Map<number, (origin: string | null) => void>();
+
 const managerLayer = (platform: NodeJS.Platform = "darwin") =>
   PreviewManager.layer.pipe(
     Layer.provideMerge(
@@ -242,7 +244,10 @@ const managerLayer = (platform: NodeJS.Platform = "darwin") =>
       Layer.mock(PreviewPasskeys.PreviewPasskeys)({
         bridgeEnabled: false,
         installSessionHandlers: () => {},
-        attachGuest: () => () => {},
+        attachGuest: (guest, onSecurityKeyRequest) => {
+          securityKeyReporters.set(guest.id, onSecurityKeyRequest);
+          return () => {};
+        },
       }),
     ),
     Layer.provideMerge(layerEnvironment),
@@ -1265,6 +1270,49 @@ describe("PreviewManager", () => {
         expect(states.at(-1)?.audible).toBe(true);
       }),
     ),
+  );
+
+  effectIt.effect(
+    "shows a guest's pending security-key request until it ends or the guest changes",
+    () =>
+      withManager((manager) =>
+        Effect.gen(function* () {
+          const first = makeAudioWebContents(42);
+          fromId.mockReturnValue(first.wc);
+          const states: PreviewManager.PreviewTabState[] = [];
+          yield* manager.subscribeStateChanges((_tabId, state) =>
+            Effect.sync(() => {
+              states.push(state);
+            }),
+          );
+          yield* manager.createTab("tab_security_key");
+          yield* manager.registerWebview("tab_security_key", 42);
+          yield* Effect.yieldNow;
+
+          const reportFirst = securityKeyReporters.get(42)!;
+          reportFirst("https://accounts.google.com");
+          yield* Effect.yieldNow;
+          expect(states.at(-1)?.securityKeyRequest).toEqual({
+            origin: "https://accounts.google.com",
+          });
+          reportFirst(null);
+          yield* Effect.yieldNow;
+          expect(states.at(-1)).not.toHaveProperty("securityKeyRequest");
+
+          reportFirst("https://github.com");
+          yield* Effect.yieldNow;
+          const replacement = makeAudioWebContents(43);
+          fromId.mockReturnValue(replacement.wc);
+          yield* manager.registerWebview("tab_security_key", 43);
+          yield* Effect.yieldNow;
+          expect(states.at(-1)).not.toHaveProperty("securityKeyRequest");
+
+          const publishedBefore = states.length;
+          reportFirst("https://github.com");
+          yield* Effect.yieldNow;
+          expect(states.length).toBe(publishedBefore);
+        }),
+      ),
   );
 
   effectIt.effect("ignores audio state from a replaced guest", () =>

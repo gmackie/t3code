@@ -83,6 +83,10 @@ On iPhone, yes. You need iOS 26 or later. Tap the mic in the composer, talk, che
 
 Yes, all three. Desktop app, CLI, the works. One catch: there is no `t3` binary for Intel Macs, so use the desktop app there. Windows folks can also run agents inside WSL. [Install](./install.md)
 
+## Can I sign in with a security key in the built-in browser?
+
+Usually, yes. When a site asks for your key, the browser shows **Touch your security key**. Plug it in and tap it. Keys that need a PIN can't enter it there, so use **Open in system browser** for those sites. On builds that can use the macOS passkey sheet, you get that sheet instead, PIN and all.
+
 ## Why is my provider not showing up?
 
 Almost always, the CLI is not installed or not on the `PATH` of the machine that runs the server. (Not your phone. The computer.) Log in on that machine first, like `codex login` or `claude auth login`. Still missing? Point **Binary path** at it in provider settings. Version managers love to cause this one. [Provider setup](./install.md#providers)

@@ -1,0 +1,66 @@
+name: Security key notice CI
+
+on:
+  pull_request:
+    branches:
+      - custom-local
+    paths:
+      - apps/desktop/src/preview-pick-preload.ts
+      - apps/desktop/src/preview/GuestProtocol.ts
+      - apps/desktop/src/preview/Manager*
+      - apps/desktop/src/preview/Passkey*
+      - apps/desktop/src/preview/SecurityKeyNotice*
+      - apps/desktop/src/window/DesktopWindow*
+      - apps/web/src/components/preview/PreviewView.tsx
+      - apps/web/src/components/preview/SecurityKeyNotice.tsx
+      - apps/web/src/components/preview/usePreviewBridge*
+      - apps/web/src/previewStateStore*
+      - packages/contracts/src/ipc.ts
+      - .forgejo/workflows/security-key-notice-ci.yml
+      - pnpm-lock.yaml
+      - pnpm-workspace.yaml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  desktop:
+    runs-on: forgegraph-ci
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.14.0
+      - name: Install pinned dependencies
+        run: |
+          corepack enable
+          corepack prepare pnpm@12.14.0 --activate
+          pnpm install --frozen-lockfile
+      - name: Verify security key notice (desktop)
+        working-directory: apps/desktop
+        run: |
+          pnpm exec vp test run src/preview/SecurityKeyNotice.test.ts src/preview/Passkeys.test.ts src/preview/PasskeyBridge.test.ts src/preview/Manager.test.ts src/window/DesktopWindow.test.ts
+          pnpm exec tsc --noEmit
+          pnpm exec vp lint src/preview-pick-preload.ts src/preview/GuestProtocol.ts src/preview/Manager.ts src/preview/Passkeys.ts src/preview/SecurityKeyNotice.ts src/window/DesktopWindow.ts
+
+  web:
+    runs-on: forgegraph-ci
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.14.0
+      - name: Install pinned dependencies
+        run: |
+          corepack enable
+          corepack prepare pnpm@12.14.0 --activate
+          pnpm install --frozen-lockfile
+      - name: Verify security key notice (web)
+        working-directory: apps/web
+        run: |
+          pnpm exec vp test run src/previewStateStore.test.ts src/components/preview/usePreviewBridge.test.ts --project unit
+          pnpm exec tsc --noEmit
+          pnpm exec vp lint src/components/preview/SecurityKeyNotice.tsx src/components/preview/PreviewView.tsx src/components/preview/usePreviewBridge.ts src/previewStateStore.ts

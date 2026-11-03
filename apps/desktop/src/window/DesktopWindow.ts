@@ -32,7 +32,7 @@ import {
   TRACKPAD_SCROLL_END_CHANNEL,
   WINDOW_FULLSCREEN_STATE_CHANNEL,
 } from "../ipc/channels.ts";
-import { PASSKEY_BRIDGE_ARGUMENT } from "../preview/GuestProtocol.ts";
+import { PASSKEY_BRIDGE_ARGUMENT, SECURITY_KEY_NOTICE_ARGUMENT } from "../preview/GuestProtocol.ts";
 import * as PreviewManager from "../preview/Manager.ts";
 import * as PreviewPasskeys from "../preview/Passkeys.ts";
 import * as DesktopAppSettings from "../settings/DesktopAppSettings.ts";
@@ -543,10 +543,16 @@ export const make = Effect.gen(function* () {
       webPreferences.nodeIntegrationInSubFrames = false;
       webPreferences.contextIsolation = false;
       webPreferences.disableHtmlFullscreenWindowResize = true;
-      if (previewPasskeys.bridgeEnabled) {
+      // Without the bridge, Chromium serves WebAuthn itself; only Windows gives it a sheet.
+      const passkeyArgument = previewPasskeys.bridgeEnabled
+        ? PASSKEY_BRIDGE_ARGUMENT
+        : environment.platform === "win32"
+          ? undefined
+          : SECURITY_KEY_NOTICE_ARGUMENT;
+      if (passkeyArgument) {
         webPreferences.additionalArguments = [
           ...(webPreferences.additionalArguments ?? []),
-          PASSKEY_BRIDGE_ARGUMENT,
+          passkeyArgument,
         ];
       }
     });

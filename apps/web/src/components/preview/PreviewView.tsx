@@ -73,6 +73,7 @@ import { useBrowserLayoutZoomFactor } from "~/browser/useBrowserLayoutZoomFactor
 import { previewRuntimeTabId } from "~/browser/previewRuntimeTabId";
 import { BrowserSettingsReadError } from "~/browser/openFileInPreview";
 import { PreviewFileNotShown, PreviewUnreachable } from "./PreviewUnreachable";
+import { SecurityKeyNotice } from "./SecurityKeyNotice";
 import { revealInFileExplorerLabel } from "./fileExplorerLabel";
 import { shouldShowPreviewEmptyState } from "./previewEmptyStateLogic";
 import { Badge } from "~/components/ui/badge";
@@ -1018,6 +1019,12 @@ export function PreviewView({
         ) : null}
         {snapshot && desktopOverlay ? (
           <ZoomIndicator zoomFactor={desktopOverlay.zoomFactor} />
+        ) : null}
+        {desktopOverlay?.securityKeyOrigin ? (
+          <SecurityKeyNotice
+            origin={desktopOverlay.securityKeyOrigin}
+            onOpenInBrowser={tabId ? handleOpenInBrowser : undefined}
+          />
         ) : null}
         {runtimeTabId &&
         desktopOverlay &&

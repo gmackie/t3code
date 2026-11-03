@@ -131,6 +131,7 @@ export function projectDesktopState(state: DesktopPreviewTabState): DesktopPrevi
     audible: state.audible,
     controller: state.controller,
     favicon: state.favicon && originOf(state.favicon.pageUrl) === navOrigin ? state.favicon : null,
+    securityKeyOrigin: state.securityKeyRequest?.origin ?? null,
   };
 }
 
