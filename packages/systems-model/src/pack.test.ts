@@ -1,6 +1,8 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
+import * as Digest from "effect/crypto/Digest";
 import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
 
@@ -29,7 +31,7 @@ const project = Effect.gen(function* () {
   return { fs, path, root };
 });
 
-it.layer(NodeServices.layer)("readReferencedFiles", (it) => {
+it.layer(Layer.mergeAll(NodeServices.layer, Digest.layerWebCrypto))("readReferencedFiles", (it) => {
   it.effect("reads the project closure and named experiments, nothing else", () =>
     Effect.gen(function* () {
       const { root } = yield* project;

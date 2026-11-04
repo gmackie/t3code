@@ -77,7 +77,8 @@ import { compareToExpected } from "@t3tools/systems-runtime/compare";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
-import * as Crypto from "effect/Crypto";
+import * as Digest from "effect/crypto/Digest";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as DateTime from "effect/DateTime";
 import * as Deferred from "effect/Deferred";
 import * as Duration from "effect/Duration";
@@ -282,6 +283,10 @@ const batches = <A>(items: ReadonlyArray<A>) => {
   return out;
 };
 
+// Effect 4's bulk insert wants a non-empty record array. Each batch slice is non-empty.
+const insertRows = (rows: ReadonlyArray<object>) =>
+  rows as unknown as readonly [Record<string, unknown>, ...Array<Record<string, unknown>>];
+
 const mergeDiagnostics = (...lists: ReadonlyArray<ReadonlyArray<ModelDiagnostic>>) => {
   const seen = new Set<string>();
   return sortDiagnostics(
@@ -345,10 +350,11 @@ export const make = Effect.fn("SystemsService.make")(function* (
   const sql = yield* SqlClient.SqlClient;
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
-  const crypto = yield* Crypto.Crypto;
+  const hasher = yield* Digest.Digest;
+  const random = yield* SecureRandom.SecureRandom;
   const projects = yield* ProjectService.ProjectService;
   const isExecutable = yield* HostProcess.IsExecutable;
-  const context = yield* Effect.context<FileSystem.FileSystem | Path.Path | Crypto.Crypto>();
+  const context = yield* Effect.context<FileSystem.FileSystem | Path.Path | Digest.Digest>();
   yield* runSystemsMigrations();
   const chunkBoundaries = options.chunkBoundaries ?? 256;
   const slots = yield* Semaphore.make(options.maxConcurrentRuns ?? 2);
@@ -545,27 +551,31 @@ export const make = Effect.fn("SystemsService.make")(function* (
       Effect.gen(function* () {
         for (const batch of batches(trace))
           yield* sql`INSERT INTO systems_run_events ${sql.insert(
-            batch.map((event) => ({
-              run_id: record.runId,
-              sequence: Number(event.sequence),
-              event_json: encodeEvent(event),
-            })),
+            insertRows(
+              batch.map((event) => ({
+                run_id: record.runId,
+                sequence: Number(event.sequence),
+                event_json: encodeEvent(event),
+              })),
+            ),
           )}`;
         let ordinal = record.sampleCount;
         for (const batch of batches(samples))
           yield* sql`INSERT INTO systems_run_samples ${sql.insert(
-            batch.map((sample) => ({
-              run_id: record.runId,
-              ordinal: ordinal++,
-              signal_id: sample.signalId,
-              seconds: toNumber(sample.time),
-              time_num: sample.time.num,
-              time_den: sample.time.den,
-              side: sample.side,
-              value: typeof sample.value === "boolean" ? Number(sample.value) : sample.value,
-              is_boolean: typeof sample.value === "boolean" ? 1 : 0,
-              unit: sample.unit,
-            })),
+            insertRows(
+              batch.map((sample) => ({
+                run_id: record.runId,
+                ordinal: ordinal++,
+                signal_id: sample.signalId,
+                seconds: toNumber(sample.time),
+                time_num: sample.time.num,
+                time_den: sample.time.den,
+                side: sample.side,
+                value: typeof sample.value === "boolean" ? Number(sample.value) : sample.value,
+                is_boolean: typeof sample.value === "boolean" ? 1 : 0,
+                unit: sample.unit,
+              })),
+            ),
           )}`;
         const next: SystemsRun = {
           ...record,
@@ -779,7 +789,7 @@ export const make = Effect.fn("SystemsService.make")(function* (
     const profile = runnerCapabilities();
     const experimentDigest = yield* digest(run);
     const inputDigest = yield* digest(run.inputs);
-    const runId = `sysrun_${yield* crypto.randomUUIDv4().pipe(Effect.catch(unexpected))}`;
+    const runId = `sysrun_${yield* random.uuidV4()}`;
     const createdAt = yield* now;
     const record: SystemsRun = {
       runId,
@@ -1149,10 +1159,7 @@ export const make = Effect.fn("SystemsService.make")(function* (
   // Model editing
 
   const revisionOf = (bytes: Uint8Array) =>
-    crypto.digest("SHA-256", bytes).pipe(
-      Effect.map((sum) => `sha256:${hex(sum)}`),
-      Effect.catch(unexpected),
-    );
+    hasher.digest(Digest.sha256, bytes).pipe(Effect.map((sum) => `sha256:${hex(sum)}`));
 
   /** A document's parsed value and revision, read the way the pack reads it. */
   const readSource = Effect.fn("SystemsService.readSource")(function* (root: string, file: string) {
@@ -1234,7 +1241,7 @@ export const make = Effect.fn("SystemsService.make")(function* (
         const full = path.join(root, ...file.split("/"));
         const temporary = path.join(
           path.dirname(full),
-          `.${path.basename(full)}.${yield* crypto.randomUUIDv4()}.tmp`,
+          `.${path.basename(full)}.${yield* random.uuidV4()}.tmp`,
         );
         yield* fs.writeFile(temporary, bytes);
         yield* fs
@@ -1343,7 +1350,7 @@ export const make = Effect.fn("SystemsService.make")(function* (
   // The model packages read files and hash through the services captured at construction.
   const provided =
     <I, A, E>(
-      method: (input: I) => Effect.Effect<A, E, FileSystem.FileSystem | Path.Path | Crypto.Crypto>,
+      method: (input: I) => Effect.Effect<A, E, FileSystem.FileSystem | Path.Path | Digest.Digest>,
     ) =>
     (input: I) =>
       method(input).pipe(Effect.provide(context));

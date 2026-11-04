@@ -1,11 +1,10 @@
 // @effect-diagnostics returnEffectInGen:off -- Alchemy Durable Objects use a documented two-phase nested Effect initializer.
 import * as Cloudflare from "@alchemy.run/cloudflare";
-import * as Crypto from "effect/Crypto";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as DateTime from "effect/DateTime";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
-import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Queue from "effect/Queue";
 import * as Result from "effect/Result";
@@ -80,18 +79,7 @@ export interface RelayEnvironmentDiagnostics {
   readonly pendingHttpCount: number;
 }
 
-const webcryptoLayer = Layer.succeed(
-  Crypto.Crypto,
-  Crypto.make({
-    randomBytes: (size) => globalThis.crypto.getRandomValues(new Uint8Array(size)),
-    digest: (algorithm, data) =>
-      Effect.promise(async () => {
-        const input = new Uint8Array(data.length);
-        input.set(data);
-        return new Uint8Array(await globalThis.crypto.subtle.digest(algorithm, input.buffer));
-      }),
-  }),
-);
+const webcryptoLayer = SecureRandom.layerWebCrypto;
 
 function tryOrUndefined<A>(operation: () => A): A | undefined {
   try {
@@ -105,13 +93,13 @@ export default class RelayEnvironment extends Cloudflare.DurableObject<RelayEnvi
   "RelayEnvironments",
   Effect.gen(function* () {
     const state = yield* Cloudflare.DurableObjectState;
-    const crypto = yield* Crypto.Crypto;
+    const random = yield* SecureRandom.SecureRandom;
 
     return Effect.gen(function* () {
       yield* state.setWebSocketAutoResponse(
         new WebSocketRequestResponsePair(EFFECT_RPC_PING, EFFECT_RPC_PONG),
       );
-      const activationId = yield* crypto.randomUUIDv4().pipe(Effect.orDie);
+      const activationId = yield* random.uuidV4();
       const clients = new Map<number, Cloudflare.WebSocket>();
       // Active HTTP requests keep a Durable Object invocation alive, so only
       // WebSocket identities need durable restoration across hibernation.
@@ -286,7 +274,7 @@ export default class RelayEnvironment extends Cloudflare.DurableObject<RelayEnvi
             ) {
               return HttpServerResponse.text("Invalid connector token", { status: 401 });
             }
-            const ticket = yield* crypto.randomUUIDv4().pipe(Effect.orDie);
+            const ticket = yield* random.uuidV4();
             const now = yield* DateTime.now;
             const expiresAt = DateTime.add(now, {
               milliseconds: RELAY_CONNECTOR_TICKET_TTL_MILLIS,

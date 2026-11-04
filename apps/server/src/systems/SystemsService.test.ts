@@ -1,3 +1,4 @@
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, it } from "@effect/vitest";
 import { ProjectId, type Project, type SystemsRun } from "@t3tools/contracts";
@@ -86,6 +87,7 @@ const ref = (run: SystemsRun) => ({ projectId: run.projectId, runId: run.runId }
 
 const layer = Layer.mergeAll(
   NodeServices.layer,
+  NodeCrypto.layer,
   SqlitePersistence.layerMemory.pipe(Layer.provide(NodeServices.layer)),
 );
 

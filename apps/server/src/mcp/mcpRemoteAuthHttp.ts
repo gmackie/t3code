@@ -6,6 +6,7 @@ import * as Result from "effect/Result";
 import {
   HttpClient,
   HttpClientRequest,
+  HttpMethod,
   HttpRouter,
   HttpServerRequest,
   HttpServerResponse,
@@ -121,13 +122,17 @@ export const layerProxyRoute = Layer.unwrap(
           return HttpServerResponse.text(`${name} is not an OAuth server here.`, { status: 404 });
         }
 
-        const body = request.method === "POST" ? yield* request.arrayBuffer : undefined;
+        if (!HttpMethod.isHttpMethod(request.method)) {
+          return HttpServerResponse.text("Method Not Allowed", { status: 405 });
+        }
+        const method = request.method;
+        const body = method === "POST" ? yield* request.arrayBuffer : undefined;
         const headers = {
           ...mcpServerVariableRecord(server.value.transport.headers),
           ...pick(request.headers, FORWARDED_REQUEST_HEADERS),
         };
         const send = (token: string) => {
-          const base = HttpClientRequest.make(request.method)(server.value.transport.url).pipe(
+          const base = HttpClientRequest.make(method)(server.value.transport.url).pipe(
             HttpClientRequest.setHeaders({ ...headers, authorization: `Bearer ${token}` }),
           );
           return httpClient.execute(

@@ -4,8 +4,13 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 import { Argument, Command } from "effect/cli";
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as UnityHooks from "../game/UnityHooks.ts";
 import * as ProcessRunner from "../processRunner.ts";
+
+const unityHooksLayer = UnityHooks.layer.pipe(
+  Layer.provide(Layer.mergeAll(ProcessRunner.layer, NodeCrypto.layer)),
+);
 
 const encodeJsonValue = Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown));
 
@@ -22,7 +27,7 @@ export const unityCommand = Command.make("unity-hooks", {
       const hooks = yield* UnityHooks.UnityHooks;
       const result = yield* hooks.execute(yield* decodeRequest(request));
       yield* Console.log(yield* encodeJsonValue(result));
-    }).pipe(Effect.provide(UnityHooks.layer.pipe(Layer.provide(ProcessRunner.layer)))),
+    }).pipe(Effect.provide(unityHooksLayer)),
   ),
 );
 
@@ -39,6 +44,6 @@ export const unityJobsCommand = Command.make("unity-command", {
       yield* Console.log(
         yield* encodeJsonValue(yield* unity.command(yield* decodeCommand(request))),
       );
-    }).pipe(Effect.provide(UnityHooks.layer.pipe(Layer.provide(ProcessRunner.layer)))),
+    }).pipe(Effect.provide(unityHooksLayer)),
   ),
 );

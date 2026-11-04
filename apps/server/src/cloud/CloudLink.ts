@@ -43,7 +43,7 @@ import {
 } from "@t3tools/shared/relayJwt";
 import { isSecureRelayUrl } from "@t3tools/shared/relayUrl";
 import * as Context from "effect/Context";
-import * as Crypto from "effect/Crypto";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as DateTime from "effect/DateTime";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
@@ -531,7 +531,7 @@ const make = Effect.gen(function* () {
   const httpClient = yield* HttpClient.HttpClient;
   const httpServer = yield* HttpServer.HttpServer;
   const awarenessRelay = yield* AgentAwarenessRelay.AgentAwarenessRelay;
-  const crypto = yield* Crypto.Crypto;
+  const random = yield* SecureRandom.SecureRandom;
   const config = yield* ServerConfig.ServerConfig;
   const fileSystem = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
@@ -607,7 +607,7 @@ const make = Effect.gen(function* () {
       iss: `t3-env:${descriptor.environmentId}`,
       aud: normalizeRelayIssuer(request.relayIssuer),
       sub: descriptor.environmentId,
-      jti: yield* crypto.randomUUIDv4(),
+      jti: yield* random.uuidV4(),
       iat: nowSeconds,
       exp: Math.floor(expiresAt.epochMilliseconds / 1_000),
       challenge: request.challenge,
@@ -647,7 +647,6 @@ const make = Effect.gen(function* () {
       );
     },
     Effect.catchIf(ServerSecretStore.isSecretStoreError, internalError("generate-link-proof")),
-    Effect.catchTags({ PlatformError: internalError("generate-link-proof") }),
   );
 
   const activateManagedTunnel = Effect.fn("environment.cloud.activateManagedTunnel")(
@@ -945,7 +944,7 @@ const make = Effect.gen(function* () {
         Option.isSome(configuredIssuer) ? bytesToString(configuredIssuer.value) : input.relayUrl,
       ),
       sub: input.environmentId,
-      jti: yield* crypto.randomUUIDv4(),
+      jti: yield* random.uuidV4(),
       iat: issuedAt,
       exp: issuedAt + 60,
       environmentId: input.environmentId,
@@ -1211,7 +1210,6 @@ const make = Effect.gen(function* () {
     Effect.catchIf(ServerSecretStore.isSecretStoreError, internalError("persist-relay-config")),
     Effect.catchTags({
       SchemaError: internalError("persist-relay-config"),
-      PlatformError: internalError("register-endpoint-origin"),
     }),
   );
 
@@ -1307,6 +1305,13 @@ const make = Effect.gen(function* () {
       ],
       { concurrency: 8 },
     );
+    // A not-linked check predates the stored tunnel config; the next check replaces it.
+    const currentReachability = Option.filter(
+      latestReachability,
+      (result) =>
+        Option.isNone(endpointRuntimeConfig) ||
+        !(result.status === "unreachable" && result.cause === "not_linked"),
+    );
     return {
       linked: Option.isSome(cloudUserId),
       linkRevoked: Option.isSome(cloudUserId) && Option.isSome(revoked),
@@ -1319,7 +1324,7 @@ const make = Effect.gen(function* () {
         : false,
       holdWebhooksWhileOffline:
         Option.isSome(holdWebhooks) && bytesToString(holdWebhooks.value) === "true",
-      ...(Option.isSome(latestReachability) ? { reachability: latestReachability.value } : {}),
+      ...(Option.isSome(currentReachability) ? { reachability: currentReachability.value } : {}),
     } satisfies EnvironmentCloudLinkStateResult;
   });
 
@@ -1500,7 +1505,7 @@ const make = Effect.gen(function* () {
         iss: `t3-env:${environmentId}`,
         aud: normalizeRelayIssuer(relayIssuer),
         sub: environmentId,
-        jti: yield* crypto.randomUUIDv4(),
+        jti: yield* random.uuidV4(),
         iat: nowSeconds,
         exp: Math.floor(responseExpiresAt.epochMilliseconds / 1_000),
         environmentId,
@@ -1530,7 +1535,6 @@ const make = Effect.gen(function* () {
       } satisfies RelayEnvironmentHealthResponse;
     },
     Effect.catchIf(ServerSecretStore.isSecretStoreError, internalError("answer-health")),
-    Effect.catchTags({ PlatformError: internalError("answer-health") }),
   );
 
   const mintCredential = Effect.fn("environment.cloud.mintCredential")(
@@ -1610,7 +1614,7 @@ const make = Effect.gen(function* () {
         iss: `t3-env:${environmentId}`,
         aud: normalizeRelayIssuer(relayIssuer),
         sub: environmentId,
-        jti: yield* crypto.randomUUIDv4(),
+        jti: yield* random.uuidV4(),
         iat: nowSeconds,
         exp: Math.floor(issued.expiresAt.epochMilliseconds / 1_000),
         environmentId,
@@ -1637,7 +1641,6 @@ const make = Effect.gen(function* () {
       } satisfies RelayEnvironmentMintResponse;
     },
     Effect.catchIf(ServerSecretStore.isSecretStoreError, internalError("issue-credential")),
-    Effect.catchTags({ PlatformError: internalError("issue-credential") }),
   );
 
   if (!ManagedLimits.allowsConnect(managedPolicy)) {
