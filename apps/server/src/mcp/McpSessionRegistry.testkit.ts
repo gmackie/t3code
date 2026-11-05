@@ -19,8 +19,7 @@ export const layer = Layer.succeed(
           browserToolsAvailable: true,
         },
       }),
-    // @effect-diagnostics-next-line effectSucceedWithVoid:off - This optional result requires undefined, not the wider void type.
-    resolve: () => Effect.succeed(undefined),
+    resolve: () => Effect.undefined,
     issuePlugin: ({ pluginId }) =>
       Effect.succeed({ endpoint: "http://127.0.0.1/mcp", token: `mcp-test:plugin:${pluginId}` }),
     // @effect-diagnostics-next-line effectSucceedWithVoid:off - This optional result requires undefined, not the wider void type.

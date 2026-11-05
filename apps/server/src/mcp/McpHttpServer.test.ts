@@ -1568,8 +1568,7 @@ it.effect(
             Layer.mock(McpSessionRegistry.McpSessionRegistry)({
               // @effect-diagnostics-next-line effectSucceedWithVoid:off - The optional result requires undefined.
               resolvePlugin: () => Effect.succeed(undefined),
-              // @effect-diagnostics-next-line effectSucceedWithVoid:off - This optional result requires undefined, not the wider void type.
-              resolve: () => Effect.succeed(undefined),
+              resolve: () => Effect.undefined,
             }),
           ),
           Layer.provide(
