@@ -66,8 +66,24 @@ vi.mock("./ServerBrowserContexts.ts", () => ({
     async connectDesktopPage(endpoint: string) {
       const context = makeContext(undefined, desktopPageUrl);
       context.page.viewportSize.mockReturnValue(null);
-      desktopConnections.push({ endpoint, context });
-      return { browser: { close: async () => {} }, page: context.page as unknown as Page };
+      const connection = { endpoint, context, closed: false };
+      desktopConnections.push(connection);
+      // Like Playwright, closing the connection fails the commands still waiting on it.
+      const disconnected = Promise.withResolvers<never>();
+      disconnected.promise.catch(() => {});
+      if (stallNextDesktopConnection) {
+        stallNextDesktopConnection = false;
+        stallDesktopCdp(context, disconnected.promise);
+      }
+      return {
+        browser: {
+          close: async () => {
+            connection.closed = true;
+            disconnected.reject(new Error("Target page, context or browser has been closed"));
+          },
+        },
+        page: context.page as unknown as Page,
+      };
     }
     async close() {
       for (const context of contexts) await context.close();
@@ -324,7 +340,21 @@ const desktopRenders = (tabId: string) => {
 };
 const releasedDesktopTabs: Array<string> = [];
 const desktopTurns = new NodeEvents.EventEmitter();
-const desktopConnections: Array<{ endpoint: string; context: ReturnType<typeof makeContext> }> = [];
+const desktopConnections: Array<{
+  endpoint: string;
+  context: ReturnType<typeof makeContext>;
+  closed: boolean;
+}> = [];
+/** The next desktop connection opens no CDP session until it closes. */
+let stallNextDesktopConnection = false;
+/** Resolves when a stalled CDP session open is waiting. */
+let desktopCdpStalled = Promise.withResolvers<void>();
+const stallDesktopCdp = (context: ReturnType<typeof makeContext>, until: Promise<never>) => {
+  context.newCDPSession = () => {
+    desktopCdpStalled.resolve();
+    return until;
+  };
+};
 const testThread = {
   threadId: ThreadId.make("browser-test-thread"),
   providerSessionId: "agent-a",
@@ -463,6 +493,8 @@ beforeEach(() => {
   desktopReleased = Promise.withResolvers<void>();
   releasedDesktopTabs.length = 0;
   desktopConnections.length = 0;
+  stallNextDesktopConnection = false;
+  desktopCdpStalled = Promise.withResolvers<void>();
 });
 
 it.live("tells the desktop once per thread when its agent turns start and end", () =>
@@ -2020,6 +2052,53 @@ it.effect("a stalled desktop viewer still gets its size, control and reconnect",
       yield* resize(1000, 600);
       expect(yield* Queue.takeAll(viewer.output)).toEqual([{ _tag: "reconnect" }]);
       yield* acked;
+    }),
+  ).pipe(Effect.provide(layer)),
+);
+
+it.effect("a desktop tab setup that stops answering fails at its deadline, then starts over", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const browser = yield* ServerBrowser.ServerBrowser;
+      const manager = yield* Manager.PreviewManager;
+      desktopRendersNext = true;
+      stallNextDesktopConnection = true;
+      const { tabId } = yield* manager.open({ threadId: scope.thread.threadId, runtime: "server" });
+      const stalled = yield* browser
+        .attachViewer(viewerInput(tabId, true))
+        .pipe(Effect.flip, Effect.forkScoped);
+      yield* Effect.promise(() => desktopCdpStalled.promise);
+      yield* TestClock.adjust("30 seconds");
+      expect((yield* Fiber.join(stalled))._tag).toBe("ServerBrowserLaunchError");
+      // The abandoned setup let go of the desktop page it was connected to.
+      expect(desktopConnections[0]!.closed).toBe(true);
+      expect(releasedDesktopTabs).toEqual([tabId]);
+      // A retry does not wait on the abandoned setup; it connects to the desktop again.
+      const viewer = yield* browser.attachViewer(viewerInput(tabId, true));
+      expect(desktopConnections).toHaveLength(2);
+      expect(viewportSizes(yield* Queue.takeAll(viewer.output))).toEqual(["1920x1080"]);
+    }),
+  ).pipe(Effect.provide(layer)),
+);
+
+it.effect("a desktop page that stops answering a viewer is reconnected on the next attempt", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const { tabId, viewer, context } = yield* openDesktopViewer;
+      const browser = yield* ServerBrowser.ServerBrowser;
+      yield* Queue.clear(viewer.output);
+      stallDesktopCdp(context, new Promise<never>(() => {}));
+      const stalled = yield* browser
+        .attachViewer(viewerInput(tabId, true))
+        .pipe(Effect.flip, Effect.forkScoped);
+      yield* Effect.promise(() => desktopCdpStalled.promise);
+      yield* TestClock.adjust("10 seconds");
+      expect((yield* Fiber.join(stalled))._tag).toBe("ServerBrowserLaunchError");
+      // Viewers already watching reconnect instead of freezing on the dead link.
+      expect(yield* Queue.takeAll(viewer.output)).toContainEqual({ _tag: "reconnect" });
+      const next = yield* browser.attachViewer(viewerInput(tabId, true));
+      expect(desktopConnections).toHaveLength(2);
+      expect(viewportSizes(yield* Queue.takeAll(next.output))).toEqual(["1920x1080"]);
     }),
   ).pipe(Effect.provide(layer)),
 );
