@@ -31,6 +31,7 @@ import * as DelegatedTaskQuestionReactor from "./orchestration-v2/DelegatedTaskQ
 import * as NodeHttp from "node:http";
 
 import * as NodeHttpServer from "@effect/platform-node/NodeHttpServer";
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { EnvironmentHttpApi, type RepositoryIdentity } from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
@@ -225,7 +226,6 @@ import * as ThreadSettlementService from "./orchestration-v2/ThreadSettlementSer
 import * as IdleCompactionService from "./orchestration-v2/IdleCompactionService.ts";
 import * as ThreadPullRequestService from "./orchestration-v2/ThreadPullRequestService.ts";
 import * as RunFinalizationService from "./orchestration-v2/RunFinalizationService.ts";
-import * as EventStoreV2 from "./orchestration-v2/EventStore.ts";
 import * as ProjectionMaintenance from "./orchestration-v2/ProjectionMaintenance.ts";
 import * as ProjectionStoreV2 from "./orchestration-v2/ProjectionStore.ts";
 import { makePersistedServerRuntimeState } from "./serverRuntimeState.ts";
@@ -404,7 +404,9 @@ const layerHttpServer = Layer.unwrap(
   }),
 ).pipe(Layer.provide(ManagedPolicy.layer));
 
-const layerPlatformServices = DocumentText.layer.pipe(Layer.provideMerge(NodeServices.layer));
+const layerPlatformServices = DocumentText.layer.pipe(
+  Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
+);
 
 const layerPersistence = Layer.empty.pipe(Layer.provideMerge(SqlitePersistence.layerConfig));
 
@@ -668,12 +670,7 @@ const layerRuntimeCoreDependenciesBase = Layer.mergeAll(
   layerThreadSettlementWorker,
   layerIdleCompactionWorker,
   StorageCleanup.layer.pipe(Layer.provide(ProjectionStoreV2.layer)),
-  DatabaseStorage.layer.pipe(
-    Layer.provide(ProjectionMaintenance.layer),
-    Layer.provide(
-      Layer.merge(EventStoreV2.layerFromOrchestrationEventStore, ProjectionStoreV2.layer),
-    ),
-  ),
+  DatabaseStorage.layer.pipe(Layer.provide(ProjectionMaintenance.layer)),
   layerThreadPullRequestWorker,
   DelegatedTaskAnalytics.layer,
   Layer.effectDiscard(
@@ -816,6 +813,16 @@ const layerCommandReadiness = HttpRouter.middleware(
   { global: true },
 );
 
+// A plain Layer.provide drops the output of a layer that still has requirements,
+// which left these services on the CLI. The tuple overload excludes them.
+const layerUnityHooks = UnityHooks.layer.pipe(Layer.provide([ProcessRunner.layer]));
+const layerGameSessions = GameSessions.layer.pipe(
+  Layer.provide([layerUnityHooks, GameTransport.layer, GameHtmlRender.layer]),
+);
+const layerServerBrowser = ServerBrowser.layer.pipe(
+  Layer.provide([Layer.merge(DesktopBrowserChannel.layer, PreviewAgentActivity.layer)]),
+);
+
 const layerMakeRoutes = Layer.mergeAll(
   Layer.mergeAll(
     HttpApiBuilder.layer(EnvironmentHttpApi).pipe(
@@ -849,7 +856,7 @@ const layerMakeRoutes = Layer.mergeAll(
     kicadGerberRouteLayer,
   ),
   McpHttpServer.layer.pipe(
-    Layer.provide(UnityHooks.layer.pipe(Layer.provide(ProcessRunner.layer))),
+    Layer.provide([layerUnityHooks]),
     Layer.provide(ProviderAdapterRegistry.layerFromProviderInstanceRegistry),
     Layer.provide(McpOAuth.layerMcpClientAuthenticator),
   ),
@@ -861,13 +868,7 @@ const layerMakeRoutes = Layer.mergeAll(
   Layer.provide(
     PullRequestReviewGuideService.layer.pipe(Layer.provide(PullRequestReviewGuides.layer)),
   ),
-  Layer.provide(
-    GameSessions.layer.pipe(
-      Layer.provide(GameTransport.layer),
-      Layer.provide(UnityHooks.layer.pipe(Layer.provide(ProcessRunner.layer))),
-      Layer.provide(GameHtmlRender.layer),
-    ),
-  ),
+  Layer.provide([layerGameSessions]),
   // The firmware workbench HTTP route and the reverse RPCs share one service and Ghidra pool.
   Layer.provide(ReverseWorkbench.layer),
   // Systems runs belong to the environment; the WebSocket layer reuses this instance.
@@ -879,11 +880,7 @@ const layerMakeRoutes = Layer.mergeAll(
   // Share the service so HTTP/WS clients single-flight reads and invalidate each other's cached patches.
   Layer.provide(layerPullRequestService),
   // The same activity instance RunExecutionService reports to, by layer memoization.
-  Layer.provide(
-    ServerBrowser.layer.pipe(
-      Layer.provide(Layer.merge(DesktopBrowserChannel.layer, PreviewAgentActivity.layer)),
-    ),
-  ),
+  Layer.provide([layerServerBrowser]),
   Layer.provide(PreviewBrowser.layer),
   // Links to other environments, shared by Settings (WebSocket) and agents (/mcp).
   Layer.provide(
@@ -1283,6 +1280,6 @@ const layerMakeServer = Layer.unwrap(
       Layer.provideMerge(layerPlatformServices),
     );
   }),
-).pipe(Layer.provide(ProcessRunner.layer));
+).pipe(Layer.provide([ProcessRunner.layer]));
 
 export const runServer = Layer.launch(layerMakeServer);

@@ -26,7 +26,7 @@
 - [Running in the background](./user/background-service.md)
 - [Updating T3 Code](./user/updating.md)
 - [Triage an issue](./user/triage.md)
-- Provider guides: [Codex](./user/providers-codex.md) · [Claude](./user/providers-claude.md) · [OpenCode](./user/providers-opencode.md) · [Antigravity](./user/providers-antigravity.md) · [Pi](./user/providers-pi.md) · [Muse Code](./user/providers-muse.md) · [fx](./user/providers-fx.md)
+- Provider guides: [Codex](./user/providers-codex.md) · [Claude](./user/providers-claude.md) · [OpenCode](./user/providers-opencode.md) · [Antigravity](./user/providers-antigravity.md) · [Kiro](./user/providers-kiro.md) · [Pi](./user/providers-pi.md) · [Muse Code](./user/providers-muse.md) · [fx](./user/providers-fx.md)
 
 ---
 
@@ -53,8 +53,13 @@ source alone does not explain. Most code changes do not need an internal documen
 - [Environment auth](./internals/environment-auth.md)
 - [T3 Connect](./internals/t3-connect.md)
 - [T3 relay transport](./internals/t3-relay-transport.md)
-- [CI gates](./internals/ci.md)
-- [Engineering work artifacts](./internals/work-artifacts.md)
+- [Assistant citations](./internals/assistant-citations.md)
+- [Mobile layout](./internals/mobile-layout.md)
+- [Mobile navigation](./internals/mobile-navigation.md)
+- [Mobile development lifecycle](./internals/mobile-development.md)
+- [Terminal runtime](./internals/terminal-runtime.md)
+- [Devices](./internals/devices.md)
+- [Voice input](./internals/voice-input.md)
 
 ### Runbooks
 

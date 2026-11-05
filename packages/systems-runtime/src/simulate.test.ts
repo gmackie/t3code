@@ -1,7 +1,8 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
-import * as Crypto from "effect/Crypto";
+import * as Digest from "effect/crypto/Digest";
 import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
 import { format } from "@t3tools/systems-model/rational";
 import type { RunOutcome } from "@t3tools/systems-model/trace";
 
@@ -44,7 +45,7 @@ const samplesOf = (outcome: RunOutcome, signalId: string) =>
     .filter((sample) => sample.signalId === signalId)
     .map((sample) => `${format(sample.time)} ${sample.side} ${sample.value}`);
 
-it.layer(NodeServices.layer)("discrete scheduler", (it) => {
+it.layer(Layer.mergeAll(NodeServices.layer, Digest.layerWebCrypto))("discrete scheduler", (it) => {
   it.effect("registers read their committed value and publish the next one at t+", () =>
     Effect.gen(function* () {
       const files = withJson(
@@ -226,7 +227,7 @@ it.layer(NodeServices.layer)("discrete scheduler", (it) => {
 const hex = (bytes: Uint8Array) =>
   Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
 
-it.layer(NodeServices.layer)("unit conversion", (it) => {
+it.layer(Layer.mergeAll(NodeServices.layer, Digest.layerWebCrypto))("unit conversion", (it) => {
   it.effect("std.unit_convert@1 scales by the locked catalog's unit scales", () =>
     Effect.gen(function* () {
       // Add centimetres to the catalog and re-lock it, as a real project would.
@@ -235,7 +236,9 @@ it.layer(NodeServices.layer)("unit conversion", (it) => {
       catalog.units.cm = { dims: [0, 1, 0, 0, 0, 0, 0], scale: "1/100" };
       const catalogBytes = new TextEncoder().encode(JSON.stringify(catalog));
       const lock = readJson(base, "systems.lock.json");
-      lock.libraries[0].sha256 = hex(yield* (yield* Crypto.Crypto).digest("SHA-256", catalogBytes));
+      lock.libraries[0].sha256 = hex(
+        yield* (yield* Digest.Digest).digest(Digest.sha256, catalogBytes),
+      );
       const files = withJson(
         withJson(
           withJson(

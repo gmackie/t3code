@@ -1,7 +1,8 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
-import * as Crypto from "effect/Crypto";
+import * as Digest from "effect/crypto/Digest";
 import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
 import { readPackFiles, validatePack, type PackFiles } from "@t3tools/systems-model/pack";
 
@@ -59,7 +60,7 @@ const reverseKeys = (value: unknown): unknown =>
         )
       : value;
 
-it.layer(NodeServices.layer)("compileSystem", (it) => {
+it.layer(Layer.mergeAll(NodeServices.layer, Digest.layerWebCrypto))("compileSystem", (it) => {
   it.effect("every positive conformance model and chart compiles with no diagnostics", () =>
     Effect.gen(function* () {
       const files = yield* loadFiles;
@@ -257,7 +258,7 @@ it.layer(NodeServices.layer)("compileSystem", (it) => {
           feedthrough: false,
         });
       });
-      const bytes = yield* (yield* Crypto.Crypto).digest("SHA-256", files.files.get(library)!);
+      const bytes = yield* (yield* Digest.Digest).digest(Digest.sha256, files.files.get(library)!);
       const sha256 = Buffer.from(bytes).toString("hex");
       files = withFile(files, "systems.lock.json", (lock) => {
         lock.libraries[0].sha256 = sha256;
@@ -286,7 +287,7 @@ it.layer(NodeServices.layer)("compileSystem", (it) => {
   );
 });
 
-it.layer(NodeServices.layer)("semantic digest", (it) => {
+it.layer(Layer.mergeAll(NodeServices.layer, Digest.layerWebCrypto))("semantic digest", (it) => {
   const digests = (files: PackFiles) =>
     Effect.gen(function* () {
       const { semanticDigest, planDigest } = yield* compiled(files);

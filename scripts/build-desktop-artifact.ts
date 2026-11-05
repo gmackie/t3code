@@ -2683,7 +2683,7 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
       },
     };
   }
-  return createDesktopElectronBuilderConfig({
+  const buildConfig = createDesktopElectronBuilderConfig({
     platform,
     target,
     version,
@@ -2701,6 +2701,11 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
     macPasskeySigning,
     windowsSigning,
   });
+  // linux-after-pack runs the server compile cache, then drops world-writable modes.
+  if (platform === "linux") {
+    buildConfig.afterPack = path.join(repoRoot, "scripts/linux-after-pack.ts");
+  }
+  return buildConfig;
 });
 
 const assertPlatformBuildResources = Effect.fn("assertPlatformBuildResources")(function* (

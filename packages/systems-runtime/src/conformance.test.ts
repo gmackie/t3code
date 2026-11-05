@@ -1,12 +1,14 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
+import * as Digest from "effect/crypto/Digest";
 import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
 import { validatePack } from "@t3tools/systems-model/pack";
 
 import { executeConformance } from "./conformance.ts";
 import { loadFiles } from "./pack.testkit.ts";
 
-it.layer(NodeServices.layer)("executeConformance", (it) => {
+it.layer(Layer.mergeAll(NodeServices.layer, Digest.layerWebCrypto))("executeConformance", (it) => {
   it.effect("every manifest fixture passes", () =>
     Effect.gen(function* () {
       const reports = yield* executeConformance(yield* validatePack(yield* loadFiles));

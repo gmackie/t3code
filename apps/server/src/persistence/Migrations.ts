@@ -81,11 +81,13 @@ import Migration0074 from "./Migrations/074_ExcludeAttachmentPlaceholdersFromSea
 import Migration0075 from "./Migrations/075_SubagentDeliveryState.ts";
 import Migration0076 from "./Migrations/076_ProjectionProjectsPinArchive.ts";
 import Migration0077 from "./Migrations/077_RepairBooleanSettledOverride.ts";
-// GMACKO lane migration, released as 59, 62, 65, 67, 71, 72, 73, 74 and 77 before upstream claimed those ids.
-import BoundedShellLookups from "./Migrations/078_BoundedShellLookups.ts";
-// T3CODE-6 Bob admission; released as 59 on main and 63, 66, 68, 72, 73, 74, 75 and 78 on custom-local
+import Migration0078 from "./Migrations/078_DropOrchestrationEventCorrelationIndex.ts";
+import Migration0079 from "./Migrations/079_DelegatedRecoveryIndexes.ts";
+// GMACKO lane migration, released as 59, 62, 65, 67, 71, 72, 73, 74, 77 and 78 before upstream claimed those ids.
+import BoundedShellLookups from "./Migrations/080_BoundedShellLookups.ts";
+// T3CODE-6 Bob admission; released as 59 on main and 63, 66, 68, 72, 73, 74, 75, 78 and 79 on custom-local
 // before upstream claimed those ids.
-import BobExecutionAdmission from "./Migrations/079_BobExecutionAdmission.ts";
+import BobExecutionAdmission from "./Migrations/081_BobExecutionAdmission.ts";
 
 /**
  * Upstream's ThreadFailureLookupIndex (62) and the lane's BoundedShellLookups both create
@@ -180,10 +182,12 @@ const migrationEntries = [
   [75, "SubagentDeliveryState", Migration0075],
   [76, "ProjectionProjectsPinArchive", Migration0076],
   [77, "RepairBooleanSettledOverride", Migration0077],
-  // Released as 59, 62, 65, 67, 71, 72, 73, 74 and 77 on the GMACKO lane; re-keyed by name.
-  [78, "BoundedShellLookups", BoundedShellLookupsShared],
-  // Released as 59 on main and 63, 66, 68, 72, 73, 74, 75 and 78 on custom-local; re-keyed by name.
-  [79, "BobExecutionAdmission", BobExecutionAdmission],
+  [78, "DropOrchestrationEventCorrelationIndex", Migration0078],
+  [79, "DelegatedRecoveryIndexes", Migration0079],
+  // Released as 59, 62, 65, 67, 71, 72, 73, 74, 77 and 78 on the GMACKO lane; re-keyed by name.
+  [80, "BoundedShellLookups", BoundedShellLookupsShared],
+  // Released as 59 on main and 63, 66, 68, 72, 73, 74, 75, 78 and 79 on custom-local; re-keyed by name.
+  [81, "BobExecutionAdmission", BobExecutionAdmission],
 ] as const;
 
 export const migrationManifest = migrationEntries.map(([id, name]) => [id, name] as const);

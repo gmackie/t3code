@@ -1,3 +1,4 @@
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, it } from "@effect/vitest";
 import {
@@ -151,7 +152,7 @@ const tools = (
   options: SystemsService.SystemsServiceOptions = {},
 ) =>
   McpHttpServer.layerSystemsRegistration.pipe(
-    Layer.provideMerge(McpServer.McpServer.layer),
+    Layer.provideMerge(McpHttpServer.layerInProcessMcpServer),
     Layer.provideMerge(
       Layer.effect(
         SystemsService.SystemsService,
@@ -204,6 +205,7 @@ const editor = asThread("editor");
 
 const layer = Layer.mergeAll(
   NodeServices.layer,
+  NodeCrypto.layer,
   SqlitePersistence.layerMemory.pipe(Layer.provide(NodeServices.layer)),
 );
 

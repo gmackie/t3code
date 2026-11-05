@@ -1,4 +1,4 @@
-import * as Crypto from "effect/Crypto";
+import * as Digest from "effect/crypto/Digest";
 import * as Effect from "effect/Effect";
 import { error, type ModelDiagnostic } from "@t3tools/systems-model/diagnostics";
 
@@ -231,9 +231,7 @@ const encoder = new TextEncoder();
 
 /** `sha256:<lowercase hex>` of the canonical bytes of `value` (RFC-001 §3.2). */
 export const digest = Effect.fn("systemsCompiler.digest")(function* (value: unknown) {
-  const crypto = yield* Crypto.Crypto;
-  const bytes = yield* crypto
-    .digest("SHA-256", encoder.encode(canonicalize(value)))
-    .pipe(Effect.orDie);
+  const crypto = yield* Digest.Digest;
+  const bytes = yield* crypto.digest(Digest.sha256, encoder.encode(canonicalize(value)));
   return `sha256:${Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("")}`;
 });
