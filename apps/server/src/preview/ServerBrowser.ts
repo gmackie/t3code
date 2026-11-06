@@ -541,6 +541,7 @@ const make = Effect.gen(function* () {
   const walletPageTabs = new WeakMap<Page, Promise<string>>();
   const contexts = new ServerBrowserContexts({
     profilesDir: NodePath.join(config.stateDir, "server-browser", "profiles"),
+    idleBrowserMs: 5 * 60_000,
     executable: () => runPromise(previewBrowser.executable),
     userAgent: PreviewBrowser.browserUserAgent(platform),
     // An agent scope keeps Chrome out of the server's memory protection and OOM score.
@@ -2014,10 +2015,11 @@ const make = Effect.gen(function* () {
       });
     }
     if (tab.profileId === METAMASK_BROWSER_PROFILE_ID) {
-      throw new BrowserControlInterrupted(
-        "Use metamask tools for wallet actions. Ordinary browser automation cannot operate the wallet profile.",
-        "agentMismatch",
-      );
+      throw new BrowserControlInterrupted({
+        message:
+          "Use metamask tools for wallet actions. Ordinary browser automation cannot operate the wallet profile.",
+        reason: "agentMismatch",
+      });
     }
     if (!READ_OPERATIONS.has(request.operation) && !tab.control.agentMayAct(request.agentSessionId))
       throw new BrowserControlInterrupted({
@@ -2121,10 +2123,11 @@ const make = Effect.gen(function* () {
             ),
           ));
         if (tab.profileId === METAMASK_BROWSER_PROFILE_ID)
-          throw new BrowserControlInterrupted(
-            "Use metamask tools for wallet actions. Ordinary browser automation cannot operate the wallet profile.",
-            "agentMismatch",
-          );
+          throw new BrowserControlInterrupted({
+            message:
+              "Use metamask tools for wallet actions. Ordinary browser automation cannot operate the wallet profile.",
+            reason: "agentMismatch",
+          });
         if (existing?.dialog)
           throw new BrowserControlInterrupted({
             message:
@@ -2934,7 +2937,7 @@ const make = Effect.gen(function* () {
   };
 
   const wallet = new MetaMaskWallet({
-    configurationPath: process.env.T3CODE_METAMASK_CONFIG,
+    configurationPath: (yield* HostProcess.Environment).T3CODE_METAMASK_CONFIG,
     journalDirectory: NodePath.join(config.stateDir, "server-browser", "wallet-requests"),
     context: () => contexts.contextFor(METAMASK_BROWSER_PROFILE_ID),
     showPage: async (threadId, page) => {

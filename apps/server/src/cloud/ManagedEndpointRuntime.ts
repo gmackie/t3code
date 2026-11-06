@@ -1,3 +1,7 @@
+class T3RelayConnectorStartError extends Schema.TaggedError<T3RelayConnectorStartError>()(
+  "T3RelayConnectorStartError",
+  { cause: Schema.Defect() },
+) {}
 import type { RelayManagedEndpointRuntimeConfig } from "@t3tools/contracts/relay";
 import { RotatingFileSink, RotatingFileSinkError } from "@t3tools/shared/logging";
 import * as HostProcess from "@t3tools/shared/HostProcess";
@@ -741,17 +745,20 @@ export const make = Effect.gen(function* () {
           reason: "The T3 relay connector URL or local origin is missing.",
         };
       }
-      const started = yield* Effect.try(() => {
-        const session = t3RelayConnectorFactory.make(
-          {
-            connectorUrl,
-            connectorToken: config.connectorToken,
-            originUrl,
-          },
-          observeT3RelayConnector,
-        );
-        session.start();
-        return session;
+      const started = yield* Effect.try({
+        try: () => {
+          const session = t3RelayConnectorFactory.make(
+            {
+              connectorUrl,
+              connectorToken: config.connectorToken,
+              originUrl,
+            },
+            observeT3RelayConnector,
+          );
+          session.start();
+          return session;
+        },
+        catch: (cause) => new T3RelayConnectorStartError({ cause }),
       }).pipe(Effect.result);
       if (Result.isFailure(started)) {
         return {

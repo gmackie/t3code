@@ -72,6 +72,7 @@ const isAuthFailure = (cause: unknown) =>
 
 export interface McpPoolTool {
   readonly name: string;
+  readonly inputSchema: unknown;
   readonly _meta?: unknown;
   readonly annotations?: unknown;
 }

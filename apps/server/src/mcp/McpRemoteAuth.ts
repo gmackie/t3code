@@ -460,13 +460,15 @@ export const make = Effect.fn("McpRemoteAuth.make")(function* (options: McpRemot
     const token = record.tokens?.refresh_token ?? record.tokens?.access_token;
     if (endpoint !== undefined && token !== undefined && client !== undefined) {
       // Best effort (RFC 7009): the local tokens go either way.
-      yield* Effect.tryPromise(() =>
-        (fetchFn ?? fetch)(endpoint, {
-          method: "POST",
-          headers: { "content-type": "application/x-www-form-urlencoded" },
-          body: new URLSearchParams({ token, client_id: client.client_id }).toString(),
-        }),
-      ).pipe(Effect.ignore);
+      yield* Effect.tryPromise({
+        try: () =>
+          (fetchFn ?? fetch)(endpoint, {
+            method: "POST",
+            headers: { "content-type": "application/x-www-form-urlencoded" },
+            body: new URLSearchParams({ token, client_id: client.client_id }).toString(),
+          }),
+        catch: () => fail(server.name, "Token revocation request failed."),
+      }).pipe(Effect.ignore);
     }
     yield* secrets
       .remove(secretName(server))

@@ -36,7 +36,7 @@ jobs:
         working-directory: apps/server
         run: |
           pnpm exec vp test run src/preview/PreviewBrowser.test.ts src/preview/PreviewBrowserHost.test.ts src/preview/ServerBrowserContexts.test.ts src/preview/ServerBrowser.test.ts
-          pnpm exec tsc --noEmit
+          pnpm exec vp run typecheck
       # Lint from the root: oxlint resolves the repo's local plugin relative to it.
       - name: Lint the server browser
         run: |

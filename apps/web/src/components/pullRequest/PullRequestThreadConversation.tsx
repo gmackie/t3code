@@ -1,3 +1,4 @@
+import { pullRequestCompletionScope } from "./PullRequestMarkdownTextarea";
 import type {
   EnvironmentId,
   PullRequestDetailView,
@@ -87,6 +88,7 @@ export function PullRequestThreadConversation({
         {thread.isOutdated ? <span className="shrink-0">Outdated</span> : null}
       </p>
       <ReviewThreadCard
+        completionScope={pullRequestCompletionScope(detail, environmentId, reference)}
         thread={thread}
         workspaceRoot={detail.workspaceRoot}
         canReply={hostReview.reply && viewer.comment}

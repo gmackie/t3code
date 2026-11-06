@@ -56,8 +56,8 @@ jobs:
           pnpm exec vp test run packages/contracts/src
       - name: Typecheck contracts and server
         run: |
-          (cd packages/contracts && pnpm exec tsc --noEmit)
-          (cd apps/server && pnpm exec tsc --noEmit)
+          (cd packages/contracts && pnpm exec vp run typecheck)
+          (cd apps/server && pnpm exec vp run typecheck)
 
   clients:
     runs-on: forgegraph-ci
@@ -74,9 +74,9 @@ jobs:
           pnpm install --frozen-lockfile
       - name: Verify plugin panels on web and the shared host
         run: |
-          (cd packages/client-runtime && pnpm exec vp test run src/mcpApps && pnpm exec tsc --noEmit)
-          (cd apps/web && pnpm exec vp test run src/components/CommandPalette.logic.test.ts src/rightPanelStore.test.ts src/components/RightPanelTabs.test.tsx src/components/settings --project unit && pnpm exec tsc --noEmit)
-          (cd apps/mobile && pnpm exec vp test run src/features/plugins src/features/threads/mcpAppSource.test.ts && pnpm exec tsc --noEmit)
+          (cd packages/client-runtime && pnpm exec vp test run src/mcpApps && pnpm exec vp run typecheck)
+          (cd apps/web && pnpm exec vp test run src/components/CommandPalette.logic.test.ts src/rightPanelStore.test.ts src/components/RightPanelTabs.test.tsx src/components/settings --project unit && pnpm exec vp run typecheck)
+          (cd apps/mobile && pnpm exec vp test run src/features/plugins src/features/threads/mcpAppSource.test.ts && pnpm exec vp run typecheck)
       # Lint from the root: oxlint resolves the repo's local plugin relative to it.
       - name: Lint the plugin surfaces
         run: |

@@ -134,7 +134,7 @@ export async function readMetaMaskState(page: Page, extensionId: string) {
 /** Unknown approval types are visible in MetaMask but never eligible for agent confirmation. */
 export function decodeMetaMaskApprovals(raw: unknown) {
   const state = decodeState(raw);
-  const approvals: Array<typeof MetaMaskApproval.Type> = [];
+  const approvals: Array<MetaMaskApproval> = [];
   const pendingRequests = Object.values(state.pendingApprovals).map((value) =>
     decodePending(value),
   );
@@ -276,11 +276,11 @@ export function decodeMetaMaskApprovals(raw: unknown) {
   return { unlocked: state.isUnlocked, approvals, unsupportedApprovals };
 }
 
-export function approvalFingerprint(approval: typeof MetaMaskApproval.Type) {
+export function approvalFingerprint(approval: MetaMaskApproval) {
   return NodeCrypto.createHash("sha256").update(JSON.stringify(approval)).digest("hex");
 }
 
-export function metaMaskApprovalPresentation(approval: typeof MetaMaskApproval.Type) {
+export function metaMaskApprovalPresentation(approval: MetaMaskApproval) {
   const chainPermission =
     approval.method === "wallet_switchEthereumChain" && approval.chainPermission !== undefined;
   return {
@@ -296,7 +296,7 @@ export function metaMaskApprovalPresentation(approval: typeof MetaMaskApproval.T
 }
 
 /** Confirm only the exact request route and a normal enabled confirmation button. */
-export async function confirmMetaMaskApproval(page: Page, approval: typeof MetaMaskApproval.Type) {
+export async function confirmMetaMaskApproval(page: Page, approval: MetaMaskApproval) {
   const presentation = metaMaskApprovalPresentation(approval);
   const chainPermission =
     approval.method === "wallet_switchEthereumChain" ? approval.chainPermission : undefined;

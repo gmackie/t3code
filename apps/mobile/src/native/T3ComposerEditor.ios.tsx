@@ -74,6 +74,13 @@ interface NativeComposerEditorRef {
   blur: () => Promise<void>;
   prepareForSubmit: () => Promise<NativeEditorEvent["nativeEvent"]>;
   setSelection: (start: number, end: number) => Promise<void>;
+  readState: () => Promise<{
+    readonly value: string;
+    readonly selection: ComposerEditorSelection;
+    readonly eventCount: number;
+    readonly resetGeneration: number;
+    readonly pasteEventCount: number;
+  }>;
 }
 
 interface NativeComposerEditorProps extends ViewProps {
@@ -290,36 +297,51 @@ export function ComposerEditor({
     },
     [nativeEventSnapshotsRef, readResetGeneration],
   );
-  useImperativeHandle(
-    ref,
-    () => ({
-      focus: () => settleViewCommand(nativeRef.current?.focus()),
-      blur: () => settleViewCommand(nativeRef.current?.blur()),
-      prepareForSubmit: async (isCurrent) => {
-        const editor = nativeRef.current;
-        const snapshot = await editor?.prepareForSubmit();
-        if (!snapshot || nativeRef.current !== editor) return false;
-        const current = isCurrent();
-        const reconciled = reconcileComposerSubmitSnapshot(
-          mostRecentEventCountRef.current,
-          nativeEventSnapshotsRef.current,
-          snapshot,
-          current,
-        );
-        if (reconciled === null) return false;
-        mostRecentEventCountRef.current = reconciled.eventCount;
-        nativeEventSnapshotsRef.current = reconciled.snapshots;
-        setMostRecentEventCount(reconciled.eventCount);
-        if (!current) return false;
-        onChangeText(snapshot.value);
-        onSelectionChange?.(snapshot.selection);
-        return true;
-      },
-      setSelection: (nextSelection) =>
-        settleViewCommand(nativeRef.current?.setSelection(nextSelection.start, nextSelection.end)),
-    }),
-    [onChangeText, onSelectionChange],
-  );
+  const applyNativeChange = (event: NativeEditorEvent["nativeEvent"]) => {
+    const acknowledgedEventCount = acceptNativeEvent(event);
+    if (acknowledgedEventCount === false) return;
+    onChangeText(event.value);
+    onSelectionChange?.(event.selection);
+    setMostRecentEventCount(acknowledgedEventCount);
+    forceNativeEventRender((sequence) => sequence + 1);
+  };
+  useImperativeHandle(ref, () => ({
+    focus: () => settleViewCommand(nativeRef.current?.focus()),
+    blur: () => settleViewCommand(nativeRef.current?.blur()),
+    setSelection: (nextSelection) =>
+      settleViewCommand(nativeRef.current?.setSelection(nextSelection.start, nextSelection.end)),
+    prepareForSubmit: async (isCurrent) => {
+      const editor = nativeRef.current;
+      const snapshot = await editor?.prepareForSubmit();
+      if (!snapshot || nativeRef.current !== editor) return false;
+      const current = isCurrent();
+      const reconciled = reconcileComposerSubmitSnapshot(
+        mostRecentEventCountRef.current,
+        nativeEventSnapshotsRef.current,
+        snapshot,
+        current,
+      );
+      if (reconciled === null) return false;
+      mostRecentEventCountRef.current = reconciled.eventCount;
+      nativeEventSnapshotsRef.current = reconciled.snapshots;
+      setMostRecentEventCount(reconciled.eventCount);
+      if (!current) return false;
+      onChangeText(snapshot.value);
+      onSelectionChange?.(snapshot.selection);
+      return true;
+    },
+    // Tapping outside the editor makes iOS accept a pending autocorrection, and that edit's
+    // event can reach JS after the tap's handler has already read the draft.
+    flushPendingInput: async () => {
+      const state = await Promise.resolve()
+        .then(() => nativeRef.current?.readState())
+        .catch(() => undefined);
+      // Acknowledging past a paste JS has not received yet would get the paste rejected.
+      if (state && state.pasteEventCount <= mostRecentEventCountRef.current) {
+        applyNativeChange(state);
+      }
+    },
+  }));
   const themeJson = JSON.stringify(createNativeComposerTheme(theme));
   const resolvedTextStyle = StyleSheet.flatten(textStyle) ?? {};
   return (
@@ -355,14 +377,7 @@ export function ComposerEditor({
       textPasteThresholdBytes={onPasteText ? PASTED_TEXT_ATTACHMENT_THRESHOLD_BYTES : 0}
       maxInputChars={PROVIDER_SEND_TURN_MAX_INPUT_CHARS}
       style={style as StyleProp<ViewStyle>}
-      onComposerChange={(event) => {
-        const acknowledgedEventCount = acceptNativeEvent(event.nativeEvent);
-        if (acknowledgedEventCount === false) return;
-        onChangeText(event.nativeEvent.value);
-        onSelectionChange?.(event.nativeEvent.selection);
-        setMostRecentEventCount(acknowledgedEventCount);
-        forceNativeEventRender((sequence) => sequence + 1);
-      }}
+      onComposerChange={(event) => applyNativeChange(event.nativeEvent)}
       onComposerSelectionChange={(event) => {
         const acknowledgedEventCount = acceptNativeEvent(event.nativeEvent);
         if (acknowledgedEventCount === false) return;

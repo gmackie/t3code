@@ -227,6 +227,7 @@ describe("migration ledger reconciliation", () => {
           [77, "RepairBooleanSettledOverride"],
           [78, "DropOrchestrationEventCorrelationIndex"],
           [79, "DelegatedRecoveryIndexes"],
+          [82, "ScheduledTaskThreadMode"],
         ]);
         yield* assertLedgerMatchesManifest();
         const rows = yield* readLedger;
@@ -273,6 +274,7 @@ describe("migration ledger reconciliation", () => {
           [77, "RepairBooleanSettledOverride"],
           [78, "DropOrchestrationEventCorrelationIndex"],
           [79, "DelegatedRecoveryIndexes"],
+          [82, "ScheduledTaskThreadMode"],
         ]);
         yield* assertLedgerMatchesManifest();
         const columns = yield* sql<{ readonly name: string }>`
@@ -316,6 +318,7 @@ describe("migration ledger reconciliation", () => {
           [77, "RepairBooleanSettledOverride"],
           [78, "DropOrchestrationEventCorrelationIndex"],
           [79, "DelegatedRecoveryIndexes"],
+          [82, "ScheduledTaskThreadMode"],
         ]);
         yield* assertLedgerMatchesManifest();
         const rows = yield* readLedger;
@@ -364,6 +367,7 @@ describe("migration ledger reconciliation", () => {
           [77, "RepairBooleanSettledOverride"],
           [78, "DropOrchestrationEventCorrelationIndex"],
           [79, "DelegatedRecoveryIndexes"],
+          [82, "ScheduledTaskThreadMode"],
         ]);
         yield* assertLedgerMatchesManifest();
         const triggers = yield* sql<{ readonly name: string }>`
@@ -400,6 +404,7 @@ describe("migration ledger reconciliation", () => {
           [77, "RepairBooleanSettledOverride"],
           [78, "DropOrchestrationEventCorrelationIndex"],
           [79, "DelegatedRecoveryIndexes"],
+          [82, "ScheduledTaskThreadMode"],
         ]);
         yield* assertLedgerMatchesManifest();
         const indexes = yield* sql<{ readonly name: string }>`
@@ -435,6 +440,7 @@ describe("migration ledger reconciliation", () => {
           [77, "RepairBooleanSettledOverride"],
           [78, "DropOrchestrationEventCorrelationIndex"],
           [79, "DelegatedRecoveryIndexes"],
+          [82, "ScheduledTaskThreadMode"],
         ]);
         yield* assertLedgerMatchesManifest();
         const rows = yield* readLedger;
@@ -472,6 +478,7 @@ describe("migration ledger reconciliation", () => {
           [77, "RepairBooleanSettledOverride"],
           [78, "DropOrchestrationEventCorrelationIndex"],
           [79, "DelegatedRecoveryIndexes"],
+          [82, "ScheduledTaskThreadMode"],
         ]);
         yield* assertLedgerMatchesManifest();
         const rows = yield* readLedger;

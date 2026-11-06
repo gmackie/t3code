@@ -58,7 +58,7 @@ jobs:
         run: pnpm exec vp test run src/rightPanelStore.test.ts --project unit
       - name: Check affected server and clients
         run: |
-          pnpm --filter t3 --filter @t3tools/web --filter @t3tools/mobile --filter @t3tools/contracts run typecheck
+          pnpm --filter t3 --filter @t3tools/web --filter @t3tools/mobile --filter @t3tools/contracts exec vp run typecheck
       # Lint from the root: oxlint resolves the repo's local plugin relative to it.
       - name: Lint the coordination source
         run: |

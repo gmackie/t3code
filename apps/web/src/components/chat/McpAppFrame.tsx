@@ -379,7 +379,9 @@ export function McpAppFrame(props: {
       updateModelContext: async (context) => {
         const current = readLive();
         if (current.props.source.kind !== "thread-item") {
-          throw new McpAppHostRefusal("Plugin panels can't add context to a conversation.");
+          throw new McpAppHostRefusal({
+            message: "Plugin panels can't add context to a conversation.",
+          });
         }
         const { threadId, itemId, conversationThreadId } = current.props.source;
         const result = await current.updateModelContext({

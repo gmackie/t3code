@@ -63,6 +63,7 @@ const AgentAwarenessOperation = Schema.Literals([
   "load-live-activity-prime-preferences",
   "prime-live-activity",
   "load-registration-record",
+  "clear-registration-record",
 ]);
 
 export class AgentAwarenessOperationError extends Schema.TaggedError<AgentAwarenessOperationError>()(
@@ -650,7 +651,14 @@ const registerDevice = Effect.fn("remoteRegistration.registerDevice")(function* 
       setRegistrationStatus("unknown");
       return;
     }
-    const deviceId = yield* Effect.tryPromise(() => loadAgentAwarenessDeviceId());
+    const deviceId = yield* Effect.tryPromise({
+      try: () => loadAgentAwarenessDeviceId(),
+      catch: (cause) =>
+        new AgentAwarenessOperationError({
+          operation: "load-device-unregistration-identifier",
+          cause,
+        }),
+    });
     if (expectedGeneration !== deviceRegistrationGeneration) return;
     const provider = relayTokenProvider;
     if (deviceId) {
@@ -658,7 +666,11 @@ const registerDevice = Effect.fn("remoteRegistration.registerDevice")(function* 
       const retired = yield* unregisterDeviceWithRelay({ deviceId, tokenProvider: provider });
       if (!retired || expectedGeneration !== deviceRegistrationGeneration) return;
     }
-    yield* Effect.tryPromise(() => clearAgentAwarenessRegistrationRecord());
+    yield* Effect.tryPromise({
+      try: () => clearAgentAwarenessRegistrationRecord(),
+      catch: (cause) =>
+        new AgentAwarenessOperationError({ operation: "clear-registration-record", cause }),
+    });
     if (expectedGeneration !== deviceRegistrationGeneration) return;
     relayRegistrationRetired = true;
     setRegistrationStatus("unknown");

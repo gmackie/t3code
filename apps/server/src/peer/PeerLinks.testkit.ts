@@ -109,8 +109,7 @@ export const servePeer = <E, R>(
         Layer.provide(
           Layer.mock(McpSessionRegistry.McpSessionRegistry)({
             resolve: () => Effect.undefined,
-            // @effect-diagnostics-next-line effectSucceedWithVoid:off - This optional result requires undefined, not the wider void type.
-            resolvePlugin: () => Effect.succeed(undefined),
+            resolvePlugin: () => Effect.undefined,
           }),
         ),
         Layer.provide(McpOAuth.layerMcpClientAuthenticator),

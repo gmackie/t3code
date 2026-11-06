@@ -414,7 +414,9 @@ export function McpAppView(props: {
       sendMessage: async (text) => {
         const current = latest.current.props.source;
         if (current.kind !== "thread-item") {
-          throw new McpAppHostRefusal("Plugin panels can't send messages to a conversation.");
+          throw new McpAppHostRefusal({
+            message: "Plugin panels can't send messages to a conversation.",
+          });
         }
         if (!(await confirm(`Send this message from ${app.server}?`, text, "Send"))) {
           throw new McpAppHostRefusal({ message: "Declined by the user." });
@@ -433,7 +435,9 @@ export function McpAppView(props: {
       updateModelContext: async (context) => {
         const current = latest.current.props.source;
         if (current.kind !== "thread-item") {
-          throw new McpAppHostRefusal("Plugin panels can't add context to a conversation.");
+          throw new McpAppHostRefusal({
+            message: "Plugin panels can't add context to a conversation.",
+          });
         }
         const { threadId, itemId, conversationThreadId } = current;
         const result = await latest.current.updateModelContext({

@@ -35,9 +35,9 @@ jobs:
       - name: Verify engine package and import boundary
         run: |
           pnpm exec vp test run packages/engine apps/server/src/engine
-          pnpm --filter @t3tools/engine run typecheck
-          pnpm --filter t3 run typecheck
-          pnpm --filter @t3tools/contracts run typecheck
+          pnpm --filter @t3tools/engine exec vp run typecheck
+          pnpm --filter t3 exec vp run typecheck
+          pnpm --filter @t3tools/contracts exec vp run typecheck
           pnpm exec vp lint packages/engine apps/server/src/engine apps/server/scripts/engine-contention-bench.ts vite.config.ts
       # The gate allows no excess latency, so jobs sharing the runner can fail it on noise.
       # A real regression fails every attempt.

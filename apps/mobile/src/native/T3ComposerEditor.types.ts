@@ -24,6 +24,8 @@ export interface ComposerEditorHandle {
   /** iOS: commit pending keyboard corrections and synchronize the draft before sending. */
   prepareForSubmit?: (isCurrent: () => boolean) => Promise<boolean>;
   setSelection: (selection: ComposerEditorSelection) => void;
+  /** iOS: resolves once a native edit still in flight has reached `onChangeText`. */
+  flushPendingInput: () => Promise<void>;
 }
 
 export interface ComposerEditorProps {

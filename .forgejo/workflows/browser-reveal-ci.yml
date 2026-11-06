@@ -39,7 +39,7 @@ jobs:
         working-directory: apps/web
         run: |
           pnpm exec vp test run src/previewRevealHydration.test.ts src/previewStateStore.test.ts --project unit
-          pnpm exec tsc --noEmit
+          pnpm exec vp run typecheck
           pnpm exec vp lint src/previewStateStore.ts src/previewRevealHydration.test.ts src/components/preview/useServerPreviewReveal.ts src/components/preview/useServerPreviewReveal.browser.test.tsx
           pnpm exec vp fmt --check src/components/ChatView.tsx src/previewStateStore.ts src/previewRevealHydration.test.ts src/components/preview/useServerPreviewReveal.ts src/components/preview/useServerPreviewReveal.browser.test.tsx
 
@@ -60,6 +60,6 @@ jobs:
         working-directory: apps/desktop
         run: |
           pnpm exec vp test run src/app/DesktopEnvironment.test.ts src/app/DesktopUserData.test.ts src/app/DesktopAppIdentity.test.ts src/app/DesktopClerk.test.ts
-          pnpm exec tsc --noEmit
+          pnpm exec vp run typecheck
           pnpm exec vp lint src/app/DesktopConfig.ts src/app/DesktopEnvironment.ts src/app/DesktopUserData.ts
           pnpm exec vp fmt --check src/app/DesktopConfig.ts src/app/DesktopEnvironment.ts src/app/DesktopUserData.ts src/app/DesktopEnvironment.test.ts src/app/DesktopUserData.test.ts src/app/DesktopClerk.test.ts

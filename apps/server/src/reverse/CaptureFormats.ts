@@ -1,3 +1,4 @@
+import * as Schema from "effect/Schema";
 import { strFromU8, unzipSync } from "fflate";
 
 /**
@@ -16,7 +17,10 @@ export interface ParsedCapture {
   skipped: string[];
 }
 
-export class CaptureFormatError extends Error {}
+export class CaptureFormatError extends Schema.TaggedError<CaptureFormatError>()(
+  "CaptureFormatError",
+  { message: Schema.String },
+) {}
 
 const DUMP_SECTIONS = new Set(["$dumpvars", "$dumpall", "$dumpon", "$dumpoff"]);
 // Channel names fit the 256-character ids used to cite them.
@@ -64,9 +68,9 @@ function finish(
 ): ParsedCapture {
   // These are stored in the project record; a NaN there would make it unreadable.
   if (!Number.isFinite(durationNs) || durationNs < 0)
-    throw new CaptureFormatError("The capture has no valid duration.");
+    throw new CaptureFormatError({ message: "The capture has no valid duration." });
   if (sampleRateHz !== null && !(Number.isFinite(sampleRateHz) && sampleRateHz > 0))
-    throw new CaptureFormatError("The capture has no valid sample rate.");
+    throw new CaptureFormatError({ message: "The capture has no valid sample rate." });
   return {
     format,
     durationNs,
@@ -122,7 +126,8 @@ export async function parseVcd(text: string): Promise<ParsedCapture> {
       const parts: string[] = [];
       for (let part = next(); part !== null && part !== "$end"; part = next()) parts.push(part);
       const match = /^(\d+)(s|ms|us|ns|ps|fs)$/.exec(parts.join(""));
-      if (!match) throw new CaptureFormatError(`Unsupported VCD timescale ${parts.join(" ")}.`);
+      if (!match)
+        throw new CaptureFormatError({ message: `Unsupported VCD timescale ${parts.join(" ")}.` });
       timescaleNs = Number(match[1]) * TIMESCALE_NS[match[2]!]!;
     } else if (token === "$scope") {
       next();
@@ -139,7 +144,8 @@ export async function parseVcd(text: string): Promise<ParsedCapture> {
       // A bit select such as `data [3]` keeps its index in the name.
       const select = [];
       for (let part = next(); part !== null && part !== "$end"; part = next()) select.push(part);
-      if (!id || !base) throw new CaptureFormatError("Malformed VCD $var declaration.");
+      if (!id || !base)
+        throw new CaptureFormatError({ message: "Malformed VCD $var declaration." });
       const name = select.length ? `${base}${select.join("")}` : base;
       if (width !== "1" || kind === "real") {
         noteSkipped(skipped, name);
@@ -156,7 +162,8 @@ export async function parseVcd(text: string): Promise<ParsedCapture> {
       );
     } else if (token.startsWith("$")) skipToEnd();
   }
-  if (names.length === 0) throw new CaptureFormatError("The VCD file declares no 1-bit signals.");
+  if (names.length === 0)
+    throw new CaptureFormatError({ message: "The VCD file declares no 1-bit signals." });
 
   const sink = new EdgeSink(names.length);
   const level: Array<0 | 1 | null> = names.map(() => null);
@@ -169,7 +176,7 @@ export async function parseVcd(text: string): Promise<ParsedCapture> {
     if (first === 35 /* # */) {
       timeNs = Number(token.slice(1)) * timescaleNs;
       if (!Number.isFinite(timeNs) || timeNs < 0)
-        throw new CaptureFormatError(`Invalid VCD timestamp ${token.slice(0, 40)}.`);
+        throw new CaptureFormatError({ message: `Invalid VCD timestamp ${token.slice(0, 40)}.` });
       lastNs = Math.max(lastNs, timeNs);
       continue;
     }
@@ -218,7 +225,7 @@ function unzipBounded(
       if (!keep(file.name)) return false;
       total += file.originalSize;
       if (total > MAX_UNZIPPED_BYTES)
-        throw new CaptureFormatError("The capture expands to more than 512 MiB.");
+        throw new CaptureFormatError({ message: "The capture expands to more than 512 MiB." });
       return true;
     },
   });
@@ -233,9 +240,11 @@ export async function parseSigrok(bytes: Uint8Array): Promise<ParsedCapture> {
     (name) => name === "version" || name === "metadata" || /^logic-1(-\d+)?$/.test(name),
   );
   if (!files.version || !files.metadata)
-    throw new CaptureFormatError("Not a sigrok session file: version or metadata is missing.");
+    throw new CaptureFormatError({
+      message: "Not a sigrok session file: version or metadata is missing.",
+    });
   if (strFromU8(files.version).trim() !== "2")
-    throw new CaptureFormatError("Only sigrok session format version 2 is supported.");
+    throw new CaptureFormatError({ message: "Only sigrok session format version 2 is supported." });
   const device: Record<string, string> = {};
   let section = "";
   for (const raw of strFromU8(files.metadata).split(/\r?\n/)) {
@@ -250,9 +259,10 @@ export async function parseSigrok(bytes: Uint8Array): Promise<ParsedCapture> {
   const rate = /^([\d.]+)\s*([kmg]?hz)?$/i.exec(device.samplerate ?? "");
   const sampleRateHz = rate ? Number(rate[1]) * RATE_UNITS[(rate[2] ?? "hz").toLowerCase()]! : 0;
   const unitsize = Number(device.unitsize ?? "1");
-  if (!(sampleRateHz > 0)) throw new CaptureFormatError("The sigrok capture has no sample rate.");
+  if (!(sampleRateHz > 0))
+    throw new CaptureFormatError({ message: "The sigrok capture has no sample rate." });
   if (![1, 2, 4, 8].includes(unitsize))
-    throw new CaptureFormatError(`Unsupported sigrok unit size ${device.unitsize}.`);
+    throw new CaptureFormatError({ message: `Unsupported sigrok unit size ${device.unitsize}.` });
 
   const bits: number[] = [];
   const names: string[] = [];
@@ -263,7 +273,8 @@ export async function parseSigrok(bytes: Uint8Array): Promise<ParsedCapture> {
       names.push(value.slice(0, MAX_NAME));
     }
   }
-  if (names.length === 0) throw new CaptureFormatError("The sigrok capture has no logic channels.");
+  if (names.length === 0)
+    throw new CaptureFormatError({ message: "The sigrok capture has no logic channels." });
   const order = bits
     .map((bit, index) => ({ bit, name: names[index]! }))
     .sort((a, b) => a.bit - b.bit);
@@ -335,14 +346,18 @@ function readSaleaeDigital(data: Uint8Array): {
 } {
   const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
   if (data.byteLength < 16 || strFromU8(data.subarray(0, 8)) !== "<SALEAE>")
-    throw new CaptureFormatError("Not a Saleae binary export: the <SALEAE> header is missing.");
+    throw new CaptureFormatError({
+      message: "Not a Saleae binary export: the <SALEAE> header is missing.",
+    });
   const version = view.getInt32(8, true);
   if (view.getInt32(12, true) !== 0)
-    throw new CaptureFormatError("Only digital Saleae exports are supported, not analog.");
+    throw new CaptureFormatError({
+      message: "Only digital Saleae exports are supported, not analog.",
+    });
   let offset = 16;
   const need = (bytes: number) => {
     if (offset + bytes > data.byteLength)
-      throw new CaptureFormatError("The Saleae export is truncated.");
+      throw new CaptureFormatError({ message: "The Saleae export is truncated." });
   };
   const readRun = (withRate: boolean) => {
     need(withRate ? 36 : 28);
@@ -360,15 +375,17 @@ function readSaleaeDigital(data: Uint8Array): {
     return { initial, rate, beginS, endS, times };
   };
   if (version === 0) return readRun(false);
-  if (version !== 1) throw new CaptureFormatError(`Unsupported Saleae export version ${version}.`);
+  if (version !== 1)
+    throw new CaptureFormatError({ message: `Unsupported Saleae export version ${version}.` });
   need(8);
   const chunkCount = Number(view.getBigUint64(offset, true));
   offset += 8;
   // Every chunk needs at least its 36-byte header.
   if (chunkCount > (data.byteLength - offset) / 36)
-    throw new CaptureFormatError("The Saleae export is truncated.");
+    throw new CaptureFormatError({ message: "The Saleae export is truncated." });
   const runs = Array.from({ length: chunkCount }, () => readRun(true));
-  if (runs.length === 0) throw new CaptureFormatError("The Saleae export has no data.");
+  if (runs.length === 0)
+    throw new CaptureFormatError({ message: "The Saleae export has no data." });
   // Gaps between chunks keep the last level unless the next chunk starts at another one.
   const times: number[] = [];
   let level = runs[0]!.initial;
@@ -418,7 +435,7 @@ export function parseSaleaeBinary(bytes: Uint8Array, filename: string): ParsedCa
     (a, b) => Number(/(\d+)\.bin$/i.exec(a)![1]) - Number(/(\d+)\.bin$/i.exec(b)![1]),
   );
   if (names.length === 0)
-    throw new CaptureFormatError("The zip holds no Saleae digital_N.bin exports.");
+    throw new CaptureFormatError({ message: "The zip holds no Saleae digital_N.bin exports." });
   return fromSaleaeRuns(
     names.map((name) => ({ name: saleaeChannelName(name), run: readSaleaeDigital(files[name]!) })),
   );
@@ -443,7 +460,9 @@ export async function parseSaleaeCsv(text: string): Promise<ParsedCapture> {
       ?.split(",")
       .map((cell) => cell.trim()) ?? [];
   if (!/^time/i.test(header[0] ?? "") || header.length < 2)
-    throw new CaptureFormatError("Not a Saleae digital CSV export: expected a Time column first.");
+    throw new CaptureFormatError({
+      message: "Not a Saleae digital CSV export: expected a Time column first.",
+    });
   const names = header.slice(1).map((name) => name.slice(0, MAX_NAME));
   const sink = new EdgeSink(names.length);
   const initial: Array<0 | 1> = names.map(() => 0);
@@ -454,7 +473,8 @@ export async function parseSaleaeCsv(text: string): Promise<ParsedCapture> {
     if (row % YIELD_EVERY === 0) await yieldToEventLoop();
     const cells = line.split(",");
     const timeS = Number(cells[0]);
-    if (!Number.isFinite(timeS)) throw new CaptureFormatError(`Row ${row + 2} has no time.`);
+    if (!Number.isFinite(timeS))
+      throw new CaptureFormatError({ message: `Row ${row + 2} has no time.` });
     if (row === 0) startS = timeS;
     const timeNs = Math.round((timeS - startS) * 1e9);
     lastNs = timeNs;
@@ -476,14 +496,16 @@ export async function parseSaleaeCsv(text: string): Promise<ParsedCapture> {
 export async function parseCapture(bytes: Uint8Array, filename: string): Promise<ParsedCapture> {
   const lower = filename.toLowerCase();
   if (lower.endsWith(".sal"))
-    throw new CaptureFormatError(
-      "Saleae does not document its .sal format and changes it between versions. In Logic 2, use File → Export Raw Data and choose Binary (or CSV) for the digital channels, then import the exported digital_N.bin, a zip of them, or the CSV.",
-    );
+    throw new CaptureFormatError({
+      message:
+        "Saleae does not document its .sal format and changes it between versions. In Logic 2, use File → Export Raw Data and choose Binary (or CSV) for the digital channels, then import the exported digital_N.bin, a zip of them, or the CSV.",
+    });
   if (lower.endsWith(".vcd")) return parseVcd(strFromU8(bytes));
   if (lower.endsWith(".sr")) return parseSigrok(bytes);
   if (lower.endsWith(".csv")) return parseSaleaeCsv(strFromU8(bytes));
   if (lower.endsWith(".bin") || lower.endsWith(".zip")) return parseSaleaeBinary(bytes, filename);
-  throw new CaptureFormatError(
-    "Unsupported capture format. Import a VCD (.vcd), a sigrok session (.sr), or a Saleae Logic 2 export (digital_N.bin, a zip of them, or CSV).",
-  );
+  throw new CaptureFormatError({
+    message:
+      "Unsupported capture format. Import a VCD (.vcd), a sigrok session (.sr), or a Saleae Logic 2 export (digital_N.bin, a zip of them, or CSV).",
+  });
 }

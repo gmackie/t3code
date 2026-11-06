@@ -440,6 +440,7 @@ describe("CloudManagedEndpointRuntime", () => {
         layerRelayClientAvailable,
         unusedHttpClient,
         emptySecretStoreLayer,
+        T3RelayConnector.layer,
         fixture.env,
       );
       yield* runtime.applyConfig(tunnelConfig);
@@ -473,6 +474,7 @@ describe("CloudManagedEndpointRuntime", () => {
             layerRelayClientAvailable,
             unusedHttpClient,
             secretStoreLayer,
+            T3RelayConnector.layer,
             env,
           );
         yield* Effect.gen(function* () {
