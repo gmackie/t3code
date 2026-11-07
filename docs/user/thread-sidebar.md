@@ -190,6 +190,11 @@ but an old closed or merged pull request does not settle work you
 resumed after it closed. Only your own messages count as resuming. A turn that
 finished background work or a pull request watch starts on its own does not.
 
+Threads an agent started, such as delegated tasks and subagents, settle as soon as their work
+completes, even when inactivity settlement is off. They stay active while they have an open pull
+request, and they don't settle if they failed or were stopped. If you write in one of
+these threads, it follows the usual rules instead.
+
 To keep one thread out of the settled shelf no matter how long it sits idle, open its menu,
 choose **Auto-settle behavior**, and pick **Disabled**. The current option is checked. Pick
 **Enabled** to return to the usual rules. Manual settle, snooze, and archive still work while it

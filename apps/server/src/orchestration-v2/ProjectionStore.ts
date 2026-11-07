@@ -196,6 +196,7 @@ export type ProjectionSettlementCandidate = Pick<
   OrchestrationV2ThreadShell,
   | "id"
   | "projectId"
+  | "createdBy"
   | "completionPolicy"
   | "branch"
   | "worktreePath"
@@ -224,6 +225,8 @@ export type ProjectionSettlementCandidate = Pick<
 > &
   Pick<OrchestrationV2AppThread, "lastSnoozeWakeAt"> & {
     readonly latestUserAuthoredMessageAt: DateTime.Utc | null;
+    /** When the subagent this thread mirrors completed; provider subagent threads have no runs of their own. */
+    readonly subagentCompletedAt?: DateTime.Utc | null;
   };
 
 const ProjectionCheckpointContext = Schema.Struct({
@@ -1053,7 +1056,7 @@ type SettlementThreadRow = Pick<
   | "latest_run_completed_at"
   | "latest_user_message_at"
   | "latest_user_authored_message_at"
->;
+> & { readonly subagent_completed_at: string | null };
 
 type ShellRunItemCountRow = {
   readonly thread_id: string;
@@ -6525,7 +6528,14 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
                   AND NOT ${isIdleCompactionMessage("message")}
                 ORDER BY message.updated_at DESC, message.message_id DESC
                 LIMIT 1
-              ) AS latest_user_authored_message_at
+              ) AS latest_user_authored_message_at,
+              (
+                SELECT subagent.completed_at
+                FROM orchestration_v2_projection_subagents subagent
+                WHERE subagent.child_thread_id = t.thread_id AND subagent.status = 'completed'
+                ORDER BY subagent.updated_at DESC
+                LIMIT 1
+              ) AS subagent_completed_at
             FROM orchestration_v2_projection_threads t
             LEFT JOIN orchestration_v2_projection_runs r ON r.run_id = (
               SELECT latest.run_id FROM orchestration_v2_projection_runs latest
@@ -6608,6 +6618,10 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
                     row.latest_user_authored_message_at === null
                       ? null
                       : DateTime.makeUnsafe(row.latest_user_authored_message_at),
+                  subagentCompletedAt:
+                    row.subagent_completed_at === null
+                      ? null
+                      : DateTime.makeUnsafe(row.subagent_completed_at),
                   activityRunStatus: null,
                   activityRunStartedAt: null,
                   pendingRuntimeRequest: null,

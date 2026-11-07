@@ -185,6 +185,28 @@ export function isSnoozed(
   return !wokeOnError;
 }
 
+/**
+ * When agent-started work nobody took over finished: its own run completed, or,
+ * for a provider subagent thread with no runs, the subagent it mirrors did.
+ * Failed, cancelled, and interrupted work stays visible.
+ */
+function finishedAgentWorkAt(
+  thread: Pick<
+    ProjectionStore.ProjectionSettlementCandidate,
+    | "createdBy"
+    | "status"
+    | "latestRunId"
+    | "latestRunCompletedAt"
+    | "latestUserAuthoredMessageAt"
+    | "subagentCompletedAt"
+  >,
+): DateTime.Utc | null {
+  if (thread.createdBy !== "agent" || thread.latestUserAuthoredMessageAt !== null) return null;
+  if (thread.status === "completed") return thread.latestRunCompletedAt ?? null;
+  if (thread.latestRunId === null) return thread.subagentCompletedAt ?? null;
+  return null;
+}
+
 export function resolveAutoSettlementAt(input: {
   readonly thread: ProjectionStore.ProjectionSettlementCandidate;
   readonly pullRequest: SettlementPullRequest | null;
@@ -221,6 +243,15 @@ export function resolveAutoSettlementAt(input: {
           };
   }
   if (!isAutoSettlementCandidate(thread, input.nowMs)) return null;
+  const agentFinishedAt = finishedAgentWorkAt(thread);
+  if (agentFinishedAt !== null && !hasOpenLink && pullRequest?.state !== "open") {
+    // A linked or branch pull request the sweep has not looked up yet may still be open.
+    const awaitingLookup =
+      links.length === 0 &&
+      pullRequest === null &&
+      (thread.linkedPullRequest != null || thread.branchPullRequest != null);
+    if (!awaitingLookup) return agentFinishedAt;
+  }
   const activityAtMs =
     latestMillis([
       toMillis(thread.latestUserMessageAt),
@@ -326,7 +357,7 @@ export const make = Effect.gen(function* () {
     // Merge events resweep all candidates because unlinked threads settle through branch lookup.
     const candidates = threads.filter(
       (thread) =>
-        (configured || thread.completionPolicy === "autolab") &&
+        (configured || thread.completionPolicy === "autolab" || thread.createdBy === "agent") &&
         isAutoSettlementCandidate(thread, nowMs),
     );
 
@@ -643,10 +674,14 @@ export const make = Effect.gen(function* () {
       case "run.background-work-cancelled":
         return enqueueThread(event.threadId);
       // Sweep only when the work can have ended: progress updates cannot settle anything.
-      case "subagent.updated":
-        return isOrchestrationV2WorkActive(event.payload.status)
-          ? Effect.void
-          : enqueueThread(event.threadId);
+      // The child thread settles from its subagent's completion too.
+      case "subagent.updated": {
+        if (isOrchestrationV2WorkActive(event.payload.status)) return Effect.void;
+        const childThreadId = event.payload.childThreadId;
+        return childThreadId === null
+          ? enqueueThread(event.threadId)
+          : Effect.andThen(enqueueThread(event.threadId), enqueueThread(childThreadId));
+      }
       case "provider-thread.updated":
         return backgroundWorkHoldsCompletion(event.payload.pendingBackgroundTasks ?? [])
           ? Effect.void
