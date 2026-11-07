@@ -102,6 +102,10 @@ const SCREENCAST_MOTION_WINDOW_MS = 300;
 const SCREENCAST_MOTION_QUALITY = 50;
 const HOST_RECONNECT_DELAY = "1 second";
 const DESKTOP_ATTACH_TIMEOUT = "10 seconds";
+// Covers the desktop attach wait plus its CDP connect, with room for a cold browser launch.
+// A setup past this is stalled, and retries must not keep waiting on it.
+const TAB_SETUP_TIMEOUT = "30 seconds";
+const VIEWER_SESSION_TIMEOUT = "10 seconds";
 const VIEWER_OUTPUT_LIMIT = 64;
 const RECORDING_SCREENCAST = { format: "jpeg", quality: 90, everyNthFrame: 1 } as const;
 const decodeViewportSetting = Schema.decodeUnknownSync(PreviewViewportSettingSchema);
@@ -527,7 +531,12 @@ const make = Effect.gen(function* () {
   const tabs = new Map<string, ServerTab>();
   const pendingTabs = new Map<
     string,
-    { readonly agentId: string | null; promise?: Promise<ServerTab> }
+    {
+      readonly agentId: string | null;
+      promise?: Promise<ServerTab>;
+      /** Gives up on a setup that stopped answering and closes what it opened. */
+      abandon?: () => Promise<void>;
+    }
   >();
 
   const closedPendingTabs = new Set<string>();
@@ -837,20 +846,32 @@ const make = Effect.gen(function* () {
     }
   };
 
-  const createTab = async (snapshot: PreviewSessionSnapshot): Promise<ServerTab> => {
+  const createTab = (snapshot: PreviewSessionSnapshot) => {
     const opened: Array<() => Promise<void>> = [];
-    try {
-      return await setUpTab(snapshot, opened);
-    } catch (cause) {
-      // An unpublished tab is in no list, so nothing else would ever close it.
-      for (const close of opened.reverse()) await close().catch(constVoid);
+    let abandoned = false;
+    // An unpublished tab is in no list, so nothing else would ever close it.
+    const closeOpened = async () => {
+      for (const close of opened.splice(0).reverse()) await close().catch(constVoid);
+    };
+    const promise = setUpTab(snapshot, opened, () => abandoned).catch(async (cause: unknown) => {
+      await closeOpened();
       throw cause;
-    }
+    });
+    return {
+      promise,
+      // Closing the desktop connection also fails the CDP call the setup is stuck on, so
+      // its own failure path closes anything it opens after this.
+      abandon: () => {
+        abandoned = true;
+        return closeOpened();
+      },
+    };
   };
 
   const setUpTab = async (
     snapshot: PreviewSessionSnapshot,
     opened: Array<() => Promise<void>>,
+    abandoned: () => boolean,
   ): Promise<ServerTab> => {
     const adopted = adoptedPages.get(tabKey(snapshot.threadId, snapshot.tabId));
     adoptedPages.delete(tabKey(snapshot.threadId, snapshot.tabId));
@@ -1065,6 +1086,10 @@ const make = Effect.gen(function* () {
     });
     // Playwright cannot reload a crashed page, so it must leave the tab list.
     const key = tabKey(tab.threadId, tab.tabId);
+    if (abandoned()) {
+      await control.close().catch(constVoid);
+      throw new Error("The browser tab setup was abandoned after its deadline.");
+    }
     if (closedPendingTabs.delete(key)) {
       await control.close().catch(constVoid);
       throw new ServerBrowserTabNotFoundError({ threadId: tab.threadId, tabId: tab.tabId });
@@ -1443,7 +1468,10 @@ const make = Effect.gen(function* () {
     if (pending?.promise) return pending.promise;
     const existing = tabs.get(key);
     if (existing) return Promise.resolve(existing);
-    const opening = createTab(snapshot)
+    const { promise, abandon } = createTab(snapshot);
+    // An abandoned setup settles late; by then the key may belong to a newer one.
+    const isCurrent = () => pendingTabs.get(key)?.promise === opening;
+    const opening: Promise<ServerTab> = promise
       .catch((cause: unknown) => {
         runFork(
           Effect.logWarning(
@@ -1454,15 +1482,41 @@ const make = Effect.gen(function* () {
         throw cause;
       })
       .finally(() => {
+        if (!isCurrent()) return;
         pendingTabs.delete(key);
         closedPendingTabs.delete(key);
       });
-    pendingTabs.set(key, { agentId: snapshot.automationOwner ?? null, promise: opening });
+    pendingTabs.set(key, {
+      agentId: snapshot.automationOwner ?? null,
+      promise: opening,
+      abandon: () => {
+        if (isCurrent()) {
+          pendingTabs.delete(key);
+          closedPendingTabs.delete(key);
+        }
+        return abandon();
+      },
+    });
     return opening;
   };
 
+  // Viewers retry, so a setup that stopped answering must fail and make room for a fresh one.
+  const abandonStalledSetup = (key: string) =>
+    Effect.promise(() => pendingTabs.get(key)?.abandon?.() ?? Promise.resolve()).pipe(
+      Effect.andThen(
+        Effect.fail(
+          new ServerBrowserLaunchError({
+            cause: new Error(
+              `The browser tab did not finish starting within ${TAB_SETUP_TIMEOUT}.`,
+            ),
+          }),
+        ),
+      ),
+    );
+
   const findTab = Effect.fn("ServerBrowser.findTab")(function* (threadId: string, tabId: string) {
-    const existing = tabs.get(tabKey(threadId, tabId));
+    const key = tabKey(threadId, tabId);
+    const existing = tabs.get(key);
     if (existing) return existing;
     const { sessions } = yield* manager.list({ threadId: ThreadId.make(threadId) });
     const snapshot = sessions.find(
@@ -1472,7 +1526,12 @@ const make = Effect.gen(function* () {
     return yield* Effect.tryPromise({
       try: () => ensureTab(snapshot),
       catch: (cause) => (isTabNotFound(cause) ? cause : new ServerBrowserLaunchError({ cause })),
-    });
+    }).pipe(
+      Effect.timeoutOrElse({
+        duration: TAB_SETUP_TIMEOUT,
+        orElse: () => abandonStalledSetup(key),
+      }),
+    );
   });
 
   const openingReservations = () =>
@@ -2598,6 +2657,36 @@ const make = Effect.gen(function* () {
     }
   };
 
+  const openViewerSession = (tab: ServerTab) =>
+    Effect.suspend(() => {
+      const opening = tab.page.context().newCDPSession(tab.page);
+      return Effect.tryPromise({
+        try: () => opening,
+        catch: (cause) => new ServerBrowserLaunchError({ cause }),
+      }).pipe(
+        Effect.timeoutOrElse({
+          duration: VIEWER_SESSION_TIMEOUT,
+          orElse: () =>
+            Effect.sync(() => {
+              void opening.then((late) => late.detach()).catch(constVoid);
+              // The desktop's CDP link stopped answering. Dropping the tab sends its viewers a
+              // reconnect, and their next attempt connects to the desktop page again.
+              if (tab.desktop) dropTab(tab, false);
+            }).pipe(
+              Effect.andThen(
+                Effect.fail(
+                  new ServerBrowserLaunchError({
+                    cause: new Error(
+                      `The browser page did not answer within ${VIEWER_SESSION_TIMEOUT}.`,
+                    ),
+                  }),
+                ),
+              ),
+            ),
+        }),
+      );
+    });
+
   const attachViewer: ServerBrowser["Service"]["attachViewer"] = Effect.fn(
     "ServerBrowser.attachViewer",
   )(function* (input) {
@@ -2607,10 +2696,8 @@ const make = Effect.gen(function* () {
       strategy: "dropping",
     });
     const session = yield* Effect.acquireRelease(
-      Effect.tryPromise({
-        try: () => tab.page.context().newCDPSession(tab.page),
-        catch: (cause) => new ServerBrowserLaunchError({ cause }),
-      }),
+      // Interruptible, or the deadline could not cut a session open that never answers.
+      Effect.interruptible(openViewerSession(tab)),
       (session) =>
         Effect.promise(() =>
           session

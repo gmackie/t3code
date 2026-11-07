@@ -410,7 +410,15 @@ describe("t3 pair", () => {
       const baseDir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "t3-pair-none-test-"));
 
       const error = yield* provideCliTestLayers(
-        runCli(["pair", "--base-dir", baseDir]).pipe(Effect.flip),
+        runCli(["pair", "--base-dir", baseDir]).pipe(
+          Effect.flip,
+          Effect.provideService(HostProcess.Arguments, [
+            "node",
+            "/tmp/_npx/t3/node_modules/t3/dist/bin.mjs",
+          ]),
+          Effect.provideService(HostProcess.IsExecutable, false),
+          Effect.provideService(HostProcess.Environment, {}),
+        ),
       );
 
       const rendered = String(
