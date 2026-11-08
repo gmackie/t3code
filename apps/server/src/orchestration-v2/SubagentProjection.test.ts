@@ -11,6 +11,7 @@ import {
   type OrchestrationV2Run,
   type OrchestrationV2AppThread,
   ProjectId,
+  ProviderDriverKind,
   ProviderInstanceId,
   ProviderThreadId,
   ThreadId,
@@ -184,6 +185,78 @@ it.effect.each(["provider", "mcp"] as const)(
     }).pipe(
       Effect.provide(ProjectionStore.layer.pipe(Layer.provideMerge(SqlitePersistence.layerMemory))),
     ),
+);
+
+it.effect("a provider subagent thread settles when its subagent completes", () =>
+  Effect.gen(function* () {
+    const store = yield* ProjectionStore.ProjectionStoreV2;
+    const parentThread = makeParentThread();
+    const childThread = makeSubagentChildThread({
+      parentThread,
+      childThreadId,
+      parentNodeId: NodeId.make("node:subagent-parent"),
+      activeProviderThreadId: null,
+      providerInstanceId: childProviderInstanceId,
+      modelSelection: childModelSelection,
+      title: "Child",
+      now: childCreatedAt,
+      createdBy: "agent",
+      creationSource: "provider",
+    });
+    for (const thread of [parentThread, childThread]) {
+      yield* store.apply({
+        id: EventId.make(`event:${thread.id}`),
+        type: "thread.created",
+        threadId: thread.id,
+        occurredAt: thread.createdAt,
+        payload: thread,
+      });
+    }
+    const completedAt = DateTime.add(childCreatedAt, { minutes: 5 });
+    const subagentId = NodeId.make("node:native-subagent");
+    yield* store.apply({
+      id: EventId.make("event:native-subagent-completed"),
+      type: "subagent.updated",
+      threadId: parentThreadId,
+      nodeId: subagentId,
+      driver: ProviderDriverKind.make("claudeAgent"),
+      providerInstanceId: childProviderInstanceId,
+      occurredAt: completedAt,
+      payload: {
+        id: subagentId,
+        threadId: parentThreadId,
+        runId: null,
+        parentNodeId: NodeId.make("node:subagent-parent"),
+        origin: "provider_native",
+        createdBy: "agent",
+        driver: ProviderDriverKind.make("claudeAgent"),
+        providerInstanceId: childProviderInstanceId,
+        providerThreadId: null,
+        childThreadId,
+        nativeTaskRef: null,
+        prompt: "Do the work",
+        title: "Child",
+        model: null,
+        status: "completed",
+        result: "Done",
+        startedAt: childCreatedAt,
+        completedAt,
+        updatedAt: completedAt,
+      },
+    });
+
+    const [candidate] = yield* store.getSettlementCandidates(childThreadId);
+    const settledAt = resolveAutoSettlementAt({
+      thread: candidate!,
+      pullRequest: null,
+      nowMs: DateTime.toEpochMillis(completedAt),
+      autoSettleAfterDays: null,
+      autoSettleOnMerge: false,
+    });
+    assert.equal(settledAt && DateTime.formatIso(settledAt), DateTime.formatIso(completedAt));
+  }).pipe(
+    Effect.provide(ProjectionStore.layer.pipe(Layer.provideMerge(SqlitePersistence.layerMemory))),
+  ),
 );
 
 function taskFixture() {
