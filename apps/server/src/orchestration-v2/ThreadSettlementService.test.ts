@@ -52,7 +52,10 @@ function at(offsetMs: number): DateTime.Utc {
 }
 
 type SettlementShell = OrchestrationV2ThreadShell &
-  Pick<ProjectionStore.ProjectionSettlementCandidate, "latestUserAuthoredMessageAt">;
+  Pick<
+    ProjectionStore.ProjectionSettlementCandidate,
+    "latestUserAuthoredMessageAt" | "subagentCompletedAt"
+  >;
 
 function shell(overrides: Partial<SettlementShell> = {}): SettlementShell {
   return {
@@ -228,6 +231,67 @@ describe("autolab settlement", () => {
         pendingRuntimeRequest: { id: "input" as never, kind: "user_input", createdAt: at(-1000) },
       }),
     ).toBeNull();
+  });
+});
+
+describe("finished agent work settlement", () => {
+  const decision = (
+    overrides: Partial<SettlementShell>,
+    pullRequest: ThreadSettlementService.SettlementPullRequest | null = null,
+  ) =>
+    ThreadSettlementService.resolveAutoSettlementAt({
+      thread: shell({
+        createdBy: "agent",
+        creationSource: "mcp",
+        status: "completed",
+        latestRunId: RunId.make("run-1"),
+        latestRunCompletedAt: at(-1000),
+        ...overrides,
+      }),
+      pullRequest,
+      nowMs: NOW_MS,
+      autoSettleAfterDays: null,
+      autoSettleOnMerge: false,
+    });
+
+  it("settles agent-started work when its run completes, but not work the user took over", () => {
+    expect(decision({})).toEqual(at(-1000));
+    expect(decision({ createdBy: "user" })).toBeNull();
+    expect(decision({ latestUserAuthoredMessageAt: at(-2000) })).toBeNull();
+    expect(decision({ status: "failed" })).toBeNull();
+    expect(decision({ status: "interrupted" })).toBeNull();
+    expect(
+      decision({ pendingBackgroundTasks: [{ taskId: "review", kind: "subagent" }] }),
+    ).toBeNull();
+  });
+
+  it("settles a provider subagent thread once the subagent it mirrors completes", () => {
+    const subagentThread = {
+      creationSource: "provider" as const,
+      status: "idle" as const,
+      latestRunId: null,
+      latestRunCompletedAt: null,
+    };
+    expect(decision({ ...subagentThread, subagentCompletedAt: at(-500) })).toEqual(at(-500));
+    expect(decision({ ...subagentThread, subagentCompletedAt: null })).toBeNull();
+  });
+
+  it("keeps finished agent work with an open or not yet looked up pull request", () => {
+    expect(decision({ pullRequests: [persistedLink("open", at(-2000))] })).toBeNull();
+    expect(decision({}, { state: "open" })).toBeNull();
+    const branchPullRequest = {
+      projectId: ProjectId.make("project-1"),
+      repository: "owner/repository",
+      number: 42,
+      url: "https://example.test/owner/repository/pull/42",
+    };
+    expect(decision({ branch: "feature", branchPullRequest })).toBeNull();
+    expect(
+      decision(
+        { branch: "feature", branchPullRequest },
+        { state: "merged", mergedAt: DateTime.formatIso(at(-500)) },
+      ),
+    ).toEqual(at(-1000));
   });
 });
 
@@ -824,6 +888,41 @@ describe("ThreadSettlementServiceV2 worker", () => {
           const commands = yield* Ref.get(fixture.commands);
           expect(commands.map((command) => command.threadId)).toEqual([thread.id]);
           expect(commands[0]?.settledAt).toEqual(thread.latestRunCompletedAt);
+        }).pipe(Effect.provide(fixture.layer));
+      }),
+    ),
+  );
+
+  it.effect("settles finished agent-started threads while auto-settlement is off", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        yield* TestClock.setTime(Date.parse(NOW));
+        const finished = makeThread("agent-finished", {
+          createdBy: "agent",
+          creationSource: "mcp",
+          status: "completed",
+          latestRunCompletedAt: DateTime.makeUnsafe(NOW),
+          latestUserAuthoredMessageAt: null,
+        });
+        const userThread = makeThread("user-finished", {
+          status: "completed",
+          latestRunCompletedAt: DateTime.makeUnsafe(NOW),
+        });
+        const failed = makeThread("agent-failed", { createdBy: "agent", status: "failed" });
+        const fixture = yield* makeHarness({
+          snapshot: makeSnapshot([finished, userThread, failed]),
+          settings: {
+            ...DEFAULT_SERVER_SETTINGS,
+            sidebarAutoSettleAfterDays: null,
+            sidebarAutoSettleOnMerge: false,
+          },
+        });
+        yield* Effect.gen(function* () {
+          const service = yield* ThreadSettlementService.ThreadSettlementServiceV2;
+          yield* startHarness(service, fixture.activation, fixture.snapshotReads);
+          const commands = yield* Ref.get(fixture.commands);
+          expect(commands.map((command) => command.threadId)).toEqual([finished.id]);
+          expect(commands[0]?.settledAt).toEqual(finished.latestRunCompletedAt);
         }).pipe(Effect.provide(fixture.layer));
       }),
     ),
