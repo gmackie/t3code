@@ -57,7 +57,7 @@
         "src/claude-history-worker.ts!",
         // SystemsService starts it with `new Worker(new URL(...))`.
         "src/systems-worker.ts!",
-        // engine-ci.yml runs the contention bench directly.
+        // The engine PR lane (scripts/pr-lanes.ts) runs the contention bench directly.
         "scripts/engine-contention-bench.ts",
         "scripts/cli.ts",
         "scripts/fetch-expo-schema.ts",

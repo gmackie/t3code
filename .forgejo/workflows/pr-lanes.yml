@@ -1,0 +1,51 @@
+name: PR lanes
+
+# Every pull request check in one job (T3CODE-100). The lanes used to be about
+# twenty path-filtered workflows, each job with its own checkout and install:
+# over two weeks those jobs spent 16.6 runner-hours on setup for 6.3 hours of
+# checks, and a pull request commit waited a median 14 minutes for shared
+# runner slots. scripts/pr-lanes.ts lists the lanes with their paths and
+# commands; scripts/run-pr-lanes.ts picks the ones a pull request touches and
+# runs them from this one install.
+on:
+  pull_request:
+    branches:
+      - custom-local
+      # Pull requests stacked on another T3CODE branch; lanes opt in per branch.
+      - "T3CODE-*"
+      - "T3CODE-41-**"
+  workflow_dispatch:
+    inputs:
+      lanes:
+        description: Comma-separated lane ids from scripts/pr-lanes.ts, or "all"
+        required: false
+        default: all
+
+permissions:
+  contents: read
+  pull-requests: read
+
+# A newer push to the same pull request supersedes the run in progress.
+concurrency:
+  group: pr-lanes-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lanes:
+    runs-on: forgegraph-ci
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.14.0
+      - name: Install pinned dependencies
+        run: |
+          corepack enable
+          corepack prepare pnpm@12.14.0 --activate
+          pnpm install --frozen-lockfile
+      - name: Run the lanes this pull request touches
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          PR_LANES: ${{ inputs.lanes }}
+        run: node scripts/run-pr-lanes.ts
