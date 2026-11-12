@@ -9,9 +9,10 @@ import tempfile
 
 GIB = 1024 ** 3
 DEFAULT_ROOT = '/Users/mackieg/t3-ci'
-# The fleet's native builds need 25 GiB of internal headroom (GMA-730); a Mini
-# release job can allocate about 20 GiB on top of that.
-MINIMUM_FREE = 45 * GIB
+# The fleet's native builds need 25 GiB of internal headroom (GMA-730). Mini jobs run
+# one at a time, and the largest, iOS, peaked near 10 GiB in run 1441 (macOS arm64
+# 6-7 GiB, x64 5 GiB), so a job gets 12 GiB on top of that.
+MINIMUM_FREE = 37 * GIB
 
 
 def prepare(root, workspace, minimum_free=MINIMUM_FREE):

@@ -1,6 +1,6 @@
 # Mini CI storage
 
-The Mini release jobs keep their workspace, compiler temporary files, and package caches on the Mini's internal SSD under `/Users/mackieg/t3-ci`. `MINI_CI_STORAGE_ROOT` overrides that root. Before dependency installation, the job guard checks that the workspace and cache root share one volume and that the volume has at least 45 GiB free. That floor covers a job's own allocation plus the 25 GiB of internal headroom the fleet's native builds need (GMA-730). If the check fails, free space on the Mini rather than lowering the floor.
+The Mini release jobs keep their workspace, compiler temporary files, and package caches on the Mini's internal SSD under `/Users/mackieg/t3-ci`. `MINI_CI_STORAGE_ROOT` overrides that root. Before dependency installation, the job guard checks that the workspace and cache root share one volume and that the volume has at least 37 GiB free. That floor covers the largest job's measured allocation (iOS, about 10 GiB, plus margin) and the 25 GiB of internal headroom the fleet's native builds need (GMA-730). If the check fails, free space on the Mini rather than lowering the floor. Swap counts against the same volume, so a long-idle emulator or other memory hog on the Mini can fail the check by itself.
 
 Do not move this storage to a disk image on the T9. Both the `T9-APFS` sparse bundle and the `FleetNativeFast-20261009` sparse image live on the T9's exFAT filesystem. On them, creating files is about 100 times slower than on the internal SSD, and the Mac and iOS builds took 40 to 130 minutes instead of minutes.
 
