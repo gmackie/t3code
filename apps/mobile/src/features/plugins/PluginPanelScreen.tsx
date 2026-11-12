@@ -17,7 +17,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AppActivityIndicator } from "../../components/ui/AppActivityIndicator";
 import { AppText as Text } from "../../components/ui/AppText";
 import { Button } from "../../components/ui/Button";
-import { NativeStackScreenOptions } from "../../native/StackHeader";
+import { AppBar } from "../../components/ui/AppBar";
 import { mcpAppEnvironment, mcpPluginEnvironment } from "../../state/mcpApps";
 import { useEnvironmentQuery } from "../../state/query";
 import { useAtomCommand } from "../../state/use-atom-command";
@@ -62,6 +62,7 @@ function panelView(
 }
 
 export function PluginPanelScreen({ route }: PluginPanelScreenProps) {
+  const navigation = useNavigation();
   const params = route.params;
   const environmentId = EnvironmentId.make(params.environmentId);
   const plugins = useEnvironmentQuery(mcpPluginEnvironment.list({ environmentId, input: {} }));
@@ -72,10 +73,16 @@ export function PluginPanelScreen({ route }: PluginPanelScreenProps) {
   const transport = manifest?.mcpServer.transport;
   return (
     <View className="flex-1 bg-screen">
-      <NativeStackScreenOptions options={{ title: panelTitle ?? "Plugin" }} />
+      <AppBar title={panelTitle ?? "Plugin"} onBack={() => navigation.goBack()} />
       {/* Changed params open a different panel, which needs its own view and opening call. */}
       <PluginPanel
-        key={[params.pluginId, params.panelId, params.projectId, params.threadId ?? ""].join("\n")}
+        key={[
+          params.environmentId,
+          params.pluginId,
+          params.panelId,
+          params.projectId,
+          params.threadId ?? "",
+        ].join("\n")}
         environmentId={environmentId}
         pluginId={McpPluginId.make(params.pluginId)}
         panelId={McpPluginPanelId.make(params.panelId)}
@@ -217,6 +224,9 @@ function PluginPanel(props: {
           width={size.width}
           height={size.height}
           onClose={close}
+          onNeedsAuth={() => {
+            if (mounted.current) setState({ _tag: "needs-auth", server: state.app.server });
+          }}
         />
       ) : null}
     </View>

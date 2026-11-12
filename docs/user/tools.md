@@ -67,3 +67,8 @@ follows you as you switch threads; a project panel shows the project as a whole.
 its own plugin's tools without asking, because installing the plugin allowed that; disable or
 uninstall the plugin to stop it. If the plugin's server needs you to sign in, the panel says so
 instead of loading.
+
+On mobile, open **Plugin panels** from a thread's header, or choose a project in
+**Settings → Projects** to open its project panels without a thread. Panels use the plugins
+installed on that project's connected environment. If a panel asks you to sign in, complete the
+sign-in in your browser and return to T3 Code. Installation and configuration stay on the server.
