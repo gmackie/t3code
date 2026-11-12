@@ -37,7 +37,7 @@ jobs:
         working-directory: apps/server
         run: |
           pnpm exec vp test run src/routing
-          pnpm exec tsc --noEmit
+          pnpm exec vp run typecheck
       # Lint from the root: oxlint resolves the repo's local plugin relative to it.
       - name: Lint the Pistache routing source
         run: |
@@ -61,7 +61,7 @@ jobs:
         working-directory: apps/web
         run: |
           pnpm exec vp test run src/components/chat/RoutingBadge.logic.test.ts src/components/chat/MessagesTimeline --project unit
-          pnpm exec tsc --noEmit
+          pnpm exec vp run typecheck
       - name: Lint routing badges and the timeline
         run: |
           pnpm exec vp lint apps/web/src/components/chat/RoutingBadge.tsx apps/web/src/components/chat/RoutingBadge.logic.ts apps/web/src/components/chat/MessagesTimeline.logic.ts

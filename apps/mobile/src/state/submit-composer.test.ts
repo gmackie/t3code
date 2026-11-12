@@ -33,6 +33,7 @@ function pendingSubmission() {
   const result = submitComposer(
     threadKey,
     {
+      async flushPendingInput() {},
       focus() {},
       blur() {},
       setSelection() {},
@@ -92,6 +93,7 @@ describe("submitComposer", () => {
     const result = submitComposer(
       threadKey,
       {
+        async flushPendingInput() {},
         focus() {},
         blur() {},
         setSelection() {},
@@ -113,6 +115,7 @@ describe("submitComposer", () => {
     const result = await submitComposer(
       threadKey,
       {
+        async flushPendingInput() {},
         focus() {},
         blur() {},
         setSelection() {},

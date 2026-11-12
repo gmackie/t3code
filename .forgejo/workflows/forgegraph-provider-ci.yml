@@ -66,7 +66,7 @@ jobs:
       - name: Test the ForgeGraph provider package
         run: pnpm -C packages/source-control-forgegraph exec vp test run --config ../../vite.config.ts --dir . src
       - name: Typecheck the ForgeGraph provider package
-        run: pnpm -C packages/source-control-forgegraph exec tsc --noEmit
+        run: pnpm -C packages/source-control-forgegraph exec vp run typecheck
 
   shared-and-client-runtime:
     runs-on: forgegraph-ci
@@ -114,7 +114,7 @@ jobs:
           corepack prepare pnpm@12.14.0 --activate
           pnpm install --frozen-lockfile
       - name: Typecheck the server
-        run: pnpm -C apps/server exec tsc --noEmit
+        run: pnpm -C apps/server exec vp run typecheck
 
   web:
     runs-on: forgegraph-ci
@@ -132,7 +132,7 @@ jobs:
       - name: Test the pull request summary and command palette logic
         run: pnpm -C apps/web exec vp test run src/components/pullRequest/pullRequestDetail.logic.test.ts src/components/CommandPalette.logic.test.ts --project unit
       - name: Typecheck the web app
-        run: pnpm -C apps/web exec tsc --noEmit
+        run: pnpm -C apps/web exec vp run typecheck
 
   mobile:
     runs-on: forgegraph-ci
@@ -150,7 +150,7 @@ jobs:
       - name: Test the ForgeGraph sign-in settings logic
         run: pnpm -C apps/mobile exec vp test run src/features/settings/forgegraph-sign-in.test.ts
       - name: Typecheck the mobile app
-        run: pnpm -C apps/mobile exec tsc --noEmit
+        run: pnpm -C apps/mobile exec vp run typecheck
 
   # Lint from the root: oxlint resolves the repo's local plugin relative to it.
   lint:

@@ -46,7 +46,7 @@ if (
     ? JSON.parse(
         NodeFS.readFileSync(NodePath.join(appPath, "EXConstants.bundle", "app.config"), "utf8"),
       )
-    : (await import("../apps/mobile/app.config.ts")).default;
+    : (await import(new URL("../apps/mobile/app.config.ts", import.meta.url).href)).default;
   verifyGmackoMobileConfig(config);
   process.stdout.write(
     `Verified GMACKO mobile T3 Connect configuration${appPath ? " in archived app" : " before build"}.\n`,

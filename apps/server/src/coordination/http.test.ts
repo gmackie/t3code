@@ -1,3 +1,4 @@
+import * as Schema from "effect/Schema";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { expect, it } from "@effect/vitest";
 import {
@@ -17,6 +18,11 @@ import * as HttpApi from "effect/http-api/HttpApi";
 import * as HttpApiBuilder from "effect/http-api/HttpApiBuilder";
 import * as Admission from "./ExecutionAdmission.ts";
 import * as ExecutionHttp from "./http.ts";
+
+class CoordinationRequestTestError extends Schema.TaggedError<CoordinationRequestTestError>()(
+  "CoordinationRequestTestError",
+  { cause: Schema.Defect() },
+) {}
 
 class ExecutionTestApi extends HttpApi.make("environment").add(
   EnvironmentHttpApi.groups.execution,
@@ -90,35 +96,38 @@ it.effect(
     return Effect.acquireUseRelease(
       Effect.sync(() => HttpRouter.toWebHandler(routes, { disableLogger: true })),
       (web) =>
-        Effect.tryPromise(async () => {
-          const post = (path: string, body: string) =>
-            web.handler(
-              new Request(`http://localhost${path}`, {
-                method: "POST",
-                headers: { "content-type": "application/json", "idempotency-key": "request" },
-                body,
-              }),
-            );
-          expect((await post("/api/v1/execution/requests", "{}")).status).toBe(403);
-          expect(calls).toEqual([]);
-          scopes.add("orchestration:operate");
-          expect((await post("/api/v1/execution/requests", "{")).status).toBe(400);
-          expect(
-            (await post("/api/v1/coordination/capabilities/query", '{"contractVersion":"wrong"}'))
-              .status,
-          ).toBe(400);
-          expect(calls).toEqual([]);
-          const success = await post("/api/v1/execution/requests", "{}");
-          expect(success.status).toBe(200);
-          expect(success.headers.get("cache-control")).toBe("no-store");
-          expect(calls).toEqual([{ owner: "trusted-bob", key: "request" }]);
-          fail = true;
-          const uncertain = await post("/api/v1/execution/requests", "{}");
-          expect(uncertain.status).toBe(503);
-          expect(await uncertain.json()).toMatchObject({
-            code: "ExecutionUnknown",
-            retryable: true,
-          });
+        Effect.tryPromise({
+          try: async () => {
+            const post = (path: string, body: string) =>
+              web.handler(
+                new Request(`http://localhost${path}`, {
+                  method: "POST",
+                  headers: { "content-type": "application/json", "idempotency-key": "request" },
+                  body,
+                }),
+              );
+            expect((await post("/api/v1/execution/requests", "{}")).status).toBe(403);
+            expect(calls).toEqual([]);
+            scopes.add("orchestration:operate");
+            expect((await post("/api/v1/execution/requests", "{")).status).toBe(400);
+            expect(
+              (await post("/api/v1/coordination/capabilities/query", '{"contractVersion":"wrong"}'))
+                .status,
+            ).toBe(400);
+            expect(calls).toEqual([]);
+            const success = await post("/api/v1/execution/requests", "{}");
+            expect(success.status).toBe(200);
+            expect(success.headers.get("cache-control")).toBe("no-store");
+            expect(calls).toEqual([{ owner: "trusted-bob", key: "request" }]);
+            fail = true;
+            const uncertain = await post("/api/v1/execution/requests", "{}");
+            expect(uncertain.status).toBe(503);
+            expect(await uncertain.json()).toMatchObject({
+              code: "ExecutionUnknown",
+              retryable: true,
+            });
+          },
+          catch: (cause) => new CoordinationRequestTestError({ cause }),
         }),
       (web) => Effect.promise(() => web.dispose()),
     );

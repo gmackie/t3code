@@ -149,6 +149,7 @@ const entryPath = (index: ChartIndex, target: string, depth: number): ReadonlyAr
 // Expressions
 
 /** A run error raised while evaluating a guard or action; becomes the step's diagnostic. */
+// @effect-diagnostics-next-line extendsNativeError:off -- Internal synchronous fault, never used in an Effect failure channel.
 class Fault extends Error {
   readonly diagnostic: ModelDiagnostic;
   constructor(diagnostic: ModelDiagnostic) {

@@ -33,7 +33,7 @@ jobs:
       - name: Verify the network family decision
         run: |
           pnpm -C apps/server exec vp test run src/networkFamilyAutoselection.test.ts
-          pnpm -C apps/server exec tsc --noEmit
+          pnpm -C apps/server exec vp run typecheck
       # Lint from the root: oxlint resolves the repo's local plugin relative to it.
       - name: Lint and format the touched files
         run: |

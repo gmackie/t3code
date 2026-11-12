@@ -24,6 +24,8 @@ export interface ComposerEditorHandle {
   /** iOS: commit pending keyboard corrections and synchronize the draft before sending. */
   prepareForSubmit?: (isCurrent: () => boolean) => Promise<boolean>;
   setSelection: (selection: ComposerEditorSelection) => void;
+  /** iOS: resolves once a native edit still in flight has reached `onChangeText`. */
+  flushPendingInput: () => Promise<void>;
 }
 
 export interface ComposerEditorProps {
@@ -60,6 +62,11 @@ export interface ComposerEditorProps {
   readonly style?: StyleProp<ViewStyle>;
   readonly textStyle?: StyleProp<TextStyle>;
   readonly onChangeText: (value: string) => void;
+  /**
+   * iOS: the owner's reset generation, raised synchronously when it replaces the text outright
+   * (send, discard). Native edits the editor made before applying that reset are dropped.
+   */
+  readonly readResetGeneration?: () => number;
   readonly onSelectionChange?: (selection: ComposerEditorSelection) => void;
   readonly onPasteImages?: (uris: ReadonlyArray<string>) => void;
   readonly onContextPress?: (reference: {

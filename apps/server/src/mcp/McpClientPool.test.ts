@@ -1,3 +1,4 @@
+// @effect-diagnostics processEnvInEffect:off -- This test deliberately verifies inheritance of the real subprocess environment.
 // @effect-diagnostics nodeBuiltinImport:off - The http fixture server uses node:http.
 import * as NodeHttp from "node:http";
 import type * as NodeNet from "node:net";

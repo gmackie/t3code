@@ -42,7 +42,7 @@ jobs:
         working-directory: apps/desktop
         run: |
           pnpm exec vp test run src/preview/SecurityKeyNotice.test.ts src/preview/Passkeys.test.ts src/preview/PasskeyBridge.test.ts src/preview/Manager.test.ts src/window/DesktopWindow.test.ts
-          pnpm exec tsc --noEmit
+          pnpm exec vp run typecheck
           pnpm exec vp lint src/preview-pick-preload.ts src/preview/GuestProtocol.ts src/preview/Manager.ts src/preview/Passkeys.ts src/preview/SecurityKeyNotice.ts src/window/DesktopWindow.ts
 
   web:
@@ -62,5 +62,5 @@ jobs:
         working-directory: apps/web
         run: |
           pnpm exec vp test run src/previewStateStore.test.ts src/components/preview/usePreviewBridge.test.ts --project unit
-          pnpm exec tsc --noEmit
+          pnpm exec vp run typecheck
           pnpm exec vp lint src/components/preview/SecurityKeyNotice.tsx src/components/preview/PreviewView.tsx src/components/preview/usePreviewBridge.ts src/previewStateStore.ts

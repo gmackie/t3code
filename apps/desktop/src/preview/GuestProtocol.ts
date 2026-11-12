@@ -16,3 +16,5 @@ export const PASSKEY_GET_CHANNEL = "preview:passkey-get";
 export const PASSKEY_BRIDGE_ARGUMENT = "--t3code-preview-passkey-bridge";
 export const SECURITY_KEY_NOTICE_ARGUMENT = "--t3code-preview-security-key-notice";
 export const SECURITY_KEY_REQUEST_CHANNEL = "preview:security-key-request";
+export const ANNOTATION_VOICE_EVENT_CHANNEL = "preview:annotation-voice-event";
+export const ANNOTATION_VOICE_STATE_CHANNEL = "preview:annotation-voice-state";

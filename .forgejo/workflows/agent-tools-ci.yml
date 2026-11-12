@@ -62,9 +62,9 @@ jobs:
           pnpm exec vp test run packages/shared/src/projectSettings.test.ts packages/shared/src/serverSettings.test.ts packages/contracts/src/settings.test.ts apps/server/src/auth/RpcAuthorization.test.ts apps/server/src/mcp/McpRemoteAuth.test.ts apps/server/src/mcp/mcpRemoteAuthHttp.test.ts apps/server/src/mcp/resolveAgentTools.test.ts apps/server/src/serverSettings.test.ts apps/server/src/orchestration-v2/ProviderSessionManager.test.ts apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.test.ts apps/server/src/orchestration-v2/Adapters/CodexAdapterV2.test.ts apps/server/src/orchestration-v2/Adapters/OpenCode2AdapterV2.test.ts apps/server/src/orchestration-v2/Adapters/AcpAdapterV2.test.ts apps/server/src/orchestration-v2/Adapters/AntigravityAdapterV2.test.ts
       - name: Typecheck contracts, shared and server
         run: |
-          (cd packages/contracts && pnpm exec tsc --noEmit)
-          (cd packages/shared && pnpm exec tsc --noEmit)
-          (cd apps/server && pnpm exec tsc --noEmit)
+          (cd packages/contracts && pnpm exec vp run typecheck)
+          (cd packages/shared && pnpm exec vp run typecheck)
+          (cd apps/server && pnpm exec vp run typecheck)
 
   provider-packages:
     runs-on: forgegraph-ci
@@ -86,7 +86,7 @@ jobs:
       - name: Verify provider packages that receive user MCP servers
         run: |
           for pkg in provider-core provider-acp provider-acp-registry provider-cursor provider-grok provider-opencode; do
-            (cd packages/$pkg && pnpm exec vp test run --config ../../vite.config.ts --dir . --exclude 'src/server/OpenCodeServerLedger.test.ts' && pnpm exec tsc --noEmit)
+            (cd packages/$pkg && pnpm exec vp test run --config ../../vite.config.ts --dir . --exclude 'src/server/OpenCodeServerLedger.test.ts' && pnpm exec vp run typecheck)
           done
 
   clients:
@@ -104,9 +104,9 @@ jobs:
           pnpm install --frozen-lockfile
       - name: Verify Settings → Tools and composer skill filtering
         run: |
-          (cd apps/web && pnpm exec vp test run src/components/settings/toolsSettings.logic.test.ts src/components/settings/settingsSearch.test.ts && pnpm exec tsc --noEmit)
-          (cd apps/mobile && pnpm exec vp test run src/features/threads/use-composer-command-menu.test.ts && pnpm exec tsc --noEmit)
-          (cd packages/client-runtime && pnpm exec vp test run src/providerSkills.test.ts && pnpm exec tsc --noEmit)
+          (cd apps/web && pnpm exec vp test run src/components/settings/toolsSettings.logic.test.ts src/components/settings/settingsSearch.test.ts && pnpm exec vp run typecheck)
+          (cd apps/mobile && pnpm exec vp test run src/features/threads/use-composer-command-menu.test.ts && pnpm exec vp run typecheck)
+          (cd packages/client-runtime && pnpm exec vp test run src/providerSkills.test.ts && pnpm exec vp run typecheck)
       # Lint from the root: oxlint resolves the repo's local plugin relative to it.
       - name: Lint the Tools editor
         run: |

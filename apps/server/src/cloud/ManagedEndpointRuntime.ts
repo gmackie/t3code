@@ -1,7 +1,13 @@
+class T3RelayConnectorStartError extends Schema.TaggedError<T3RelayConnectorStartError>()(
+  "T3RelayConnectorStartError",
+  { cause: Schema.Defect() },
+) {}
 import type { RelayManagedEndpointRuntimeConfig } from "@t3tools/contracts/relay";
-import { RotatingFileSink } from "@t3tools/shared/logging";
+import { RotatingFileSink, RotatingFileSinkError } from "@t3tools/shared/logging";
+import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as RelayClient from "@t3tools/shared/relayClient";
 import * as Clock from "effect/Clock";
+import * as Config from "effect/Config";
 import * as Context from "effect/Context";
 import * as Deferred from "effect/Deferred";
 import * as Duration from "effect/Duration";
@@ -58,6 +64,7 @@ export type CloudManagedEndpointRuntimeStatus =
 
 /** What the running cloudflared reports about itself. `null` fields are not known yet. */
 export interface ConnectorFacts {
+  readonly pid: number;
   readonly readyConnections: number | null;
   /** The public tunnel hostname from the remote config cloudflared receives once it connects. */
   readonly hostname: string | null;
@@ -76,6 +83,14 @@ export class CloudManagedEndpointRuntime extends Context.Service<
     readonly readinessChanged: Stream.Stream<void>;
     readonly recoveryRequests: Stream.Stream<RelayManagedEndpointRuntimeConfig>;
     readonly requestRecovery: (config: RelayManagedEndpointRuntimeConfig) => Effect.Effect<void>;
+    /**
+     * Restarts the connector if it still runs as `pid` and `stillDead` holds once it has
+     * the lock. Returns whether it sent the restart.
+     */
+    readonly restartConnector: (
+      pid: number,
+      stillDead: Effect.Effect<boolean>,
+    ) => Effect.Effect<boolean>;
     readonly tunnelConnected: Stream.Stream<void>;
     readonly withLinkStateLock: <A, E, R>(effect: Effect.Effect<A, E, R>) => Effect.Effect<A, E, R>;
   }
@@ -99,6 +114,8 @@ interface ActiveT3Connector {
 }
 
 // An instantly failing relay client otherwise respawns ~100 times/sec and exhausts V8 via tracing.
+const isRotatingFileSinkError = Schema.is(RotatingFileSinkError);
+
 const RELAY_RESTART_STABLE_UPTIME_MS = 30_000;
 const RELAY_RESTART_BACKOFF_BASE_MS = 1_000;
 const RELAY_RESTART_BACKOFF_MAX_MS = 60_000;
@@ -233,7 +250,10 @@ export const make = Effect.gen(function* () {
   const retryLoopRunningRef = yield* Ref.make(false);
   const notReadyChecksBeforeRestartRef = yield* Ref.make(CONNECTOR_NOT_READY_CHECKS_BEFORE_RESTART);
   // An explicit cloudflared transport in the environment is the user's choice.
-  const transportChosenByUser = process.env.TUNNEL_TRANSPORT_PROTOCOL !== undefined;
+  const env = yield* HostProcess.Environment;
+  const transportChosenByUser = Option.isSome(
+    yield* Config.String("TUNNEL_TRANSPORT_PROTOCOL").pipe(Config.option),
+  );
   const previousFallback = transportChosenByUser
     ? Option.none()
     : yield* secrets.get(HTTP2_FALLBACK_STATE).pipe(
@@ -276,15 +296,23 @@ export const make = Effect.gen(function* () {
   // Synchronous appends avoid a flush timer for this low-volume log.
   const fallbackLoggers = yield* Effect.service(Logger.CurrentLoggers);
   let writeFailureReported = false;
-  const relayClientLog = yield* Effect.try(
-    () =>
+  const relayClientLog = yield* Effect.try({
+    try: () =>
       new RotatingFileSink({
         filePath: relayClientLogPath,
         maxBytes: 1024 * 1024,
         maxFiles: 2,
         throwOnError: true,
       }),
-  ).pipe(
+    catch: (cause) =>
+      isRotatingFileSinkError(cause)
+        ? cause
+        : new RotatingFileSinkError({
+            operation: "initialize",
+            filePath: relayClientLogPath,
+            cause,
+          }),
+  }).pipe(
     Effect.map((sink) =>
       Logger.make((options) => {
         try {
@@ -717,17 +745,20 @@ export const make = Effect.gen(function* () {
           reason: "The T3 relay connector URL or local origin is missing.",
         };
       }
-      const started = yield* Effect.try(() => {
-        const session = t3RelayConnectorFactory.make(
-          {
-            connectorUrl,
-            connectorToken: config.connectorToken,
-            originUrl,
-          },
-          observeT3RelayConnector,
-        );
-        session.start();
-        return session;
+      const started = yield* Effect.try({
+        try: () => {
+          const session = t3RelayConnectorFactory.make(
+            {
+              connectorUrl,
+              connectorToken: config.connectorToken,
+              originUrl,
+            },
+            observeT3RelayConnector,
+          );
+          session.start();
+          return session;
+        },
+        catch: (cause) => new T3RelayConnectorStartError({ cause }),
       }).pipe(Effect.result);
       if (Result.isFailure(started)) {
         return {
@@ -807,7 +838,7 @@ export const make = Effect.gen(function* () {
           {
             detached: false,
             env: {
-              ...process.env,
+              ...env,
               TUNNEL_TOKEN: config.connectorToken,
             },
             shell: false,
@@ -908,6 +939,23 @@ export const make = Effect.gen(function* () {
     withRelayClientLog,
   );
 
+  const restartConnector = Effect.fn("CloudManagedEndpointRuntime.restartConnector")(function* (
+    pid: number,
+    stillDead: Effect.Effect<boolean>,
+  ) {
+    const active = yield* Ref.get(activeRef);
+    if (!active || Number(active.child.pid) !== pid || !(yield* stillDead)) return false;
+    yield* Effect.logWarning(
+      "Cloudflare has no live connection from the relay client; restarting it",
+      { pid, tunnelId: active.config.tunnelId, tunnelName: active.config.tunnelName },
+    );
+    // The supervisor starts the replacement with its usual crash-loop backoff.
+    return yield* active.child.kill().pipe(
+      Effect.as(true),
+      Effect.orElseSucceed(() => false),
+    );
+  }, reconcileSemaphore.withPermits(1));
+
   const readMetrics = <S extends Schema.Decoder<unknown>>(url: string, schema: S) =>
     httpClient.get(url).pipe(
       Effect.flatMap(HttpClientResponse.schemaBodyJson(schema)),
@@ -923,9 +971,10 @@ export const make = Effect.gen(function* () {
     if (!active || !(yield* active.child.isRunning.pipe(Effect.orElseSucceed(() => false)))) {
       return null;
     }
+    const pid = Number(active.child.pid);
     const protocol = yield* Ref.get(active.protocol);
     if (!(yield* Deferred.isDone(active.metricsAddress))) {
-      return { readyConnections: null, hostname: null, protocol } satisfies ConnectorFacts;
+      return { pid, readyConnections: null, hostname: null, protocol } satisfies ConnectorFacts;
     }
     const metricsUrl = `http://${yield* Deferred.await(active.metricsAddress)}`;
     const [ready, config] = yield* Effect.all(
@@ -936,6 +985,7 @@ export const make = Effect.gen(function* () {
       { concurrency: 2 },
     );
     return {
+      pid,
       readyConnections: ready?.readyConnections ?? null,
       hostname: config?.config.ingress?.find((rule) => rule.hostname)?.hostname ?? null,
       protocol,
@@ -950,6 +1000,7 @@ export const make = Effect.gen(function* () {
     requestRecovery: Effect.fn("CloudManagedEndpointRuntime.requestRecovery")(function (config) {
       return Queue.offer(recoveryRequests, config).pipe(Effect.asVoid);
     }),
+    restartConnector,
     tunnelConnected: Stream.fromQueue(tunnelConnections),
     withLinkStateLock: linkStateSemaphore.withPermits(1),
   });

@@ -174,7 +174,10 @@ export const make = Effect.fn("ExecutionReceipts.make")(function* (startWorkers 
         (row) =>
           Effect.gen(function* () {
             const payload = yield* decodeReceiptPayloadJson(row.payload_json);
-            const base = yield* Effect.try(() => new URL(settings.receiptCoordinator!.baseUrl));
+            const base = yield* Effect.try({
+              try: () => new URL(settings.receiptCoordinator!.baseUrl),
+              catch: () => unavailable(),
+            });
             if (base.username || base.password || !["http:", "https:"].includes(base.protocol))
               return yield* unavailable();
             const response = yield* HttpClientRequest.post(

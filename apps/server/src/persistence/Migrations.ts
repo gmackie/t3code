@@ -88,6 +88,8 @@ import BoundedShellLookups from "./Migrations/080_BoundedShellLookups.ts";
 // T3CODE-6 Bob admission; released as 59 on main and 63, 66, 68, 72, 73, 74, 75, 78 and 79 on custom-local
 // before upstream claimed those ids.
 import BobExecutionAdmission from "./Migrations/081_BobExecutionAdmission.ts";
+// Upstream claimed 80 after the lane's BoundedShellLookups. Name stays stable so the ledger re-keys it.
+import Migration0082 from "./Migrations/082_ScheduledTaskThreadMode.ts";
 
 /**
  * Upstream's ThreadFailureLookupIndex (62) and the lane's BoundedShellLookups both create
@@ -188,6 +190,8 @@ const migrationEntries = [
   [80, "BoundedShellLookups", BoundedShellLookupsShared],
   // Released as 59 on main and 63, 66, 68, 72, 73, 74, 75, 78 and 79 on custom-local; re-keyed by name.
   [81, "BobExecutionAdmission", BobExecutionAdmission],
+  // Upstream's 80, placed after the lane migrations. Re-keyed by name.
+  [82, "ScheduledTaskThreadMode", Migration0082],
 ] as const;
 
 export const migrationManifest = migrationEntries.map(([id, name]) => [id, name] as const);

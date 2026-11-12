@@ -41,7 +41,7 @@ export class MetaMaskWallet {
   private readonly pages = new Map<string, Page>();
   private readonly inFlight = new Map<
     string,
-    { fingerprint: string; start: Promise<typeof MetaMaskRequestResult.Type> }
+    { fingerprint: string; start: Promise<MetaMaskRequestResult> }
   >();
   private readonly activeRequests = new Set<string>();
   private readonly completions = new Set<Promise<void>>();
@@ -242,11 +242,7 @@ export class MetaMaskWallet {
     }
   }
 
-  private async saveJournal(
-    path: string,
-    fingerprint: string,
-    outcome: typeof MetaMaskRequestResult.Type,
-  ) {
+  private async saveJournal(path: string, fingerprint: string, outcome: MetaMaskRequestResult) {
     await NodeFSP.mkdir(this.options.journalDirectory, { recursive: true });
     const temporary = `${path}.${NodeCrypto.randomUUID()}.tmp`;
     await NodeFSP.writeFile(temporary, JSON.stringify({ fingerprint, outcome }), { mode: 0o600 });

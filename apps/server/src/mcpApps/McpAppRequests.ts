@@ -127,6 +127,13 @@ const make = Effect.gen(function* () {
       reason,
       ...(cause === undefined ? {} : { cause }),
     });
+  const adapterFailure =
+    (source: { readonly threadId: ThreadId }) => (cause: ProviderAdapter.ProviderAdapterV2Error) =>
+      fail(
+        source,
+        cause._tag === "ProviderAdapterSessionStoppedError" ? "session-stopped" : "request-failed",
+        cause,
+      );
 
   const resolveApp = Effect.fn("McpAppRequests.resolveApp")(function* (input: ThreadItemSource) {
     const item = yield* orchestrator
@@ -161,15 +168,15 @@ const make = Effect.gen(function* () {
     if (runtime === undefined) return yield* fail(input, "session-stopped");
     const mcpApps: ProviderAdapter.ProviderAdapterV2McpApps | undefined = runtime.mcpApps;
     if (mcpApps === undefined) return yield* fail(input, "provider-unsupported");
-    const requestFailed = Effect.mapError((cause: unknown) => fail(input, "request-failed", cause));
+    const adapterFailed = Effect.mapError(adapterFailure(input));
     return {
-      listTools: mcpApps.listTools({ providerThread, server: app.server }).pipe(requestFailed),
+      listTools: mcpApps.listTools({ providerThread, server: app.server }).pipe(adapterFailed),
       callTool: (name, args) =>
         mcpApps
           .callTool({ providerThread, server: app.server, tool: name, arguments: args })
-          .pipe(requestFailed),
+          .pipe(adapterFailed),
       readResource: (uri) =>
-        mcpApps.readResource({ providerThread, server: app.server, uri }).pipe(requestFailed),
+        mcpApps.readResource({ providerThread, server: app.server, uri }).pipe(adapterFailed),
     } satisfies AppServer;
   });
 
