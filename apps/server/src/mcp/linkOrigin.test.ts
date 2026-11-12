@@ -1,3 +1,4 @@
+import * as ProjectKnowledge from "../project/ProjectKnowledge.ts";
 import * as DocumentText from "../provider/DocumentText.ts";
 import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
@@ -158,7 +159,12 @@ const layerTools = Layer.mergeAll(
         }),
     }),
   ),
-  Layer.provide(Layer.mock(ProjectCloneTracker.ProjectCloneTracker)({})),
+  Layer.provide(
+    Layer.mergeAll(
+      Layer.mock(ProjectKnowledge.ProjectKnowledge)({}),
+      Layer.mock(ProjectCloneTracker.ProjectCloneTracker)({}),
+    ),
+  ),
   Layer.provide(Layer.mock(SecretRequests.SecretRequests)({})),
   Layer.provide(Layer.mock(PeerForwarding.PeerForwarding)({})),
   Layer.provide(Layer.mock(PeerLinkRequests.PeerLinkRequests)({})),

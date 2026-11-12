@@ -35,6 +35,7 @@ import {
 } from "../../state/session";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { usePluginPanelMenu } from "../plugins/usePluginPanelMenu";
+import { ProjectKnowledgeSection } from "./ProjectKnowledgeSection";
 import { SettingsScreen } from "./components/SettingsScreen";
 import { SettingsSection } from "./components/SettingsSection";
 import { ListActionRow as SettingsActionRow } from "../../components/ui/ListActionRow";
@@ -325,6 +326,9 @@ function ProjectOverviewContent(props: {
         </View>
       </View>
 
+      {props.members.map((member) => (
+        <ProjectKnowledgeSection key={`${member.environmentId}:${member.id}`} project={member} />
+      ))}
       <SettingsSection title="Project">
         <View className="gap-3 p-4">
           <Text className="text-sm font-t3-medium text-foreground-muted">Name</Text>

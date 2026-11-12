@@ -139,6 +139,9 @@ import * as PistacheSource from "./routing/PistacheSource.ts";
 import * as ProjectFaviconResolver from "./project/ProjectFaviconResolver.ts";
 import * as T3ProjectFileLoader from "./project/T3ProjectFileLoader.ts";
 import * as RepositoryIdentityResolver from "./project/RepositoryIdentityResolver.ts";
+import * as ProjectKnowledge from "./project/ProjectKnowledge.ts";
+import * as ProjectKnowledgeVectors from "./project/ProjectKnowledgeVectors.ts";
+import * as KnowledgeEmbeddings from "./project/KnowledgeEmbeddings.ts";
 import * as WorkspaceEntries from "./workspace/WorkspaceEntries.ts";
 import * as KnownWorkspaces from "./workspace/KnownWorkspaces.ts";
 import * as WorkspaceFileSystem from "./workspace/WorkspaceFileSystem.ts";
@@ -910,6 +913,11 @@ const layerMakeRoutes = Layer.mergeAll(
   Layer.provide(layerCommandReadiness),
   Layer.provide(ServerHttp.layerBrowserApiCors),
   Layer.provide(ServerHttp.layerHttpCompression),
+  Layer.provide([
+    ProjectKnowledge.layer.pipe(
+      Layer.provide(ProjectKnowledgeVectors.layer.pipe(Layer.provide(KnowledgeEmbeddings.layer))),
+    ),
+  ]),
 );
 
 const layerMakeServer = Layer.unwrap(
