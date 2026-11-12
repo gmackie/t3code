@@ -21,9 +21,11 @@
 #   APPLE_API_KEY / APPLE_API_KEY_ID /   App Store Connect API key (.p8 contents, id, issuer)
 #     APPLE_API_ISSUER
 #   MACOS_PROVISIONING_PROFILE           base64 .provisionprofile
+#   T3_CONFLICT_MCP_TOKEN                gmacko-mini MCP session credential
 #   CLOUDFLARE_API_TOKEN (optional)      relay tracing config; empty → skipped
 #   RELAY_CLIENT_OTLP_TRACES_TOKEN (optional)
 # Variables:
+#   T3_CONFLICT_MCP_URL, T3_CONFLICT_PROJECT_ID: gmacko-mini MCP endpoint and T3 Code project
 #   APPLE_TEAM_ID, CLERK_PASSKEY_RP_DOMAINS, and optionally CLOUDFLARE_ACCOUNT_ID,
 #   RELAY_DOMAIN, RELAY_API_ZONE_NAME, T3CODE_CLERK_PUBLISHABLE_KEY,
 #   T3CODE_CLERK_JWT_TEMPLATE, T3CODE_CLERK_CLI_OAUTH_CLIENT_ID
@@ -130,6 +132,11 @@ jobs:
         working-directory: lane
         env:
           GITHUB_TOKEN: ${{ secrets.GMACKO_GITHUB_TOKEN }}
+          T3_CONFLICT_MCP_URL: ${{ vars.T3_CONFLICT_MCP_URL }}
+          T3_CONFLICT_MCP_IP: ${{ vars.T3_CONFLICT_MCP_IP }}
+          T3_CONFLICT_PROJECT_ID: ${{ vars.T3_CONFLICT_PROJECT_ID }}
+          T3_CONFLICT_MCP_TOKEN: ${{ secrets.T3_CONFLICT_MCP_TOKEN }}
+          CONFLICT_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_number }}
         run: |
           set -euo pipefail
           github_url="https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_FORK}.git"
@@ -157,11 +164,28 @@ jobs:
           # .jjconflict-side-* trees from resolved historical conflicts and
           # fails rename detection. Conflicts stop the sync before anything is
           # mirrored: `-X ours` settled them hunk by hunk and shipped files that
-          # no longer parsed, so they need a person to resolve them in a PR.
+          # no longer parsed. Start an isolated T3 session to resolve them in a PR.
           if ! git merge --no-edit upstream/main; then
             echo "::error::Merging upstream/main conflicts with custom-local; resolve it in a PR to custom-local."
+            export CONFLICT_LANE_SHA="$(git rev-parse HEAD)"
+            export CONFLICT_UPSTREAM_SHA="$(git rev-parse upstream/main)"
+            export CONFLICT_FILES_PATH="$(mktemp)"
+            git diff --name-only --diff-filter=U -z > "$CONFLICT_FILES_PATH"
             git diff --name-only --diff-filter=U | sed 's/^/  conflict: /'
             git merge --abort
+            if [[ ! -s "$CONFLICT_FILES_PATH" ]]; then
+              echo "::error::Upstream merge failed without file conflicts; inspect the git error above."
+              exit 1
+            fi
+            # The script comes from the lane after abort, never the conflicted tree.
+            # The runner container may not inherit the host's MagicDNS resolver.
+            if [[ -n "${T3_CONFLICT_MCP_IP:-}" ]]; then
+              mcp_host="$(node -e 'console.log(new URL(process.env.T3_CONFLICT_MCP_URL).hostname)')"
+              if ! getent hosts "$mcp_host" >/dev/null; then
+                printf '%s %s\n' "$T3_CONFLICT_MCP_IP" "$mcp_host" >> /etc/hosts
+              fi
+            fi
+            node scripts/nightly-conflict-session.mjs
             exit 1
           fi
           echo "has_changes=true" >> "$GITHUB_OUTPUT"
