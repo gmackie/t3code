@@ -190,6 +190,16 @@ import {
   AgentSessionScanError,
 } from "./agentSessions.ts";
 import {
+  ProjectKnowledgeSearchInput,
+  ProjectKnowledgeSearchResult,
+  ProjectKnowledgeReadInput,
+  ProjectKnowledgePassage,
+  ProjectKnowledgeTarget,
+  ProjectKnowledgeNotes,
+  ProjectKnowledgeSaveNotesInput,
+  ProjectKnowledgeError,
+} from "./projectKnowledge.ts";
+import {
   AssetAccessError,
   AssetCreateUrlInput,
   AssetCreateUrlResult,
@@ -583,6 +593,10 @@ export const WS_METHODS = {
 
   filesystemBrowse: "filesystem.browse",
   filesystemGetMetadata: "filesystem.getMetadata",
+  projectKnowledgeSearch: "projectKnowledge.search",
+  projectKnowledgeRead: "projectKnowledge.read",
+  projectKnowledgeGetNotes: "projectKnowledge.getNotes",
+  projectKnowledgeSaveNotes: "projectKnowledge.saveNotes",
   agentSessionsScan: "agentSessions.scan",
   agentSessionsImport: "agentSessions.import",
   assetsCreateUrl: "assets.createUrl",
@@ -1888,6 +1902,30 @@ const WsFilesystemBrowseRpc = Rpc.make(WS_METHODS.filesystemBrowse, {
   error: Schema.Union([FilesystemBrowseError, EnvironmentAuthorizationError]),
 });
 
+const WsProjectKnowledgeSearchRpc = Rpc.make(WS_METHODS.projectKnowledgeSearch, {
+  payload: ProjectKnowledgeSearchInput,
+  success: ProjectKnowledgeSearchResult,
+  error: Schema.Union([ProjectKnowledgeError, EnvironmentAuthorizationError]),
+});
+
+const WsProjectKnowledgeReadRpc = Rpc.make(WS_METHODS.projectKnowledgeRead, {
+  payload: ProjectKnowledgeReadInput,
+  success: ProjectKnowledgePassage,
+  error: Schema.Union([ProjectKnowledgeError, EnvironmentAuthorizationError]),
+});
+
+const WsProjectKnowledgeGetNotesRpc = Rpc.make(WS_METHODS.projectKnowledgeGetNotes, {
+  payload: ProjectKnowledgeTarget,
+  success: ProjectKnowledgeNotes,
+  error: Schema.Union([ProjectKnowledgeError, EnvironmentAuthorizationError]),
+});
+
+const WsProjectKnowledgeSaveNotesRpc = Rpc.make(WS_METHODS.projectKnowledgeSaveNotes, {
+  payload: ProjectKnowledgeSaveNotesInput,
+  success: ProjectKnowledgeNotes,
+  error: Schema.Union([ProjectKnowledgeError, EnvironmentAuthorizationError]),
+});
+
 const WsAgentSessionsScanRpc = Rpc.make(WS_METHODS.agentSessionsScan, {
   payload: AgentSessionScanInput,
   success: AgentSessionScanResult,
@@ -2733,6 +2771,10 @@ export const WsRpcGroup = RpcGroup.make(
   WsShellOpenInEditorRpc,
   WsFilesystemBrowseRpc,
   WsFilesystemGetMetadataRpc,
+  WsProjectKnowledgeSearchRpc,
+  WsProjectKnowledgeReadRpc,
+  WsProjectKnowledgeGetNotesRpc,
+  WsProjectKnowledgeSaveNotesRpc,
   WsAgentSessionsScanRpc,
   WsAgentSessionsImportRpc,
   WsAssetsCreateUrlRpc,

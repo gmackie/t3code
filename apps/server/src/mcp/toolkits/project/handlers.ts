@@ -4,6 +4,7 @@ import {
   ThreadId,
   OrchestratorMcpFailure,
   ProjectId,
+  ProjectKnowledgeError,
 } from "@t3tools/contracts";
 import * as Digest from "effect/crypto/Digest";
 import * as Effect from "effect/Effect";
@@ -15,6 +16,7 @@ import { OrchestratorRuntimeModeAboveCeilingError } from "../../../orchestration
 import * as ThreadLaunch from "../../../orchestration-v2/ThreadLaunchService.ts";
 import * as ThreadMessageIntake from "../../../orchestration-v2/ThreadMessageIntake.ts";
 import * as Claims from "../../../orchestration-v2/AttachmentClaims.ts";
+import * as ProjectKnowledge from "../../../project/ProjectKnowledge.ts";
 import * as Project from "../../../project/ProjectService.ts";
 import * as ProjectCloneTracker from "../../../project/ProjectCloneTracker.ts";
 import { mutateProjectWithClone } from "../../../project/ProjectMutation.ts";
@@ -31,6 +33,12 @@ import { resolveRuntimeMode } from "../../delegatedTaskModes.ts";
 import * as McpToolAccess from "../../McpToolAccess.ts";
 import { newCommandId, readCaller, resolveProjectId, unavailable } from "../../threadAccess.ts";
 import { ProjectToolkit } from "./tools.ts";
+
+const knowledgeFailure = (e: ProjectKnowledgeError) =>
+  new OrchestratorMcpFailure({
+    code: e.code === "unavailable" ? "orchestration_error" : "invalid_request",
+    message: e.message,
+  });
 
 const isAboveCeilingError = Schema.is(OrchestratorRuntimeModeAboveCeilingError);
 
@@ -286,6 +294,46 @@ export const layer = McpToolAccess.toLayer(ProjectToolkit, {
       }),
     // The launched thread carries the caller's link, if it has one.
     "stamped",
+  ),
+  t3_project_knowledge: McpToolAccess.reads((input) =>
+    Effect.gen(function* () {
+      const context = yield* readCaller();
+      const projectId = yield* resolveProjectId(context, input.projectId);
+      const knowledge = yield* ProjectKnowledge.ProjectKnowledge;
+      if (input.action === "notes")
+        return yield* knowledge.getNotes(projectId).pipe(Effect.mapError(knowledgeFailure));
+      if (input.action === "search" && input.query !== undefined)
+        return yield* knowledge
+          .search({
+            projectId,
+            query: input.query,
+            ...(input.limit === undefined ? {} : { limit: input.limit }),
+          })
+          .pipe(Effect.mapError(knowledgeFailure));
+      if (input.action === "read" && input.path !== undefined)
+        return yield* knowledge
+          .read({
+            projectId,
+            path: input.path,
+            source: input.source ?? "docs",
+            ...(input.startLine === undefined ? {} : { startLine: input.startLine }),
+            ...(input.lineCount === undefined ? {} : { lineCount: input.lineCount }),
+          })
+          .pipe(Effect.mapError(knowledgeFailure));
+      return yield* new OrchestratorMcpFailure({
+        code: "invalid_request",
+        message: "Search needs query; read needs a cited path.",
+      });
+    }),
+  ),
+  t3_project_notes_save: McpToolAccess.writesEnvironment((input) =>
+    Effect.gen(function* () {
+      const projectId = yield* resolveProjectId(yield* readCaller(), input.projectId);
+      const knowledge = yield* ProjectKnowledge.ProjectKnowledge;
+      return yield* knowledge
+        .saveNotes({ ...input, projectId })
+        .pipe(Effect.mapError(knowledgeFailure));
+    }),
   ),
   t3_project_list: McpToolAccess.reads((input) =>
     Effect.gen(function* () {

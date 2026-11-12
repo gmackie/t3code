@@ -1,3 +1,4 @@
+import * as ProjectKnowledge from "../project/ProjectKnowledge.ts";
 import * as DocumentText from "../provider/DocumentText.ts";
 import { NodeHttpServer } from "@effect/platform-node";
 import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
@@ -466,7 +467,7 @@ const boxToolkitLayer = (thread: BoxThread) => {
     McpHttpServer.layerProjectRegistration,
   ).pipe(
     Layer.provide(DocumentText.layer.pipe(Layer.provideMerge(NodeServices.layer))),
-    Layer.provide(NodeCrypto.layer),
+    Layer.provide(Layer.merge(NodeCrypto.layer, Layer.mock(ProjectKnowledge.ProjectKnowledge)({}))),
     Layer.provide(layerBoxThreads),
     Layer.provide(layerBoxLaunches),
     Layer.provide(Layer.mock(RemoteDelegation.RemoteDelegation)({})),
@@ -594,7 +595,9 @@ const makeLaptop = (
       ),
       Layer.provide(Layer.succeedContext(linking)),
       Layer.provide(Layer.mock(PeerLinkRequests.PeerLinkRequests)({})),
-      Layer.provide(NodeCrypto.layer),
+      Layer.provide(
+        Layer.merge(NodeCrypto.layer, Layer.mock(ProjectKnowledge.ProjectKnowledge)({})),
+      ),
       Layer.provideMerge(layerThreads),
       Layer.provide(Layer.mock(ProviderRegistry.ProviderRegistry)({})),
       Layer.provide(Layer.mock(ProviderAdapterRegistry.ProviderAdapterRegistryV2)({})),

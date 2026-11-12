@@ -49,6 +49,7 @@ import {
   ProjectFaviconPickerDialog,
 } from "./ProjectFaviconPickerDialog";
 import { ProjectActionsSettings } from "./ProjectActionsSettings";
+import { ProjectKnowledgeSection } from "./ProjectKnowledgeSection";
 import { ProjectDefaultsSettings } from "./ProjectDefaultsSettings";
 import {
   defaultProjectIcon,
@@ -655,6 +656,9 @@ function ProjectDetail({
         </SettingsSection>
         <ProjectDefaultsSettings category="project" />
         <ProjectActionsSettings />
+        {group.memberProjects.map((member) => (
+          <ProjectKnowledgeSection key={`${member.environmentId}:${member.id}`} project={member} />
+        ))}
         {checkoutChoices}
         <SettingsSection title="Danger">
           <SettingsRow

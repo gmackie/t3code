@@ -214,6 +214,7 @@ import {
 import { parseBase64DataUrl } from "./imageMime.ts";
 import { deletePendingAttachment, issueAttachmentUploadUrl } from "./assets/AttachmentUpload.ts";
 import * as PortScanner from "./preview/PortScanner.ts";
+import * as ProjectKnowledge from "./project/ProjectKnowledge.ts";
 import * as WorkspaceEntries from "./workspace/WorkspaceEntries.ts";
 import * as KnownWorkspaces from "./workspace/KnownWorkspaces.ts";
 import * as WorkspaceFileSystem from "./workspace/WorkspaceFileSystem.ts";
@@ -1439,6 +1440,7 @@ export const layerWsRpc = (
           { discard: true },
         ).pipe(Effect.ignore);
       };
+      const projectKnowledge = yield* ProjectKnowledge.ProjectKnowledge;
       const threadLaunch = yield* ThreadLaunchService.ThreadLaunchService;
       const bobCoordination = yield* BobCoordination.BobCoordination;
       const commandOutputHub = yield* CommandOutputHub.CommandOutputHub;
@@ -3195,6 +3197,11 @@ export const layerWsRpc = (
           ),
         [WS_METHODS.attachmentsCreateUploadUrl]: (input) => issueAttachmentUploadUrl(input),
         [WS_METHODS.attachmentsDelete]: (input) => deletePendingAttachment(input.attachmentId),
+        [WS_METHODS.projectKnowledgeSearch]: (input) => projectKnowledge.search(input),
+        [WS_METHODS.projectKnowledgeRead]: (input) => projectKnowledge.read(input),
+        [WS_METHODS.projectKnowledgeGetNotes]: (input) =>
+          projectKnowledge.getNotes(input.projectId),
+        [WS_METHODS.projectKnowledgeSaveNotes]: (input) => projectKnowledge.saveNotes(input),
         [WS_METHODS.agentSessionsScan]: () => agentSessionScanner.scan,
         [WS_METHODS.agentSessionsImport]: (input) =>
           agentSessionImporter.importRecentAgentThreads(input),
@@ -3664,6 +3671,7 @@ export const WS_RPC_SERVER_OPTIONS = {
 
 export const layer = Layer.unwrap(
   Effect.gen(function* () {
+    const projectKnowledge = yield* ProjectKnowledge.ProjectKnowledge;
     const serverBrowser = yield* ServerBrowser.ServerBrowser;
     const serverSelfUpdate = yield* ServerSelfUpdate.ServerSelfUpdate;
     const npmRelease = yield* NpmRelease.NpmRelease;
@@ -3753,6 +3761,7 @@ export const layer = Layer.unwrap(
               Layer.provide(DefectReporter.layer),
               Layer.provide(Layer.succeed(SqlClient.SqlClient, sql)),
               Layer.provide(AgentSessionScanner.layer),
+              Layer.provide(Layer.succeed(ProjectKnowledge.ProjectKnowledge, projectKnowledge)),
               Layer.provide(ProviderMaintenanceRunner.layer),
               Layer.provide(Layer.succeed(NpmRelease.NpmRelease, npmRelease)),
               Layer.provide(Layer.succeed(ServerSelfUpdate.ServerSelfUpdate, serverSelfUpdate)),

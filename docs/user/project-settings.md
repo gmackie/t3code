@@ -258,3 +258,13 @@ On mobile, use **Settings → Source control** to change selected environment de
 T3 Code only pulls when it can fast-forward and the checkout has no changed files, untracked files,
 or local commits. It skips checkouts on another branch or without an upstream. If a checkout has
 local work, resolve it yourself before automatic pulls can resume.
+
+## Project knowledge
+
+Open **Settings → Projects → Project knowledge** for a checkout to search its `docs/` folder and saved project notes. Search combines semantic retrieval with text matches and supports Markdown, MDX, plain text, reStructuredText, and AsciiDoc. Results cite the source path and line; open a result to read the surrounding passage. Large sources and search results are bounded, so narrow the query when results are incomplete.
+
+For semantic search, run Ollama on the environment that owns the project and install its embedding model with `ollama pull nomic-embed-text`. Search indexes up to 256 new passages at a time and reports when more remain; repeat the search to continue indexing a large corpus. Later searches reuse unchanged embeddings and refresh changed sources. Documents and vectors stay on that environment by default. If Ollama is unavailable, search reports that it is showing text matches. To use another Ollama server or embedding model, set `T3CODE_KNOWLEDGE_OLLAMA_URL` or `T3CODE_KNOWLEDGE_EMBEDDING_MODEL` on the T3 server and restart it. A remote Ollama URL sends document passages to that server.
+
+Use saved notes for a small set of durable project facts. Edit them and choose **Save notes**; saving an empty note clears it. If someone else changes the notes, keep your draft, reload the latest version, and reconcile before saving. Notes belong to that checkout on that environment and stay outside the repository.
+
+Agents can search and inspect the same sources on demand. Ask explicitly when you want an agent to save, edit, or clear a note. Agents do not learn memory automatically or load the entire docs corpus into every turn.

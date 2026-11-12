@@ -5,6 +5,7 @@ import {
   AuthProvidersManageScope,
   AuthSettingsWriteScope,
   DEFAULT_SERVER_SETTINGS,
+  clientRpcRequiredScopes,
   ProjectId,
   ProviderDriverKind,
   ProviderInstanceId,
@@ -78,6 +79,20 @@ describe("RPC authorization scopes", () => {
       AuthOrchestrationReadScope,
     );
     expect(requiredScopeForRpcMethod(WS_METHODS.systemsModelsPatch)).toBe(
+      AuthOrchestrationOperateScope,
+    );
+  });
+
+  it("requires document and project read grants for knowledge, and operate for saving notes", () => {
+    for (const method of [WS_METHODS.projectKnowledgeSearch, WS_METHODS.projectKnowledgeRead])
+      expect(clientRpcRequiredScopes(method, {})).toEqual([
+        AuthFilesystemReadScope,
+        AuthOrchestrationReadScope,
+      ]);
+    expect(requiredScopeForRpcMethod(WS_METHODS.projectKnowledgeGetNotes)).toBe(
+      AuthOrchestrationReadScope,
+    );
+    expect(requiredScopeForRpcMethod(WS_METHODS.projectKnowledgeSaveNotes)).toBe(
       AuthOrchestrationOperateScope,
     );
   });

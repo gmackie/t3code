@@ -29,6 +29,7 @@ import * as ThreadLaunch from "../../../orchestration-v2/ThreadLaunchService.ts"
 import * as ThreadManagement from "../../../orchestration-v2/ThreadManagementService.ts";
 import * as ServerConfig from "../../../config.ts";
 import * as ServerSettings from "../../../serverSettings.ts";
+import * as ProjectKnowledge from "../../../project/ProjectKnowledge.ts";
 import * as Project from "../../../project/ProjectService.ts";
 import * as ProjectCloneTracker from "../../../project/ProjectCloneTracker.ts";
 import * as ManagedProjectFolders from "../../../project/ManagedProjectFolders.ts";
@@ -690,5 +691,42 @@ it.effect("an update the project refuses tells the agent why", () =>
       .pipe(Stream.unwrap, Stream.runCollect, Effect.provide(dependencies));
 
     expect(refused.at(-1)?.result).toMatchObject({ code: "invalid_request", message: detail });
+  }),
+);
+
+// Notes are environment-owned writes; restricted clients must never reach the writer.
+it.effect("restricted MCP callers can inspect knowledge but cannot save project notes", () =>
+  Effect.gen(function* () {
+    const harness = clientLaunchHarness({ runtimeModeCeiling: "approval-required", launched: [] });
+    let writes = 0;
+    const dependencies = Layer.merge(
+      harness.dependencies,
+      Layer.mock(ProjectKnowledge.ProjectKnowledge)({
+        getNotes: () => Effect.succeed({ content: "Use receipts.", revision: 2 }),
+        saveNotes: () =>
+          Effect.sync(() => {
+            writes += 1;
+            return { content: "changed", revision: 3 };
+          }),
+      }),
+    );
+    const toolkit = yield* ProjectToolkit.pipe(
+      Effect.provide(
+        McpToolAccess.HandlersLayer.layer(ProjectHandlers.layer).pipe(Layer.provide(dependencies)),
+      ),
+    );
+    const notes = yield* toolkit
+      .handle("t3_project_knowledge", { action: "notes", projectId: harness.projectId })
+      .pipe(Stream.unwrap, Stream.runCollect, Effect.provide(dependencies));
+    expect(notes.at(-1)?.result).toEqual({ content: "Use receipts.", revision: 2 });
+    const denied = yield* toolkit
+      .handle("t3_project_notes_save", {
+        projectId: harness.projectId,
+        content: "changed",
+        expectedRevision: 2,
+      })
+      .pipe(Stream.unwrap, Stream.runCollect, Effect.provide(dependencies));
+    expect(denied.at(-1)?.result).toMatchObject({ code: "capability_denied" });
+    expect(writes).toBe(0);
   }),
 );
