@@ -24,6 +24,7 @@ on:
       - apps/web/src/components/CommandPalette*
       - apps/web/src/rightPanelStore.ts
       - apps/mobile/src/features/plugins/**
+      - apps/mobile/src/features/tools/mcpOAuthSignIn*
       - apps/mobile/src/features/threads/McpAppWebView.tsx
       - apps/mobile/src/features/threads/mcpAppSource*
       - apps/mobile/src/features/settings/SettingsProjectOverviewRouteScreen.tsx
@@ -76,7 +77,7 @@ jobs:
         run: |
           (cd packages/client-runtime && pnpm exec vp test run src/mcpApps && pnpm exec vp run typecheck)
           (cd apps/web && pnpm exec vp test run src/components/CommandPalette.logic.test.ts src/rightPanelStore.test.ts src/components/RightPanelTabs.test.tsx src/components/settings --project unit && pnpm exec vp run typecheck)
-          (cd apps/mobile && pnpm exec vp test run src/features/plugins src/features/threads/mcpAppSource.test.ts && pnpm exec vp run typecheck)
+          (cd apps/mobile && pnpm exec vp test run src/features/plugins src/features/threads/mcpAppSource.test.ts src/features/tools/mcpOAuthSignIn.test.ts && T3_MOBILE_TEST_PLATFORM=android pnpm exec vp test run --project react src/features/plugins/PluginPanelScreen.test.tsx && pnpm exec vp run typecheck)
       # Lint from the root: oxlint resolves the repo's local plugin relative to it.
       - name: Lint the plugin surfaces
         run: |

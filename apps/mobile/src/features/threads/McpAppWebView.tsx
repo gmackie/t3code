@@ -13,7 +13,7 @@ import {
 } from "@t3tools/client-runtime/mcp-apps";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
-import { CommandId, MessageId } from "@t3tools/contracts";
+import { CommandId, McpAppRequestError, MessageId } from "@t3tools/contracts";
 import {
   mcpAppAllowAttribute,
   mcpAppFileName,
@@ -21,6 +21,7 @@ import {
   type McpAppReference,
 } from "@t3tools/shared/mcpApp";
 import * as Predicate from "effect/Predicate";
+import * as Schema from "effect/Schema";
 import { AsyncResult } from "effect/reactivity";
 import Constants from "expo-constants";
 import { useNavigation } from "@react-navigation/native";
@@ -47,6 +48,7 @@ import { MCP_APP_INLINE_MAX_HEIGHT, mcpAppInlineHeight } from "./mcpAppSizing";
 import { mcpAppSourceInput, mcpAppT3Context, type McpAppViewSource } from "./mcpAppSource";
 
 const ROW_BOTTOM_MARGIN = 8;
+const isMcpAppRequestError = Schema.is(McpAppRequestError);
 
 // Android exposes `ReactNativeWebView` to every frame, so a frame nested in the
 // app could post to React Native directly. The outer page therefore wraps what
@@ -66,10 +68,14 @@ window.__t3McpAppReceive=function(m){live&&frame.contentWindow&&frame.contentWin
 frame.src=${JSON.stringify(src).replace(/</g, "\\u003c")};})();</script></body></html>`;
 }
 
-const commandFailure = (result: {
-  readonly cause: Parameters<typeof squashAtomCommandFailure>[0]["cause"];
-}) => {
+const commandFailure = (
+  result: {
+    readonly cause: Parameters<typeof squashAtomCommandFailure>[0]["cause"];
+  },
+  onNeedsAuth?: () => void,
+) => {
   const error = squashAtomCommandFailure(result);
+  if (isMcpAppRequestError(error) && error.reason === "needs-auth") onNeedsAuth?.();
   return new McpAppHostRefusal({
     message:
       error instanceof Error && error.message.trim() !== "" ? error.message : "Request failed.",
@@ -138,6 +144,8 @@ export function McpAppView(props: {
   readonly displayMode?: "inline" | "fullscreen";
   readonly onExitFullscreen?: () => void;
   readonly onClose?: () => void;
+  /** Replace an open plugin panel with sign-in when its server loses authorization. */
+  readonly onNeedsAuth?: () => void;
   readonly height?: number;
   /** A plugin panel's directory and git state, refreshed as the active thread changes. */
   readonly panelContext?: McpAppPanelContext;
@@ -372,7 +380,7 @@ export function McpAppView(props: {
       callTool: async ({ name, arguments: args }) => {
         const { environmentId, input } = scope();
         const info = await latest.current.toolInfo({ environmentId, input: { ...input, name } });
-        if (info._tag !== "Success") throw commandFailure(info);
+        if (info._tag !== "Success") throw commandFailure(info, latest.current.props.onNeedsAuth);
         if (!info.value.callable)
           throw new McpAppHostRefusal({ message: "This app cannot call that tool." });
         if (
@@ -390,7 +398,8 @@ export function McpAppView(props: {
           environmentId,
           input: { ...input, name, arguments: args },
         });
-        if (result._tag !== "Success") throw commandFailure(result);
+        if (result._tag !== "Success")
+          throw commandFailure(result, latest.current.props.onNeedsAuth);
         return result.value;
       },
       readResource: async ({ uri: resourceUri }) => {
@@ -399,7 +408,8 @@ export function McpAppView(props: {
           environmentId,
           input: { ...input, uri: resourceUri },
         });
-        if (result._tag !== "Success") throw commandFailure(result);
+        if (result._tag !== "Success")
+          throw commandFailure(result, latest.current.props.onNeedsAuth);
         return result.value;
       },
       openLink: async (url) => {
@@ -500,7 +510,8 @@ export function McpAppView(props: {
               environmentId,
               input: { ...input, uri: file.uri },
             });
-            if (read._tag !== "Success") throw commandFailure(read);
+            if (read._tag !== "Success")
+              throw commandFailure(read, latest.current.props.onNeedsAuth);
             const content = read.value.contents[0];
             bytes = mcpResourceBytes(content);
             const declared = (content as { readonly mimeType?: unknown } | undefined)?.mimeType;
