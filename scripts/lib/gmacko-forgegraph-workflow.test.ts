@@ -25,7 +25,7 @@ describe("ForgeGraph GMACKO release workflow", () => {
 
     expect(workflow).toContain("scripts/gmacko-ios-testflight.sh");
     expect(release.slice(0, release.indexOf("steps:"))).not.toContain("ios_testflight");
-    expect(ios).toContain("needs: [sync, preflight, relay_public_config]");
+    expect(ios).toContain("needs: [sync, preflight, relay_public_config, build_macos_x64]");
     for (const [name, output] of [
       ["T3CODE_CLERK_PUBLISHABLE_KEY", "clerk_publishable_key"],
       ["T3CODE_CLERK_JWT_TEMPLATE", "clerk_jwt_template"],

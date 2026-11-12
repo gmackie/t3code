@@ -35,6 +35,15 @@ try {
       ),
       categories: { correctness: "off" },
       rules: { "no-undef": "error" },
+      overrides: desktop
+        ? []
+        : [
+            {
+              // Loaded through audioWorklet.addModule, not the window or worker runtime.
+              files: ["**/pcmWorklet-*.js"],
+              env: { audioworklet: true },
+            },
+          ],
     }),
   );
   const result = NodeChildProcess.spawnSync(
