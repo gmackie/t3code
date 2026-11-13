@@ -41,14 +41,31 @@ export async function startConflictSession({ endpoint, token, ...input }, fetche
       "MCP-Protocol-Version": "2025-06-18",
       ...(session ? { "Mcp-Session-Id": session } : {}),
     };
-    const response = await fetcher(url, {
-      method: "POST",
-      headers,
-      redirect: "error",
-      signal: AbortSignal.timeout(120_000),
-      body: JSON.stringify({ jsonrpc: "2.0", ...(id === undefined ? {} : { id }), method, params }),
-    });
-    if (!response.ok) throw new Error(`T3 MCP ${method} failed: HTTP ${response.status}`);
+    let response;
+    try {
+      response = await fetcher(url, {
+        method: "POST",
+        headers,
+        redirect: "error",
+        signal: AbortSignal.timeout(120_000),
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          ...(id === undefined ? {} : { id }),
+          method,
+          params,
+        }),
+      });
+    } catch (error) {
+      // Network failures (tailnet relay drops, timeouts) are worth retrying.
+      const cause = error?.cause?.code ?? error?.cause?.message ?? error?.name;
+      throw Object.assign(new Error(`T3 MCP ${method} unreachable: ${cause ?? "fetch failed"}`), {
+        retryable: true,
+      });
+    }
+    if (!response.ok)
+      throw Object.assign(new Error(`T3 MCP ${method} failed: HTTP ${response.status}`), {
+        retryable: response.status >= 500,
+      });
     session = response.headers.get("mcp-session-id") ?? session;
     if (id === undefined) return;
     let reply;
@@ -121,6 +138,28 @@ export async function startConflictSession({ endpoint, token, ...input }, fetche
   return { threadId: launched.threadId, link: launched.link };
 }
 
+// Retries the whole handoff on transient failures. The stable clientRequestId
+// makes a repeated launch return the session a lost reply already created.
+export async function startConflictSessionWithRetry(
+  input,
+  {
+    fetcher = fetch,
+    attempts = 6,
+    delayMs = 30_000,
+    sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+  } = {},
+) {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await startConflictSession(input, fetcher);
+    } catch (error) {
+      if (!error?.retryable || attempt >= attempts) throw error;
+      console.error(`${error.message}; retrying (${attempt}/${attempts - 1})`);
+      await sleep(delayMs);
+    }
+  }
+}
+
 if (process.argv[1] && import.meta.url === NodeURL.pathToFileURL(process.argv[1]).href) {
   try {
     const required = (name) => {
@@ -128,7 +167,7 @@ if (process.argv[1] && import.meta.url === NodeURL.pathToFileURL(process.argv[1]
       if (!value) throw new Error(`${name} is required for conflict handoff`);
       return value;
     };
-    const result = await startConflictSession({
+    const result = await startConflictSessionWithRetry({
       endpoint: required("T3_CONFLICT_MCP_URL"),
       token: required("T3_CONFLICT_MCP_TOKEN"),
       projectId: required("T3_CONFLICT_PROJECT_ID"),
