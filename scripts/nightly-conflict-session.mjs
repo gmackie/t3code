@@ -7,7 +7,9 @@ export function launchArguments({ projectId, laneSha, upstreamSha, files, runUrl
     modelSelection: { instanceId: "codex", model: "gpt-6.1-sol" },
     runtimeMode: "auto",
     title: `Resolve nightly upstream conflict ${upstreamSha.slice(0, 8)}`,
-    clientRequestId: `nightly-conflict-${laneSha}-${upstreamSha}`,
+    // Bump the version when the prompt changes so a stalled session from an
+    // older prompt does not absorb the relaunch for the same commit pair.
+    clientRequestId: `nightly-conflict-v2-${laneSha}-${upstreamSha}`,
     workspaceStrategy: {
       type: "worktree",
       baseRef: "forgejo/custom-local",
@@ -18,8 +20,9 @@ export function launchArguments({ projectId, laneSha, upstreamSha, files, runUrl
       `Repository: gmackie/t3code. Target branch: custom-local. Lane SHA: ${laneSha}. Upstream main SHA: ${upstreamSha}.`,
       `CI run: ${runUrl}`,
       `Conflicted files: ${JSON.stringify(files)}`,
-      "Create or reuse a Kanbanger issue before implementation. Fetch the current lane and upstream; resolve the merge in this isolated worktree, preserving lane features and upstream behavior. Do not use blanket ours/theirs resolution. Regenerate the lockfile when needed.",
-      "Open or update a PR to custom-local, link it to the issue and T3 thread, run focused checks and handle CI findings. Automatically approve only when all required checks pass on the exact head. Merge only when no nightly release is active. Verify desktop/CLI publication and iOS TestFlight delivery; keep the issue open until verified. Report blockers in the thread and issue.",
+      "This session runs unattended; nobody can answer credential or approval prompts, so never wait on one. Track the work in Kanbanger (search for an open issue titled `Sync custom-local with upstream main <short upstream SHA>` before creating one) when the `kanbanger` CLI works here. If it is unavailable, do not stop: proceed and state in the PR body that the Kanbanger issue still needs linking.",
+      "Fetch the current lane and upstream; resolve the merge in this isolated worktree, preserving lane features and upstream behavior. Do not use blanket ours/theirs resolution. Re-key colliding upstream migrations above the lane's ids, keeping their names. Regenerate the lockfile with pnpm. Run focused checks on the conflicted areas, not repo-wide ones.",
+      "Open or update a PR to custom-local (FG_APP=t3code forge pr create), link it to the issue when there is one and to this T3 thread, and handle CI findings. Automatically approve (forge pr approve) only when all required checks pass on the exact head. Merge (forge pr merge) only when no GMACKO Nightly release run is active. Verify desktop/CLI publication and iOS TestFlight delivery. Finish with the PR URL, head SHA, check state, merge SHA, and any blockers.",
     ].join("\n\n"),
   };
 }
