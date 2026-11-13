@@ -1,6 +1,10 @@
 import * as NodeTest from "node:test";
 import * as NodeAssert from "node:assert/strict";
-import { launchArguments, startConflictSession } from "./nightly-conflict-session.mjs";
+import {
+  launchArguments,
+  startConflictSession,
+  startConflictSessionWithRetry,
+} from "./nightly-conflict-session.mjs";
 
 const input = {
   endpoint: "https://mini.example/mcp",
@@ -88,6 +92,39 @@ NodeTest.test("tool errors and unconfirmed launches cannot report successful han
       }),
     );
   }
+});
+
+NodeTest.test("retries a dropped connection but not denied access", async () => {
+  let drops = 2;
+  const delays = [];
+  const result = await startConflictSessionWithRetry(input, {
+    sleep: async (ms) => delays.push(ms),
+    fetcher: async (_url, options) => {
+      const request = JSON.parse(options.body);
+      if (request.method === "initialize" && drops-- > 0)
+        throw new TypeError("fetch failed", { cause: { code: "UND_ERR_CONNECT_TIMEOUT" } });
+      if (!request.id) return new Response(null, { status: 202 });
+      return Response.json({
+        id: request.id,
+        result: request.id === 1 ? {} : { structuredContent: { threadId: "after-retry" } },
+      });
+    },
+  });
+  NodeAssert.equal(result.threadId, "after-retry");
+  NodeAssert.equal(delays.length, 2);
+
+  let calls = 0;
+  await NodeAssert.rejects(
+    startConflictSessionWithRetry(input, {
+      sleep: async () => {},
+      fetcher: async () => {
+        calls++;
+        return new Response(null, { status: 403 });
+      },
+    }),
+    /HTTP 403/,
+  );
+  NodeAssert.equal(calls, 1);
 });
 
 NodeTest.test(
