@@ -12,9 +12,13 @@ import * as Scope from "effect/Scope";
 
 import * as Electron from "electron";
 
+import { LOCKDOWN_EDITION, LOCKDOWN_IDENTITY } from "@t3tools/shared/lockdownEdition";
+
+import { lockdownContentSecurityPolicy } from "../lockdown/lockdownDesktop.ts";
+
 export const DESKTOP_HOST = "app";
-const DESKTOP_PRODUCTION_SCHEME = "t3code";
-const DESKTOP_DEVELOPMENT_SCHEME = "t3code-dev";
+const DESKTOP_PRODUCTION_SCHEME = LOCKDOWN_EDITION ? LOCKDOWN_IDENTITY.scheme : "t3code";
+const DESKTOP_DEVELOPMENT_SCHEME = LOCKDOWN_EDITION ? LOCKDOWN_IDENTITY.devScheme : "t3code-dev";
 
 export function getDesktopScheme(isDevelopment: boolean): string {
   return isDevelopment ? DESKTOP_DEVELOPMENT_SCHEME : DESKTOP_PRODUCTION_SCHEME;
@@ -66,7 +70,8 @@ export class ElectronProtocol extends Context.Service<
   }
 >()("@t3tools/desktop/electron/ElectronProtocol") {}
 
-function makeDesktopContentSecurityPolicy(input: DesktopProtocolRegistrationInput): string {
+export function makeDesktopContentSecurityPolicy(input: DesktopProtocolRegistrationInput): string {
+  if (LOCKDOWN_EDITION) return lockdownContentSecurityPolicy(input.scheme);
   const clerkOrigin = input.clerkFrontendApiHostname
     ? `https://${input.clerkFrontendApiHostname}`
     : undefined;

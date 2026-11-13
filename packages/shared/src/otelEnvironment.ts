@@ -8,6 +8,7 @@ import * as SchemaTransformation from "effect/SchemaTransformation";
 
 import type { OtlpEndpointSource } from "@t3tools/contracts";
 
+import { LOCKDOWN_EDITION } from "./lockdownEdition.ts";
 import { OtlpHeadersFromString, OtlpProtocol, type SignalExport } from "./observability.ts";
 
 type OtlpSignalName = "TRACES" | "METRICS" | "LOGS";
@@ -282,7 +283,8 @@ export const load: Effect.Effect<OtelEnvironment> = Config.all({
   }),
 }).pipe(
   Effect.map(({ t3, spec, resource, generic, exporters, ...own }) => {
-    const disabled = t3.value ?? spec.value ?? false;
+    // T3 Code Locked exports no telemetry, whatever configured it.
+    const disabled = LOCKDOWN_EDITION || (t3.value ?? spec.value ?? false);
     const signals = disabled
       ? undefined
       : {
@@ -324,7 +326,8 @@ export const isRelayTracingEnabled = (env: Readonly<Record<string, string | unde
     telemetry: flag("T3CODE_TELEMETRY_ENABLED", T3CODE_TRUE, T3CODE_FALSE, String),
   }).pipe(
     Effect.map(
-      ({ telemetry, t3, spec }) => telemetry.value !== false && !(t3.value ?? spec.value ?? false),
+      ({ telemetry, t3, spec }) =>
+        !LOCKDOWN_EDITION && telemetry.value !== false && !(t3.value ?? spec.value ?? false),
     ),
     Effect.provide(ConfigProvider.layer(ConfigProvider.fromEnvRecord(env))),
     Effect.orDie,
@@ -347,7 +350,7 @@ export const resolveSignalEndpoint = (
   t3: { readonly url: string | undefined; readonly export: SignalExport },
   fallback: { readonly bootstrapUrl: string | undefined; readonly settingsUrl: string | undefined },
 ): SignalEndpoint | undefined => {
-  if (otel.disabled) {
+  if (otel.disabled || LOCKDOWN_EDITION) {
     return undefined;
   }
   const t3Url = blankAsUnset(t3.url);

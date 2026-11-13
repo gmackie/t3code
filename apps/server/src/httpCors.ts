@@ -1,4 +1,5 @@
 import { ORCHESTRATION_PROTOCOL_HEADER } from "@t3tools/contracts";
+import { LOCKDOWN_EDITION, LOCKDOWN_IDENTITY } from "@t3tools/shared/lockdownEdition";
 
 export const browserApiCorsAllowedMethods = ["GET", "POST", "OPTIONS"] as const;
 export const browserApiCorsAllowedHeaders = [
@@ -10,4 +11,6 @@ export const browserApiCorsAllowedHeaders = [
   ORCHESTRATION_PROTOCOL_HEADER,
 ] as const;
 
-export const DESKTOP_RENDERER_ORIGINS = ["t3code://app", "t3code-dev://app"] as const;
+export const DESKTOP_RENDERER_ORIGINS = LOCKDOWN_EDITION
+  ? ([`${LOCKDOWN_IDENTITY.scheme}://app`, `${LOCKDOWN_IDENTITY.devScheme}://app`] as const)
+  : (["t3code://app", "t3code-dev://app"] as const);

@@ -5,9 +5,11 @@
  * @module DesktopManagedPolicy
  */
 import type { ManagedPolicyDocument } from "@t3tools/contracts";
+import { LOCKDOWN_EDITION, withLockdownPolicy } from "@t3tools/shared/lockdownEdition";
 import {
   layerWindowsRegistry,
   ManagedPolicyFileError,
+  managedPolicyPath,
   readManagedPolicy,
   WindowsRegistry,
 } from "@t3tools/shared/managedPolicyFile";
@@ -37,6 +39,12 @@ export const layer = Layer.effect(
     const { platform } = yield* DesktopEnvironment.DesktopEnvironment;
     const read = yield* Effect.cached(
       readManagedPolicy(platform).pipe(
+        // T3 Code Locked: the locked floor applies with or without an administrator's policy.
+        Effect.map((found) =>
+          LOCKDOWN_EDITION
+            ? withLockdownPolicy(found, managedPolicyPath(platform), process.env)
+            : found,
+        ),
         Effect.provideService(FileSystem.FileSystem, yield* FileSystem.FileSystem),
         Effect.provideService(
           ChildProcessSpawner.ChildProcessSpawner,

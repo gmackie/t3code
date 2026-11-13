@@ -8,6 +8,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 
 import * as ServerSourceControlHost from "./ServerSourceControlHost.ts";
+import { lockdownSourceControlDrivers } from "../lockdown/lockdownServer.ts";
 import { BUILT_IN_SOURCE_CONTROL_DRIVER_LIST } from "./sourceControlDefinitions.ts";
 
 export interface SourceControlDriverEntry {
@@ -21,8 +22,10 @@ export class SourceControlDrivers extends Context.Service<
   ReadonlyArray<SourceControlDriverEntry>
 >()("t3/sourceControl/builtInDrivers/SourceControlDrivers") {}
 
-const make = Effect.forEach(BUILT_IN_SOURCE_CONTROL_DRIVER_LIST, (driver) =>
-  driver.make.pipe(Effect.map((instance) => ({ driver, instance }))),
+// T3 Code Locked: GitLab only; other hosts are never constructed, probed or signed in to.
+const make = Effect.forEach(
+  lockdownSourceControlDrivers(BUILT_IN_SOURCE_CONTROL_DRIVER_LIST),
+  (driver) => driver.make.pipe(Effect.map((instance) => ({ driver, instance }))),
 );
 
 export const layer = Layer.effect(SourceControlDrivers, make).pipe(

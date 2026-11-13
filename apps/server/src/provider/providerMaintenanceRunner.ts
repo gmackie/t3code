@@ -7,6 +7,7 @@ import {
   type ServerProviderUpdatedPayload,
   type ServerProviderUpdateState,
 } from "@t3tools/contracts";
+import { LOCKDOWN_EDITION } from "@t3tools/shared/lockdownEdition";
 import { resolveSpawnCommand } from "@t3tools/shared/shell";
 import * as Cause from "effect/Cause";
 import * as Context from "effect/Context";
@@ -38,6 +39,7 @@ import {
 import * as ProviderLatestVersions from "@t3tools/provider-core/server/ProviderLatestVersions";
 import type { ProviderMaintenanceCapabilities } from "@t3tools/provider-core/server/maintenanceResolver";
 import { collectUint8StreamText } from "@t3tools/provider-core/server/collectStreamText";
+import { lockdownProviderMaintenanceRunner } from "../lockdown/lockdownServer.ts";
 const isServerProviderUpdateError = Schema.is(ServerProviderUpdateError);
 
 // Native updaters (`claude update`) download a ~300 MB binary without printing
@@ -651,4 +653,7 @@ export const make = Effect.fn("ProviderMaintenanceRunner.make")(function* () {
   });
 });
 
-export const layer = Layer.effect(ProviderMaintenanceRunner, make());
+// T3 Code Locked: provider CLIs are installed and updated by the administrator, never from npm here.
+export const layer = LOCKDOWN_EDITION
+  ? Layer.succeed(ProviderMaintenanceRunner, lockdownProviderMaintenanceRunner)
+  : Layer.effect(ProviderMaintenanceRunner, make());

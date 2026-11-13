@@ -8,7 +8,11 @@ import { CodexDriver, type CodexDriverEnv } from "./Drivers/CodexDriver.ts";
 import { CursorDriver, type CursorDriverEnv } from "@t3tools/provider-cursor/server";
 import { FxDriver, type FxDriverEnv } from "@t3tools/provider-fx/server";
 import { GrokDriver, type GrokDriverEnv } from "@t3tools/provider-grok/server";
-import { OpenCodeDriver, type OpenCodeDriverEnv } from "@t3tools/provider-opencode/server";
+import {
+  OpenCodeDriver as UpstreamOpenCodeDriver,
+  type OpenCodeDriverEnv,
+} from "@t3tools/provider-opencode/server";
+import { lockdownOpenCodeDriver } from "../lockdown/lockdownServer.ts";
 import { MuseDriver, type MuseDriverEnv } from "@t3tools/provider-muse/server";
 import { PiDriver, type PiDriverEnv } from "@t3tools/provider-pi/server";
 import type {
@@ -16,6 +20,9 @@ import type {
   ProviderUsageReaderEnv,
 } from "@t3tools/provider-core/server/driver";
 import { KiroDriver, type KiroDriverEnv } from "@t3tools/provider-kiro/server";
+
+// T3 Code Locked: OpenCode runs only through the administrator's gateway (lockdownServer.ts).
+const OpenCodeDriver = lockdownOpenCodeDriver(UpstreamOpenCodeDriver);
 
 export type BuiltInDriversEnv =
   | AcpRegistryDriverEnv

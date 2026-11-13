@@ -5,6 +5,8 @@ import * as NodeOS from "node:os";
 
 import * as Effect from "effect/Effect";
 
+import { LOCKDOWN_EDITION } from "@t3tools/shared/lockdownEdition";
+
 const LOCAL_ADDRESSES = new NodeNet.BlockList();
 for (const [network, prefix] of [
   ["0.0.0.0", 8],
@@ -158,7 +160,8 @@ export const publicProxy = Effect.acquireRelease(
         void publicAddresses(request.host).then((addresses) => {
           if (client.destroyed) return;
           client.off("data", holdEarly);
-          if (addresses === undefined) return refuse(client, 2);
+          // T3 Code Locked: rendered HTML reaches no public host either.
+          if (addresses === undefined || LOCKDOWN_EDITION) return refuse(client, 2);
           client.pause();
           // Try all checked addresses so broken IPv6 routes do not block IPv4 access.
           const upstream = track(

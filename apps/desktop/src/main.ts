@@ -20,10 +20,12 @@ import * as Electron from "electron";
 
 import * as NetService from "@t3tools/shared/Net";
 import * as HostProcess from "@t3tools/shared/HostProcess";
+import { installLockdownFetchGuard, LOCKDOWN_EDITION } from "@t3tools/shared/lockdownEdition";
 import type { RemoteT3RunnerOptions } from "@t3tools/ssh/tunnel";
 import serverPackageJson from "../../server/package.json" with { type: "json" };
 
 import * as DesktopIpc from "./ipc/DesktopIpc.ts";
+import * as LockdownDesktop from "./lockdown/lockdownDesktop.ts";
 import * as ElectronApp from "./electron/ElectronApp.ts";
 import * as ElectronDialog from "./electron/ElectronDialog.ts";
 import * as ElectronMenu from "./electron/ElectronMenu.ts";
@@ -122,6 +124,7 @@ const resolveDesktopSshCliRunner = (
 const layerDesktopSshEnvironment = Layer.unwrap(
   Effect.gen(function* () {
     const environment = yield* DesktopEnvironment.DesktopEnvironment;
+    if (LOCKDOWN_EDITION) return LockdownDesktop.layerSshEnvironmentDisabled;
     return DesktopSshEnvironment.layer({
       resolveCliRunner: Effect.succeed(resolveDesktopSshCliRunner(environment)),
     });
@@ -250,4 +253,6 @@ const layerDesktopRuntime = layerDesktopClerk.pipe(
   Layer.provideMerge(DesktopPreReadyPlatform.layer),
 );
 
+// T3 Code Locked: in-process fetches reach only this machine and approved hosts.
+installLockdownFetchGuard(globalThis, process.env);
 DesktopApp.program.pipe(Effect.provide(layerDesktopRuntime), NodeRuntime.runMain);

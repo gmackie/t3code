@@ -41,6 +41,7 @@ import {
   selectCliRuntimeExternalDependencies,
 } from "./lib/cli-external-packages.ts";
 import { loadRepoEnv } from "./lib/public-config.ts";
+import { applyLockdownBuildConfig } from "./lib/lockdown-build-config.ts";
 import { selectDesktopRuntimeExternalDependencies } from "./lib/desktop-external-packages.ts";
 import { resolveCatalogDependencies } from "./lib/resolve-catalog.ts";
 
@@ -2969,7 +2970,8 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
     buildConfig.win = winConfig;
   }
 
-  return buildConfig;
+  // T3 Code Locked identity and no update feed.
+  return applyLockdownBuildConfig(buildConfig);
 });
 
 const assertPlatformBuildResources = Effect.fn("assertPlatformBuildResources")(function* (

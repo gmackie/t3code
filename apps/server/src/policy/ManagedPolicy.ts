@@ -25,6 +25,8 @@ import {
   readManagedPolicyFile,
 } from "@t3tools/shared/managedPolicyFile";
 
+import { LOCKDOWN_EDITION, withLockdownPolicy } from "@t3tools/shared/lockdownEdition";
+
 import { telemetryChannel } from "../config.ts";
 import * as ManagedLimits from "./managedLimits.ts";
 import * as ManagedProviders from "./managedProviders.ts";
@@ -182,18 +184,28 @@ const make = Effect.gen(function* () {
         )
       : Option.none<string>();
   const platform = yield* HostProcess.Platform;
+  const environment = yield* HostProcess.Environment;
   const policy = yield* Option.match(devPath, {
-    onSome: load,
+    onSome: (path) =>
+      readManagedPolicyFile(path).pipe(
+        Effect.map((document) => (document === undefined ? undefined : { source: path, document })),
+      ),
     onNone: () =>
       readManagedPolicy(
         platform,
         ManagedProviders.knownDriverLabels().map(({ driver }) => driver),
-      ).pipe(
-        Effect.flatMap((found) =>
-          fromDocument(found?.source ?? managedPolicyPath(platform), found?.document),
-        ),
       ),
-  });
+  }).pipe(
+    // T3 Code Locked: the locked floor applies with or without an administrator's policy.
+    Effect.map((found) =>
+      LOCKDOWN_EDITION
+        ? withLockdownPolicy(found, managedPolicyPath(platform), environment)
+        : found,
+    ),
+    Effect.flatMap((found) =>
+      fromDocument(found?.source ?? managedPolicyPath(platform), found?.document),
+    ),
+  );
   const path = policy.path;
   if (policy.summary !== undefined) {
     yield* Effect.logInfo("Managed policy applies.", {

@@ -2,6 +2,7 @@ import {
   clerkFrontendApiHostnameFromPublishableKey,
   relayClerkTokenOptions,
 } from "@t3tools/shared/relayAuth";
+import { LOCKDOWN_EDITION } from "@t3tools/shared/lockdownEdition";
 import { normalizeSecureRelayUrl } from "@t3tools/shared/relayUrl";
 import * as Schema from "effect/Schema";
 
@@ -40,7 +41,16 @@ function normalizeSecureUrl(value: string): string | null {
   }
 }
 
+/** T3 Code Locked has no cloud: no Clerk, no relay, no relay tracing, whatever the build baked in. */
+export const LOCKDOWN_CLOUD_PUBLIC_CONFIG: CloudPublicConfig = {
+  clerkPublishableKey: null,
+  clerkJwtTemplate: null,
+  relayUrl: null,
+  relayTracing: { tracesUrl: null, tracesDataset: null, tracesToken: null },
+};
+
 export function resolveCloudPublicConfig(): CloudPublicConfig {
+  if (LOCKDOWN_EDITION) return LOCKDOWN_CLOUD_PUBLIC_CONFIG;
   return {
     clerkPublishableKey: trimNonEmpty(
       import.meta.env.VITE_CLERK_PUBLISHABLE_KEY as string | undefined,
