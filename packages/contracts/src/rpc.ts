@@ -829,7 +829,7 @@ export const WS_METHODS = {
   subscribeResourceTelemetry: "subscribeResourceTelemetry",
 } as const;
 
-export const WsServerUpsertKeybindingRpc = Rpc.make(WS_METHODS.serverUpsertKeybinding, {
+const WsServerUpsertKeybindingRpc = Rpc.make(WS_METHODS.serverUpsertKeybinding, {
   payload: ServerUpsertKeybindingInput,
   success: ServerUpsertKeybindingResult,
   error: Schema.Union([KeybindingsConfigError, EnvironmentAuthorizationError]),
@@ -892,7 +892,7 @@ export const WsServerRefreshProvidersRpc = Rpc.make(WS_METHODS.serverRefreshProv
   error: Schema.Union([EnvironmentAuthorizationError, ProviderSetupError]),
 });
 
-export const WsServerUpdateProviderRpc = Rpc.make(WS_METHODS.serverUpdateProvider, {
+const WsServerUpdateProviderRpc = Rpc.make(WS_METHODS.serverUpdateProvider, {
   payload: ServerProviderUpdateInput,
   success: ServerProviderUpdatedPayload,
   error: Schema.Union([ServerProviderUpdateError, EnvironmentAuthorizationError]),
@@ -1090,53 +1090,47 @@ const WsAgentToolsOAuthSignOutRpc = Rpc.make(WS_METHODS.agentToolsOAuthSignOut, 
   error: Schema.Union([McpOAuthError, EnvironmentAuthorizationError]),
 });
 
-export const WsServerValidateLinearIssuesRpc = Rpc.make(WS_METHODS.serverValidateLinearIssues, {
+const WsServerValidateLinearIssuesRpc = Rpc.make(WS_METHODS.serverValidateLinearIssues, {
   payload: Schema.Struct({}),
   success: LinearIssueValidationResult,
   error: Schema.Union([IssueProviderError, ServerSettingsError, EnvironmentAuthorizationError]),
 });
 
-export const WsServerListProjectIssuesRpc = Rpc.make(WS_METHODS.serverListProjectIssues, {
+const WsServerListProjectIssuesRpc = Rpc.make(WS_METHODS.serverListProjectIssues, {
   payload: ProjectIssueListInput,
   success: IssueListResult,
   error: Schema.Union([IssueProviderError, ServerSettingsError, EnvironmentAuthorizationError]),
 });
-export const WsServerBobCoordinationRpc = Rpc.make(WS_METHODS.serverBobCoordination, {
+const WsServerBobCoordinationRpc = Rpc.make(WS_METHODS.serverBobCoordination, {
   payload: BobOperationInput,
   success: Schema.Unknown,
   error: Schema.Union([BobCoordinationError, EnvironmentAuthorizationError]),
 });
-export const WsServerBobConnectionRpc = Rpc.make(WS_METHODS.serverBobConnection, {
+const WsServerBobConnectionRpc = Rpc.make(WS_METHODS.serverBobConnection, {
   payload: Schema.Struct({}),
   success: BobConnectionState,
   error: Schema.Union([BobCoordinationError, EnvironmentAuthorizationError]),
 });
 
-export const WsServerListProjectIssueStatusesRpc = Rpc.make(
-  WS_METHODS.serverListProjectIssueStatuses,
-  {
-    payload: ProjectIssueStatusListInput,
-    success: ProjectIssueStatusListResult,
-    error: Schema.Union([IssueProviderError, ServerSettingsError, EnvironmentAuthorizationError]),
-  },
-);
+const WsServerListProjectIssueStatusesRpc = Rpc.make(WS_METHODS.serverListProjectIssueStatuses, {
+  payload: ProjectIssueStatusListInput,
+  success: ProjectIssueStatusListResult,
+  error: Schema.Union([IssueProviderError, ServerSettingsError, EnvironmentAuthorizationError]),
+});
 
-export const WsServerCreateProjectIssueRpc = Rpc.make(WS_METHODS.serverCreateProjectIssue, {
+const WsServerCreateProjectIssueRpc = Rpc.make(WS_METHODS.serverCreateProjectIssue, {
   payload: ProjectIssueCreateInput,
   success: ProjectIssueCreateResult,
   error: Schema.Union([IssueProviderError, ServerSettingsError, EnvironmentAuthorizationError]),
 });
 
-export const WsServerUpdateProjectIssueStatusRpc = Rpc.make(
-  WS_METHODS.serverUpdateProjectIssueStatus,
-  {
-    payload: ProjectIssueStatusUpdateInput,
-    success: ProjectIssueStatusUpdateResult,
-    error: Schema.Union([IssueProviderError, ServerSettingsError, EnvironmentAuthorizationError]),
-  },
-);
+const WsServerUpdateProjectIssueStatusRpc = Rpc.make(WS_METHODS.serverUpdateProjectIssueStatus, {
+  payload: ProjectIssueStatusUpdateInput,
+  success: ProjectIssueStatusUpdateResult,
+  error: Schema.Union([IssueProviderError, ServerSettingsError, EnvironmentAuthorizationError]),
+});
 
-export const WsServerDiscoverSourceControlRpc = Rpc.make(WS_METHODS.serverDiscoverSourceControl, {
+const WsServerDiscoverSourceControlRpc = Rpc.make(WS_METHODS.serverDiscoverSourceControl, {
   payload: Schema.Struct({}),
   success: SourceControlDiscoveryResult,
   error: EnvironmentAuthorizationError,

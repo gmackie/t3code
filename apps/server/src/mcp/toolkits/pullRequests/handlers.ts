@@ -150,7 +150,7 @@ function projectForPullRequest(
 }
 
 /** The review threads list_review_threads reports, without avatars, reactions or page cursors. */
-export function reviewThreadsOf(
+function reviewThreadsOf(
   activity: Pick<PullRequestActivity, "reviewThreads" | "reviewThreadsTruncated">,
 ): Pick<ListReviewThreadsResult, "reviewThreads" | "truncated"> {
   return {

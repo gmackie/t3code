@@ -179,7 +179,7 @@ type CredentialRef = PullRequestRef & { readonly [credentialNamespace]?: string 
  * Whether the host's head is still the commit a caller checked: the same SHA, or at least its first
  * seven characters (git's own shortest abbreviation), compared without case.
  */
-export function headShaMatches(actual: string, expected: string): boolean {
+function headShaMatches(actual: string, expected: string): boolean {
   const head = actual.toLowerCase();
   const wanted = expected.toLowerCase();
   return head === wanted || (wanted.length >= 7 && head.startsWith(wanted));

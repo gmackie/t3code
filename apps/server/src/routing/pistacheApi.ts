@@ -30,7 +30,7 @@ export interface PistacheConfig {
  * The rollup series the Routing page reads. Anything else the router adds
  * later is dropped here so the wire payload stays small.
  */
-export const ROUTING_METRIC_SERIES: ReadonlySet<string> = new Set([
+const ROUTING_METRIC_SERIES: ReadonlySet<string> = new Set([
   "decisions.source",
   "decisions.tier",
   "decisions.model",
@@ -131,7 +131,7 @@ export function pistacheThreadKey(raw: string): string {
   return `${raw.replace(/[^\p{L}\p{N}_.:-]/gu, "_").slice(0, 100)}-${digest}`;
 }
 
-export function toRoutingDecision(
+function toRoutingDecision(
   decision: SnapshotDecision,
 ): RoutingDecision & { readonly threadId: string } {
   const advice = decision.advice;

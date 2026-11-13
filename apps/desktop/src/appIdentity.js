@@ -27,7 +27,7 @@ function normalizeAppDisplayName(value) {
  * @param {string | undefined | null} appDisplayName
  * @returns {boolean}
  */
-export function isGmackoDesktopAppDisplayName(appDisplayName) {
+function isGmackoDesktopAppDisplayName(appDisplayName) {
   return normalizeAppDisplayName(appDisplayName) === GMACKO_APP_DISPLAY_NAME;
 }
 
@@ -35,7 +35,7 @@ export function isGmackoDesktopAppDisplayName(appDisplayName) {
  * @param {string | undefined | null} packageName
  * @returns {boolean}
  */
-export function isGmackoDesktopPackageName(packageName) {
+function isGmackoDesktopPackageName(packageName) {
   return normalizeAppDisplayName(packageName) === GMACKO_PACKAGE_NAME;
 }
 
@@ -43,7 +43,7 @@ export function isGmackoDesktopPackageName(packageName) {
  * @param {string | undefined | null} appId
  * @returns {boolean}
  */
-export function isGmackoDesktopAppId(appId) {
+function isGmackoDesktopAppId(appId) {
   return normalizeAppDisplayName(appId) === GMACKO_APP_ID;
 }
 

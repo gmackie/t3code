@@ -151,7 +151,7 @@ export const GlassOpacity = Schema.Int.check(
   }),
 );
 export type GlassOpacity = typeof GlassOpacity.Type;
-export const DEFAULT_GLASS_OPACITY: GlassOpacity = 80;
+const DEFAULT_GLASS_OPACITY: GlassOpacity = 80;
 export const MIN_WINDOW_OPACITY = 40;
 export const MAX_WINDOW_OPACITY = 100;
 /** Desktop window opacity in percent; below 100 the whole macOS window turns translucent. */
@@ -159,7 +159,7 @@ export const WindowOpacity = Schema.Int.check(
   Schema.isBetween({ minimum: MIN_WINDOW_OPACITY, maximum: MAX_WINDOW_OPACITY }),
 );
 export type WindowOpacity = typeof WindowOpacity.Type;
-export const DEFAULT_WINDOW_OPACITY: WindowOpacity = 100;
+const DEFAULT_WINDOW_OPACITY: WindowOpacity = 100;
 
 export const MIN_APPEARANCE_CONTRAST = 50;
 export const MAX_APPEARANCE_CONTRAST = 200;

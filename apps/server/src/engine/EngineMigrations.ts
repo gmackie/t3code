@@ -79,34 +79,39 @@ const engineMigrations: ReadonlyArray<
 export const runEngineMigrations = Effect.fn("runEngineMigrations")(
   function* () {
     const sql = yield* SqlClient.SqlClient;
-    yield* sql`CREATE TABLE IF NOT EXISTS engine_schema_migrations (
-    id INTEGER PRIMARY KEY,
-    name TEXT NOT NULL UNIQUE,
-    applied_at TEXT NOT NULL
-  )`;
-    const applied = yield* sql<{ readonly id: number; readonly name: string }>`
-    SELECT id, name FROM engine_schema_migrations
-  `;
-    const appliedById = new Map(applied.map((row) => [row.id, row.name]));
-    for (const [id, name, run] of engineMigrations) {
-      const appliedName = appliedById.get(id);
-      if (appliedName === name) continue;
-      if (appliedName !== undefined) {
-        return yield* Effect.die(
-          new Error(`Engine migration ${id} is recorded as ${appliedName}, expected ${name}.`),
-        );
-      }
-      yield* sql.withTransaction(
-        Effect.gen(function* () {
-          yield* run;
-          const appliedAt = DateTime.formatIso(yield* DateTime.now);
-          yield* sql`
-          INSERT INTO engine_schema_migrations (id, name, applied_at)
-          VALUES (${id}, ${name}, ${appliedAt})
+    // Journal and effect-lane layers initialize together; the ledger read must own the writer too.
+    yield* sql.withTransaction(
+      Effect.gen(function* () {
+        yield* sql`CREATE TABLE IF NOT EXISTS engine_schema_migrations (
+          id INTEGER PRIMARY KEY,
+          name TEXT NOT NULL UNIQUE,
+          applied_at TEXT NOT NULL
+        )`;
+        const applied = yield* sql<{ readonly id: number; readonly name: string }>`
+          SELECT id, name FROM engine_schema_migrations
         `;
-        }),
-      );
-    }
+        const appliedById = new Map(applied.map((row) => [row.id, row.name]));
+        for (const [id, name, run] of engineMigrations) {
+          const appliedName = appliedById.get(id);
+          if (appliedName === name) continue;
+          if (appliedName !== undefined) {
+            return yield* Effect.die(
+              new Error(`Engine migration ${id} is recorded as ${appliedName}, expected ${name}.`),
+            );
+          }
+          yield* sql.withTransaction(
+            Effect.gen(function* () {
+              yield* run;
+              const appliedAt = DateTime.formatIso(yield* DateTime.now);
+              yield* sql`
+                INSERT INTO engine_schema_migrations (id, name, applied_at)
+                VALUES (${id}, ${name}, ${appliedAt})
+              `;
+            }),
+          );
+        }
+      }),
+    );
   },
   Effect.mapError(toPersistenceSqlError("runEngineMigrations")),
 );

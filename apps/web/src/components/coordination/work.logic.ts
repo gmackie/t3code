@@ -1,7 +1,7 @@
 import type { IssueItem } from "@t3tools/contracts";
 import type { GetPlanOutput, GetItemOutput } from "@t3tools/contracts/bobCoordination";
 
-export function issueScope(
+function issueScope(
   issue: Pick<IssueItem, "id" | "key" | "title" | "descriptionMarkdown">,
 ): string {
   return JSON.stringify({

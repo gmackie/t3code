@@ -16,7 +16,6 @@ import { parseGadgets, type CandidateGadget } from "./Gadgets.ts";
 import { inspectBinary } from "./BinaryLayout.ts";
 
 const isReverseStoreError = Schema.is(ReverseStoreError);
-export { parseGadgets } from "./Gadgets.ts";
 export type { GhidraFunction, CandidateGadget };
 export type AnalysisKind = "ghidra" | "binwalk" | "gadgets" | "unblob" | "rea" | "posture";
 export interface AnalysisResult {

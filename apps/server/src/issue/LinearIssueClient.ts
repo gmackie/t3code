@@ -314,7 +314,7 @@ const LinearIssueMutationGraphqlResponse = Schema.Struct({
 });
 type LinearIssueMutationGraphqlResponse = typeof LinearIssueMutationGraphqlResponse.Type;
 
-export function normalizeLinearDomain(domain: string): string {
+function normalizeLinearDomain(domain: string): string {
   const trimmed = domain.trim() || "linear.app";
   return trimmed
     .replace(/^https?:\/\//i, "")

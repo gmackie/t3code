@@ -4,7 +4,7 @@ import { TrimmedNonEmptyString } from "./baseSchemas.ts";
 export const METAMASK_BROWSER_PROFILE_ID = "metamask";
 export const METAMASK_DEFAULT_SITE = "https://attest.gmac.io";
 // Approval decoding and confirmation selectors are deliberately versioned together.
-export const METAMASK_SUPPORTED_VERSION = "13.5.0";
+const METAMASK_SUPPORTED_VERSION = "13.5.0";
 const Address = Schema.String.check(Schema.isPattern(/^0x[0-9a-fA-F]{40}$/));
 const Quantity = Schema.String.check(Schema.isPattern(/^0x(?:0|[1-9a-fA-F][0-9a-fA-F]*)$/));
 const Data = Schema.String.check(Schema.isPattern(/^0x(?:[0-9a-fA-F]{2})*$/));

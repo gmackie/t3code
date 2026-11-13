@@ -789,7 +789,6 @@ function threadTitle(input: {
 }
 
 // The evals import it from here.
-export { taskPrompt };
 
 function threadSettlement(
   thread: Pick<OrchestrationV2ThreadShell, "settledOverride" | "settledAt">,

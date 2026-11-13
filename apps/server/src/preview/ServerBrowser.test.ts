@@ -53,6 +53,7 @@ vi.mock("./ServerBrowserContexts.ts", () => ({
     async contextFor(profileId: string, isolationKey?: string) {
       contextRequests.push({ profileId, isolated: isolationKey !== undefined });
       if (contextFailure) throw contextFailure;
+      contextRequested?.();
       await contextGate?.promise;
       const context = makeContext(this.onClose);
       const setupFailure = pageSetupFailure;
@@ -407,6 +408,7 @@ const encoderStreams: Array<{ frameRate: number | undefined; bitsPerSecond: numb
 let decodeGate: PromiseWithResolvers<void> | null = null;
 const contextRequests: Array<{ profileId: string; isolated: boolean }> = [];
 let contextGate: PromiseWithResolvers<void> | null = null;
+let contextRequested: (() => void) | null = null;
 let heldStill: (() => Promise<void>) | null = null;
 let pageCopy = "";
 let keyCopy = "";
@@ -604,6 +606,7 @@ beforeEach(() => {
   decodeGate = null;
   contextRequests.length = 0;
   contextGate = null;
+  contextRequested = null;
   heldStill = null;
   contextFailure = null;
   pageSetupFailure = null;
@@ -1835,6 +1838,74 @@ it.effect("closing a tab with an unsaved-changes guard still closes it", () =>
       expect(page.beforeUnloadDialog!.accept).toHaveBeenCalledTimes(1);
       expect(page.isClosed()).toBe(true);
       expect(page.unloadEvents).toEqual(["beforeunload", "pagehide", "visibilitychange"]);
+    }),
+  ).pipe(Effect.provide(layer)),
+);
+
+it.effect("a tab whose renderer crashes stays open instead of vanishing", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const { browser, broker, tabId } = yield* ready;
+      const url = `https://example.com/app?${"a".repeat(3000)}`;
+      contexts[0]!.page.commit(url);
+      yield* Effect.promise(() => contexts[0]!.page.emitAsync("crash"));
+      const status = yield* broker.invoke<PreviewAutomationStatus>({
+        scope,
+        tabId,
+        operation: "status",
+        input: {},
+      });
+      expect(status.tabId).toBe(tabId);
+      expect(status.loadError).toEqual({
+        url: url.slice(0, 2048),
+        code: -2,
+        description: "Page crashed",
+      });
+      // The crashed page cannot load anything again, so Reload goes to the page that replaced it.
+      const viewer = yield* browser.attachViewer(viewerInput(tabId, true));
+      yield* viewer.input({ type: "takeControl" });
+      yield* viewer.input({ type: "reload" });
+      expect(contexts[1]!.page.goto).toHaveBeenCalledWith(url, expect.anything());
+    }),
+  ).pipe(Effect.provide(layer)),
+);
+
+it.effect("a stalled crash replacement gives way to a retry and closes its late page", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const { browser, tabId } = yield* ready;
+      const url = "https://example.com/crashed";
+      contexts[0]!.page.commit(url);
+      const started = Promise.withResolvers<void>();
+      const gate = (contextGate = Promise.withResolvers<void>());
+      contextRequested = started.resolve;
+      yield* Effect.addFinalizer(() => Effect.sync(() => gate.resolve()));
+      const crashed = contexts[0]!.page.emitAsync("crash");
+      yield* Effect.promise(() => started.promise);
+      const stalled = yield* browser
+        .attachViewer(viewerInput(tabId, true))
+        .pipe(Effect.flip, Effect.forkScoped);
+      yield* TestClock.adjust("30 seconds");
+      expect((yield* Fiber.join(stalled))._tag).toBe("ServerBrowserLaunchError");
+
+      contextGate = null;
+      const retry = yield* browser
+        .attachViewer(viewerInput(tabId, true))
+        .pipe(Effect.exit, Effect.forkScoped);
+      yield* TestClock.adjust("30 seconds");
+      expect(Exit.isSuccess(yield* Fiber.join(retry))).toBe(true);
+      expect(contexts).toHaveLength(2);
+      const replacement = contexts[1]!.page;
+
+      gate.resolve();
+      yield* Effect.promise(() => crashed);
+      expect(contexts).toHaveLength(3);
+      expect(contexts[2]!.page.isClosed()).toBe(true);
+      expect(replacement.isClosed()).toBe(false);
+      const viewer = yield* browser.attachViewer(viewerInput(tabId, true));
+      yield* viewer.input({ type: "takeControl" });
+      yield* viewer.input({ type: "reload" });
+      expect(replacement.goto).toHaveBeenCalledWith(url, expect.anything());
     }),
   ).pipe(Effect.provide(layer)),
 );

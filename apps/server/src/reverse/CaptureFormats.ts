@@ -98,7 +98,7 @@ const TIMESCALE_NS: Record<string, number> = {
  * Value Change Dump with scalar wires, as written by PulseView, Glasgow, simulators and most
  * logic analyzers. Vectors and reals are listed in `skipped`; x and z read as low.
  */
-export async function parseVcd(text: string): Promise<ParsedCapture> {
+async function parseVcd(text: string): Promise<ParsedCapture> {
   let work = 0;
   let pos = 0;
   const next = (): string | null => {
@@ -234,7 +234,7 @@ function unzipBounded(
 const RATE_UNITS: Record<string, number> = { hz: 1, khz: 1e3, mhz: 1e6, ghz: 1e9 };
 
 /** sigrok session files (v2 srzip): `metadata` INI plus little-endian `logic-1-N` chunks. */
-export async function parseSigrok(bytes: Uint8Array): Promise<ParsedCapture> {
+async function parseSigrok(bytes: Uint8Array): Promise<ParsedCapture> {
   const files = unzipBounded(
     bytes,
     (name) => name === "version" || name === "metadata" || /^logic-1(-\d+)?$/.test(name),
@@ -427,7 +427,7 @@ const saleaeChannelName = (file: string) => {
 };
 
 /** A single `digital_N.bin`, or a zip of them as Logic 2 writes into an export folder. */
-export function parseSaleaeBinary(bytes: Uint8Array, filename: string): ParsedCapture {
+function parseSaleaeBinary(bytes: Uint8Array, filename: string): ParsedCapture {
   if (strFromU8(bytes.subarray(0, 8)) === "<SALEAE>")
     return fromSaleaeRuns([{ name: saleaeChannelName(filename), run: readSaleaeDigital(bytes) }]);
   const files = unzipBounded(bytes, (name) => /(^|\/)digital_\d+\.bin$/i.test(name));
@@ -442,7 +442,7 @@ export function parseSaleaeBinary(bytes: Uint8Array, filename: string): ParsedCa
 }
 
 /** Logic 2's CSV export: `Time [s],<channel>,...`, one row per change. */
-export async function parseSaleaeCsv(text: string): Promise<ParsedCapture> {
+async function parseSaleaeCsv(text: string): Promise<ParsedCapture> {
   // Walk lines in place: a large export split into an array costs several times its size.
   let pos = 0;
   const nextLine = (): string | null => {

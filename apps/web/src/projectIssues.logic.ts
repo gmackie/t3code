@@ -30,7 +30,7 @@ export function shouldRenderCreateIssueModal(open: boolean): boolean {
   return open;
 }
 
-export function resolveIssueDisplayStatus(issue: IssueItem): string {
+function resolveIssueDisplayStatus(issue: IssueItem): string {
   return issue.statusName ?? issue.state;
 }
 

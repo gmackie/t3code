@@ -95,6 +95,8 @@ import { ReverseToolkit } from "./toolkits/reverse/tools.ts";
 import * as ReverseHandlers from "./toolkits/reverse/handlers.ts";
 import { SystemsToolkit } from "./toolkits/systems/tools.ts";
 import * as SystemsHandlers from "./toolkits/systems/handlers.ts";
+import { MessageToolkit } from "./toolkits/message/tools.ts";
+import * as MessageHandlers from "./toolkits/message/handlers.ts";
 import { HtmlPreviewTool, HtmlPreviewToolkit, HtmlRenderToolkit } from "./toolkits/html/tools.ts";
 import { requestUrl } from "../requestUrl.ts";
 
@@ -1321,6 +1323,8 @@ export const layerOrchestratorToolkit = toolkitRegistration(
 
 export const layerThreadToolkit = toolkitRegistration(ThreadToolkit, ThreadHandlers.layer);
 
+const layerMessageToolkit = toolkitRegistration(MessageToolkit, MessageHandlers.layer);
+
 const layerWorktreeToolkitRegistration = toolkitRegistration(
   WorktreeToolkit,
   WorktreeHandlers.layer,
@@ -1423,6 +1427,7 @@ export const layerTools = Layer.mergeAll(
     Layer.provide(UnityHandlers.layerSnapshot),
   ),
   callerCheckedToolkitRegistration(UnityToolkit, UnityHandlers.layer),
+  layerMessageToolkit,
 );
 
 const layerToolExposure = Layer.effect(
