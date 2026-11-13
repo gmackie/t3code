@@ -228,6 +228,7 @@ describe("migration ledger reconciliation", () => {
           [78, "DropOrchestrationEventCorrelationIndex"],
           [79, "DelegatedRecoveryIndexes"],
           [82, "ScheduledTaskThreadMode"],
+          ...migrationManifest.filter(([id]) => id > 82),
         ]);
         yield* assertLedgerMatchesManifest();
         const rows = yield* readLedger;
@@ -275,6 +276,7 @@ describe("migration ledger reconciliation", () => {
           [78, "DropOrchestrationEventCorrelationIndex"],
           [79, "DelegatedRecoveryIndexes"],
           [82, "ScheduledTaskThreadMode"],
+          ...migrationManifest.filter(([id]) => id > 82),
         ]);
         yield* assertLedgerMatchesManifest();
         const columns = yield* sql<{ readonly name: string }>`
@@ -319,6 +321,7 @@ describe("migration ledger reconciliation", () => {
           [78, "DropOrchestrationEventCorrelationIndex"],
           [79, "DelegatedRecoveryIndexes"],
           [82, "ScheduledTaskThreadMode"],
+          ...migrationManifest.filter(([id]) => id > 82),
         ]);
         yield* assertLedgerMatchesManifest();
         const rows = yield* readLedger;
@@ -368,6 +371,7 @@ describe("migration ledger reconciliation", () => {
           [78, "DropOrchestrationEventCorrelationIndex"],
           [79, "DelegatedRecoveryIndexes"],
           [82, "ScheduledTaskThreadMode"],
+          ...migrationManifest.filter(([id]) => id > 82),
         ]);
         yield* assertLedgerMatchesManifest();
         const triggers = yield* sql<{ readonly name: string }>`
@@ -405,6 +409,7 @@ describe("migration ledger reconciliation", () => {
           [78, "DropOrchestrationEventCorrelationIndex"],
           [79, "DelegatedRecoveryIndexes"],
           [82, "ScheduledTaskThreadMode"],
+          ...migrationManifest.filter(([id]) => id > 82),
         ]);
         yield* assertLedgerMatchesManifest();
         const indexes = yield* sql<{ readonly name: string }>`
@@ -441,6 +446,7 @@ describe("migration ledger reconciliation", () => {
           [78, "DropOrchestrationEventCorrelationIndex"],
           [79, "DelegatedRecoveryIndexes"],
           [82, "ScheduledTaskThreadMode"],
+          ...migrationManifest.filter(([id]) => id > 82),
         ]);
         yield* assertLedgerMatchesManifest();
         const rows = yield* readLedger;
@@ -479,6 +485,7 @@ describe("migration ledger reconciliation", () => {
           [78, "DropOrchestrationEventCorrelationIndex"],
           [79, "DelegatedRecoveryIndexes"],
           [82, "ScheduledTaskThreadMode"],
+          ...migrationManifest.filter(([id]) => id > 82),
         ]);
         yield* assertLedgerMatchesManifest();
         const rows = yield* readLedger;
@@ -724,6 +731,36 @@ describe("runMigrations", () => {
       );
       assert.notInclude(String(exit), "57_ScheduledTaskWebhooks");
       assert.deepStrictEqual(yield* history, before);
+    }).pipe(Effect.provide(NodeSqliteClient.layer({ filename: ":memory:" }))),
+  );
+
+  it.effect("keeps the migrations that finished before a later one failed", () =>
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* runMigrations({ toMigrationInclusive: 83 });
+      yield* sql`CREATE TABLE orchestration_v2_projection_turn_item_counts (thread_id TEXT)`;
+
+      const exit = yield* Effect.exit(runMigrations());
+
+      assert.isTrue(Exit.isFailure(exit));
+      assert.deepStrictEqual(
+        yield* history,
+        migrationManifest.filter(([id]) => id <= 86),
+      );
+    }).pipe(Effect.provide(NodeSqliteClient.layer({ filename: ":memory:" }))),
+  );
+
+  it.effect("reapplies peer link migrations whose ledger rows are missing", () =>
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* runMigrations({ toMigrationInclusive: 72 });
+      yield* sql`DELETE FROM effect_sql_migrations WHERE migration_id BETWEEN 70 AND 72`;
+
+      assert.deepStrictEqual(
+        yield* runMigrations(),
+        migrationManifest.filter(([id]) => id >= 70),
+      );
+      assert.deepStrictEqual(yield* history, migrationManifest);
     }).pipe(Effect.provide(NodeSqliteClient.layer({ filename: ":memory:" }))),
   );
 

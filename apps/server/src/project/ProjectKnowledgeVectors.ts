@@ -59,7 +59,7 @@ const make = Effect.gen(function* () {
       return NodeSqliteClient.layer({
         filename: path.join(directory, "vectors.sqlite"),
         readerWorker: true,
-        checkpointWorker: true,
+        writerWorker: true,
       });
     }),
   );

@@ -54,6 +54,26 @@ const operationOf = (
   query: Record<string, unknown>,
   body: unknown,
 ) => {
+  if (method === "GET" && path === "/api/experimental/job" && query.kind === "image")
+    return { type: "imageJobs", input: query };
+  if (method === "GET" && path.startsWith("/api/fs/read/"))
+    return { type: "image.read", input: { path, ...query } };
+  const rpc = /^\/api\/rpc\/([^/]+)\/([^/]+)$/.exec(path);
+  if (method === "POST" && rpc !== null)
+    return {
+      type: "rpc.call",
+      input: { rpcID: rpc[1], method: rpc[2], ...query, ...(body as object) },
+    };
+  if (method === "GET" && path === "/api/experimental/job")
+    return { type: "job.list", input: query };
+  const shell = /^\/api\/shell(?:\/([^/]+)(\/output)?)?$/.exec(path);
+  if (shell !== null) {
+    const input = { ...(shell[1] === undefined ? {} : { id: shell[1] }), ...query };
+    return {
+      type: `shell.${method === "DELETE" ? "remove" : shell[2] ? "output" : shell[1] ? "get" : "list"}`,
+      input,
+    };
+  }
   const session = /^\/api\/session\/([^/]+)(\/.*)?$/.exec(path);
   if (method === "GET" && path === "/api/event") return { type: "event.subscribe" };
   if (method === "GET" && path === "/api/model") return { type: "model.list", input: query };
@@ -187,6 +207,7 @@ const replayHttpClient = (
   replayGate: ProviderReplayGate | undefined,
   onPrompt: ((input: unknown) => void) | undefined,
   mcp: McpReplayState | undefined,
+  beforeResponse: ((path: string) => Effect.Effect<void>) | undefined,
 ) =>
   HttpClient.make((request, url) =>
     Effect.tryPromise({
@@ -228,6 +249,11 @@ const replayHttpClient = (
         }
         // Recorded responses are the raw HTTP bodies; `null` is an empty 204.
         const body = await controller.response(operation.type);
+        if (typeof body === "object" && body !== null && "imageBase64" in body) {
+          return new Response(Buffer.from(String(body.imageBase64), "base64"), {
+            headers: { "content-type": "image/png" },
+          });
+        }
         if (body === "<hang>") return new Promise<Response>(() => {});
         if (typeof body === "object" && body !== null && "status" in body && "body" in body) {
           return new Response(encodeJson(body.body), {
@@ -243,13 +269,18 @@ const replayHttpClient = (
         new HttpClientError.HttpClientError({
           reason: new HttpClientError.TransportError({ request, cause }),
         }),
-    }).pipe(Effect.map((response) => HttpClientResponse.fromWeb(request, response))),
+    }).pipe(
+      Effect.map((response) => HttpClientResponse.fromWeb(request, response)),
+      Effect.tap(() => beforeResponse?.(url.pathname) ?? Effect.void),
+    ),
   );
 
 export const replayServer = (
   transcript: ProviderReplayTranscript,
   options?: {
     readonly external?: boolean;
+    readonly processExit?: Effect.Effect<void>;
+    readonly beforeResponse?: (path: string) => Effect.Effect<void>;
     readonly onPrompt?: (input: unknown) => void;
     readonly mcp?: McpReplayState;
     readonly replayGate?: ProviderReplayGate;
@@ -267,7 +298,13 @@ export const replayServer = (
     const opencode = yield* OpenCode2Client.make.pipe(
       Effect.provideService(
         HttpClient.HttpClient,
-        replayHttpClient(controller, options?.replayGate, options?.onPrompt, options?.mcp),
+        replayHttpClient(
+          controller,
+          options?.replayGate,
+          options?.onPrompt,
+          options?.mcp,
+          options?.beforeResponse,
+        ),
       ),
     );
     const connection = {
@@ -275,6 +312,7 @@ export const replayServer = (
       url: BASE_URL,
       version: transcript.version,
       external: options?.external ?? false,
+      ...(options?.external ? {} : { processExit: options?.processExit ?? Effect.never }),
     };
     const borrowers = options?.borrowers;
     return OpenCode2Server.OpenCode2Server.of({
@@ -291,6 +329,7 @@ export const replayServer = (
                   borrowers.current -= 1;
                 }),
             ),
+      forget: Effect.void,
     });
   });
 
@@ -298,6 +337,8 @@ const makeReplayAdapter = (
   transcript: ProviderReplayTranscript,
   options?: {
     readonly external?: boolean;
+    readonly processExit?: Effect.Effect<void>;
+    readonly beforeResponse?: (path: string) => Effect.Effect<void>;
     readonly onPrompt?: (input: unknown) => void;
     readonly mcp?: McpReplayState;
     readonly replayGate?: ProviderReplayGate;
@@ -352,6 +393,9 @@ export const openCode2ReplayRuntime = (
   entries: ReadonlyArray<ProviderReplayEntry>,
   options?: {
     readonly external?: boolean;
+    readonly processExit?: Effect.Effect<void>;
+    readonly beforeResponse?: (path: string) => Effect.Effect<void>;
+    readonly version?: string;
     readonly onPrompt?: (input: unknown) => void;
     readonly mcp?: McpReplayState;
     readonly borrowers?: { current: number };
@@ -367,7 +411,7 @@ export const openCode2ReplayRuntime = (
       {
         provider: OPENCODE_PROVIDER,
         protocol: OPENCODE2_HTTP_PROTOCOL,
-        version: "2.0.18",
+        version: options?.version ?? "2.0.18",
         scenario: "opencode2_adapter",
         entries,
       },
