@@ -72,7 +72,7 @@ describe("subagent shell events", () => {
       shouldPublishShellEventReference(
         {
           aggregateKind: "thread",
-          aggregateId: ThreadId.makeUnsafe("child"),
+          aggregateId: ThreadId.make("child"),
           type: "turn-item.updated",
           sequence: 1,
         },
