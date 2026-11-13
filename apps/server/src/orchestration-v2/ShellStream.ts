@@ -546,8 +546,8 @@ const isTranscriptEventType = (type: string) =>
   type === "message.updated";
 
 /**
- * Resume replay reads references without payloads, so it can only drop
- * transcript updates of threads already known to be subagents.
+ * Payload-free replay keeps turn items because they may change a child
+ * request that makes its parent wait for user input.
  */
 export function shouldPublishShellEventReference(
   reference: ApplicationEventReference,
@@ -556,6 +556,7 @@ export function shouldPublishShellEventReference(
   return !(
     reference.aggregateKind === "thread" &&
     subagentThreadIds.has(reference.aggregateId) &&
+    reference.type !== "turn-item.updated" &&
     isTranscriptEventType(reference.type)
   );
 }

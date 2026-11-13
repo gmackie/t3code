@@ -29,6 +29,7 @@ import {
   shellStreamItemFromEnrichmentRefresh,
   shellStreamItemsFromInitialSnapshot,
   shouldPublishShellApplicationEvent,
+  shouldPublishShellEventReference,
   skipUnchangedThreadShells,
 } from "./ShellStream.ts";
 
@@ -67,6 +68,17 @@ describe("subagent shell events", () => {
         ),
       ).toBe(true);
     }
+    expect(
+      shouldPublishShellEventReference(
+        {
+          aggregateKind: "thread",
+          aggregateId: ThreadId.makeUnsafe("child"),
+          type: "turn-item.updated",
+          sequence: 1,
+        },
+        subagents,
+      ),
+    ).toBe(true);
     expect(shouldPublishShellApplicationEvent(stored("child", "node.updated"), subagents)).toBe(
       false,
     );

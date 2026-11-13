@@ -4317,7 +4317,7 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
       if (current !== undefined && !unchanged) {
         yield* removeUserMcp(state);
       }
-      if (tools.servers.length === 0) return;
+      if (tools.servers.length === 0) return false;
       const prefix = yield* userMcpPrefixFor(threadId);
       const inventory = unchanged
         ? yield* client.mcp.list({ location: { directory } }).pipe(
@@ -4330,6 +4330,7 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
         : new Map<string, string>();
       const names = unchanged ? [...current.names] : [];
       state.userMcp = { names, directory, fingerprint: tools.fingerprint };
+      let attempted = false;
       for (const server of tools.servers) {
         const name = `${prefix}-${server.name}`;
         const status = inventory.get(name);
@@ -4337,6 +4338,7 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
         // Even an unsuccessful request may have installed credential-bearing
         // config. Keep it tracked until deletion succeeds.
         if (!names.includes(name)) names.push(name);
+        attempted = true;
         yield* (
           status === "failed"
             ? client.mcp.connect({ server: name, location: { directory } })
@@ -4366,6 +4368,7 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
           ),
         );
       }
+      return attempted;
     });
 
     /**
@@ -4398,6 +4401,7 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
       // Idle Location eviction drops runtime MCP servers without clearing T3's cache.
       // Re-adding an unchanged config keeps its existing connection.
       let mcpAvailable = false;
+      let t3McpAdded = false;
       if (wanted !== undefined) {
         const fresh = state.mcp === undefined;
         mcpAvailable = yield* client.mcp
@@ -4421,12 +4425,21 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
             ),
           );
         if (mcpAvailable) state.mcp = wanted;
-        // Before 2.2.6, OpenCode loads a new server's tools 100 ms after it connects, and a prompt sent sooner lacks them.
-        if (mcpAvailable && fresh && compareSemverVersions(connection.version, "2.2.6") < 0) {
-          yield* Effect.sleep(MCP_TOOL_RELOAD_SETTLE);
-        }
+        t3McpAdded = mcpAvailable && fresh;
       }
-      yield* prepareUserMcp(state, turnInput.threadId, directory, mcpSession);
+      const userMcpAttempted = yield* prepareUserMcp(
+        state,
+        turnInput.threadId,
+        directory,
+        mcpSession,
+      );
+      // Before 2.2.6, newly connected servers load tools after a debounce.
+      if (
+        (t3McpAdded || userMcpAttempted) &&
+        compareSemverVersions(connection.version, "2.2.6") < 0
+      ) {
+        yield* Effect.sleep(MCP_TOOL_RELOAD_SETTLE);
+      }
       yield* writeRules(state, turnInput.runtimePolicy);
       const instructions = [
         buildRuntimeInstructions({ harness: "OpenCode", model: turnInput.modelSelection.model }),

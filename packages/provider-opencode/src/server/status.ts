@@ -516,7 +516,7 @@ const settleOpenCode2Catalog = <E>(
   Effect.suspend(() => {
     let previous = first && first.length > 0 ? catalogFingerprint(first) : undefined;
     let unchanged = 0;
-    return (first ? Effect.delay(list, "250 millis") : list).pipe(
+    const settling = list.pipe(
       Effect.repeat({
         until: (models) => {
           const fingerprint = models.length > 0 ? catalogFingerprint(models) : undefined;
@@ -529,6 +529,7 @@ const settleOpenCode2Catalog = <E>(
         schedule: Schedule.spaced("250 millis"),
       }),
     );
+    return first ? Effect.delay(settling, "250 millis") : settling;
   });
 
 const OPENCODE_2_CATALOG_SETTLE_TIMEOUT_MS = 5_000;

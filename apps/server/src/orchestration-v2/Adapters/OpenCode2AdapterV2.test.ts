@@ -4787,6 +4787,7 @@ it.layer(McpProviderSessions.layer)("OpenCode2 adapter", (it) => {
           promptAccepted,
           event("session.execution.succeeded", { sessionID: SESSION }),
         ];
+        const prompts: unknown[] = [];
         const runtime = yield* openCode2ReplayRuntime(
           [
             ...opening,
@@ -4814,7 +4815,7 @@ it.layer(McpProviderSessions.layer)("OpenCode2 adapter", (it) => {
             }),
             reply("session.update", null),
           ],
-          { mcp },
+          { mcp, external: true, onPrompt: (input) => prompts.push(input) },
         );
         const thread = yield* runtime.resumeThread({
           providerThread: providerThread(yield* DateTime.now),
@@ -4824,7 +4825,14 @@ it.layer(McpProviderSessions.layer)("OpenCode2 adapter", (it) => {
         });
         for (let index = 0; index < 2; index++) {
           const terminal = yield* terminalOf(runtime).pipe(Effect.forkScoped);
-          yield* runtime.startTurn(turnInput(thread, bigPickle, "approval-required"));
+          const started = yield* runtime
+            .startTurn(turnInput(thread, bigPickle, "approval-required"))
+            .pipe(Effect.forkScoped);
+          yield* TestClock.adjust("249 millis");
+          assert.lengthOf(prompts, index, "prompted before user MCP tools settled");
+          assert.equal(mcp.calls.at(-1)?.type, index === 0 ? "mcp.add" : "mcp.connect");
+          yield* TestClock.adjust("1 millis");
+          yield* Fiber.join(started);
           assert.equal((yield* Fiber.join(terminal))?.status, "completed");
           assert.equal(
             mcp.servers.get(`${prefix}-retry`)?.status,
@@ -4944,7 +4952,11 @@ it.layer(McpProviderSessions.layer)("OpenCode2 adapter", (it) => {
               runtimePolicy: policy("approval-required"),
             });
             const completed = yield* terminalOf(runtime).pipe(Effect.forkScoped);
-            yield* runtime.startTurn(turnInput(thread, bigPickle, "approval-required"));
+            const started = yield* runtime
+              .startTurn(turnInput(thread, bigPickle, "approval-required"))
+              .pipe(Effect.forkScoped);
+            yield* TestClock.adjust("250 millis");
+            yield* Fiber.join(started);
             assert.equal((yield* Fiber.join(completed))?.status, "completed");
             mcp.failingRemovals.add(`${prefix}-docs`);
             if (change === "disable" || change === "replace") {
@@ -4974,11 +4986,13 @@ it.layer(McpProviderSessions.layer)("OpenCode2 adapter", (it) => {
               change === "directory"
                 ? { ...input, runtimePolicy: { ...input.runtimePolicy, cwd: "/work/other" } }
                 : input;
-            const failed = yield* Effect.exit(
+            const changing = yield* Effect.exit(
               change === "unload" || change === "resume" || change === "cleanup"
                 ? runtime.unloadThread!({ providerThread: thread })
                 : runtime.startTurn(changedInput),
-            );
+            ).pipe(Effect.forkScoped);
+            yield* TestClock.adjust("250 millis");
+            const failed = yield* Fiber.join(changing);
             assert.equal(failed._tag, "Failure", change);
             assert.equal(mcp.servers.get(`${prefix}-docs`)?.status, "connected");
             assert.equal(
@@ -4991,7 +5005,9 @@ it.layer(McpProviderSessions.layer)("OpenCode2 adapter", (it) => {
             if (change === "cleanup") return mcp;
             if (change !== "unload") {
               const retried = yield* terminalOf(runtime).pipe(Effect.forkScoped);
-              yield* runtime.startTurn(changedInput);
+              const restarted = yield* runtime.startTurn(changedInput).pipe(Effect.forkScoped);
+              yield* TestClock.adjust("250 millis");
+              yield* Fiber.join(restarted);
               assert.equal((yield* Fiber.join(retried))?.status, "completed");
               assert.equal(mcp.servers.has(`${prefix}-docs`), change !== "disable");
             }
