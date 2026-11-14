@@ -44,6 +44,8 @@ jobs:
           corepack enable
           corepack prepare pnpm@12.14.0 --activate
           pnpm install --frozen-lockfile
+      - name: Install browser test runtime
+        run: node apps/server/node_modules/playwright-core/cli.js install --with-deps --only-shell chromium
       - name: Run the lanes this pull request touches
         env:
           GITHUB_TOKEN: ${{ github.token }}

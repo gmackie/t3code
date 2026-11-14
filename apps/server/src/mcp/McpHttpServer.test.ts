@@ -1656,6 +1656,7 @@ it.effect("gives outside clients an upload URL on the origin their request reach
         Layer.provide(
           Layer.mock(McpSessionRegistry.McpSessionRegistry)({
             resolve: () => Effect.undefined,
+            resolvePlugin: () => Effect.undefined,
           }),
         ),
         // Signs in the way an OAuth client such as a hosted ChatGPT app does.
