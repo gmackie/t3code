@@ -392,5 +392,3 @@ export const makeWith = Effect.fn("ForgeGraphSourceControlProvider.makeWith")(fu
     ),
   });
 });
-
-export const make = ForgeGraphLookups.make.pipe(Effect.flatMap(makeWith));

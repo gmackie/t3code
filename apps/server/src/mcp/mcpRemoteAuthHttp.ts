@@ -21,7 +21,7 @@ import * as McpSessionRegistry from "./McpSessionRegistry.ts";
  * Agents reach OAuth servers through `<prefix>/<name>` with their own `/mcp`
  * session token; T3 swaps in the upstream access token. See `proxyOAuthServers`.
  */
-export const MCP_SERVER_PROXY_PREFIX = "/mcp/servers";
+const MCP_SERVER_PROXY_PREFIX = "/mcp/servers";
 
 const PAGE_HEADERS = {
   "cache-control": "no-store",

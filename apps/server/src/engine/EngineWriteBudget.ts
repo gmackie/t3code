@@ -20,7 +20,7 @@ export class EngineWriteBudget extends Context.Service<EngineWriteBudget, Engine
   "t3/engine/EngineWriteBudget",
 ) {}
 
-export const DEFAULT_ENGINE_WRITE_BUDGET = { windowMs: 1_000, budgetMs: 50 } as const;
+const DEFAULT_ENGINE_WRITE_BUDGET = { windowMs: 1_000, budgetMs: 50 } as const;
 
 export const make = Effect.fn("EngineWriteBudget.make")(function* (options: {
   readonly windowMs: number;

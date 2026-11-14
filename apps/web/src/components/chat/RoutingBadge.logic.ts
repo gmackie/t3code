@@ -1,7 +1,7 @@
 import type { ProviderInstanceId, RoutingDecision, RoutingThreadHistory } from "@t3tools/contracts";
 
 /** The badge is only meaningful for threads that run through the router. */
-export const PISTACHE_INSTANCE_ID = "pistache";
+const PISTACHE_INSTANCE_ID = "pistache";
 
 export function shouldShowRoutingBadge(
   instanceId: ProviderInstanceId | string | null | undefined,

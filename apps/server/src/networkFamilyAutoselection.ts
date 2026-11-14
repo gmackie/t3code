@@ -12,7 +12,7 @@ import * as Option from "effect/Option";
  */
 export const DEFAULT_NETWORK_FAMILY_ATTEMPT_TIMEOUT_MS = 2_000;
 
-export const NETWORK_FAMILY_ATTEMPT_TIMEOUT_ENV = "T3CODE_NETWORK_FAMILY_ATTEMPT_TIMEOUT_MS";
+const NETWORK_FAMILY_ATTEMPT_TIMEOUT_ENV = "T3CODE_NETWORK_FAMILY_ATTEMPT_TIMEOUT_MS";
 
 const NODE_FLAG = "--network-family-autoselection-attempt-timeout";
 // Node clamps anything lower to 10 ms.

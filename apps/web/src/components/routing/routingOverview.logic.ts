@@ -164,7 +164,7 @@ export function formatHoursToReset(hours: number): string {
 }
 
 /** Validated categorical slots; identity colors assigned in label order, never cycled. */
-export const CATEGORICAL_COLORS: readonly string[] = [
+const CATEGORICAL_COLORS: readonly string[] = [
   "#2a78d6",
   "#eb6834",
   "#1baf7a",
@@ -176,7 +176,7 @@ export const CATEGORICAL_COLORS: readonly string[] = [
 ];
 
 /** Tiers are ordinal: one hue, darker as the tier gets stronger. */
-export const TIER_COLORS: Readonly<Record<string, string>> = {
+const TIER_COLORS: Readonly<Record<string, string>> = {
   "1": "#86b6ef",
   "2": "#3987e5",
   "3": "#1c5cab",

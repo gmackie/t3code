@@ -34,7 +34,7 @@ import {
   type PistacheSnapshot,
 } from "./pistacheApi.ts";
 
-export const PISTACHE_INSTANCE_ID = ProviderInstanceId.make("pistache");
+const PISTACHE_INSTANCE_ID = ProviderInstanceId.make("pistache");
 /** Rollups older than this are not shown; the page offers 24h and 7d views. */
 const METRICS_WINDOW_SECONDS = 7 * 24 * 3600;
 
@@ -65,7 +65,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
  * accepted: OpenCode 1.x keeps `provider.<id>.options.baseURL`, 2.x keeps
  * `providers.<id>.settings.baseURL`.
  */
-export function baseUrlFromOpenCodeConfig(content: string): string | undefined {
+function baseUrlFromOpenCodeConfig(content: string): string | undefined {
   let parsed: unknown;
   try {
     parsed = JSON.parse(content);

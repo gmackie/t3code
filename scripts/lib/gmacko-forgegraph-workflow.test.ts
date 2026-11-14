@@ -11,7 +11,8 @@ describe("ForgeGraph GMACKO release workflow", () => {
   it("pins the Node runtime used by every release job", () => {
     const workflow = NodeFS.readFileSync(workflowPath, "utf8");
 
-    expect(workflow.match(/node-version: 24\.14\.0/g) ?? []).toHaveLength(7);
+    expect(workflow.match(/node-version: 24\.14\.0/g) ?? []).toHaveLength(1);
+    expect(workflow.match(/node-version-file: package\.json/g) ?? []).toHaveLength(7);
     expect(workflow).not.toContain("node-version: 24\n");
   });
 

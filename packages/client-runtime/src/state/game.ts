@@ -27,7 +27,7 @@ export class GameRequestError extends Schema.TaggedError<GameRequestError>()("Ga
   message: Schema.String,
 }) {}
 
-export const fetchGameJson = Effect.fn("clientRuntime.fetchGameJson")(function* <A>(input: {
+const fetchGameJson = Effect.fn("clientRuntime.fetchGameJson")(function* <A>(input: {
   prepared: PreparedConnection;
   cwd: string;
   threadId: ThreadId;

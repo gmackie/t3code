@@ -129,11 +129,14 @@ import * as Rpc from "effect/rpc/Rpc";
 import * as RpcGroup from "effect/rpc/RpcGroup";
 import * as RpcMiddleware from "effect/rpc/RpcMiddleware";
 import { NonNegativeInt, TrimmedNonEmptyString } from "./baseSchemas.ts";
+import { SecretSourceCheckResult } from "./settingsSecretValue.ts";
+import { SecretReference } from "./secretReference.ts";
 import {
   ProviderAuthCancelInput,
   ProviderAuthCompleteInput,
   ProviderAuthState,
   ProviderAuthStartInput,
+  ProviderAuthRemoveMethodInput,
   ProviderAuthRespondInput,
   ProviderInstallCancelInput,
   ProviderInstallState,
@@ -245,6 +248,7 @@ import {
   GitResolvePullRequestResult,
   GitRunStackedActionInput,
   VcsStatusInput,
+  VcsBranchStatus,
   VcsStatusSubscriptionInput,
   VcsStatusResult,
   VcsStatusStreamEvent,
@@ -484,10 +488,14 @@ import {
 } from "./routing.ts";
 import {
   StorageCleanupReport,
+  DatabaseReclaimError,
   DatabaseStorageStatus,
   ServerSettings,
   ServerSettingsError,
   ServerSettingsPatch,
+  ListTextGeneratorModelsInput,
+  ListTextGeneratorModelsResult,
+  TextGeneratorError,
 } from "./settings.ts";
 import {
   ScheduledTaskDeleteInput,
@@ -624,6 +632,7 @@ export const WS_METHODS = {
   chatGptHandoffSubscribe: "provider.chatgpt.handoff.subscribe",
   providerAuthRespond: "provider.auth.respond",
   providerAuthCancel: "provider.auth.cancel",
+  providerAuthRemoveMethod: "provider.auth.removeMethod",
   providerAuthLogout: "provider.auth.logout",
   providerAuthSubscribe: "provider.auth.subscribe",
   providerInstallStart: "provider.install.start",
@@ -690,6 +699,7 @@ export const WS_METHODS = {
   serverRunStorageCleanup: "server.runStorageCleanup",
   serverGetStorageCleanupReport: "server.getStorageCleanupReport",
   serverGetDatabaseStorage: "server.getDatabaseStorage",
+  serverReclaimDatabaseSpace: "server.reclaimDatabaseSpace",
   peerLinksList: "peerLinks.list",
   peerLinksLink: "peerLinks.link",
   peerLinksUnlink: "peerLinks.unlink",
@@ -706,6 +716,7 @@ export const WS_METHODS = {
   serverCreateProjectIssue: "server.createProjectIssue",
   serverUpdateProjectIssueStatus: "server.updateProjectIssueStatus",
   serverDiscoverSourceControl: "server.discoverSourceControl",
+  serverCheckSecretSource: "server.checkSecretSource",
   serverSearchAcpRegistry: "server.searchAcpRegistry",
   serverPrepareAcpRegistryAgent: "server.prepareAcpRegistryAgent",
   serverUninstallAcpRegistryManagedBinary: "server.uninstallAcpRegistryManagedBinary",
@@ -725,6 +736,7 @@ export const WS_METHODS = {
   serverGetResourceTelemetryHistory: "server.getResourceTelemetryHistory",
   serverRetryResourceTelemetry: "server.retryResourceTelemetry",
   serverCheckOtlpEndpoint: "server.checkOtlpEndpoint",
+  serverListTextGeneratorModels: "server.listTextGeneratorModels",
   serverPrepareTriage: "server.prepareTriage",
   serverSignalProcess: "server.signalProcess",
   serverReportClientActivity: "server.reportClientActivity",
@@ -778,6 +790,7 @@ export const WS_METHODS = {
   pullRequestsInvalidate: "pullRequests.invalidate",
   pullRequestsReportState: "pullRequests.reportState",
   pullRequestsSubscribeRefreshes: "pullRequests.subscribeRefreshes",
+  pullRequestsSubscribeLinkedThreadRefreshes: "pullRequests.subscribeLinkedThreadRefreshes",
   pullRequestsReviewerCandidates: "pullRequests.reviewerCandidates",
   pullRequestsRequestReviewers: "pullRequests.requestReviewers",
   pullRequestsLabelCandidates: "pullRequests.labelCandidates",
@@ -802,6 +815,8 @@ export const WS_METHODS = {
   subscribeProjectClones: "subscribeProjectClones",
 
   subscribeVcsStatus: "subscribeVcsStatus",
+  subscribeVcsBranch: "subscribeVcsBranch",
+  vcsRefreshBranch: "vcs.refreshBranch",
   subscribeWorktreeSetup: "subscribeWorktreeSetup",
   worktreeSetupCancel: "worktreeSetup.cancel",
   subscribeTerminalMetadata: "subscribeTerminalMetadata",
@@ -814,7 +829,7 @@ export const WS_METHODS = {
   subscribeResourceTelemetry: "subscribeResourceTelemetry",
 } as const;
 
-export const WsServerUpsertKeybindingRpc = Rpc.make(WS_METHODS.serverUpsertKeybinding, {
+const WsServerUpsertKeybindingRpc = Rpc.make(WS_METHODS.serverUpsertKeybinding, {
   payload: ServerUpsertKeybindingInput,
   success: ServerUpsertKeybindingResult,
   error: Schema.Union([KeybindingsConfigError, EnvironmentAuthorizationError]),
@@ -845,6 +860,11 @@ export const WsServerRefreshProvidersRpc = Rpc.make(WS_METHODS.serverRefreshProv
     fresh: Schema.optional(Schema.Boolean),
     /** Bypass model caches; explicit rediscovery may open sessions, background refreshes must not. */
     refreshModels: Schema.optional(Schema.Boolean),
+    /**
+     * A model picker opened: refetch a model manifest older than a few minutes and probe providers
+     * only when it changed. The other fields are ignored and the config stream carries the result.
+     */
+    modelCatalogOnly: Schema.optional(Schema.Boolean),
     /** Read secret references again; unlocking a vault can prompt on the host, so only explicit user refreshes ask. */
     reloadSecrets: Schema.optional(Schema.Boolean),
     /**
@@ -857,12 +877,22 @@ export const WsServerRefreshProvidersRpc = Rpc.make(WS_METHODS.serverRefreshProv
     usageLimitsCommand: Schema.optional(Schema.Boolean),
     /** As on `subscribeServerConfig`: a failed cwd scan replies with the machine catalog as a pending snapshot. */
     providerCatalogsOnDemand: Schema.optional(Schema.Boolean),
+    /**
+     * Reply with no providers; the config stream carries the result. For callers that only wait
+     * for the refresh. Ignored with `instanceId` and `cwd`, whose reply is the snapshot.
+     */
+    omitProviders: Schema.optional(Schema.Boolean),
+    /**
+     * With `providerCatalogsOnDemand`, a cwd reply also carries the machine slash command names
+     * and skills with their `catalogDigest`. Sent by a client whose held lists are not current.
+     */
+    machineCatalog: Schema.optional(Schema.Boolean),
   }),
   success: ServerProviderUpdatedPayload,
   error: Schema.Union([EnvironmentAuthorizationError, ProviderSetupError]),
 });
 
-export const WsServerUpdateProviderRpc = Rpc.make(WS_METHODS.serverUpdateProvider, {
+const WsServerUpdateProviderRpc = Rpc.make(WS_METHODS.serverUpdateProvider, {
   payload: ServerProviderUpdateInput,
   success: ServerProviderUpdatedPayload,
   error: Schema.Union([ServerProviderUpdateError, EnvironmentAuthorizationError]),
@@ -913,6 +943,12 @@ const WsChatGptHandoffSubscribeRpc = Rpc.make(WS_METHODS.chatGptHandoffSubscribe
 
 const WsProviderAuthCancelRpc = Rpc.make(WS_METHODS.providerAuthCancel, {
   payload: ProviderAuthCancelInput,
+  success: ProviderAuthState,
+  error: ProviderSetupRpcError,
+});
+
+const WsProviderAuthRemoveMethodRpc = Rpc.make(WS_METHODS.providerAuthRemoveMethod, {
+  payload: ProviderAuthRemoveMethodInput,
   success: ProviderAuthState,
   error: ProviderSetupRpcError,
 });
@@ -999,6 +1035,11 @@ const WsServerGetDatabaseStorageRpc = Rpc.make(WS_METHODS.serverGetDatabaseStora
   error: EnvironmentAuthorizationError,
 });
 
+const WsServerReclaimDatabaseSpaceRpc = Rpc.make(WS_METHODS.serverReclaimDatabaseSpace, {
+  payload: Schema.Struct({}),
+  error: Schema.Union([DatabaseReclaimError, EnvironmentAuthorizationError]),
+});
+
 const WsPeerLinksListRpc = Rpc.make(WS_METHODS.peerLinksList, {
   payload: Schema.Struct({}),
   success: Schema.Struct({ links: Schema.Array(PeerLinkSummary) }),
@@ -1049,55 +1090,55 @@ const WsAgentToolsOAuthSignOutRpc = Rpc.make(WS_METHODS.agentToolsOAuthSignOut, 
   error: Schema.Union([McpOAuthError, EnvironmentAuthorizationError]),
 });
 
-export const WsServerValidateLinearIssuesRpc = Rpc.make(WS_METHODS.serverValidateLinearIssues, {
+const WsServerValidateLinearIssuesRpc = Rpc.make(WS_METHODS.serverValidateLinearIssues, {
   payload: Schema.Struct({}),
   success: LinearIssueValidationResult,
   error: Schema.Union([IssueProviderError, ServerSettingsError, EnvironmentAuthorizationError]),
 });
 
-export const WsServerListProjectIssuesRpc = Rpc.make(WS_METHODS.serverListProjectIssues, {
+const WsServerListProjectIssuesRpc = Rpc.make(WS_METHODS.serverListProjectIssues, {
   payload: ProjectIssueListInput,
   success: IssueListResult,
   error: Schema.Union([IssueProviderError, ServerSettingsError, EnvironmentAuthorizationError]),
 });
-export const WsServerBobCoordinationRpc = Rpc.make(WS_METHODS.serverBobCoordination, {
+const WsServerBobCoordinationRpc = Rpc.make(WS_METHODS.serverBobCoordination, {
   payload: BobOperationInput,
   success: Schema.Unknown,
   error: Schema.Union([BobCoordinationError, EnvironmentAuthorizationError]),
 });
-export const WsServerBobConnectionRpc = Rpc.make(WS_METHODS.serverBobConnection, {
+const WsServerBobConnectionRpc = Rpc.make(WS_METHODS.serverBobConnection, {
   payload: Schema.Struct({}),
   success: BobConnectionState,
   error: Schema.Union([BobCoordinationError, EnvironmentAuthorizationError]),
 });
 
-export const WsServerListProjectIssueStatusesRpc = Rpc.make(
-  WS_METHODS.serverListProjectIssueStatuses,
-  {
-    payload: ProjectIssueStatusListInput,
-    success: ProjectIssueStatusListResult,
-    error: Schema.Union([IssueProviderError, ServerSettingsError, EnvironmentAuthorizationError]),
-  },
-);
+const WsServerListProjectIssueStatusesRpc = Rpc.make(WS_METHODS.serverListProjectIssueStatuses, {
+  payload: ProjectIssueStatusListInput,
+  success: ProjectIssueStatusListResult,
+  error: Schema.Union([IssueProviderError, ServerSettingsError, EnvironmentAuthorizationError]),
+});
 
-export const WsServerCreateProjectIssueRpc = Rpc.make(WS_METHODS.serverCreateProjectIssue, {
+const WsServerCreateProjectIssueRpc = Rpc.make(WS_METHODS.serverCreateProjectIssue, {
   payload: ProjectIssueCreateInput,
   success: ProjectIssueCreateResult,
   error: Schema.Union([IssueProviderError, ServerSettingsError, EnvironmentAuthorizationError]),
 });
 
-export const WsServerUpdateProjectIssueStatusRpc = Rpc.make(
-  WS_METHODS.serverUpdateProjectIssueStatus,
-  {
-    payload: ProjectIssueStatusUpdateInput,
-    success: ProjectIssueStatusUpdateResult,
-    error: Schema.Union([IssueProviderError, ServerSettingsError, EnvironmentAuthorizationError]),
-  },
-);
+const WsServerUpdateProjectIssueStatusRpc = Rpc.make(WS_METHODS.serverUpdateProjectIssueStatus, {
+  payload: ProjectIssueStatusUpdateInput,
+  success: ProjectIssueStatusUpdateResult,
+  error: Schema.Union([IssueProviderError, ServerSettingsError, EnvironmentAuthorizationError]),
+});
 
-export const WsServerDiscoverSourceControlRpc = Rpc.make(WS_METHODS.serverDiscoverSourceControl, {
+const WsServerDiscoverSourceControlRpc = Rpc.make(WS_METHODS.serverDiscoverSourceControl, {
   payload: Schema.Struct({}),
   success: SourceControlDiscoveryResult,
+  error: EnvironmentAuthorizationError,
+});
+
+const WsServerCheckSecretSourceRpc = Rpc.make(WS_METHODS.serverCheckSecretSource, {
+  payload: Schema.Struct({ source: SecretReference }),
+  success: SecretSourceCheckResult,
   error: EnvironmentAuthorizationError,
 });
 
@@ -1222,6 +1263,12 @@ const WsServerCheckOtlpEndpointRpc = Rpc.make(WS_METHODS.serverCheckOtlpEndpoint
   payload: OtlpEndpointCheckInput,
   success: OtlpEndpointCheckResult,
   error: EnvironmentAuthorizationError,
+});
+
+const WsServerListTextGeneratorModelsRpc = Rpc.make(WS_METHODS.serverListTextGeneratorModels, {
+  payload: ListTextGeneratorModelsInput,
+  success: ListTextGeneratorModelsResult,
+  error: Schema.Union([TextGeneratorError, EnvironmentAuthorizationError]),
 });
 
 const WsServerPrepareTriageRpc = Rpc.make(WS_METHODS.serverPrepareTriage, {
@@ -1468,6 +1515,17 @@ const WsPullRequestsSubscribeRefreshesRpc = Rpc.make(WS_METHODS.pullRequestsSubs
   error: EnvironmentAuthorizationError,
   stream: true,
 });
+
+// Separate from the refreshes above so linked-thread changes don't refetch forge-backed reads.
+const WsPullRequestsSubscribeLinkedThreadRefreshesRpc = Rpc.make(
+  WS_METHODS.pullRequestsSubscribeLinkedThreadRefreshes,
+  {
+    payload: Schema.Struct({}),
+    success: NonNegativeInt,
+    error: EnvironmentAuthorizationError,
+    stream: true,
+  },
+);
 
 // Fetch reviewer candidates only when the menu opens to avoid unused host requests.
 const WsPullRequestsReviewerCandidatesRpc = Rpc.make(WS_METHODS.pullRequestsReviewerCandidates, {
@@ -2030,6 +2088,19 @@ const WsProviderUploadFeedbackRpc = Rpc.make(WS_METHODS.providerUploadFeedback, 
   error: Schema.Union([ProviderUploadFeedbackError, EnvironmentAuthorizationError]),
 });
 
+const WsSubscribeVcsBranchRpc = Rpc.make(WS_METHODS.subscribeVcsBranch, {
+  payload: VcsStatusInput,
+  success: VcsBranchStatus,
+  error: Schema.Union([GitManagerServiceError, EnvironmentAuthorizationError]),
+  stream: true,
+});
+
+const WsVcsRefreshBranchRpc = Rpc.make(WS_METHODS.vcsRefreshBranch, {
+  payload: VcsStatusInput,
+  success: Schema.Void,
+  error: Schema.Union([GitManagerServiceError, EnvironmentAuthorizationError]),
+});
+
 const WsSubscribeVcsStatusRpc = Rpc.make(WS_METHODS.subscribeVcsStatus, {
   payload: VcsStatusSubscriptionInput,
   success: VcsStatusStreamEvent,
@@ -2371,6 +2442,15 @@ const WsOrchestrationV2GetThreadTitlesRpc = Rpc.make(ORCHESTRATION_V2_WS_METHODS
   error: Schema.Union([OrchestrationV2GetShellSnapshotError, EnvironmentAuthorizationError]),
 });
 
+const WsOrchestrationV2GetThreadLinkMetadataRpc = Rpc.make(
+  ORCHESTRATION_V2_WS_METHODS.getThreadLinkMetadata,
+  {
+    payload: OrchestrationV2RpcSchemas.getThreadLinkMetadata.input,
+    success: OrchestrationV2RpcSchemas.getThreadLinkMetadata.output,
+    error: Schema.Union([OrchestrationV2GetShellSnapshotError, EnvironmentAuthorizationError]),
+  },
+);
+
 const WsOrchestrationV2GetWorktreeThreadIdsRpc = Rpc.make(
   ORCHESTRATION_V2_WS_METHODS.getWorktreeThreadIds,
   {
@@ -2464,6 +2544,16 @@ const WsOrchestrationV2SubscribeCommandOutputRpc = Rpc.make(
   },
 );
 
+const WsOrchestrationV2SubscribePromptSuggestionRpc = Rpc.make(
+  ORCHESTRATION_V2_WS_METHODS.subscribePromptSuggestion,
+  {
+    payload: OrchestrationV2RpcSchemas.subscribePromptSuggestion.input,
+    success: OrchestrationV2RpcSchemas.subscribePromptSuggestion.output,
+    error: EnvironmentAuthorizationError,
+    stream: true,
+  },
+);
+
 const WsSubscribeTerminalMetadataRpc = Rpc.make(WS_METHODS.subscribeTerminalMetadata, {
   payload: Schema.Struct({}),
   success: TerminalMetadataStreamEvent,
@@ -2482,6 +2572,13 @@ export const WsSubscribeServerConfigRpc = Rpc.make(WS_METHODS.subscribeServerCon
     workspaceSnapshotsOnDemand: Schema.optional(Schema.Boolean),
     /** With on-demand snapshots, also omit machine slash commands and skills a cwd snapshot replaces. */
     providerCatalogsOnDemand: Schema.optional(Schema.Boolean),
+    /**
+     * With on-demand catalogs, send a `catalogDigest` in place of the machine slash command names
+     * and skills. The client keeps the lists it holds and loads new ones with a cwd snapshot.
+     */
+    providerCatalogDigests: Schema.optional(Schema.Boolean),
+    /** Send provider changes as `providerStatusDeltas`; older clients reject the event type. */
+    providerStatusDeltas: Schema.optional(Schema.Boolean),
   }),
   success: ServerConfigStreamEvent,
   error: Schema.Union([KeybindingsConfigError, ServerSettingsError, EnvironmentAuthorizationError]),
@@ -2639,6 +2736,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsChatGptHandoffSubscribeRpc,
   WsProviderAuthRespondRpc,
   WsProviderAuthCancelRpc,
+  WsProviderAuthRemoveMethodRpc,
   WsProviderAuthLogoutRpc,
   WsProviderAuthSubscribeRpc,
   WsProviderInstallStartRpc,
@@ -2654,6 +2752,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsServerRunStorageCleanupRpc,
   WsServerGetStorageCleanupReportRpc,
   WsServerGetDatabaseStorageRpc,
+  WsServerReclaimDatabaseSpaceRpc,
   WsServerUpdateSettingsRpc,
   WsAgentToolsOAuthStatusRpc,
   WsAgentToolsOAuthSignInRpc,
@@ -2670,6 +2769,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsPeerLinksUnlinkRpc,
   WsPeerLinksAnswerRequestRpc,
   WsServerDiscoverSourceControlRpc,
+  WsServerCheckSecretSourceRpc,
   WsServerSearchAcpRegistryRpc,
   WsServerPrepareAcpRegistryAgentRpc,
   WsServerUninstallAcpRegistryManagedBinaryRpc,
@@ -2689,6 +2789,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsServerGetResourceTelemetryHistoryRpc,
   WsServerRetryResourceTelemetryRpc,
   WsServerCheckOtlpEndpointRpc,
+  WsServerListTextGeneratorModelsRpc,
   WsServerPrepareTriageRpc,
   WsServerGetUsageSummaryRpc,
   WsServerRefreshUsageRatesRpc,
@@ -2737,6 +2838,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsPullRequestsInvalidateRpc,
   WsPullRequestsReportStateRpc,
   WsPullRequestsSubscribeRefreshesRpc,
+  WsPullRequestsSubscribeLinkedThreadRefreshesRpc,
   WsPullRequestsReviewerCandidatesRpc,
   WsPullRequestsRequestReviewersRpc,
   WsPullRequestsLabelCandidatesRpc,
@@ -2793,6 +2895,8 @@ export const WsRpcGroup = RpcGroup.make(
   WsMcpAppsUpdateModelContextRpc,
   WsProviderUploadFeedbackRpc,
   WsSubscribeVcsStatusRpc,
+  WsSubscribeVcsBranchRpc,
+  WsVcsRefreshBranchRpc,
   WsSubscribeWorktreeSetupRpc,
   WsWorktreeSetupCancelRpc,
   WsVcsPullRpc,
@@ -2857,6 +2961,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsOrchestrationV2GetArchivedShellSnapshotRpc,
   WsOrchestrationV2GetThreadFamilyRpc,
   WsOrchestrationV2GetThreadTitlesRpc,
+  WsOrchestrationV2GetThreadLinkMetadataRpc,
   WsOrchestrationV2GetWorktreeThreadIdsRpc,
   WsOrchestrationV2GetOlderSettledThreadsRpc,
   WsOrchestrationV2GetThreadProjectionRpc,
@@ -2864,4 +2969,5 @@ export const WsRpcGroup = RpcGroup.make(
   WsOrchestrationV2SubscribeShellRpc,
   WsOrchestrationV2SubscribeThreadRpc,
   WsOrchestrationV2SubscribeCommandOutputRpc,
+  WsOrchestrationV2SubscribePromptSuggestionRpc,
 ).middleware(RpcScopeAuthorization);

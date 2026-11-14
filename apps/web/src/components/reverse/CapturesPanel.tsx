@@ -27,7 +27,7 @@ const MAX_VISIBLE_CHANNELS = 24;
 const LABEL_WIDTH = 96;
 
 /** Formats nanoseconds at a precision that suits the value. */
-export function formatNs(ns: number): string {
+function formatNs(ns: number): string {
   const abs = Math.abs(ns);
   if (abs >= 1e9) return `${(ns / 1e9).toFixed(3)} s`;
   if (abs >= 1e6) return `${(ns / 1e6).toFixed(3)} ms`;

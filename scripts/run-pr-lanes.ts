@@ -1,4 +1,4 @@
-// @effect-diagnostics nodeBuiltinImport:off - a dependency-free CI runner: it spawns shells and reads cgroup limits.
+// @effect-diagnostics nodeBuiltinImport:off globalDate:off globalTimers:off globalConsole:off globalFetch:off - Dependency-free CI runner uses Node directly.
 // Runs the pull request CI lanes in scripts/pr-lanes.ts from one checkout and
 // one install (.forgejo/workflows/pr-lanes.yml, T3CODE-100).
 //
@@ -38,7 +38,7 @@ const defaultBranches = ["custom-local"];
 export const globToRegExp = (glob: string): RegExp => {
   let source = "";
   for (let index = 0; index < glob.length; index++) {
-    const char = glob[index];
+    const char = glob[index]!;
     if (char === "*") {
       if (glob[index + 1] === "*") {
         index++;
