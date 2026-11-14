@@ -1,5 +1,8 @@
 // @effect-diagnostics nodeBuiltinImport:off - This test validates repository workflow policy.
 import * as NodeFS from "node:fs";
+import * as NodeChildProcess from "node:child_process";
+import * as NodeOS from "node:os";
+import * as NodePath from "node:path";
 import * as NodeURL from "node:url";
 import { describe, expect, it } from "vite-plus/test";
 
@@ -8,6 +11,67 @@ const workflowPath = NodeURL.fileURLToPath(
 );
 
 describe("ForgeGraph GMACKO release workflow", () => {
+  it("carries Debian packages through collection and publication and rejects their absence", () => {
+    const workflow = NodeFS.readFileSync(workflowPath, "utf8");
+    const runStep = (name: string) => {
+      const step = workflow.slice(workflow.indexOf(`      - name: ${name}\n`));
+      const body = step.match(/        run: \|\n((?:          .*\n|\n)+)/)?.[1];
+      if (!body) throw new Error(`Missing run step: ${name}`);
+      return body
+        .replace(/^ {10}/gm, "")
+        .replaceAll("${{ matrix.platform }}", "linux")
+        .replaceAll("${{ matrix.arch }}", "x64");
+    };
+    const scratch = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "gmacko-release-assets-"));
+    try {
+      NodeFS.mkdirSync(NodePath.join(scratch, "release"));
+      for (const name of [
+        "t3.AppImage",
+        "t3.deb",
+        "t3.dmg",
+        "t3.zip",
+        "t3.blockmap",
+        "gmacko-linux.yml",
+      ]) {
+        NodeFS.writeFileSync(NodePath.join(scratch, "release", name), name);
+      }
+      NodeChildProcess.execFileSync("bash", ["-c", runStep("Collect release assets")], {
+        cwd: scratch,
+      });
+      expect(NodeFS.readFileSync(NodePath.join(scratch, "release-publish/t3.deb"), "utf8")).toBe(
+        "t3.deb",
+      );
+      NodeFS.renameSync(
+        NodePath.join(scratch, "release-publish"),
+        NodePath.join(scratch, "release-assets"),
+      );
+      NodeFS.writeFileSync(NodePath.join(scratch, "release-assets/SHA256SUMS"), "checksums");
+      const publish = 'gh() { printf "%s\\n" "$@" > "$ARGUMENTS"; }\n' + runStep("Publish release");
+      const options = {
+        cwd: scratch,
+        env: {
+          ...process.env,
+          ARGUMENTS: NodePath.join(scratch, "arguments"),
+          TAG: "test",
+          TARGET: "test",
+          GITHUB_FORK: "test/test",
+          RELEASE_NAME: "test",
+        },
+        encoding: "utf8" as const,
+      };
+      expect(NodeChildProcess.spawnSync("bash", ["-c", publish], options).status).toBe(0);
+      expect(
+        NodeFS.readFileSync(NodePath.join(scratch, "arguments"), "utf8").split("\n"),
+      ).toContain("release-assets/t3.deb");
+      NodeFS.unlinkSync(NodePath.join(scratch, "release-assets/t3.deb"));
+      const missing = NodeChildProcess.spawnSync("bash", ["-c", publish], options);
+      expect(missing.status).not.toBe(0);
+      expect(missing.stderr).toContain("Missing expected release asset pattern: *.deb");
+    } finally {
+      NodeFS.rmSync(scratch, { recursive: true, force: true });
+    }
+  });
+
   it("pins the Node runtime used by every release job", () => {
     const workflow = NodeFS.readFileSync(workflowPath, "utf8");
 
