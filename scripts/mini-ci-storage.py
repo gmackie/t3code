@@ -9,10 +9,12 @@ import tempfile
 
 GIB = 1024 ** 3
 DEFAULT_ROOT = '/Users/mackieg/t3-ci'
-# The fleet's native builds need 25 GiB of internal headroom (GMA-730). Mini jobs run
-# one at a time, and the largest, iOS, peaked near 10 GiB in run 1441 (macOS arm64
-# 6-7 GiB, x64 5 GiB), so a job gets 12 GiB on top of that.
-MINIMUM_FREE = 37 * GIB
+# Mini jobs run one at a time, and the largest, iOS, peaked near 10 GiB in run 1441
+# (macOS arm64 6-7 GiB, x64 5 GiB). The guard was 37 GiB (the fleet's 25 GiB native
+# headroom from GMA-730 plus 12 GiB per job), but gmacko-mini sits near 29 GiB free,
+# which stopped every nightly macOS and iOS job (run 1614). Owner decision
+# (T3CODE-112): 28 GiB, which still leaves about 16-18 GiB free at a job's peak.
+MINIMUM_FREE = 28 * GIB
 
 
 def prepare(root, workspace, minimum_free=MINIMUM_FREE):
