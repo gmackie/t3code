@@ -5,8 +5,8 @@
 #
 # Runs on ForgeGraph CI (Forgejo Actions at git.forgegraf.com) instead of
 # GitHub Actions. Runner topology:
-#   - ubuntu-24.04 / forgegraph-ci → labnuc (docker): sync, preflight, Linux, publish
-#   - gmacko-mini → host runner for macOS arm64/x64 and the iOS TestFlight
+#   - ubuntu-24.04 / forgegraph-ci → Linux runners: preflight, Linux, publish
+#   - gmacko-mini → host runner for sync, macOS arm64/x64 and the iOS TestFlight
 #     upload (needs Xcode + CocoaPods). Do not use the generic
 #     `macos` label; labtop also advertises it and cannot mkdir its workdir.
 #
@@ -77,7 +77,8 @@ jobs:
     concurrency:
       group: gmacko-nightly
       cancel-in-progress: true
-    runs-on: forgegraph-ci
+    # The handoff endpoint is tailnet-only; shared Linux runners may have no Tailscale.
+    runs-on: gmacko-mini
     timeout-minutes: 40
     outputs:
       ref: ${{ steps.lane.outputs.head_sha }}
@@ -98,6 +99,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          if ! command -v corepack >/dev/null 2>&1; then
+            npm install --global corepack@0.34.6
+          fi
           corepack enable
           corepack prepare "pnpm@${PNPM_VERSION}" --activate
           pnpm --version
@@ -133,7 +137,6 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GMACKO_GITHUB_TOKEN }}
           T3_CONFLICT_MCP_URL: ${{ vars.T3_CONFLICT_MCP_URL }}
-          T3_CONFLICT_MCP_IP: ${{ vars.T3_CONFLICT_MCP_IP }}
           T3_CONFLICT_PROJECT_ID: ${{ vars.T3_CONFLICT_PROJECT_ID }}
           T3_CONFLICT_MCP_TOKEN: ${{ secrets.T3_CONFLICT_MCP_TOKEN }}
           CONFLICT_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_number }}
@@ -178,13 +181,6 @@ jobs:
               exit 1
             fi
             # The script comes from the lane after abort, never the conflicted tree.
-            # The runner container may not inherit the host's MagicDNS resolver.
-            if [[ -n "${T3_CONFLICT_MCP_IP:-}" ]]; then
-              mcp_host="$(node -e 'console.log(new URL(process.env.T3_CONFLICT_MCP_URL).hostname)')"
-              if ! getent hosts "$mcp_host" >/dev/null; then
-                printf '%s %s\n' "$T3_CONFLICT_MCP_IP" "$mcp_host" >> /etc/hosts
-              fi
-            fi
             node scripts/nightly-conflict-session.mjs
             exit 1
           fi
@@ -352,6 +348,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          if ! command -v corepack >/dev/null 2>&1; then
+            npm install --global corepack@0.34.6
+          fi
           corepack enable
           corepack prepare "pnpm@${PNPM_VERSION}" --activate
           pnpm install --frozen-lockfile
@@ -433,10 +432,23 @@ jobs:
           # A broken upstream sync must never land on the GitHub lane: this only
           # runs after checks, focused runtime tests, and bundle validation passed on the
           # candidate, and the lease guarantees nobody moved the lane meanwhile.
-          git clone --branch custom-local \
-            "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_FORK}.git" lane
+          retry_transfer() {
+            local attempt
+            for attempt in 1 2 3; do
+              if "$@"; then return 0; fi
+              if (( attempt < 3 )); then sleep 5; fi
+            done
+            return 1
+          }
+          clone_lane() {
+            rm -rf lane
+            git -c http.version=HTTP/1.1 clone --single-branch --no-tags --branch custom-local \
+              "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_FORK}.git" lane
+          }
+          retry_transfer clone_lane
           cd lane
-          git fetch "${FORGEJO_REPO_URL/https:\/\//https://x-access-token:${FORGEJO_TOKEN}@}" "$HEAD_SHA"
+          retry_transfer git -c http.version=HTTP/1.1 fetch \
+            "${FORGEJO_REPO_URL/https:\/\//https://x-access-token:${FORGEJO_TOKEN}@}" "$HEAD_SHA"
           git push --force-with-lease="refs/heads/custom-local:${START_SHA}" origin "${HEAD_SHA}:refs/heads/custom-local"
           echo "Promoted ${HEAD_SHA} to GitHub custom-local."
 
@@ -514,6 +526,9 @@ jobs:
             echo "Cloudflare relay config is unavailable; writing an empty relay client tracing config."
             : > relay-config/relay-client-tracing.env
           else
+            if ! command -v corepack >/dev/null 2>&1; then
+              npm install --global corepack@0.34.6
+            fi
             corepack enable
             corepack prepare "pnpm@${PNPM_VERSION}" --activate
             pnpm install --frozen-lockfile --filter=t3code-relay...
@@ -616,6 +631,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          if ! command -v corepack >/dev/null 2>&1; then
+            npm install --global corepack@0.34.6
+          fi
           corepack enable
           corepack prepare "pnpm@${PNPM_VERSION}" --activate
           node scripts/ci-deadline.mjs 40 -- pnpm install --frozen-lockfile \
@@ -648,7 +666,9 @@ jobs:
             -o Acquire::Retries=3 \
             -o Acquire::http::Timeout=30 \
             -o Acquire::https::Timeout=30
-          sudo apt-get install -y --no-install-recommends libsecret-1-dev pkg-config patchelf
+          sudo apt-get install -y --no-install-recommends \
+            libsecret-1-dev pkg-config patchelf \
+            libgtk-3-0t64 libnspr4 libnss3 libasound2t64 libgbm1
           if ! command -v magick >/dev/null 2>&1 && ! command -v convert >/dev/null 2>&1; then
             sudo apt-get install -y imagemagick || {
               sudo apt-get update \
@@ -908,6 +928,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          if ! command -v corepack >/dev/null 2>&1; then
+            npm install --global corepack@0.34.6
+          fi
           corepack enable
           corepack prepare "pnpm@${PNPM_VERSION}" --activate
           node scripts/ci-deadline.mjs 40 -- pnpm install --frozen-lockfile \
@@ -1112,6 +1135,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          if ! command -v corepack >/dev/null 2>&1; then
+            npm install --global corepack@0.34.6
+          fi
           corepack enable
           corepack prepare "pnpm@${PNPM_VERSION}" --activate
           node scripts/ci-deadline.mjs 40 -- pnpm install --frozen-lockfile --filter=@t3tools/mobile...
@@ -1157,6 +1183,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          if ! command -v corepack >/dev/null 2>&1; then
+            npm install --global corepack@0.34.6
+          fi
           corepack enable
           corepack prepare "pnpm@${PNPM_VERSION}" --activate
           pnpm install --frozen-lockfile --filter=@t3tools/scripts...
