@@ -3532,6 +3532,7 @@ const make = Effect.gen(function* () {
     } satisfies ServerBrowserViewer;
   });
 
+  // Subscribe before returning the service so an immediate open cannot lose its event.
   const managerEvents = yield* manager.subscribeEvents;
   yield* Stream.fromSubscription(managerEvents).pipe(
     Stream.runForEach(mirrorManagerEvent),
