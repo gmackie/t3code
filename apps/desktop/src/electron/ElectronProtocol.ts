@@ -3,18 +3,22 @@ import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
-import * as NodeTimersPromises from "node:timers/promises";
 import * as Path from "effect/Path";
-import * as Mime from "effect/unstable/http/Mime";
+import * as Mime from "effect/http/Mime";
 import * as Ref from "effect/Ref";
+import * as Schedule from "effect/Schedule";
 import * as Schema from "effect/Schema";
 import * as Scope from "effect/Scope";
 
 import * as Electron from "electron";
 
+import { LOCKDOWN_EDITION, LOCKDOWN_IDENTITY } from "@t3tools/shared/lockdownEdition";
+
+import { lockdownContentSecurityPolicy } from "../lockdown/lockdownDesktop.ts";
+
 export const DESKTOP_HOST = "app";
-const DESKTOP_PRODUCTION_SCHEME = "t3code-locked";
-const DESKTOP_DEVELOPMENT_SCHEME = "t3code-locked-dev";
+const DESKTOP_PRODUCTION_SCHEME = LOCKDOWN_EDITION ? LOCKDOWN_IDENTITY.scheme : "t3code";
+const DESKTOP_DEVELOPMENT_SCHEME = LOCKDOWN_EDITION ? LOCKDOWN_IDENTITY.devScheme : "t3code-dev";
 
 export function getDesktopScheme(isDevelopment: boolean): string {
   return isDevelopment ? DESKTOP_DEVELOPMENT_SCHEME : DESKTOP_PRODUCTION_SCHEME;
@@ -52,8 +56,6 @@ export class ElectronProtocolUnregistrationError extends Schema.TaggedError<Elec
   }
 }
 
-// The scheme either proxies to a dev server (`targetOrigin`) or serves the
-// built client from disk (`assetDirectory`).
 export type DesktopProtocolRegistrationInput = {
   readonly scheme: string;
   readonly clerkFrontendApiHostname: string | undefined;
@@ -69,29 +71,33 @@ export class ElectronProtocol extends Context.Service<
 >()("@t3tools/desktop/electron/ElectronProtocol") {}
 
 export function makeDesktopContentSecurityPolicy(input: DesktopProtocolRegistrationInput): string {
-  const scriptSources = ["'self'", "'unsafe-inline'", "'wasm-unsafe-eval'"];
-  const localHttp = "http://127.0.0.1:* http://localhost:* http://[::1]:*";
-  const connectSources = [
+  if (LOCKDOWN_EDITION) return lockdownContentSecurityPolicy(input.scheme);
+  const clerkOrigin = input.clerkFrontendApiHostname
+    ? `https://${input.clerkFrontendApiHostname}`
+    : undefined;
+  const scriptSources = [
     "'self'",
-    "blob:",
-    localHttp,
-    "ws://127.0.0.1:*",
-    "ws://localhost:*",
-    "ws://[::1]:*",
+    "'unsafe-inline'",
+    "'wasm-unsafe-eval'",
+    ...(clerkOrigin ? [clerkOrigin] : []),
+    "https://challenges.cloudflare.com",
   ];
+
+  // User-configured environment origins are unknown here, so allow supported network schemes.
+  // GLTFLoader fetches embedded textures through blob URLs.
+  const connectSources = ["'self'", "blob:", "http:", "https:", "ws:", "wss:"];
 
   return [
     "default-src 'self'",
     `script-src ${scriptSources.join(" ")}`,
     `connect-src ${connectSources.join(" ")}`,
-    `img-src 'self' ${input.scheme}: blob: data: ${localHttp}`,
-    `media-src 'self' ${input.scheme}: blob: ${localHttp}`,
+    `img-src 'self' ${input.scheme}: blob: data: http: https:`,
+    `media-src 'self' ${input.scheme}: blob: http: https:`,
     "style-src 'self' 'unsafe-inline'",
     `font-src 'self' ${input.scheme}: data:`,
     "worker-src 'self' blob:",
-    // Document viewers use local Blob URLs and signed assets from runtime environments.
-    // HTML viewers retain their own sandbox; the renderer's script policy stays unchanged.
-    "frame-src 'self' blob: ${localHttp}",
+    "frame-src 'self' blob: http: https:",
+    "object-src 'self' blob: http: https:",
     "form-action 'self'",
   ].join("; ");
 }
@@ -106,9 +112,7 @@ function withContentSecurityPolicy(response: Response, policy: string): Response
   });
 }
 
-/**
- * Must run synchronously during process bootstrap, before Electron emits `ready`.
- */
+// Must run synchronously before Electron emits ready.
 function registerDesktopSchemePrivilegesSync(): void {
   Electron.protocol.registerSchemesAsPrivileged([
     {
@@ -119,8 +123,7 @@ function registerDesktopSchemePrivilegesSync(): void {
         supportFetchAPI: true,
         corsEnabled: true,
         stream: true,
-        // Custom schemes skip Chromium's V8 code cache unless they opt in.
-        // Dev stays off: Vite serves changing code at stable URLs.
+        // Custom schemes must opt into V8 caching; dev URLs serve changing code.
         codeCache: true,
       },
     },
@@ -143,17 +146,36 @@ const registerDesktopSchemePrivileges = Effect.sync(registerDesktopSchemePrivile
 
 export const layerSchemePrivileges = Layer.effectDiscard(registerDesktopSchemePrivileges);
 
-async function proxyRequest(
+class ElectronProtocolFetchError extends Schema.TaggedError<ElectronProtocolFetchError>()(
+  "ElectronProtocolFetchError",
+  { cause: Schema.Defect() },
+) {}
+
+const netFetch = (url: string, init: RequestInit) =>
+  Effect.tryPromise({
+    try: () => Electron.net.fetch(url, init),
+    catch: (cause) => new ElectronProtocolFetchError({ cause }),
+  });
+
+const fetchWithTransientRetry = (url: string, init: RequestInit) =>
+  netFetch(url, init).pipe(
+    Effect.retry({ schedule: Schedule.exponential("50 millis", 3), times: 2 }),
+  );
+
+const proxyRequest = Effect.fn("desktop.protocol.proxyRequest")(function* (
   request: Request,
   targetOrigin: URL,
   contentSecurityPolicy: string,
-): Promise<Response> {
+) {
   const requestUrl = new URL(request.url);
   if (requestUrl.host !== DESKTOP_HOST) {
     return new Response(null, { status: 404 });
   }
 
-  const targetUrl = new URL(`${requestUrl.pathname}${requestUrl.search}`, targetOrigin);
+  // Assign the path so leading slashes cannot replace the configured host.
+  const targetUrl = new URL(targetOrigin);
+  targetUrl.pathname = requestUrl.pathname;
+  targetUrl.search = requestUrl.search;
   const headers = new Headers(request.headers);
   const headersToRemove: string[] = [];
   for (const name of headers.keys()) {
@@ -183,16 +205,11 @@ async function proxyRequest(
   }
   const response =
     request.method === "GET" || request.method === "HEAD"
-      ? await fetchWithTransientRetry(targetUrl.toString(), init)
-      : await Electron.net.fetch(targetUrl.toString(), init);
+      ? yield* fetchWithTransientRetry(targetUrl.toString(), init)
+      : yield* netFetch(targetUrl.toString(), init);
   return withContentSecurityPolicy(response, contentSecurityPolicy);
-}
+});
 
-const TRANSIENT_FETCH_RETRY_DELAYS_MS = [0, 50, 150] as const;
-
-// Serves the packaged web client without a backend: files resolve within the
-// asset directory, and any other path falls back to index.html so the SPA
-// router handles it, except for asset-shaped misses (`/missing.js`) which 404.
 const serveDesktopAsset = Effect.fn("desktop.protocol.serveAsset")(function* (
   request: Request,
   assetDirectory: string,
@@ -204,9 +221,7 @@ const serveDesktopAsset = Effect.fn("desktop.protocol.serveAsset")(function* (
   if (request.method !== "GET" && request.method !== "HEAD") {
     return new Response(null, { status: 405 });
   }
-  const pathname = yield* Effect.try(() => decodeURIComponent(url.pathname)).pipe(
-    Effect.orElseSucceed(() => null),
-  );
+  const pathname = Option.getOrNull(Option.liftThrowable(decodeURIComponent)(url.pathname));
   if (pathname === null || pathname.includes("\0")) return new Response(null, { status: 400 });
   const root = path.resolve(assetDirectory);
   const assetPath = path.resolve(root, `.${pathname}`);
@@ -231,25 +246,7 @@ const serveDesktopAsset = Effect.fn("desktop.protocol.serveAsset")(function* (
   });
 });
 
-async function fetchWithTransientRetry(url: string, init: RequestInit): Promise<Response> {
-  let lastError: unknown;
-
-  for (const delayMs of TRANSIENT_FETCH_RETRY_DELAYS_MS) {
-    if (delayMs > 0) {
-      await NodeTimersPromises.setTimeout(delayMs);
-    }
-
-    try {
-      return await Electron.net.fetch(url, init);
-    } catch (error) {
-      lastError = error;
-    }
-  }
-
-  throw lastError;
-}
-
-/** @public Service construction is part of the canonical Effect module API. */
+/** @public */
 export const make = Effect.gen(function* () {
   const registered = yield* Ref.make(false);
   const context = yield* Effect.context<FileSystem.FileSystem | Path.Path>();
@@ -271,7 +268,13 @@ export const make = Effect.gen(function* () {
                   contentSecurityPolicy,
                 );
               }
-              return proxyRequest(request, input.targetOrigin, contentSecurityPolicy);
+              return runPromise(
+                proxyRequest(request, input.targetOrigin, contentSecurityPolicy).pipe(
+                  Effect.catchTags({
+                    ElectronProtocolFetchError: (error) => Effect.die(error.cause),
+                  }),
+                ),
+              );
             });
           },
           catch: (cause) => new ElectronProtocolRegistrationError({ scheme: input.scheme, cause }),

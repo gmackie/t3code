@@ -1,5 +1,7 @@
 import * as Option from "effect/Option";
 
+import { LOCKDOWN_EDITION, LOCKDOWN_IDENTITY } from "@t3tools/shared/lockdownEdition";
+
 export type JoinPath = (first: string, ...segments: string[]) => string;
 
 function normalizeConfiguredBaseDir(t3Home: Option.Option<string>): Option.Option<string> {
@@ -16,7 +18,7 @@ export function resolveDesktopBaseDir(input: {
   readonly t3Home: Option.Option<string>;
 }): string {
   return Option.getOrElse(normalizeConfiguredBaseDir(input.t3Home), () =>
-    input.joinPath(input.homeDirectory, ".t3-locked"),
+    input.joinPath(input.homeDirectory, LOCKDOWN_EDITION ? LOCKDOWN_IDENTITY.baseDirName : ".t3"),
   );
 }
 

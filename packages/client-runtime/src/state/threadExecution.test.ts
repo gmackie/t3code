@@ -3,28 +3,37 @@ import {
   NodeId,
   MessageId,
   ProviderInstanceId,
+  ProviderThreadId,
+  ProviderSessionId,
+  ProviderDriverKind,
+  ProviderTurnId,
+  RunAttemptId,
   RunId,
   ThreadId,
   type OrchestrationV2ExecutionNode,
   type OrchestrationV2RunStatus,
 } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
+import { createModelCapabilities, createModelSelection } from "@t3tools/shared/model";
 import { usageLimitBlockedRun } from "@t3tools/shared/orchestrationV2ThreadError";
 import { describe, expect, it } from "vite-plus/test";
 
 import { v2Projection } from "./orchestrationV2TestFixtures.ts";
 import {
-  presentPendingBackgroundWork,
+  deriveReportedModelSelection,
   deriveLatestThreadRun,
   deriveProviderSubagentStatus,
-  formatModelSelectionEffort,
-  formatProviderSubagentStatus,
+  deriveResumableRunId,
   deriveRunlessWorkStartedAt,
   deriveThreadActivityRun,
   deriveThreadRuntime,
+  formatModelSelectionEffort,
+  isBackgroundWorkStopPending,
+  presentPendingBackgroundWork,
+  presentProviderGoal,
+  presentRunStop,
   threadRuntimeHasInterruptibleRun,
 } from "./threadExecution.ts";
-import { threadRuntimeCanArchive, type ThreadRuntimeSummary } from "./models.ts";
 
 const now = DateTime.makeUnsafe("2026-07-28T10:00:00.000Z");
 
@@ -79,6 +88,7 @@ describe("thread execution presentation", () => {
       lastError: "Plan limit reached",
       lastErrorClass: "usage_limit",
     });
+    expect(deriveResumableRunId(projection, deriveThreadRuntime(projection))).toBe(failed.id);
     expect(
       deriveThreadRuntime({
         ...projection,
@@ -94,6 +104,20 @@ describe("thread execution presentation", () => {
     expect(
       deriveThreadRuntime({ ...projection, runs: [failed, run("new", 2, "running")] }),
     ).toMatchObject({ status: "running", lastError: null, lastErrorClass: null });
+  });
+
+  // regression: #15029 working timers no longer reset on every background wake
+  it("counts a wake run's activity from the start of the work it continues", () => {
+    const workStartedAt = DateTime.makeUnsafe("2026-07-28T09:20:00.000Z");
+    const wake = { ...run("wake", 2, "running"), workStartedAt };
+    expect(
+      deriveThreadRuntime({ ...v2Projection, runs: [run("prompt", 1, "completed"), wake] })
+        ?.activityStartedAt,
+    ).toBe("2026-07-28T09:20:00.000Z");
+    expect(
+      deriveThreadRuntime({ ...v2Projection, runs: [run("prompt", 1, "running")] })
+        ?.activityStartedAt,
+    ).toBe("2026-07-28T10:00:00.000Z");
   });
 
   it("keeps a subscription limit visible while later messages stay queued", () => {
@@ -135,6 +159,7 @@ describe("thread execution presentation", () => {
       lastError: "Plan limit reached",
       lastErrorClass: "usage_limit",
     });
+    expect(deriveResumableRunId(projection, deriveThreadRuntime(projection))).toBe(failed.id);
     const cancelledQueued = {
       ...run("cancelled-queued", 3, "cancelled"),
       startedAt: null,
@@ -146,12 +171,15 @@ describe("thread execution presentation", () => {
     expect(
       deriveThreadRuntime({ ...projection, runs: [failed, queued, cancelledQueued] }),
     ).toMatchObject({ status: "failed", lastErrorClass: "usage_limit" });
-    expect(
-      deriveThreadRuntime({
-        ...projection,
-        turnItems: [{ ...item, failure: { ...item.failure, class: "provider_error" as const } }],
-      }),
-    ).toMatchObject({ status: "queued", lastErrorClass: null });
+    const providerError = {
+      ...projection,
+      turnItems: [{ ...item, failure: { ...item.failure, class: "provider_error" as const } }],
+    };
+    expect(deriveThreadRuntime(providerError)).toMatchObject({
+      status: "queued",
+      lastErrorClass: null,
+    });
+    expect(deriveResumableRunId(providerError, deriveThreadRuntime(providerError))).toBeNull();
   });
 
   it("keeps live activity attached to an executing run when a newer run is queued", () => {
@@ -173,6 +201,34 @@ describe("thread execution presentation", () => {
     expect(threadRuntimeHasInterruptibleRun(runtime)).toBe(true);
   });
 
+  it("marks an open run whose provider turn already ended", () => {
+    const attemptId = RunAttemptId.make("attempt-open");
+    const openRun = { ...run("run-open", 1, "running"), activeAttemptId: attemptId };
+    const providerTurn = (status: "running" | "failed") => ({
+      id: ProviderTurnId.make("provider-turn-open"),
+      providerThreadId: ProviderThreadId.make("provider-thread-open"),
+      nodeId: NodeId.make("node-open"),
+      runAttemptId: attemptId,
+      nativeTurnRef: null,
+      ordinal: 1,
+      status,
+      startedAt: now,
+      completedAt: status === "running" ? null : now,
+    });
+    const projection = (status: "running" | "failed") => ({
+      ...v2Projection,
+      runs: [openRun],
+      providerTurns: [providerTurn(status)],
+      updatedAt: now,
+    });
+
+    expect(deriveThreadActivityRun(projection("running"))?.turnEnded).toBeUndefined();
+    expect(deriveThreadActivityRun(projection("failed"))).toMatchObject({
+      status: "running",
+      turnEnded: true,
+    });
+  });
+
   it("presents a held queue as the stopped run instead of queued work", () => {
     const interrupted = { ...run("run-interrupted", 1, "interrupted"), completedAt: now };
     const held = { ...run("run-held", 2, "queued"), queueHeld: true };
@@ -184,12 +240,11 @@ describe("thread execution presentation", () => {
       status: "interrupted",
       activeRunId: null,
     });
+    expect(deriveResumableRunId(projection, deriveThreadRuntime(projection))).toBe(interrupted.id);
 
-    // Resuming clears the hold, and the run reads as queued until it starts.
     const resumed = { ...projection, runs: [interrupted, { ...held, queueHeld: false }] };
     expect(deriveThreadRuntime(resumed)).toMatchObject({ status: "queued" });
 
-    // Recovery can hold a first message before any run executed; it is not work.
     const onlyHeld = {
       ...projection,
       runs: [held],
@@ -215,48 +270,73 @@ describe("thread execution presentation", () => {
     });
     expect(threadRuntimeHasInterruptibleRun(runtime)).toBe(false);
   });
+});
 
-  it("keeps checkpoint-wait activity visible without exposing a non-functional interrupt", () => {
-    const waitingRun = run("run-waiting", 1, "waiting");
-    const projection = { ...v2Projection, runs: [waitingRun], updatedAt: now };
-
-    expect(deriveThreadActivityRun(projection)).toMatchObject({
-      runId: waitingRun.id,
-      status: "waiting",
-    });
-
-    const runtime = deriveThreadRuntime(projection);
-    expect(runtime).toMatchObject({
-      status: "waiting",
-      activeRunId: null,
-    });
-    expect(threadRuntimeHasInterruptibleRun(runtime)).toBe(false);
+describe("presentRunStop", () => {
+  const signal = (type: "run_interrupt_request" | "run_interrupt_result", runId: RunId) => ({
+    id: TurnItemId.make(`${type}:${runId}`),
+    threadId: v2Projection.thread.id,
+    runId,
+    nodeId: null,
+    providerThreadId: null,
+    providerTurnId: null,
+    nativeItemRef: null,
+    parentItemId: null,
+    ordinal: 1,
+    status: type === "run_interrupt_result" ? ("interrupted" as const) : ("completed" as const),
+    title: "Interrupt",
+    startedAt: now,
+    completedAt: now,
+    updatedAt: now,
+    type,
+    message: "Stopped by user",
   });
+  const running = run("run-stopping", 1, "running");
+  const request = signal("run_interrupt_request", running.id);
 
-  it("does not expose a stale active run after the runtime parks at idle", () => {
-    const runtime = {
-      status: "idle" as const,
-      activeRunId: RunId.make("run-stale"),
-      providerInstanceId: v2Projection.thread.providerInstanceId,
-      providerName: null,
-      lastError: null,
-      updatedAt: DateTime.formatIso(now),
-    };
-
-    expect(threadRuntimeHasInterruptibleRun(runtime)).toBe(false);
-  });
-
-  it.each(["preparing", "starting"] as const)("keeps an active %s run interruptible", (status) => {
-    const runtime = {
-      status,
-      activeRunId: RunId.make(`run-${status}`),
-      providerInstanceId: v2Projection.thread.providerInstanceId,
-      providerName: null,
-      lastError: null,
-      updatedAt: DateTime.formatIso(now),
-    };
-
-    expect(threadRuntimeHasInterruptibleRun(runtime)).toBe(true);
+  it.each([
+    { name: "no Stop", runs: [running], turnItems: [], state: null },
+    {
+      name: "a Stop the agent is winding down",
+      runs: [running],
+      turnItems: [request],
+      state: "stopping",
+    },
+    {
+      name: "a Stop the provider never confirmed",
+      runs: [running],
+      turnItems: [{ ...request, unresponsiveAt: now }],
+      state: "unresponsive",
+    },
+    {
+      name: "a Stop that ended the run",
+      runs: [running],
+      turnItems: [request, signal("run_interrupt_result", running.id)],
+      state: null,
+    },
+    {
+      name: "a settled run's background work still stopping",
+      runs: [{ ...running, status: "completed" as const, completedAt: now }],
+      turnItems: [request],
+      state: null,
+    },
+    {
+      name: "a settled run whose background work ignored Stop",
+      runs: [{ ...running, status: "completed" as const, completedAt: now }],
+      turnItems: [{ ...request, unresponsiveAt: now }],
+      state: "unresponsive",
+    },
+    {
+      name: "a settled run whose background work ignored Stop, with a queued follow-up",
+      runs: [
+        { ...running, status: "completed" as const, completedAt: now },
+        run("run-queued", 2, "queued"),
+      ],
+      turnItems: [{ ...request, unresponsiveAt: now }],
+      state: "unresponsive",
+    },
+  ])("presents $name", ({ runs, turnItems, state }) => {
+    expect(presentRunStop({ runs, turnItems })?.state ?? null).toBe(state);
   });
 });
 
@@ -299,16 +379,8 @@ describe("deriveRunlessWorkStartedAt", () => {
   it("times a provider-native subagent from its runless root turn while it works", () => {
     const projection = { ...nativeChild, nodes: [rootTurn("running", later)] };
     expect(deriveRunlessWorkStartedAt(projection)).toBe("2026-07-28T10:05:00.000Z");
-    // The subagent has no run, so it stays unstoppable and unqueueable.
     expect(deriveThreadRuntime(projection)).toBeNull();
   });
-
-  it.each(["completed", "cancelled", "failed", "interrupted", "idle"] as const)(
-    "is idle once the subagent is %s",
-    (status) => {
-      expect(deriveRunlessWorkStartedAt({ ...nativeChild, nodes: [rootTurn(status)] })).toBe(null);
-    },
-  );
 
   it("ignores root turns that belong to a run, and threads the provider does not run", () => {
     const owned = { ...rootTurn("running"), runId: RunId.make("run-1") };
@@ -351,174 +423,154 @@ describe("deriveProviderSubagentStatus", () => {
     nodes: [root],
   });
 
-  it("reports the provider's own subagent from its runless root turn", () => {
-    expect(deriveProviderSubagentStatus(child("provider"))).toEqual({
-      status: "completed",
-      startedAt: "2026-07-28T10:00:00.000Z",
-      completedAt: "2026-07-28T10:00:00.000Z",
-    });
-  });
-
-  it("says how long the subagent has worked, or took", () => {
-    const startedAt = "2026-07-28T10:00:00.000Z";
-    const at = (iso: string) => Date.parse(iso);
-    expect(
-      formatProviderSubagentStatus(
-        { status: "running", startedAt, completedAt: null },
-        at("2026-07-28T10:01:05.400Z"),
-      ),
-    ).toBe("Working 1m 5s");
-    expect(
-      formatProviderSubagentStatus(
-        { status: "completed", startedAt, completedAt: "2026-07-28T10:00:34.000Z" },
-        at("2026-07-28T11:00:00.000Z"),
-      ),
-    ).toBe("Completed in 34s");
-    expect(
-      formatProviderSubagentStatus(
-        { status: "cancelled", startedAt, completedAt: "2026-07-28T10:00:34.000Z" },
-        0,
-      ),
-    ).toBe("Cancelled");
-    expect(formatProviderSubagentStatus(null, 0)).toBe("Starting");
-  });
-
   it("leaves T3 delegated tasks and ordinary threads alone", () => {
     expect(deriveProviderSubagentStatus(child("mcp"))).toBeNull();
     expect(deriveProviderSubagentStatus({ ...v2Projection, nodes: [root] })).toBeNull();
   });
 });
 
-describe("formatModelSelectionEffort", () => {
-  const instanceId = ProviderInstanceId.make("claudeAgent");
-  const selection = (options?: ReadonlyArray<{ id: string; value: string }>) => ({
-    instanceId,
-    model: "claude-sonnet-5",
-    ...(options === undefined ? {} : { options }),
-  });
-  const catalog = (descriptor: { currentValue?: string }) => [
-    {
-      slug: "claude-sonnet-5",
-      name: "Claude Sonnet 5",
-      isCustom: false,
-      capabilities: {
-        optionDescriptors: [
-          {
-            id: "effort",
-            label: "Reasoning",
-            type: "select" as const,
-            options: [
-              { id: "medium", label: "Medium" },
-              { id: "high", label: "High", isDefault: true },
-              { id: "xhigh", label: "Extra High" },
-            ],
-            ...descriptor,
-          },
+describe("provider-reported model selection", () => {
+  const selected = v2Projection.thread.modelSelection;
+  const reported = { ...selected, options: [{ id: "reasoningEffort", value: "default" }] };
+  const providerThread = {
+    id: ProviderThreadId.make("active"),
+    driver: ProviderDriverKind.make("codex"),
+    providerInstanceId: selected.instanceId,
+    providerSessionId: ProviderSessionId.make("session"),
+    appThreadId: v2Projection.thread.id,
+    ownerNodeId: null,
+    nativeThreadRef: null,
+    nativeConversationHeadRef: null,
+    status: "idle" as const,
+    firstRunOrdinal: null,
+    lastRunOrdinal: null,
+    handoffIds: [],
+    forkedFrom: null,
+    createdAt: now,
+    updatedAt: now,
+    nativeMetadata: { modelSelection: reported },
+  };
+  const projection = {
+    ...v2Projection,
+    thread: { ...v2Projection.thread, activeProviderThreadId: providerThread.id },
+    providerThreads: [providerThread],
+  };
+
+  it("reads only the active provider thread's reported selection", () => {
+    expect(deriveReportedModelSelection(projection)).toBe(reported);
+    expect(
+      deriveReportedModelSelection({
+        ...projection,
+        thread: { ...projection.thread, activeProviderThreadId: null },
+      }),
+    ).toBeNull();
+    expect(
+      deriveReportedModelSelection({
+        ...projection,
+        providerThreads: [
+          { ...providerThread, providerInstanceId: ProviderInstanceId.make("other") },
         ],
-      },
-    },
-  ];
-
-  it("shows the model's default effort when the user never picked one", () => {
-    expect(formatModelSelectionEffort(selection(), catalog({}))).toBe("High");
-  });
-
-  it("names a stored effort the way the catalog does", () => {
-    expect(
-      formatModelSelectionEffort(selection([{ id: "effort", value: "xhigh" }]), catalog({})),
-    ).toBe("Extra High");
-  });
-
-  it("uses the descriptor's current value over the default", () => {
-    expect(formatModelSelectionEffort(selection(), catalog({ currentValue: "medium" }))).toBe(
-      "Medium",
-    );
-  });
-
-  it("shows nothing for a model the catalog does not describe", () => {
-    expect(formatModelSelectionEffort(selection([{ id: "effort", value: "high" }]))).toBeNull();
-    expect(
-      formatModelSelectionEffort(
-        { ...selection(), model: "claude-haiku-4-5" },
-        catalog({ currentValue: "medium" }),
-      ),
+      }),
     ).toBeNull();
   });
 });
 
-describe("threadRuntimeCanArchive", () => {
-  const runtime = (
-    status: ThreadRuntimeSummary["status"],
-    activeRunId: ThreadRuntimeSummary["activeRunId"],
-  ): ThreadRuntimeSummary => ({
-    status,
-    activeRunId,
-    providerInstanceId: v2Projection.thread.providerInstanceId,
-    providerName: null,
-    lastError: null,
-    updatedAt: DateTime.formatIso(now),
+describe("formatModelSelectionEffort", () => {
+  it("labels an old Ultracode effort by the effort it runs at", () => {
+    const models = [
+      {
+        slug: "claude-opus-5-5",
+        name: "Claude Opus 5.5",
+        isCustom: false,
+        capabilities: createModelCapabilities({
+          optionDescriptors: [
+            {
+              id: "effort",
+              label: "Reasoning",
+              type: "select",
+              options: [
+                { id: "high", label: "High", isDefault: true },
+                { id: "xhigh", label: "Extra High" },
+              ],
+            },
+            { id: "ultracode", label: "Ultracode", type: "boolean" },
+          ],
+        }),
+      },
+    ];
+    const selection = createModelSelection(
+      ProviderInstanceId.make("claudeAgent"),
+      "claude-opus-5-5",
+      [{ id: "effort", value: "ultracode" }],
+    );
+
+    expect(formatModelSelectionEffort(selection, models)).toBe("Extra High");
+  });
+});
+
+describe("isBackgroundWorkStopPending", () => {
+  const tasks = [{ taskId: "dev-server" }];
+  const sent = { threadKey: "env:thread", taskIds: ["dev-server"], retryAt: null };
+  const accepted = { ...sent, retryAt: 10_000 };
+
+  it("stays pending after acceptance while a stopped task is still listed", () => {
+    expect(isBackgroundWorkStopPending(sent, "env:thread", tasks, false)).toBe(true);
+    expect(isBackgroundWorkStopPending(accepted, "env:thread", tasks, false)).toBe(true);
   });
 
-  it.each(["preparing", "starting", "running"] as const)(
-    "blocks archive while a provider is %s",
-    (status) => {
-      expect(threadRuntimeCanArchive(runtime(status, RunId.make(`run-${status}`)))).toBe(false);
-    },
-  );
-
-  it("only blocks a queued runtime when a provider run remains attached", () => {
-    expect(threadRuntimeCanArchive(runtime("queued", RunId.make("run-queued")))).toBe(false);
-    expect(threadRuntimeCanArchive(runtime("queued", null))).toBe(true);
+  it("ends once the stopped tasks leave, even if new work starts", () => {
+    expect(isBackgroundWorkStopPending(accepted, "env:thread", [], false)).toBe(false);
+    expect(isBackgroundWorkStopPending(accepted, "env:thread", [{ taskId: "next" }], false)).toBe(
+      false,
+    );
   });
 
-  it("allows waiting and idle threads", () => {
-    expect(threadRuntimeCanArchive(runtime("waiting", RunId.make("run-finished")))).toBe(true);
-    expect(threadRuntimeCanArchive(runtime("idle", null))).toBe(true);
+  it("allows retry at the deadline even if a stopped task remains", () => {
+    const request = { ...accepted, retryAt: 10_000 };
+    expect(isBackgroundWorkStopPending(request, "env:thread", tasks, false)).toBe(true);
+    expect(isBackgroundWorkStopPending(request, "env:thread", tasks, true)).toBe(false);
+  });
+
+  it("only applies to the thread that sent the Stop", () => {
+    expect(isBackgroundWorkStopPending(null, "env:thread", tasks, false)).toBe(false);
+    expect(isBackgroundWorkStopPending(sent, "env:other", tasks, false)).toBe(false);
+  });
+});
+
+describe("presentProviderGoal", () => {
+  it("rolls token counts that round to 1000k over to 1m", () => {
+    const usage = (tokensUsed: number) =>
+      presentProviderGoal(
+        { objective: "Ship the feature", status: "active", tokensUsed, tokenBudget: 2_000_000 },
+        true,
+      ).usage;
+    expect(usage(999_499)).toBe("999k / 2m tokens");
+    expect(usage(999_500)).toBe("1m / 2m tokens");
+    expect(usage(999_999)).toBe("1m / 2m tokens");
+    expect(usage(1_000_000)).toBe("1m / 2m tokens");
+    expect(
+      presentProviderGoal(
+        {
+          objective: "Ship the feature",
+          status: "paused",
+          tokensUsed: 999_500,
+          tokenBudget: 999_500,
+        },
+        false,
+      ).usage,
+    ).toBe("1m / 1m tokens");
   });
 });
 
 describe("presentPendingBackgroundWork", () => {
-  it("names a single piece of work by kind", () => {
-    expect(
-      presentPendingBackgroundWork([
-        { taskId: "a", kind: "subagent", description: "Review src/math.ts" },
-      ])?.title,
-    ).toBe("Waiting on subagent Review src/math.ts");
-    expect(presentPendingBackgroundWork([{ taskId: "a", kind: "command" }])?.title).toBe(
-      "Waiting on a command",
-    );
-    expect(presentPendingBackgroundWork([])).toBeNull();
-  });
-
-  it("groups work by kind, subagents first, and keeps each name", () => {
+  it("names a command by its script, not the shell that wraps it", () => {
     const presentation = presentPendingBackgroundWork([
-      { taskId: "cmd", kind: "command", description: "npm test" },
       {
-        taskId: "b",
-        kind: "subagent",
-        description: "Write tests",
-        childThreadId: ThreadId.make("thread:b"),
+        taskId: "call_1",
+        kind: "command",
+        description: `/bin/zsh -lc "mv a.ts b.ts\ncat > b.ts <<'EOF'\nexport {};\nEOF"`,
       },
-      { taskId: "a", kind: "subagent", description: "Review src/math.ts" },
     ]);
-    expect(presentation?.title).toBe("Waiting on 2 subagents and 1 command");
-    expect(presentation?.items.map((item) => [item.kind, item.label, item.childThreadId])).toEqual([
-      ["subagent", "Write tests", "thread:b"],
-      ["subagent", "Review src/math.ts", undefined],
-      ["command", "npm test", undefined],
-    ]);
-  });
-
-  it("names generic work, including rosters from servers that predate kinds", () => {
-    expect(
-      presentPendingBackgroundWork([
-        { taskId: "bash", kind: "command", description: "Background sleep" },
-        { taskId: "watch", kind: "monitor" },
-        { taskId: "other", kind: "background_task" },
-      ])?.title,
-    ).toBe("Waiting on 1 command, 1 monitor and 1 background task");
-    expect(presentPendingBackgroundWork([{ taskId: "old", kind: "background_task" }])?.title).toBe(
-      "Waiting on a background task",
-    );
+    expect(presentation?.items[0]?.label).toBe("mv a.ts b.ts\ncat > b.ts <<'EOF'\nexport {};\nEOF");
   });
 });

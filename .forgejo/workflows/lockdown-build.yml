@@ -1,5 +1,11 @@
 name: Lockdown daily merge and build
 
+# T3 Code Locked (T3CODE-15, rebuilt on main in T3CODE-110). lockdown-daily.yml on custom-local
+# dispatches this at 09:00 UTC with merge_main=true. The locked edition guards upstream code at a
+# few choke points (packages/shared/src/lockdownEdition.ts) instead of deleting it, so the merge
+# of main normally applies cleanly. Conflicts still fail the run: never resolve one by restoring
+# a path the lockdown guards.
+
 on:
   push:
     branches:
@@ -16,7 +22,8 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  PNPM_VERSION: 11.10.0
+  PNPM_VERSION: 12.14.0
+  NODE_VERSION: 24.14.0
 
 jobs:
   candidate:
@@ -34,7 +41,7 @@ jobs:
           path: lockdown-${{ github.run_id }}
       - uses: actions/setup-node@v4
         with:
-          node-version: 24.14.0
+          node-version: ${{ env.NODE_VERSION }}
       - id: candidate
         name: Merge main into an unpublished candidate
         shell: bash
@@ -55,8 +62,12 @@ jobs:
           fi
           git checkout -B lockdown-candidate "$start_sha"
           if [[ "$EVENT_NAME" != push && "$MERGE_MAIN" != false ]]; then
-            # Conflicts fail the run: never resolve by restoring prohibited upstream features.
-            git merge --no-edit -m 'Merge main into lockdown [skip ci]' origin/main
+            # Conflicts fail the run: never resolve by restoring paths the lockdown guards.
+            if ! git merge --no-edit -m 'Merge main into lockdown [skip ci]' origin/main; then
+              echo 'Merging main conflicts with the lockdown guards:' >&2
+              git diff --name-only --diff-filter=U >&2
+              exit 1
+            fi
             corepack enable
             corepack prepare "pnpm@${PNPM_VERSION}" --activate
             pnpm install --lockfile-only --no-frozen-lockfile --ignore-scripts
@@ -76,7 +87,7 @@ jobs:
   verify:
     needs: candidate
     runs-on: forgegraph-ci
-    timeout-minutes: 40
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
         with:
@@ -84,7 +95,7 @@ jobs:
           path: lockdown-${{ github.run_id }}
       - uses: actions/setup-node@v4
         with:
-          node-version: 24.14.0
+          node-version: ${{ env.NODE_VERSION }}
       - name: Install and check restrictions
         shell: bash
         working-directory: lockdown-${{ github.run_id }}
@@ -106,13 +117,16 @@ jobs:
           path: lockdown-${{ github.run_id }}
       - uses: actions/setup-node@v4
         with:
-          node-version: 24.14.0
+          node-version: ${{ env.NODE_VERSION }}
       - name: Install Linux build dependencies
         shell: bash
         run: |
           set -euo pipefail
-          apt-get update
-          apt-get install -y --no-install-recommends libsecret-1-dev pkg-config imagemagick build-essential curl
+          sudo=""
+          if [[ "$(id -u)" != 0 ]]; then sudo=sudo; fi
+          $sudo apt-get update -o Acquire::Retries=3
+          $sudo apt-get install -y --no-install-recommends \
+            libsecret-1-dev pkg-config patchelf imagemagick build-essential curl
           if [[ ! -x "$HOME/.cargo/bin/rustup" ]]; then
             curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal
           fi
@@ -125,19 +139,26 @@ jobs:
           set -euo pipefail
           corepack enable
           corepack prepare "pnpm@${PNPM_VERSION}" --activate
-          pnpm install --frozen-lockfile
+          pnpm install --frozen-lockfile \
+            --filter=@t3tools/desktop... --filter=t3... --filter=@t3tools/scripts...
+          export PATH="$PWD/node_modules/.bin:$PATH"
           bash scripts/build-lockdown-ci.sh linux x64 "$PWD/release-lockdown"
       - uses: https://code.forgejo.org/forgejo/upload-artifact@v5
         with:
           name: lockdown-linux-x64-${{ needs.candidate.outputs.sha }}
-          path: lockdown-${{ github.run_id }}/release-lockdown/*
+          path: |
+            lockdown-${{ github.run_id }}/release-lockdown/*.AppImage
+            lockdown-${{ github.run_id }}/release-lockdown/*.deb
+            lockdown-${{ github.run_id }}/release-lockdown/*.json
+            lockdown-${{ github.run_id }}/release-lockdown/SHA256SUMS-*
           if-no-files-found: error
           retention-days: 14
 
   macos:
     needs: [candidate, verify]
-    runs-on: macos
-    timeout-minutes: 120
+    # gmacko-mini, not the generic macos label: labtop also advertises macos and cannot build here.
+    runs-on: gmacko-mini
+    timeout-minutes: 115
     steps:
       - uses: actions/checkout@v4
         with:
@@ -145,7 +166,7 @@ jobs:
           path: lockdown-${{ github.run_id }}
       - uses: actions/setup-node@v4
         with:
-          node-version: 24.14.0
+          node-version: ${{ env.NODE_VERSION }}
       - name: Install macOS build dependencies
         shell: bash
         working-directory: lockdown-${{ github.run_id }}
@@ -153,8 +174,9 @@ jobs:
           set -euo pipefail
           corepack enable
           corepack prepare "pnpm@${PNPM_VERSION}" --activate
-          pnpm install --frozen-lockfile
-          if [[ ! -x "$HOME/.cargo/bin/rustup" ]]; then
+          pnpm install --frozen-lockfile \
+            --filter=@t3tools/desktop... --filter=t3... --filter=@t3tools/scripts...
+          if ! command -v rustup >/dev/null 2>&1 && [[ ! -x "$HOME/.cargo/bin/rustup" ]]; then
             curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal
           fi
           echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
@@ -164,6 +186,7 @@ jobs:
         working-directory: lockdown-${{ github.run_id }}
         run: |
           set -euo pipefail
+          export PATH="$PWD/node_modules/.bin:$PATH"
           bash scripts/build-lockdown-ci.sh mac arm64 "$PWD/release-arm64"
           bash scripts/build-lockdown-ci.sh mac x64 "$PWD/release-x64"
       - uses: https://code.forgejo.org/forgejo/upload-artifact@v5

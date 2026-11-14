@@ -1,5 +1,9 @@
-import { relayClerkTokenOptions } from "@t3tools/shared/relayAuth";
-
+import {
+  clerkFrontendApiHostnameFromPublishableKey,
+  relayClerkTokenOptions,
+} from "@t3tools/shared/relayAuth";
+import { LOCKDOWN_EDITION } from "@t3tools/shared/lockdownEdition";
+import { normalizeSecureRelayUrl } from "@t3tools/shared/relayUrl";
 import * as Schema from "effect/Schema";
 
 export class CloudPublicConfigMissingError extends Schema.TaggedError<CloudPublicConfigMissingError>()(
@@ -37,16 +41,41 @@ function normalizeSecureUrl(value: string): string | null {
   }
 }
 
+/** T3 Code Locked has no cloud: no Clerk, no relay, no relay tracing, whatever the build baked in. */
+export const LOCKDOWN_CLOUD_PUBLIC_CONFIG: CloudPublicConfig = {
+  clerkPublishableKey: null,
+  clerkJwtTemplate: null,
+  relayUrl: null,
+  relayTracing: { tracesUrl: null, tracesDataset: null, tracesToken: null },
+};
+
 export function resolveCloudPublicConfig(): CloudPublicConfig {
+  if (LOCKDOWN_EDITION) return LOCKDOWN_CLOUD_PUBLIC_CONFIG;
   return {
-    clerkPublishableKey: null,
-    clerkJwtTemplate: null,
-    relayUrl: null,
-    relayTracing: { tracesUrl: null, tracesDataset: null, tracesToken: null },
+    clerkPublishableKey: trimNonEmpty(
+      import.meta.env.VITE_CLERK_PUBLISHABLE_KEY as string | undefined,
+    ),
+    clerkJwtTemplate: trimNonEmpty(import.meta.env.VITE_CLERK_JWT_TEMPLATE as string | undefined),
+    relayUrl: normalizeSecureRelayUrl(
+      (import.meta.env.VITE_T3CODE_RELAY_URL as string | undefined) ?? "",
+    ),
+    relayTracing: {
+      tracesUrl: normalizeSecureUrl(
+        (import.meta.env.VITE_RELAY_OTLP_TRACES_URL as string | undefined) ?? "",
+      ),
+      tracesDataset: trimNonEmpty(
+        import.meta.env.VITE_RELAY_OTLP_TRACES_DATASET as string | undefined,
+      ),
+      tracesToken: trimNonEmpty(import.meta.env.VITE_RELAY_OTLP_TRACES_TOKEN as string | undefined),
+    },
   };
 }
 
 export function resolveRelayTracingConfig() {
+  // The relay exporter is created during module initialization, so this must be synchronous.
+  if (typeof window !== "undefined" && window.desktopBridge?.getRelayTelemetryEnabled() === false) {
+    return null;
+  }
   const { relayTracing } = resolveCloudPublicConfig();
   return relayTracing.tracesUrl && relayTracing.tracesDataset && relayTracing.tracesToken
     ? {
@@ -59,7 +88,34 @@ export function resolveRelayTracingConfig() {
 
 export function hasCloudPublicConfig(): boolean {
   const config = resolveCloudPublicConfig();
-  return Boolean(config.clerkPublishableKey && config.clerkJwtTemplate && config.relayUrl);
+  if (!config.clerkPublishableKey || !config.clerkJwtTemplate || !config.relayUrl) {
+    return false;
+  }
+
+  // Electron has its own auth runtime; development keys also support private browser origins.
+  if (
+    typeof window === "undefined" ||
+    window.desktopBridge !== undefined ||
+    !config.clerkPublishableKey.startsWith("pk_live_")
+  ) {
+    return true;
+  }
+
+  try {
+    // Custom Frontend API hosts use clerk.<production domain>.
+    const domain = clerkFrontendApiHostnameFromPublishableKey(config.clerkPublishableKey).replace(
+      /^clerk\./u,
+      "",
+    );
+    const { hostname, protocol, port } = window.location;
+    return (
+      protocol === "https:" &&
+      port === "" &&
+      (hostname === domain || hostname.endsWith(`.${domain}`))
+    );
+  } catch {
+    return false;
+  }
 }
 
 export function resolveRelayClerkTokenOptions() {

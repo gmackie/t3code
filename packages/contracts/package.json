@@ -1,13 +1,12 @@
 {
   "name": "@t3tools/contracts",
-  "version": "0.0.45",
+  "version": "0.1.7",
   "private": true,
   "files": [
     "dist"
   ],
   "type": "module",
   "exports": {
-    "./bobCoordination": "./src/bobCoordination.ts",
     ".": {
       "types": "./src/index.ts",
       "import": "./src/index.ts"
@@ -19,11 +18,10 @@
     "./relay": {
       "types": "./src/relay.ts",
       "import": "./src/relay.ts"
-    },
-    "./bobContract": "./src/bobContract.ts"
+    }
   },
   "scripts": {
-    "typecheck": "tsc --noEmit",
+    "typecheck": "effect-tsgo tsrs --noEmit",
     "test": "vp test run --config ../../vite.config.ts --dir ."
   },
   "dependencies": {

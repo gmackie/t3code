@@ -68,14 +68,6 @@ export class PrimaryEnvironmentDisabledError extends Schema.TaggedError<PrimaryE
   }
 }
 
-export const isPrimaryEnvironmentUrlInvalidError = Schema.is(PrimaryEnvironmentUrlInvalidError);
-export const isPrimaryEnvironmentProtocolUnsupportedError = Schema.is(
-  PrimaryEnvironmentProtocolUnsupportedError,
-);
-export const isDesktopEnvironmentBootstrapIncompleteError = Schema.is(
-  DesktopEnvironmentBootstrapIncompleteError,
-);
-
 export interface PrimaryEnvironmentTarget {
   readonly source: PrimaryEnvironmentTargetSource;
   readonly target: {
@@ -87,9 +79,6 @@ export interface PrimaryEnvironmentTarget {
 const LOOPBACK_HOSTNAMES = new Set(["127.0.0.1", "::1", "localhost"]);
 
 function getDesktopLocalEnvironmentBootstrap(): DesktopEnvironmentBootstrap | null {
-  // The primary (Windows-native) backend keeps the "primary" id. The
-  // plural list may include a second WSL entry; the primary-target
-  // resolver only cares about the primary, so just find it.
   const bootstraps = window.desktopBridge?.getLocalEnvironmentBootstraps() ?? [];
   return bootstraps.find((entry) => entry.id === PRIMARY_LOCAL_ENVIRONMENT_ID) ?? null;
 }
@@ -124,6 +113,21 @@ function normalizeBaseUrl(
     source,
     urlKind,
   }).toString();
+}
+
+function swapBaseUrlProtocol(
+  rawValue: string,
+  nextProtocol: "http:" | "https:" | "ws:" | "wss:",
+  urlKind: PrimaryEnvironmentUrlKind,
+): string {
+  const url = parseTargetUrl({
+    rawValue,
+    baseUrl: window.location.origin,
+    source: "configured",
+    urlKind,
+  });
+  url.protocol = nextProtocol;
+  return url.toString();
 }
 
 function normalizeHostname(hostname: string): string {
@@ -175,6 +179,35 @@ function resolveHttpRequestBaseUrl(primaryTarget: PrimaryEnvironmentTarget): str
   }
 
   return currentUrl.origin;
+}
+
+function resolveConfiguredPrimaryTarget(): PrimaryEnvironmentTarget | null {
+  const configuredHttpBaseUrl = import.meta.env.VITE_HTTP_URL?.trim() || undefined;
+  const configuredWsBaseUrl = import.meta.env.VITE_WS_URL?.trim() || undefined;
+
+  if (!configuredHttpBaseUrl && !configuredWsBaseUrl) {
+    return null;
+  }
+
+  // Match URL scheme case-folding so uppercase WSS cannot downgrade to plaintext.
+  const resolvedHttpBaseUrl =
+    configuredHttpBaseUrl ??
+    (configuredWsBaseUrl?.toLowerCase().startsWith("wss:")
+      ? swapBaseUrlProtocol(configuredWsBaseUrl, "https:", "websocket-base-url")
+      : swapBaseUrlProtocol(configuredWsBaseUrl!, "http:", "websocket-base-url"));
+  const resolvedWsBaseUrl =
+    configuredWsBaseUrl ??
+    (configuredHttpBaseUrl?.toLowerCase().startsWith("https:")
+      ? swapBaseUrlProtocol(configuredHttpBaseUrl, "wss:", "http-base-url")
+      : swapBaseUrlProtocol(configuredHttpBaseUrl!, "ws:", "http-base-url"));
+
+  return {
+    source: "configured",
+    target: {
+      httpBaseUrl: normalizeBaseUrl(resolvedHttpBaseUrl, "configured", "http-base-url"),
+      wsBaseUrl: normalizeBaseUrl(resolvedWsBaseUrl, "configured", "websocket-base-url"),
+    },
+  };
 }
 
 function resolveWindowOriginPrimaryTarget(): PrimaryEnvironmentTarget {
@@ -256,22 +289,14 @@ export function resolvePrimaryEnvironmentHttpUrl(
   return url.toString();
 }
 
-// Null only when the desktop app runs with its local environment disabled;
-// every other host has a primary (falling back to the page origin).
+/** Null only for desktop with its local environment disabled; other hosts fall back to page origin. */
 export function readPrimaryEnvironmentTarget(): PrimaryEnvironmentTarget | null {
   if (isLocalEnvironmentDisabled()) {
     return null;
   }
-  const target = resolveDesktopPrimaryTarget() ?? resolveWindowOriginPrimaryTarget();
-  for (const rawValue of [target.target.httpBaseUrl, target.target.wsBaseUrl]) {
-    const url = new URL(rawValue);
-    if (!isLoopbackHostname(url.hostname)) {
-      throw new PrimaryEnvironmentUrlInvalidError({
-        source: target.source,
-        urlKind: "http-base-url",
-        cause: "Only a loopback server is allowed.",
-      });
-    }
-  }
-  return target;
+  return (
+    resolveDesktopPrimaryTarget() ??
+    resolveConfiguredPrimaryTarget() ??
+    resolveWindowOriginPrimaryTarget()
+  );
 }
