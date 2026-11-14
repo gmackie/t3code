@@ -224,7 +224,6 @@ interface OpenCodeTurnTokenUsageAccumulator {
   readonly promptMessageIds: Set<string>;
   readonly assistantOwnershipByMessageId: Map<string, "owned" | "other" | "unknown">;
   readonly unresolvedStepsByMessageId: Map<string, Map<string, OpenCodeStepUsage>>;
-  lastStep?: OpenCodeStepUsage["tokens"];
   inputTokens: number;
   cachedInputTokens: number;
   cacheCreationTokens: number;
@@ -232,6 +231,7 @@ interface OpenCodeTurnTokenUsageAccumulator {
   reasoningTokens: number;
   hasSubagents: boolean;
   complete: boolean;
+  lastStep: OpenCodeStepUsage | null;
 }
 
 function makeOpenCodeTurnTokenUsageAccumulator(): OpenCodeTurnTokenUsageAccumulator {
@@ -247,6 +247,7 @@ function makeOpenCodeTurnTokenUsageAccumulator(): OpenCodeTurnTokenUsageAccumula
     reasoningTokens: 0,
     hasSubagents: false,
     complete: true,
+    lastStep: null,
   };
 }
 
@@ -256,12 +257,34 @@ function accumulateOpenCodeStepUsage(
 ): void {
   if (accumulator.partIds.has(part.id)) return;
   accumulator.partIds.add(part.id);
-  accumulator.lastStep = part.tokens;
   accumulator.inputTokens += part.tokens.input + part.tokens.cache.read + part.tokens.cache.write;
   accumulator.cachedInputTokens += part.tokens.cache.read;
   accumulator.cacheCreationTokens += part.tokens.cache.write;
   accumulator.outputTokens += part.tokens.output + part.tokens.reasoning;
   accumulator.reasoningTokens += part.tokens.reasoning;
+  accumulator.lastStep = part;
+}
+
+// The last step's prompt plus output is the context the next request starts from.
+function openCodeContextUsage(
+  lastStep: OpenCodeStepUsage | null,
+  contextWindow: number | undefined,
+  completedAt: DateTime.Utc,
+): Pick<OrchestrationV2ProviderTurn, "tokenUsage"> {
+  if (lastStep === null) return {};
+  const { tokens } = lastStep;
+  const inputTokens = tokens.input + tokens.cache.read + tokens.cache.write;
+  return {
+    tokenUsage: {
+      usedTokens: inputTokens + tokens.output,
+      maxTokens: contextWindow ?? null,
+      inputTokens,
+      cachedInputTokens: tokens.cache.read,
+      outputTokens: tokens.output,
+      reasoningOutputTokens: tokens.reasoning,
+      updatedAt: DateTime.formatIso(completedAt),
+    },
+  };
 }
 
 interface ActiveOpenCodeTurn {
@@ -296,6 +319,8 @@ interface ActiveOpenCodeTurn {
   admissionAccepted: boolean;
   admissionMessageObserved: boolean;
   idleDuringAdmission: boolean;
+  admissionUncertain: boolean;
+  admissionStatusSequence: number;
   admissionSettled: Deferred.Deferred<void>;
   admissionAbortController: AbortController | null;
   /** OpenCode is retrying a failed model request; cleared once the turn makes progress. */
@@ -358,7 +383,10 @@ export const reconcileOpenCodePromptAdmissionStatus = Effect.fn(
   if (admission.admissionGeneration !== generation || !admission.admissionPending) {
     return "stale" as const;
   }
-  const status = yield* readStatus;
+  const status = yield* readStatus.pipe(
+    Effect.timeoutOption("10 seconds"),
+    Effect.map(Option.getOrElse(() => "unknown" as const)),
+  );
   if (admission.admissionGeneration !== generation || !admission.admissionPending) {
     return "stale" as const;
   }
@@ -379,6 +407,8 @@ interface OpenCodeSubagentContext {
   childProviderThreadId: OrchestrationV2ProviderThread["id"] | null;
   model: string | null;
   result: string | null;
+  // A background task call returns at launch; held here until its child session stops.
+  launch: ToolPart | null;
 }
 
 interface OpenCodeThreadState {
@@ -906,6 +936,28 @@ function isMessageAbortedError(event: Extract<OpenCodeEvent, { type: "session.er
   return event.properties.error?.name === "MessageAbortedError";
 }
 
+// Node's fetch reports these when the connection failed before the request was sent.
+const OPENCODE_UNSENT_REQUEST_CODES = new Set([
+  "ECONNREFUSED",
+  "ENOTFOUND",
+  "EAI_AGAIN",
+  "EHOSTUNREACH",
+  "ENETUNREACH",
+  "UND_ERR_CONNECT_TIMEOUT",
+]);
+
+// Only an HTTP error reply (the SDK puts its status on `cause`) or an unsent request
+// proves OpenCode did not take a prompt; a reset or timeout after sending is ambiguous.
+function isOpenCodePromptRejected(error: unknown): boolean {
+  const cause = OpenCodeRuntime.isOpenCodeRuntimeError(error) ? error.cause : error;
+  if (!(cause instanceof Error)) return false;
+  const reason = cause.cause as { readonly status?: unknown; readonly code?: unknown } | undefined;
+  return (
+    typeof reason?.status === "number" ||
+    (typeof reason?.code === "string" && OPENCODE_UNSENT_REQUEST_CODES.has(reason.code))
+  );
+}
+
 function isOpenCodeNotFound(cause: unknown): boolean {
   const seen = new Set<unknown>();
   const queue: Array<unknown> = [cause];
@@ -1081,6 +1133,10 @@ export const makeOpenCodeAdapterV2 = Effect.fn("makeOpenCodeAdapterV2")(function
         const relatedSessionOwners = new Map<string, OpenCodeThreadState>();
         // Busy children outlive parent settlement; keep their server open.
         const busySessionIds = new Set<string>();
+        // A background task returns before its new child session reports busy.
+        const unstartedSessionIds = new Set<string>();
+        // A child can error before any turn of it is projected; its next idle settles the launch.
+        const sessionErrorOutcomes = new Map<string, TerminalTurnStatus>();
         // Remember settled requests across routing retries to prevent resurrection; only recent IDs matter.
         const settledNativeRequestIds = new Set<string>();
         const pendingChildRequestRoutes = new Set<string>();
@@ -1224,27 +1280,6 @@ export const makeOpenCodeAdapterV2 = Effect.fn("makeOpenCodeAdapterV2")(function
             ...(completedAt === null
               ? {}
               : {
-                  ...(turn.usage.lastStep === undefined
-                    ? {}
-                    : {
-                        tokenUsage: {
-                          usedTokens:
-                            turn.usage.lastStep.input +
-                            turn.usage.lastStep.cache.read +
-                            turn.usage.lastStep.cache.write +
-                            turn.usage.lastStep.output +
-                            turn.usage.lastStep.reasoning,
-                          maxTokens: null,
-                          inputTokens:
-                            turn.usage.lastStep.input +
-                            turn.usage.lastStep.cache.read +
-                            turn.usage.lastStep.cache.write,
-                          cachedInputTokens: turn.usage.lastStep.cache.read,
-                          outputTokens: turn.usage.lastStep.output,
-                          reasoningOutputTokens: turn.usage.lastStep.reasoning,
-                          updatedAt: DateTime.formatIso(completedAt),
-                        },
-                      }),
                   turnTokenUsage:
                     turn.usage.partIds.size === 0
                       ? {
@@ -1267,6 +1302,11 @@ export const makeOpenCodeAdapterV2 = Effect.fn("makeOpenCodeAdapterV2")(function
                           reasoningTokens: turn.usage.reasoningTokens,
                           hasSubagents: turn.usage.hasSubagents,
                         },
+                  ...openCodeContextUsage(
+                    turn.usage.lastStep,
+                    variantCache.get(turn.modelSelection.model.trim())?.contextWindow,
+                    completedAt,
+                  ),
                 }),
           };
           Object.assign(turn.providerTurn, providerTurn);
@@ -1417,6 +1457,7 @@ export const makeOpenCodeAdapterV2 = Effect.fn("makeOpenCodeAdapterV2")(function
           state: OpenCodeThreadState,
           turn: ActiveOpenCodeTurn,
           part: ToolPart,
+          childOutcome?: TerminalTurnStatus,
         ) {
           const now = yield* DateTime.now;
           const nativeItemRef = providerRef(part.id);
@@ -1447,6 +1488,7 @@ export const makeOpenCodeAdapterV2 = Effect.fn("makeOpenCodeAdapterV2")(function
               childProviderThreadId: null,
               model: null,
               result: null,
+              launch: null,
             };
             subagentsByNativeItemId.set(part.id, context);
           }
@@ -1558,8 +1600,27 @@ export const makeOpenCodeAdapterV2 = Effect.fn("makeOpenCodeAdapterV2")(function
           }
           const output = toolOutput(part);
           if (part.state.status === "completed" && output !== undefined) context.result = output;
-          const status = toolStatus(part);
-          const completedAt = toolCompletedAt(part, now);
+          const launchStatus = toolStatus(part);
+          context.launch =
+            childOutcome === undefined &&
+            launchStatus.item === "completed" &&
+            context.childSessionId !== null &&
+            (busySessionIds.has(context.childSessionId) ||
+              unstartedSessionIds.has(context.childSessionId))
+              ? part
+              : null;
+          const status =
+            context.launch !== null
+              ? ({ node: "running", item: "running" } as const)
+              : childOutcome === undefined
+                ? launchStatus
+                : { node: childOutcome, item: childOutcome };
+          const completedAt =
+            context.launch !== null
+              ? null
+              : childOutcome === undefined
+                ? toolCompletedAt(part, now)
+                : now;
           const subagentStatus: OrchestrationV2Subagent["status"] = status.item;
           const subagent: OrchestrationV2Subagent = {
             id: nodeId,
@@ -1636,6 +1697,49 @@ export const makeOpenCodeAdapterV2 = Effect.fn("makeOpenCodeAdapterV2")(function
               result: context.result,
             },
           });
+        });
+
+        const settleLaunchedSubagents = Effect.fnUntraced(function* (
+          childSessionId: string,
+          outcome?: TerminalTurnStatus,
+        ) {
+          const lastTurn = Array.from(threads.get(childSessionId)?.providerTurns.values() ?? []).at(
+            -1,
+          )?.status;
+          const errorOutcome = sessionErrorOutcomes.get(childSessionId);
+          sessionErrorOutcomes.delete(childSessionId);
+          const childOutcome =
+            outcome ??
+            errorOutcome ??
+            (lastTurn === "interrupted" || lastTurn === "failed" || lastTurn === "cancelled"
+              ? lastTurn
+              : "completed");
+          for (const context of subagentsByNativeItemId.values()) {
+            if (context.childSessionId === childSessionId && context.launch !== null) {
+              yield* emitSubagent(
+                context.parentState,
+                context.parentTurn,
+                context.launch,
+                childOutcome,
+              );
+            }
+          }
+        });
+
+        // No idle event settles a launched child that Stop aborts before it reports busy.
+        const interruptLaunchedSubagents = Effect.fnUntraced(function* (rootSessionId: string) {
+          for (const context of subagentsByNativeItemId.values()) {
+            let owner = context.parentState;
+            while (owner.parentSubagent !== null) owner = owner.parentSubagent.parentState;
+            if (owner.nativeSessionId === rootSessionId && context.launch !== null) {
+              yield* emitSubagent(
+                context.parentState,
+                context.parentTurn,
+                context.launch,
+                "interrupted",
+              );
+            }
+          }
         });
 
         const emitToolPart = Effect.fnUntraced(function* (
@@ -2218,6 +2322,16 @@ export const makeOpenCodeAdapterV2 = Effect.fn("makeOpenCodeAdapterV2")(function
               yield* resolveRuntimeRequest(pending.nativeRequestId, "cancelled");
             }
           }
+          // Prompts read the catalog only for variants; a completed turn needs its context window.
+          const parsedModel = OpenCodeRuntime.parseOpenCodeModelSlug(turn.modelSelection.model);
+          if (status === "completed" && turn.usage.lastStep !== null && parsedModel !== null) {
+            yield* OpenCodeRuntime.readOpenCodeCatalogModel(
+              client,
+              parsedModel,
+              undefined,
+              variantCache,
+            );
+          }
           yield* emitProviderTurn(state, turn, status, completedAt);
           const threadDisposition = terminal?.threadDisposition ?? "reusable";
           yield* updateProviderThread(state, {
@@ -2307,11 +2421,14 @@ export const makeOpenCodeAdapterV2 = Effect.fn("makeOpenCodeAdapterV2")(function
           generation: number,
         ) {
           while (promptAdmissionIsCurrent(state, turn, generation)) {
+            const statusSequence = turn.admissionStatusSequence;
             const status = yield* reconcileOpenCodePromptAdmissionStatus(
               turn,
               generation,
-              sdkCall("session.status", { sessionID: state.nativeSessionId, generation }, () =>
-                client.session.status(),
+              sdkCall(
+                "session.status",
+                { sessionID: state.nativeSessionId, generation },
+                (signal) => client.session.status(undefined, { signal }),
               ).pipe(
                 Effect.match({
                   onFailure: () => "unknown" as const,
@@ -2333,6 +2450,10 @@ export const makeOpenCodeAdapterV2 = Effect.fn("makeOpenCodeAdapterV2")(function
               turn.admissionGeneration !== generation
             ) {
               return;
+            }
+            if (turn.admissionStatusSequence !== statusSequence) {
+              turn.admissionPending = true;
+              continue;
             }
             if (status === "idle") {
               yield* finalizeTurn(state, turn, "completed");
@@ -2428,6 +2549,8 @@ export const makeOpenCodeAdapterV2 = Effect.fn("makeOpenCodeAdapterV2")(function
             admissionAccepted: true,
             admissionMessageObserved: true,
             idleDuringAdmission: false,
+            admissionUncertain: false,
+            admissionStatusSequence: 0,
             admissionSettled: Deferred.makeUnsafe<void>(),
             admissionAbortController: null,
             retry: null,
@@ -2771,6 +2894,9 @@ export const makeOpenCodeAdapterV2 = Effect.fn("makeOpenCodeAdapterV2")(function
             case "session.created":
             case "session.updated": {
               const info = event.properties.info;
+              if (event.type === "session.created" && info.parentID !== undefined) {
+                unstartedSessionIds.add(info.id);
+              }
               if (info.parentID !== undefined && !threads.has(info.id)) {
                 const owner = threads.get(info.parentID) ?? relatedSessionOwners.get(info.parentID);
                 if (owner !== undefined) {
@@ -2782,9 +2908,12 @@ export const makeOpenCodeAdapterV2 = Effect.fn("makeOpenCodeAdapterV2")(function
             case "session.deleted":
               relatedSessionOwners.delete(event.properties.info.id);
               busySessionIds.delete(event.properties.info.id);
+              unstartedSessionIds.delete(event.properties.info.id);
+              yield* settleLaunchedSubagents(event.properties.info.id, "interrupted");
               return;
             case "session.status": {
               const sessionId = event.properties.sessionID;
+              unstartedSessionIds.delete(sessionId);
               switch (event.properties.status.type) {
                 case "busy":
                 case "retry":
@@ -2798,6 +2927,9 @@ export const makeOpenCodeAdapterV2 = Effect.fn("makeOpenCodeAdapterV2")(function
               }
               const state = threads.get(sessionId);
               if (state === undefined) return;
+              if (state.activeTurn?.admissionPending) {
+                state.activeTurn.admissionStatusSequence++;
+              }
               const status = event.properties.status;
               if (
                 status.type === "retry" &&
@@ -2835,13 +2967,18 @@ export const makeOpenCodeAdapterV2 = Effect.fn("makeOpenCodeAdapterV2")(function
                   state.activeTurn.interrupted ? "interrupted" : "completed",
                 );
               }
+              if (event.properties.status.type === "idle") {
+                yield* settleLaunchedSubagents(sessionId);
+              }
               return;
             }
             case "session.idle": {
               busySessionIds.delete(event.properties.sessionID);
+              unstartedSessionIds.delete(event.properties.sessionID);
               const state = threads.get(event.properties.sessionID);
               if (state?.activeTurn !== null && state?.activeTurn !== undefined) {
                 if (state.activeTurn.admissionPending) {
+                  state.activeTurn.admissionStatusSequence++;
                   advanceOpenCodePromptAdmission(state.activeTurn, "idle");
                   return;
                 }
@@ -2851,6 +2988,7 @@ export const makeOpenCodeAdapterV2 = Effect.fn("makeOpenCodeAdapterV2")(function
                   state.activeTurn.interrupted ? "interrupted" : "completed",
                 );
               }
+              yield* settleLaunchedSubagents(event.properties.sessionID);
               return;
             }
             case "session.error": {
@@ -2867,6 +3005,12 @@ export const makeOpenCodeAdapterV2 = Effect.fn("makeOpenCodeAdapterV2")(function
                   class: "provider_error",
                 });
                 return;
+              }
+              if (event.properties.sessionID !== undefined) {
+                sessionErrorOutcomes.set(
+                  event.properties.sessionID,
+                  isMessageAbortedError(event) ? "interrupted" : "failed",
+                );
               }
               const states =
                 event.properties.sessionID === undefined
@@ -2932,6 +3076,8 @@ export const makeOpenCodeAdapterV2 = Effect.fn("makeOpenCodeAdapterV2")(function
           Effect.flatMap((exit) =>
             Effect.gen(function* () {
               busySessionIds.clear();
+              unstartedSessionIds.clear();
+              sessionErrorOutcomes.clear();
               if (closing || abortController.signal.aborted) return;
               const detail = Exit.isSuccess(exit)
                 ? "OpenCode event stream ended unexpectedly."
@@ -2947,6 +3093,7 @@ export const makeOpenCodeAdapterV2 = Effect.fn("makeOpenCodeAdapterV2")(function
                     failure: makeProviderFailure({ message: detail, class: "transport_error" }),
                     threadDisposition: "broken",
                   });
+                yield* settleLaunchedSubagents(state.nativeSessionId, "failed");
               }
               yield* Queue.end(events);
             }),
@@ -3083,6 +3230,7 @@ export const makeOpenCodeAdapterV2 = Effect.fn("makeOpenCodeAdapterV2")(function
         const resolvePromptParts = Effect.fnUntraced(function* (
           turnInput: ProviderAdapter.ProviderAdapterV2TurnInput,
         ) {
+          if (turnInput.resume) return [];
           const text = (yield* providerMessageTextWithAttachmentPaths({
             text: turnInput.message.text,
             attachments: turnInput.message.attachments,
@@ -3391,6 +3539,7 @@ export const makeOpenCodeAdapterV2 = Effect.fn("makeOpenCodeAdapterV2")(function
               ...turnInput,
               message: { ...turnInput.message, text: "/compact" },
             }),
+          resumeTurn: (input) => runtimeSession.startTurn(ProviderAdapter.resumeTurnInput(input)),
           startTurn: Effect.fn("OpencodeAdapter.startTurn")(
             function* (turnInput) {
               if (nativeStreamFailure !== null) {
@@ -3485,6 +3634,8 @@ export const makeOpenCodeAdapterV2 = Effect.fn("makeOpenCodeAdapterV2")(function
                 admissionAccepted: isCompaction,
                 admissionMessageObserved: false,
                 idleDuringAdmission: false,
+                admissionUncertain: false,
+                admissionStatusSequence: 0,
                 admissionSettled: Deferred.makeUnsafe<void>(),
                 // @effect-diagnostics-next-line abortControllerInEffect:off - Turn interruption owns prompt admission cancellation.
                 admissionAbortController: new AbortController(),
@@ -3644,6 +3795,8 @@ export const makeOpenCodeAdapterV2 = Effect.fn("makeOpenCodeAdapterV2")(function
                   `OpenCode turn ${steerInput.providerTurnId} is not active`,
                 );
               }
+              // A retry of a steer whose earlier attempt may have reached OpenCode stays uncertain.
+              if (!turn.admissionPending) turn.admissionUncertain = false;
               turn.admissionGeneration = state.nextAdmissionGeneration++;
               turn.admissionMessageId = admissionMessageId;
               turn.admissionPending = true;
@@ -3657,6 +3810,15 @@ export const makeOpenCodeAdapterV2 = Effect.fn("makeOpenCodeAdapterV2")(function
                 turn.usage.promptMessageIds.add(turn.admissionMessageId);
               const admissionSettled = turn.admissionSettled;
               const admissionAbortController = turn.admissionAbortController;
+              const generation = turn.admissionGeneration;
+              const acceptAdmission = Effect.suspend(() =>
+                state.activeTurn === turn &&
+                !turn.finalized &&
+                !turn.interrupted &&
+                advanceOpenCodePromptAdmission(turn, "accepted") === "reconcile-idle"
+                  ? reconcilePromptAdmission(state, turn)
+                  : Effect.void,
+              );
               yield* submitPrompt(
                 state,
                 turn,
@@ -3669,6 +3831,15 @@ export const makeOpenCodeAdapterV2 = Effect.fn("makeOpenCodeAdapterV2")(function
                 },
                 admissionAbortController!,
               ).pipe(
+                Effect.tapError((error) => {
+                  if (!promptAdmissionIsCurrent(state, turn, generation)) return Effect.void;
+                  if (isOpenCodePromptRejected(error) && !turn.admissionUncertain) {
+                    return reconcilePromptAdmission(state, turn);
+                  }
+                  // OpenCode may have taken this or an earlier attempt: wait for its output or Stop.
+                  turn.admissionUncertain = true;
+                  return acceptAdmission;
+                }),
                 Effect.ensuring(
                   Effect.all([
                     Deferred.succeed(admissionSettled, undefined).pipe(Effect.ignore),
@@ -3680,12 +3851,7 @@ export const makeOpenCodeAdapterV2 = Effect.fn("makeOpenCodeAdapterV2")(function
                   ]).pipe(Effect.asVoid),
                 ),
               );
-              if (state.activeTurn === turn && !turn.finalized && !turn.interrupted) {
-                const admissionAction = advanceOpenCodePromptAdmission(turn, "accepted");
-                if (admissionAction === "reconcile-idle") {
-                  yield* reconcilePromptAdmission(state, turn);
-                }
-              }
+              yield* acceptAdmission;
             },
             (effect, steerInput) =>
               effect.pipe(
@@ -3712,6 +3878,7 @@ export const makeOpenCodeAdapterV2 = Effect.fn("makeOpenCodeAdapterV2")(function
                 for (const controller of commandControllers.get(sessionId) ?? [])
                   controller.abort();
                 yield* abortDescendants(sessionId);
+                yield* interruptLaunchedSubagents(sessionId);
                 return;
               }
               if (
@@ -3750,6 +3917,7 @@ export const makeOpenCodeAdapterV2 = Effect.fn("makeOpenCodeAdapterV2")(function
               );
               // Root abort leaves children running; report incomplete cleanup even after root termination.
               yield* abortDescendants(sessionId);
+              yield* interruptLaunchedSubagents(sessionId);
             },
             (effect, interruptInput) =>
               effect.pipe(

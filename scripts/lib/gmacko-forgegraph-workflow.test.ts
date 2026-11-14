@@ -14,6 +14,12 @@ describe("ForgeGraph GMACKO release workflow", () => {
     expect(workflow.match(/node-version: 24\.14\.0/g) ?? []).toHaveLength(1);
     expect(workflow.match(/node-version-file: package\.json/g) ?? []).toHaveLength(7);
     expect(workflow).not.toContain("node-version: 24\n");
+    const corepackSetups =
+      workflow.match(/if ! command -v corepack[^]*?fi\n\s+corepack enable/g) ?? [];
+    expect(corepackSetups).toHaveLength(7);
+    for (const setup of corepackSetups) {
+      expect(setup).toContain("npm install --global corepack@0.34.6");
+    }
   });
 
   it("uploads iOS to TestFlight without gating the desktop release", () => {
@@ -87,6 +93,13 @@ describe("ForgeGraph GMACKO release workflow", () => {
 
     expect(preflightJob).toContain("node scripts/gmacko-bundle-check.mjs");
     expect(preflightJob).toContain("rm -rf /var/lib/apt/lists/*");
+    const linuxPackaging = workflow.slice(
+      workflow.indexOf("      - name: Install Linux packaging dependencies"),
+      workflow.indexOf("      - name: Install Linux packaging dependencies") + 1300,
+    );
+    for (const dependency of ["libgtk-3-0t64", "libnspr4", "libnss3", "libasound2t64", "libgbm1"]) {
+      expect(linuxPackaging).toContain(dependency);
+    }
   });
 
   it("keeps GitHub promotion lease-protected", () => {

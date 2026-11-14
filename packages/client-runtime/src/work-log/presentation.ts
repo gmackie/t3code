@@ -552,6 +552,7 @@ function summaryActionPriority(action: ToolGroupAction | T3McpToolSummaryAction)
     case "reverse-run":
     case "systems-run":
     case "environment-update":
+    case "theme-set":
     case "attachment-prepare":
     case "attachment-discard":
     case "attachment-send":
