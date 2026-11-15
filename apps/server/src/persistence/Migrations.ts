@@ -124,6 +124,7 @@ import Migration0095 from "./Migrations/095_ProviderTurnAttemptIndex.ts";
 import Migration0096 from "./Migrations/096_TurnItemMessageOrdinalIndex.ts";
 import Migration0097 from "./Migrations/097_TurnItemInlineWorkOutput.ts";
 import Migration0098 from "./Migrations/098_RepairStaleTitleRegeneration.ts";
+import BobExecutionPublications from "./Migrations/099_BobExecutionPublications.ts";
 
 const migrationEntries = [
   [1, "OrchestrationEvents", Migration0001],
@@ -229,6 +230,7 @@ const migrationEntries = [
   [96, "TurnItemMessageOrdinalIndex", Migration0096],
   [97, "TurnItemInlineWorkOutput", Migration0097],
   [98, "RepairStaleTitleRegeneration", Migration0098],
+  [99, "BobExecutionPublications", BobExecutionPublications],
 ] as const;
 
 export const migrationManifest = migrationEntries.map(([id, name]) => [id, name] as const);

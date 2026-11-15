@@ -1031,6 +1031,10 @@
                         "minimum": 1,
                         "maximum": 32,
                         "x-forge-type": "integer"
+                      },
+                      "autoMerge": {
+                        "type": ["boolean", "null"],
+                        "description": "Merge on green CI at the exact head without a confirm (BOB-82). Absent: the\ncoordinator's policy default."
                       }
                     },
                     "required": ["items", "dependencies", "concurrencyLimit"],
@@ -1789,6 +1793,214 @@
                           ],
                           "additionalProperties": false
                         },
+                        "pendingInput": {
+                          "type": ["object", "null"],
+                          "properties": {
+                            "attemptId": {
+                              "type": "string",
+                              "x-forge-type": "text",
+                              "minLength": 1,
+                              "maxLength": 128
+                            },
+                            "promptId": {
+                              "type": "string",
+                              "x-forge-type": "text",
+                              "minLength": 1,
+                              "maxLength": 128
+                            },
+                            "kind": {
+                              "type": "string",
+                              "enum": ["user_input"],
+                              "x-forge-enum": "@bob/coordination/_/PendingInputKind"
+                            },
+                            "questions": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "id": {
+                                    "type": "string",
+                                    "x-forge-type": "text",
+                                    "minLength": 1,
+                                    "maxLength": 128
+                                  },
+                                  "header": {
+                                    "type": ["string", "null"],
+                                    "x-forge-type": "text",
+                                    "minLength": 1,
+                                    "maxLength": 240
+                                  },
+                                  "question": {
+                                    "type": "string",
+                                    "x-forge-type": "text",
+                                    "minLength": 1,
+                                    "maxLength": 8000
+                                  },
+                                  "options": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "object",
+                                      "properties": {
+                                        "label": {
+                                          "type": "string",
+                                          "x-forge-type": "text",
+                                          "minLength": 1,
+                                          "maxLength": 2000
+                                        },
+                                        "value": {
+                                          "type": ["string", "null"],
+                                          "x-forge-type": "text",
+                                          "minLength": 1,
+                                          "maxLength": 2000
+                                        },
+                                        "description": {
+                                          "type": ["string", "null"],
+                                          "x-forge-type": "text",
+                                          "minLength": 1,
+                                          "maxLength": 4000
+                                        }
+                                      },
+                                      "required": ["label"],
+                                      "additionalProperties": false
+                                    },
+                                    "uniqueItems": false,
+                                    "x-forge-collection": "list",
+                                    "maxItems": 50
+                                  },
+                                  "multiSelect": {
+                                    "type": "boolean"
+                                  }
+                                },
+                                "required": ["id", "question", "options", "multiSelect"],
+                                "additionalProperties": false
+                              },
+                              "uniqueItems": false,
+                              "x-forge-collection": "list",
+                              "minItems": 1,
+                              "maxItems": 20
+                            },
+                            "createdAt": {
+                              "type": "string",
+                              "format": "date-time",
+                              "x-forge-type": "datetime",
+                              "x-forge-precision": "ms"
+                            }
+                          },
+                          "required": ["attemptId", "promptId", "kind", "questions", "createdAt"],
+                          "additionalProperties": false
+                        },
+                        "release": {
+                          "type": ["object", "null"],
+                          "properties": {
+                            "attemptId": {
+                              "type": "string",
+                              "x-forge-type": "text",
+                              "minLength": 1,
+                              "maxLength": 128
+                            },
+                            "stage": {
+                              "type": "string",
+                              "enum": [
+                                "awaiting-publish",
+                                "checks-running",
+                                "checks-failed",
+                                "review-ready",
+                                "merged",
+                                "deploying",
+                                "production-verified",
+                                "blocked"
+                              ],
+                              "x-forge-enum": "@bob/coordination/_/ReleaseStage"
+                            },
+                            "autoMerge": {
+                              "type": "boolean"
+                            },
+                            "branch": {
+                              "type": ["string", "null"],
+                              "x-forge-type": "text",
+                              "minLength": 1,
+                              "maxLength": 240
+                            },
+                            "headSha": {
+                              "type": ["string", "null"],
+                              "x-forge-type": "text",
+                              "pattern": "^[a-f0-9]{40}$"
+                            },
+                            "pullRequest": {
+                              "type": ["object", "null"],
+                              "properties": {
+                                "repository": {
+                                  "type": "object",
+                                  "properties": {
+                                    "integrationId": {
+                                      "type": "string",
+                                      "x-forge-type": "text",
+                                      "minLength": 1,
+                                      "maxLength": 128
+                                    },
+                                    "repositoryId": {
+                                      "type": "string",
+                                      "x-forge-type": "text",
+                                      "minLength": 1,
+                                      "maxLength": 128
+                                    }
+                                  },
+                                  "required": ["integrationId", "repositoryId"],
+                                  "additionalProperties": false
+                                },
+                                "number": {
+                                  "type": "integer",
+                                  "minimum": 1,
+                                  "maximum": 9007199254740991,
+                                  "x-forge-type": "integer"
+                                },
+                                "url": {
+                                  "type": ["string", "null"],
+                                  "format": "uri",
+                                  "x-forge-type": "url"
+                                }
+                              },
+                              "required": ["repository", "number"],
+                              "additionalProperties": false
+                            },
+                            "approvedSha": {
+                              "type": ["string", "null"],
+                              "x-forge-type": "text",
+                              "pattern": "^[a-f0-9]{40}$"
+                            },
+                            "mergeSha": {
+                              "type": ["string", "null"],
+                              "x-forge-type": "text",
+                              "pattern": "^[a-f0-9]{40}$"
+                            },
+                            "appSlug": {
+                              "type": ["string", "null"],
+                              "x-forge-type": "text",
+                              "minLength": 1,
+                              "maxLength": 128
+                            },
+                            "deploymentId": {
+                              "type": ["string", "null"],
+                              "x-forge-type": "text",
+                              "minLength": 1,
+                              "maxLength": 128
+                            },
+                            "note": {
+                              "type": ["string", "null"],
+                              "x-forge-type": "text",
+                              "minLength": 1,
+                              "maxLength": 500
+                            },
+                            "updatedAt": {
+                              "type": "string",
+                              "format": "date-time",
+                              "x-forge-type": "datetime",
+                              "x-forge-precision": "ms"
+                            }
+                          },
+                          "required": ["attemptId", "stage", "autoMerge", "updatedAt"],
+                          "additionalProperties": false
+                        },
                         "achievedMilestones": {
                           "type": "array",
                           "items": {
@@ -2354,6 +2566,10 @@
                           "minimum": 1,
                           "maximum": 32,
                           "x-forge-type": "integer"
+                        },
+                        "autoMerge": {
+                          "type": ["boolean", "null"],
+                          "description": "Merge on green CI at the exact head without a confirm (BOB-82). Absent: the\ncoordinator's policy default."
                         }
                       },
                       "required": ["items", "dependencies", "concurrencyLimit"],
@@ -3252,6 +3468,69 @@
                     "uniqueItems": false,
                     "x-forge-collection": "list",
                     "maxItems": 100
+                  },
+                  "publishedHead": {
+                    "type": ["object", "null"],
+                    "properties": {
+                      "branch": {
+                        "type": "string",
+                        "x-forge-type": "text",
+                        "minLength": 1,
+                        "maxLength": 240
+                      },
+                      "commitSha": {
+                        "type": "string",
+                        "x-forge-type": "text",
+                        "pattern": "^[a-f0-9]{40}$"
+                      },
+                      "pullRequest": {
+                        "type": ["object", "null"],
+                        "properties": {
+                          "repository": {
+                            "type": "object",
+                            "properties": {
+                              "integrationId": {
+                                "type": "string",
+                                "x-forge-type": "text",
+                                "minLength": 1,
+                                "maxLength": 128
+                              },
+                              "repositoryId": {
+                                "type": "string",
+                                "x-forge-type": "text",
+                                "minLength": 1,
+                                "maxLength": 128
+                              }
+                            },
+                            "required": ["integrationId", "repositoryId"],
+                            "additionalProperties": false
+                          },
+                          "number": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 9007199254740991,
+                            "x-forge-type": "integer"
+                          },
+                          "url": {
+                            "type": ["string", "null"],
+                            "format": "uri",
+                            "x-forge-type": "url"
+                          }
+                        },
+                        "required": ["repository", "number"],
+                        "additionalProperties": false
+                      }
+                    },
+                    "required": ["branch", "commitSha"],
+                    "additionalProperties": false,
+                    "description": "Present when the environment published the work (BOB-82)."
+                  },
+                  "publishSkippedReason": {
+                    "type": ["string", "null"],
+                    "x-forge-type": "text",
+                    "minLength": 1,
+                    "maxLength": 500,
+                    "description": "Why nothing was published, e.g. no changes or a push failure."
                   }
                 },
                 "additionalProperties": false,
@@ -6237,6 +6516,10 @@
                         "minimum": 1,
                         "maximum": 32,
                         "x-forge-type": "integer"
+                      },
+                      "autoMerge": {
+                        "type": ["boolean", "null"],
+                        "description": "Merge on green CI at the exact head without a confirm (BOB-82). Absent: the\ncoordinator's policy default."
                       }
                     },
                     "required": ["items", "dependencies", "concurrencyLimit"],
