@@ -30,6 +30,7 @@ import {
 } from "@t3tools/shared/relayJwt";
 import { stableStringify } from "@t3tools/shared/relaySigning";
 import * as Context from "effect/Context";
+import * as Digest from "effect/crypto/Digest";
 import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as Signature from "effect/crypto/Signature";
 import * as DateTime from "effect/DateTime";
@@ -380,6 +381,7 @@ const make = Effect.gen(function* () {
   const settings = yield* RelayConfiguration.RelayConfiguration;
   const httpClient = yield* HttpClient.HttpClient;
   const random = yield* SecureRandom.SecureRandom;
+  const crypto = yield* Digest.Digest;
   const signature = yield* Signature.Signature;
   const mint = yield* CloudMintSigner.CloudMintSigner;
   const relayIssuer = normalizeRelayIssuer(settings.relayIssuer);
@@ -402,9 +404,9 @@ const make = Effect.gen(function* () {
             reason: "managed_endpoint_base_domain_not_configured",
           });
         }
-        const hostname = yield* Effect.try(
-          () => new URL(input.link.endpoint.httpBaseUrl).hostname,
-        ).pipe(Effect.orElseSucceed(() => ""));
+        const hostname = URL.canParse(input.link.endpoint.httpBaseUrl)
+          ? new URL(input.link.endpoint.httpBaseUrl).hostname
+          : "";
         if (!isManagedEndpointHostname(hostname, settings.managedEndpointBaseDomain)) {
           return yield* new EnvironmentConnectNotAuthorized({
             environmentId: input.link.environmentId,
@@ -414,7 +416,7 @@ const make = Effect.gen(function* () {
         }
         const environmentHash = yield* crypto
           .digest(
-            "SHA-256",
+            Digest.sha256,
             new TextEncoder().encode(
               managedEndpointDigestInput(
                 settings.managedEndpointNamespace,

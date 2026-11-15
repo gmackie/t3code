@@ -111,9 +111,14 @@ describe("ExecutionPublish", () => {
 
   it.effect("publishes nothing when the branch has no changes", () =>
     Effect.gen(function* () {
-      const { fs, cwd, forge, publish, remoteHead } = yield* fixture;
+      const { fs, cwd, git, forge, publish, remoteHead } = yield* fixture;
       // A secret alone is never committed, so it is not a change to publish.
       yield* fs.writeFileString(`${cwd}/.env`, "TOKEN=secret\n");
+      assert.deepStrictEqual(yield* publish, { publishSkippedReason: "no changes" });
+      assert.equal(yield* remoteHead, "");
+      assert.equal(forge.created.length, 0);
+
+      yield* git(["commit", "--allow-empty", "-q", "-m", "empty result"]);
       assert.deepStrictEqual(yield* publish, { publishSkippedReason: "no changes" });
       assert.equal(yield* remoteHead, "");
       assert.equal(forge.created.length, 0);
@@ -130,14 +135,14 @@ describe("ExecutionPublish", () => {
     }).pipe(Effect.scoped, Effect.provide(live)),
   );
 
-  it.effect("reports the pushed head without a pull request when creation fails", () =>
+  it.effect("reports a creation failure without a published head even after pushing", () =>
     Effect.gen(function* () {
       const { fs, cwd, git, forge, publish, remoteHead } = yield* fixture;
       forge.createFails = true;
       yield* fs.writeFileString(`${cwd}/work.txt`, "work\n");
       const result = yield* publish;
       const head = yield* git(["rev-parse", "HEAD"]);
-      assert.deepStrictEqual(result, { publishedHead: { branch: BRANCH, commitSha: head } });
+      assert.deepStrictEqual(result, { publishSkippedReason: "pull request creation failed" });
       assert.equal(yield* remoteHead, head);
     }).pipe(Effect.scoped, Effect.provide(live)),
   );

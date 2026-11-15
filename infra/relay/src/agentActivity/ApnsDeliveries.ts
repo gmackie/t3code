@@ -21,9 +21,11 @@ import * as Redacted from "effect/Redacted";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 
-import { sanitizeAgentActivityAggregateState } from "@t3tools/shared/agentActivityPayloads";
 import {
   isExpiredAgentActivityState,
+  sanitizeAgentActivityAggregateState,
+} from "@t3tools/shared/agentActivityPayloads";
+import {
   notificationForActivity,
   sanitizeApnsNotificationPayload,
 } from "./agentActivityPayloads.ts";

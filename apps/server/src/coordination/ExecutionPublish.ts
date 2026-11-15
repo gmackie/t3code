@@ -78,7 +78,7 @@ const SECRET_PATHSPECS = [
   ":(exclude,glob)**/*.pem",
   ":(exclude,glob)**/*.key",
 ];
-export const isSecretPath = (path: string): boolean => {
+const isSecretPath = (path: string): boolean => {
   const name = path.split("/").at(-1) ?? path;
   return name.startsWith(".env") || name.endsWith(".pem") || name.endsWith(".key");
 };
@@ -100,9 +100,7 @@ const statusPaths = (output: string): ReadonlyArray<string> => {
 const issueIdentifier = (branch: string): string | null =>
   /(?:^|\/)([A-Z][A-Z0-9]*-\d+)(?=$|[-_/.])/.exec(branch)?.[1] ?? null;
 
-export const publishExecution = Effect.fn("ExecutionPublish.publish")(function* (
-  input: PublishInput,
-) {
+const publishExecution = Effect.fn("ExecutionPublish.publish")(function* (input: PublishInput) {
   const port = yield* ExecutionPublishPort;
   const git = (args: ReadonlyArray<string>, reason: string) => port.git(input.cwd, args, reason);
   const issue = issueIdentifier(input.branch);
@@ -163,11 +161,9 @@ export const publishExecution = Effect.fn("ExecutionPublish.publish")(function* 
   );
   if (ahead === "0") return { publishSkippedReason: "no changes" } satisfies PublishResult;
   const touched = splitNul(
-    yield* git(
-      ["diff", "--name-only", "-z", "--diff-filter=ACMR", base, head],
-      "could not compare with base",
-    ),
+    yield* git(["diff", "--name-only", "-z", base, head], "could not compare with base"),
   );
+  if (touched.length === 0) return { publishSkippedReason: "no changes" } satisfies PublishResult;
   if (touched.some(isSecretPath))
     return yield* new ExecutionPublishError({
       reason: "branch contains secret-looking files; not published",
@@ -189,7 +185,7 @@ export const publishExecution = Effect.fn("ExecutionPublish.publish")(function* 
       "push failed",
     );
 
-  // 4. Open or reuse the pull request. A failure here still reports the pushed head.
+  // Receipt consumers need a reviewable PR before trusting publishedHead.
   const pullRequest = yield* Effect.gen(function* () {
     const existing = yield* port.findOpenPullRequest({ cwd: input.cwd, branch: input.branch });
     if (existing) return existing;
@@ -211,27 +207,19 @@ export const publishExecution = Effect.fn("ExecutionPublish.publish")(function* 
       title: input.title,
       body,
     });
-    return yield* port.findOpenPullRequest({ cwd: input.cwd, branch: input.branch });
-  }).pipe(
-    Effect.catch((error) =>
-      Effect.logWarning("Bob publish pushed the branch but has no pull request.", {
-        reason: error.reason,
-      }).pipe(Effect.as(null)),
-    ),
-  );
+    const created = yield* port.findOpenPullRequest({ cwd: input.cwd, branch: input.branch });
+    if (!created) return yield* new ExecutionPublishError({ reason: "pull request lookup failed" });
+    return created;
+  });
   return {
     publishedHead: {
       branch: input.branch,
       commitSha: head,
-      ...(pullRequest
-        ? {
-            pullRequest: {
-              repository: input.repository,
-              number: pullRequest.number,
-              ...(pullRequest.url ? { url: pullRequest.url } : {}),
-            },
-          }
-        : {}),
+      pullRequest: {
+        repository: input.repository,
+        number: pullRequest.number,
+        ...(pullRequest.url ? { url: pullRequest.url } : {}),
+      },
     },
   } satisfies PublishResult;
 });
