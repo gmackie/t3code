@@ -228,6 +228,16 @@ export function PendingUserInputCard(props: PendingUserInputCardProps) {
     paddingTop: cardCoverage.value * cardProgress.value,
   }));
 
+  const stopButton = props.onStopThread ? (
+    <ControlPill
+      accessibilityLabel="Stop"
+      icon="stop.fill"
+      variant="danger"
+      className="h-9 w-9"
+      disabled={!props.canOperateThread}
+      onPress={props.onStopThread}
+    />
+  ) : null;
   // The opaque bar renders under the card, whose top edge reveals it while collapsing.
   const bar = (
     <View
@@ -261,16 +271,7 @@ export function PendingUserInputCard(props: PendingUserInputCardProps) {
           type="monochrome"
         />
       </Pressable>
-      {props.onStopThread ? (
-        <ControlPill
-          accessibilityLabel="Stop"
-          icon="stop.fill"
-          variant="danger"
-          className="h-9 w-9"
-          disabled={!props.canOperateThread}
-          onPress={props.onStopThread}
-        />
-      ) : null}
+      {stopButton}
     </View>
   );
   const card = (
@@ -314,6 +315,7 @@ export function PendingUserInputCard(props: PendingUserInputCardProps) {
             />
           </View>
         </Pressable>
+        {stopButton}
         {!expanded ? (
           <ControlPill
             accessibilityLabel="Collapse user input"

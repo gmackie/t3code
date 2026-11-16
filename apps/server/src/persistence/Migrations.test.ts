@@ -117,6 +117,31 @@ describe("migration ledger reconciliation", () => {
     ),
   );
 
+  it.effect("re-keys an upstream ledger without repeating applied migrations", () =>
+    withFreshDatabase(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* runMigrations();
+        const before = yield* readLedger;
+        yield* sql`UPDATE effect_sql_migrations SET migration_id = migration_id + 1000 WHERE migration_id IN (80, 81)`;
+        yield* sql`UPDATE effect_sql_migrations SET migration_id = -migration_id WHERE migration_id BETWEEN 82 AND 98`;
+        yield* sql`UPDATE effect_sql_migrations SET migration_id = -migration_id - 2 WHERE migration_id < 0`;
+
+        yield* runMigrations();
+
+        yield* assertLedgerMatchesManifest();
+        const after = yield* readLedger;
+        for (const row of before.filter((row) => row.migration_id >= 82)) {
+          assert.deepStrictEqual(
+            after.find((entry) => entry.name === row.name),
+            row,
+          );
+        }
+        assert.deepStrictEqual(yield* runMigrations(), []);
+      }),
+    ),
+  );
+
   it.effect("repairs a lane ledger renumbered by an upstream sync", () =>
     withFreshDatabase(
       Effect.gen(function* () {
@@ -652,12 +677,18 @@ describe("runMigrations", () => {
     }).pipe(Effect.provide(NodeSqliteClient.layer({ filename: ":memory:" }))),
   );
 
-  it.effect("upgrades a database at exactly 54", () =>
+  it.effect("upgrades a database at exactly 54, then rechecks it without a write lock", () =>
     Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
       yield* runMigrations({ toMigrationInclusive: 54 });
       assert.deepStrictEqual(yield* runMigrations(), v2Migrations);
       assert.deepStrictEqual(yield* history, migrationManifest);
       assert.isAbove(yield* v2TableCount, 0);
+
+      // query_only rejects BEGIN IMMEDIATE, which CLI startup would otherwise take on the live database.
+      yield* sql`PRAGMA query_only = ON`;
+      assert.deepStrictEqual(yield* runMigrations(), []);
+      assert.deepStrictEqual(yield* history, migrationManifest);
     }).pipe(Effect.provide(NodeSqliteClient.layer({ filename: ":memory:" }))),
   );
 
