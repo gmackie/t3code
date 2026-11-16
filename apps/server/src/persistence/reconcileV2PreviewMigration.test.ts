@@ -78,6 +78,7 @@ describe("V2 preview upgrade", () => {
         [96, "TurnItemMessageOrdinalIndex"],
         [97, "TurnItemInlineWorkOutput"],
         [98, "RepairStaleTitleRegeneration"],
+        [99, "BobExecutionPublications"],
       ]);
       assert.deepStrictEqual(yield* runMigrations(), []);
       assert.deepStrictEqual(yield* sql`SELECT * FROM orchestration_v2_legacy_imports`, imports);
@@ -199,6 +200,7 @@ describe("V2 preview upgrade", () => {
         [96, "TurnItemMessageOrdinalIndex"],
         [97, "TurnItemInlineWorkOutput"],
         [98, "RepairStaleTitleRegeneration"],
+        [99, "BobExecutionPublications"],
       ]);
     }).pipe(Effect.provide(NodeSqliteClient.layer({ filename: ":memory:" }))),
   );

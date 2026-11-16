@@ -254,6 +254,7 @@ import { acceptsPrivateNetworkConnection, loopbackUrlHostForAddress } from "./st
 import * as OrchestrationHttp from "./orchestration-v2/http.ts";
 import * as ProjectHttp from "./project/http.ts";
 import * as BobCoordination from "./coordination/BobCoordination.ts";
+import * as ExecutionPublish from "./coordination/ExecutionPublish.ts";
 import * as ExecutionReceipts from "./coordination/ExecutionReceipts.ts";
 import * as ExecutionAdmission from "./coordination/ExecutionAdmission.ts";
 import * as ExecutionHttp from "./coordination/http.ts";
@@ -849,7 +850,10 @@ const layerCoordinationDependencies = Layer.mergeAll(
   BobCoordination.layer,
   EngineGateway.layer,
   ExecutionAdmission.layer,
-  ExecutionReceipts.layer.pipe(Layer.provide(ProcessRunner.layer)),
+  ExecutionReceipts.layer.pipe(
+    Layer.provide(ExecutionPublish.layer),
+    Layer.provide(ProcessRunner.layer),
+  ),
 ).pipe(
   Layer.provideMerge(BobCoordination.configurationLayer),
   Layer.provideMerge(layerRuntimeCoreDependencies),

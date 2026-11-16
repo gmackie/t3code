@@ -1,4 +1,8 @@
-import { bobOperationSchemas, BobExecutionAdmission } from "@t3tools/contracts/bobContract";
+import {
+  bobOperationSchemas,
+  BobExecutionAdmission,
+  BobExecutionRequest,
+} from "@t3tools/contracts/bobContract";
 // @effect-diagnostics-next-line nodeBuiltinImport:off -- receipt ids are synchronous sha256 digests of request ids.
 import * as NodeCrypto from "node:crypto";
 import { ThreadId } from "@t3tools/contracts";
@@ -18,6 +22,7 @@ import * as Stream from "effect/Stream";
 import * as SqlClient from "effect/sql/SqlClient";
 import { HttpClient, HttpClientRequest } from "effect/http";
 import * as Bob from "./BobCoordination.ts";
+import * as ExecutionPublish from "./ExecutionPublish.ts";
 import * as ThreadManagement from "../orchestration-v2/ThreadManagementService.ts";
 import * as ProcessRunner from "../processRunner.ts";
 import * as ServerConfig from "../config.ts";
@@ -28,10 +33,15 @@ const decodeAdmissionJson = Schema.decodeEffect(Schema.fromJsonString(BobExecuti
 const encodeReceiptPayloadJson = Schema.encodeUnknownEffect(ReceiptPayloadJson);
 const decodeReceiptPayloadJson = Schema.decodeEffect(ReceiptPayloadJson);
 const decodeReceiptAck = Schema.decodeEffect(receiptSchema.output);
+const decodeRequestJson = Schema.decodeEffect(Schema.fromJsonString(BobExecutionRequest));
+const PublishResultJson = Schema.fromJsonString(ExecutionPublish.PublishResult);
+const decodePublishResultJson = Schema.decodeEffect(PublishResultJson);
+const encodePublishResultJson = Schema.encodeEffect(PublishResultJson);
 
 interface Row {
   readonly request_id: string;
   readonly admission_json: string;
+  readonly request_json: string;
   readonly run_id: string;
 }
 interface Outbox {
@@ -50,6 +60,7 @@ export const make = Effect.fn("ExecutionReceipts.make")(function* (startWorkers 
   const server = yield* ServerConfig.ServerConfig;
   const config = yield* Bob.BobConfiguration;
   const http = yield* HttpClient.HttpClient;
+  const publishPort = yield* ExecutionPublish.ExecutionPublishPort;
   const mutex = yield* Semaphore.make(1);
   const unavailable = () =>
     new BobCoordinationError({
@@ -73,6 +84,33 @@ export const make = Effect.fn("ExecutionReceipts.make")(function* (startWorkers 
             : Effect.fail(unavailable()),
         ),
       );
+  // Published once per request: receipt rebuilds reuse the stored result, so a
+  // retry never pushes again or opens a second pull request.
+  const publication = Effect.fn("ExecutionReceipts.publication")(function* (row: Row, cwd: string) {
+    const stored = yield* sql<{
+      readonly result_json: string;
+    }>`SELECT result_json FROM bob_execution_publications WHERE request_id=${row.request_id}`;
+    if (stored[0]) return yield* decodePublishResultJson(stored[0].result_json);
+    const result = yield* decodeRequestJson(row.request_json).pipe(
+      Effect.flatMap((request) =>
+        ExecutionPublish.publish({
+          cwd,
+          branch: request.workspace.branch,
+          baseRevision: request.workspace.baseRevision,
+          title: request.work.title,
+          acceptanceCriteria: request.work.acceptanceCriteria,
+          itemId: request.itemId,
+          repository: request.target.repository,
+        }),
+      ),
+      Effect.orElseSucceed((): ExecutionPublish.PublishResult => ({
+        publishSkippedReason: "execution request unavailable",
+      })),
+      Effect.provideService(ExecutionPublish.ExecutionPublishPort, publishPort),
+    );
+    yield* sql`INSERT OR IGNORE INTO bob_execution_publications (request_id,result_json) VALUES (${row.request_id},${yield* encodePublishResultJson(result)})`;
+    return result;
+  });
   const capture = Effect.fn("ExecutionReceipts.capture")(function* (row: Row) {
     const admission = yield* decodeAdmissionJson(row.admission_json);
     const projection = yield* threads.getThreadRecords(ThreadId.make(admission.thread.threadId), [
@@ -104,6 +142,10 @@ export const make = Effect.fn("ExecutionReceipts.make")(function* (startWorkers 
       return yield* unavailable();
     const treeDigest = NodeCrypto.createHash("sha256").update(`git-tree:${treeOid}`).digest("hex");
     const evidenceId = NodeCrypto.createHash("sha256").update(row.request_id).digest("hex");
+    const outcome =
+      run.status === "completed" ? "succeeded" : run.status === "failed" ? "failed" : "cancelled";
+    // Publishing never fails the receipt; its outcome stays the run's outcome.
+    const published = outcome === "succeeded" ? yield* publication(row, scope.cwd) : {};
     const receipt: RecordExecutionReceiptInput = {
       contractVersion: "1",
       eventId: `bob-terminal-${NodeCrypto.createHash("sha256").update(row.request_id).digest("hex")}`,
@@ -112,8 +154,7 @@ export const make = Effect.fn("ExecutionReceipts.make")(function* (startWorkers 
       attemptId: admission.attemptId,
       sequence: 1,
       occurredAt: DateTime.formatIso(run.completedAt),
-      outcome:
-        run.status === "completed" ? "succeeded" : run.status === "failed" ? "failed" : "cancelled",
+      outcome,
       thread: admission.thread,
       sourceSnapshot: {
         repository: admission.target.repository,
@@ -122,6 +163,7 @@ export const make = Effect.fn("ExecutionReceipts.make")(function* (startWorkers 
         dirty: false,
       },
       evidenceRefs: [`t3-checkpoint:${evidenceId}`],
+      ...published,
     };
     const payloadJson = yield* encodeReceiptPayloadJson(receipt);
     // The checkpoint is a Git commit, including any captured worktree changes.
@@ -156,7 +198,7 @@ export const make = Effect.fn("ExecutionReceipts.make")(function* (startWorkers 
       const settings = yield* config.read;
       if (!settings.receiptCoordinator) return;
       const rows =
-        yield* sql<Row>`SELECT a.request_id,a.admission_json,a.run_id FROM bob_execution_admissions a LEFT JOIN bob_execution_receipts r ON a.request_id=r.request_id WHERE a.launched=1 AND a.run_id IS NOT NULL AND r.request_id IS NULL AND (${runId} IS NULL OR a.run_id=${runId})`;
+        yield* sql<Row>`SELECT a.request_id,a.admission_json,a.request_json,a.run_id FROM bob_execution_admissions a LEFT JOIN bob_execution_receipts r ON a.request_id=r.request_id WHERE a.launched=1 AND a.run_id IS NOT NULL AND r.request_id IS NULL AND (${runId} IS NULL OR a.run_id=${runId})`;
       yield* Effect.forEach(
         rows,
         (row) =>
