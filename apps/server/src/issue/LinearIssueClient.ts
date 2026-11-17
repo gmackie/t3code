@@ -1,6 +1,6 @@
 import {
   type IssueItem,
-  type IssueListResult,
+  type ProjectIssueListResult,
   IssueProviderError,
   type ProjectIssueStatus,
   type ProjectIssueStatusListResult,
@@ -478,7 +478,7 @@ function mapLinearProjectIssuesResponse(
     readonly query?: string;
     readonly limit?: number;
   },
-): IssueListResult {
+): ProjectIssueListResult {
   const firstError = response.errors?.find((error) => stringOrNull(error.message))?.message;
   if (firstError) {
     throw new IssueProviderError({
