@@ -349,6 +349,7 @@ describe("environment shell synchronization", () => {
         generation: 1,
         lastFailure: null,
         retryAt: null,
+        refusedRouteIds: [],
       });
       yield* Queue.offer(events, { kind: "snapshot", snapshot: batchSnapshot });
       yield* Queue.offer(events, { kind: "synchronized" });
@@ -620,6 +621,7 @@ describe("environment shell synchronization", () => {
         generation: 0,
         lastFailure: null,
         retryAt: null,
+        refusedRouteIds: [],
       });
       yield* Queue.offer(events, {
         kind: "snapshot",
@@ -640,6 +642,7 @@ describe("environment shell synchronization", () => {
         generation: 1,
         lastFailure: null,
         retryAt: null,
+        refusedRouteIds: [],
       });
       yield* SubscriptionRef.set(supervisorState, {
         desired: false,
@@ -650,6 +653,7 @@ describe("environment shell synchronization", () => {
         generation: 2,
         lastFailure: null,
         retryAt: null,
+        refusedRouteIds: [],
       });
       yield* Deferred.await(saveStarted);
 
@@ -662,6 +666,7 @@ describe("environment shell synchronization", () => {
         generation: 3,
         lastFailure: null,
         retryAt: null,
+        refusedRouteIds: [],
       });
       yield* SubscriptionRef.changes(shellState).pipe(
         Stream.filter((state) => state.status === "synchronizing"),
@@ -762,6 +767,7 @@ describe("environment shell synchronization", () => {
         generation: 0,
         lastFailure: null,
         retryAt: null,
+        refusedRouteIds: [],
       });
       yield* Queue.offer(events, {
         kind: "snapshot",
@@ -784,6 +790,7 @@ describe("environment shell synchronization", () => {
         generation: 1,
         lastFailure: null,
         retryAt: null,
+        refusedRouteIds: [],
       });
       yield* Deferred.await(unenrichedSaveStarted);
 
@@ -878,6 +885,7 @@ describe("environment shell synchronization", () => {
         generation: 0,
         lastFailure: null,
         retryAt: null,
+        refusedRouteIds: [],
       });
       yield* Queue.offer(events, {
         kind: "snapshot",
