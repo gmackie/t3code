@@ -120,6 +120,7 @@ it.effect(
                   runs: [
                     {
                       id: "run",
+                      ordinal: 1,
                       status: "completed",
                       completedAt: DateTime.makeUnsafe("2026-10-10T00:00:00Z"),
                     },
@@ -134,6 +135,7 @@ it.effect(
                     },
                   ],
                   checkpointScopes: [{ id: "scope", kind: "root_run", cwd }],
+                  runtimeRequests: [],
                 } as unknown as OrchestrationV2ThreadProjection),
             }),
           ),
@@ -225,5 +227,175 @@ it.effect(
         // Rebuilding the receipt reused the stored publication: no second push or PR.
         assert.deepStrictEqual(forgeCalls, { push: 1, create: 1 });
       }).pipe(Effect.provide(live()), Effect.scoped);
+    }).pipe(Effect.provide(ProcessRunner.layer.pipe(Layer.provideMerge(NodeServices.layer)))),
+);
+
+it.effect(
+  "keeps an execution open while its question can be answered, then settles on the follow-up run",
+  () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const process = yield* ProcessRunner.ProcessRunner;
+      const cwd = yield* fs.makeTempDirectoryScoped();
+      const git = (args: ReadonlyArray<string>) =>
+        process.run({ command: "git", args, cwd }).pipe(
+          Effect.map((result) => {
+            assert.equal(result.code, 0, result.stderr);
+            return result.stdout.trim();
+          }),
+        );
+      yield* git(["init", "-q", "-b", "main"]);
+      yield* git(["config", "user.name", "Test"]);
+      yield* git(["config", "user.email", "test@example.invalid"]);
+      yield* fs.writeFileString(`${cwd}/.gitignore`, "state.sqlite*\nt3-home/\n");
+      yield* git(["add", "."]);
+      yield* git(["commit", "-q", "-m", "asked"]);
+      const asked = yield* git(["rev-parse", "HEAD"]);
+      yield* git(["update-ref", "refs/t3code/checkpoints/asked", asked]);
+      yield* fs.writeFileString(`${cwd}/answer.txt`, "answered\n");
+      yield* git(["add", "."]);
+      yield* git(["commit", "-q", "-m", "answered"]);
+      const answered = yield* git(["rev-parse", "HEAD"]);
+      yield* git(["update-ref", "refs/t3code/checkpoints/answered", answered]);
+
+      const at = DateTime.makeUnsafe("2026-11-17T00:30:59Z");
+      const question = (status: string, responseCapability: unknown) => ({
+        id: "runtime-request:question",
+        kind: "user_input",
+        status,
+        responseCapability,
+        createdAt: at,
+        resolvedAt: null,
+      });
+      const run = (id: string, ordinal: number, status: string) => ({
+        id,
+        ordinal,
+        status,
+        completedAt: status === "running" ? null : at,
+      });
+      const checkpoint = (runId: string, ref: string) => ({
+        id: `checkpoint-${runId}`,
+        scopeId: `scope-${runId}`,
+        runId,
+        status: "ready",
+        ref,
+      });
+      const scope = (runId: string) => ({ id: `scope-${runId}`, kind: "root_run", cwd });
+      // Codex asked asynchronously and ended its run: the question is still pending.
+      const projections: Record<string, unknown> = {
+        asked: {
+          runs: [run("run-1", 1, "completed")],
+          checkpoints: [checkpoint("run-1", "refs/t3code/checkpoints/asked")],
+          checkpointScopes: [scope("run-1")],
+          runtimeRequests: [question("pending", { type: "message" })],
+        },
+        // The provider can no longer take an answer: the run's outcome is final.
+        lost: {
+          runs: [run("run-lost", 1, "completed")],
+          checkpoints: [checkpoint("run-lost", "refs/t3code/checkpoints/asked")],
+          checkpointScopes: [scope("run-lost")],
+          runtimeRequests: [
+            question("pending", { type: "not_resumable", reason: "provider restarted" }),
+          ],
+        },
+      };
+      const live = Layer.effect(Receipts.ExecutionReceipts, Receipts.make(false)).pipe(
+        Layer.provide(
+          Layer.succeed(
+            Publish.ExecutionPublishPort,
+            Publish.ExecutionPublishPort.of({
+              git: () => Effect.die("no publication in this test"),
+              findOpenPullRequest: () => Effect.die("no publication in this test"),
+              defaultBranch: () => Effect.die("no publication in this test"),
+              createPullRequest: () => Effect.die("no publication in this test"),
+            }),
+          ),
+        ),
+        Layer.provideMerge(SqlitePersistence.layerFromPath(`${cwd}/state.sqlite`)),
+        Layer.provideMerge(ServerConfig.ServerConfig.layerTest(cwd, `${cwd}/t3-home`)),
+        Layer.provide(
+          Layer.succeed(Bob.BobConfiguration, {
+            read: Effect.succeed({
+              projects: {},
+              executionProfiles: {},
+              receiptCoordinator: { baseUrl: "http://bob.invalid", authToken: "receipt-token" },
+            }),
+          }),
+        ),
+        Layer.provide(
+          Layer.mock(Threads.ThreadManagementService)({
+            getThreadRecords: (threadId) =>
+              Effect.sync(() => projections[threadId] as OrchestrationV2ThreadProjection),
+          }),
+        ),
+        Layer.provide(
+          Layer.succeed(
+            HttpClient.HttpClient,
+            HttpClient.make((request) =>
+              Effect.succeed(
+                HttpClientResponse.fromWeb(request, Response.json({}, { status: 503 })),
+              ),
+            ),
+          ),
+        ),
+      );
+      yield* Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        const service = yield* Receipts.ExecutionReceipts;
+        const admit = (requestId: string, threadId: string, runId: string) =>
+          Effect.gen(function* () {
+            const admission = yield* encodeJson({
+              contractVersion: "1",
+              requestId,
+              attemptId: `attempt-${requestId}`,
+              executionId: `execution-${requestId}`,
+              target: {
+                environmentId: "hetzner-bob",
+                projectId: "project",
+                repository: { integrationId: "forgegraph", repositoryId: "repo" },
+              },
+              thread: { environmentId: "hetzner-bob", projectId: "project", threadId },
+            });
+            // An unreadable request skips publication; this test is about terminality.
+            yield* sql`INSERT INTO bob_execution_admissions (request_id,attempt_id,owner,request_json,launch_json,admission_json,run_id,launched) VALUES (${requestId},${`attempt-${requestId}`},'bob','{}','{}',${admission},${runId},1)`;
+          });
+        const receipt = (requestId: string) =>
+          sql<{
+            payload_json: string;
+          }>`SELECT payload_json FROM bob_execution_receipts WHERE request_id=${requestId}`.pipe(
+            Effect.map((rows) =>
+              rows[0] ? (JSON.parse(rows[0].payload_json) as Record<string, any>) : undefined,
+            ),
+          );
+        yield* admit("question", "asked", "run-1");
+        yield* admit("lost", "lost", "run-lost");
+        yield* service.flush;
+        assert.isUndefined(yield* receipt("question"));
+        assert.equal((yield* receipt("lost"))?.outcome, "succeeded");
+        assert.equal((yield* receipt("lost"))?.sourceSnapshot.commitSha, asked);
+
+        // The answer resolves the question and starts a follow-up run in the same thread.
+        projections.asked = {
+          ...(projections.asked as object),
+          runs: [run("run-1", 1, "completed"), run("run-2", 2, "running")],
+          runtimeRequests: [question("resolved", { type: "message" })],
+        };
+        yield* service.flush;
+        assert.isUndefined(yield* receipt("question"));
+
+        projections.asked = {
+          runs: [run("run-1", 1, "completed"), run("run-2", 2, "completed")],
+          checkpoints: [
+            checkpoint("run-1", "refs/t3code/checkpoints/asked"),
+            checkpoint("run-2", "refs/t3code/checkpoints/answered"),
+          ],
+          checkpointScopes: [scope("run-1"), scope("run-2")],
+          runtimeRequests: [question("resolved", { type: "message" })],
+        };
+        yield* service.flush;
+        const settled = yield* receipt("question");
+        assert.equal(settled?.outcome, "succeeded");
+        assert.equal(settled?.sourceSnapshot.commitSha, answered);
+      }).pipe(Effect.provide(live), Effect.scoped);
     }).pipe(Effect.provide(ProcessRunner.layer.pipe(Layer.provideMerge(NodeServices.layer)))),
 );

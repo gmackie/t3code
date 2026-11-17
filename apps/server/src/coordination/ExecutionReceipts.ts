@@ -5,7 +5,7 @@ import {
 } from "@t3tools/contracts/bobContract";
 // @effect-diagnostics-next-line nodeBuiltinImport:off -- receipt ids are synchronous sha256 digests of request ids.
 import * as NodeCrypto from "node:crypto";
-import { ThreadId } from "@t3tools/contracts";
+import { type OrchestrationV2RuntimeRequest, ThreadId } from "@t3tools/contracts";
 import {
   BobCoordinationError,
   type RecordExecutionReceiptInput,
@@ -37,6 +37,16 @@ const decodeRequestJson = Schema.decodeEffect(Schema.fromJsonString(BobExecution
 const PublishResultJson = Schema.fromJsonString(ExecutionPublish.PublishResult);
 const decodePublishResultJson = Schema.decodeEffect(PublishResultJson);
 const encodePublishResultJson = Schema.encodeEffect(PublishResultJson);
+
+/**
+ * A question the agent is still waiting on. Runtime requests are never userOnly
+ * (secret and link cards are turn items), so Bob's coordinator can answer any of
+ * these unless the provider can no longer take the answer.
+ */
+const awaitsAnswer = (request: OrchestrationV2RuntimeRequest) =>
+  request.status === "pending" &&
+  request.kind === "user_input" &&
+  request.responseCapability.type !== "not_resumable";
 
 interface Row {
   readonly request_id: string;
@@ -117,10 +127,19 @@ export const make = Effect.fn("ExecutionReceipts.make")(function* (startWorkers 
       "runs",
       "checkpoints",
       "checkpointScopes",
+      "runtimeRequests",
     ]);
-    const run = projection.runs.find((run) => run.id === row.run_id);
-    if (!run || !run.completedAt || !["completed", "failed", "cancelled"].includes(run.status))
-      return;
+    // An agent can ask a question and end its run (Codex asks asynchronously). The
+    // execution is still open while that question can be answered: the answer starts
+    // a follow-up run in this thread, which then carries the outcome.
+    if (projection.runtimeRequests.some(awaitsAnswer)) return;
+    const admitted = projection.runs.find((run) => run.id === row.run_id);
+    if (!admitted) return;
+    const run = projection.runs.reduce(
+      (latest, run) => (run.ordinal > latest.ordinal ? run : latest),
+      admitted,
+    );
+    if (!run.completedAt || !["completed", "failed", "cancelled"].includes(run.status)) return;
     const checkpoint = projection.checkpoints.find(
       (checkpoint) =>
         checkpoint.runId === run.id &&
@@ -194,11 +213,12 @@ export const make = Effect.fn("ExecutionReceipts.make")(function* (startWorkers 
     yield* sql`INSERT OR IGNORE INTO bob_execution_receipts (request_id,payload_json) VALUES (${row.request_id},${payloadJson})`;
   });
   const reconcile = Effect.fn("ExecutionReceipts.reconcile")(
-    function* (runId: string | null = null) {
+    function* (threadId: string | null = null) {
       const settings = yield* config.read;
       if (!settings.receiptCoordinator) return;
+      // Match by thread: a follow-up run or an answered question also settles the execution.
       const rows =
-        yield* sql<Row>`SELECT a.request_id,a.admission_json,a.request_json,a.run_id FROM bob_execution_admissions a LEFT JOIN bob_execution_receipts r ON a.request_id=r.request_id WHERE a.launched=1 AND a.run_id IS NOT NULL AND r.request_id IS NULL AND (${runId} IS NULL OR a.run_id=${runId})`;
+        yield* sql<Row>`SELECT a.request_id,a.admission_json,a.request_json,a.run_id FROM bob_execution_admissions a LEFT JOIN bob_execution_receipts r ON a.request_id=r.request_id WHERE a.launched=1 AND a.run_id IS NOT NULL AND r.request_id IS NULL AND (${threadId} IS NULL OR json_extract(a.admission_json,'$.thread.threadId')=${threadId})`;
       yield* Effect.forEach(
         rows,
         (row) =>
@@ -250,22 +270,23 @@ export const make = Effect.fn("ExecutionReceipts.make")(function* (startWorkers 
         { discard: true },
       );
     },
-    (effect, _runId?: string | null) => effect.pipe(Effect.mapError(unavailable)),
+    (effect, _threadId?: string | null) => effect.pipe(Effect.mapError(unavailable)),
   );
-  const safeFlush = (runId: string | null = null) =>
+  const safeFlush = (threadId: string | null = null) =>
     mutex
-      .withPermits(1)(reconcile(runId))
+      .withPermits(1)(reconcile(threadId))
       .pipe(Effect.catch(() => Effect.logWarning("Bob receipt reconciliation is pending.")));
   // Subscribe before the initial sweep so terminal/checkpoint events cannot be lost.
   if (startWorkers) {
     yield* Effect.forkScoped(
       threads.streamDomainEvents.pipe(
         Stream.filter(
-          (event) => event.type === "run.updated" || event.type === "checkpoint.captured",
+          (event) =>
+            event.type === "run.updated" ||
+            event.type === "checkpoint.captured" ||
+            event.type === "runtime-request.updated",
         ),
-        Stream.runForEach((event) =>
-          safeFlush(event.type === "run.updated" ? event.payload.id : event.payload.runId),
-        ),
+        Stream.runForEach((event) => safeFlush(event.threadId)),
         Effect.catch(() =>
           Effect.logWarning(
             "Bob receipt event subscription stopped; outbox retries remain active.",
