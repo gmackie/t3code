@@ -2,7 +2,7 @@
 import * as NodeCrypto from "node:crypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
-import { type OrchestrationV2ThreadProjection } from "@t3tools/contracts";
+import { type OrchestrationV2ThreadProjection, type Project } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
@@ -12,6 +12,7 @@ import * as SqlClient from "effect/sql/SqlClient";
 import { HttpClient, HttpClientResponse } from "effect/http";
 import * as ServerConfig from "../config.ts";
 import * as ProcessRunner from "../processRunner.ts";
+import * as ProjectService from "../project/ProjectService.ts";
 import * as SqlitePersistence from "../persistence/Sqlite.ts";
 import * as Threads from "../orchestration-v2/ThreadManagementService.ts";
 import * as Bob from "./BobCoordination.ts";
@@ -19,6 +20,10 @@ import * as Publish from "./ExecutionPublish.ts";
 import * as Receipts from "./ExecutionReceipts.ts";
 
 const encodeJson = Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown));
+const projectAt = (workspaceRoot: string) =>
+  Layer.mock(ProjectService.ProjectService)({
+    getById: () => Effect.succeedSome({ workspaceRoot } as unknown as Project),
+  });
 
 it.effect(
   "preserves terminal checkpoint evidence and replays the outbox unchanged after delivery failure",
@@ -102,6 +107,7 @@ it.effect(
       const live = () =>
         Layer.effect(Receipts.ExecutionReceipts, Receipts.make(false)).pipe(
           Layer.provide(publishPort),
+          Layer.provide(projectAt(cwd)),
           Layer.provideMerge(SqlitePersistence.layerFromPath(`${cwd}/state.sqlite`)),
           Layer.provideMerge(ServerConfig.ServerConfig.layerTest(cwd, `${cwd}/t3-home`)),
           Layer.provide(
@@ -311,6 +317,7 @@ it.effect(
             }),
           ),
         ),
+        Layer.provide(projectAt(cwd)),
         Layer.provideMerge(SqlitePersistence.layerFromPath(`${cwd}/state.sqlite`)),
         Layer.provideMerge(ServerConfig.ServerConfig.layerTest(cwd, `${cwd}/t3-home`)),
         Layer.provide(
@@ -398,4 +405,150 @@ it.effect(
         assert.equal(settled?.sourceSnapshot.commitSha, answered);
       }).pipe(Effect.provide(live), Effect.scoped);
     }).pipe(Effect.provide(ProcessRunner.layer.pipe(Layer.provideMerge(NodeServices.layer)))),
+);
+
+it.effect.each([
+  { status: "failed", expected: "failed", label: "reports failed" },
+  { status: "cancelled", expected: "cancelled", label: "reports cancelled" },
+  { status: "completed", expected: null, label: "sends nothing" },
+] as const)("run $status before any checkpoint $label", ({ status, expected }) =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem;
+    const process = yield* ProcessRunner.ProcessRunner;
+    const cwd = yield* fs.makeTempDirectoryScoped();
+    const git = (args: ReadonlyArray<string>) =>
+      process.run({ command: "git", args, cwd }).pipe(
+        Effect.map((result) => {
+          assert.equal(result.code, 0, result.stderr);
+          return result.stdout.trim();
+        }),
+      );
+    yield* git(["init", "-q", "-b", "main"]);
+    yield* git(["config", "user.name", "Test"]);
+    yield* git(["config", "user.email", "test@example.invalid"]);
+    yield* fs.writeFileString(`${cwd}/.gitignore`, "state.sqlite*\nt3-home/\n");
+    yield* git(["add", "."]);
+    yield* git(["commit", "-q", "-m", "base"]);
+    const base = yield* git(["rev-parse", "HEAD"]);
+    const tree = yield* git(["rev-parse", "HEAD^{tree}"]);
+    const admission = {
+      contractVersion: "1",
+      requestId: "request",
+      attemptId: "attempt",
+      executionId: "execution",
+      target: {
+        environmentId: "mini",
+        projectId: "project",
+        repository: { integrationId: "forgegraph", repositoryId: "repo" },
+      },
+      thread: { environmentId: "mini", projectId: "project", threadId: "thread" },
+    };
+    const request = {
+      contractVersion: "1",
+      requestId: "request",
+      attemptId: "attempt",
+      itemId: "item",
+      planId: "plan",
+      planVersion: 1,
+      issueSnapshotRef: "issue",
+      target: admission.target,
+      work: { title: "Work", instructions: "Do it.", acceptanceCriteria: ["Done"] },
+      workspace: { baseRevision: base, branch: "BOB-82-work" },
+      executionProfileId: "default",
+    };
+    const publishCalls: Array<ReadonlyArray<string>> = [];
+    const bodies: Array<string> = [];
+    const live = Layer.effect(Receipts.ExecutionReceipts, Receipts.make(false)).pipe(
+      Layer.provide(
+        Layer.mock(Publish.ExecutionPublishPort)({
+          git: (_at, args) =>
+            Effect.sync(() => {
+              publishCalls.push(args);
+              return "";
+            }),
+        }),
+      ),
+      Layer.provide(projectAt(cwd)),
+      Layer.provideMerge(SqlitePersistence.layerFromPath(`${cwd}/state.sqlite`)),
+      Layer.provideMerge(ServerConfig.ServerConfig.layerTest(cwd, `${cwd}/t3-home`)),
+      Layer.provide(
+        Layer.succeed(Bob.BobConfiguration, {
+          read: Effect.succeed({
+            projects: {},
+            executionProfiles: {},
+            receiptCoordinator: { baseUrl: "http://bob.invalid", authToken: "receipt-token" },
+          }),
+        }),
+      ),
+      Layer.provide(
+        Layer.mock(Threads.ThreadManagementService)({
+          getThreadRecords: () =>
+            Effect.succeed({
+              // Workspace preparation failed: no worktree, no checkpoint.
+              runs: [
+                { id: "run", status, completedAt: DateTime.makeUnsafe("2026-10-10T00:00:00Z") },
+              ],
+              checkpoints: [],
+              checkpointScopes: [],
+              runtimeRequests: [],
+            } as unknown as OrchestrationV2ThreadProjection),
+        }),
+      ),
+      Layer.provide(
+        Layer.succeed(
+          HttpClient.HttpClient,
+          HttpClient.make((request) => {
+            bodies.push(
+              request.body._tag === "Uint8Array" ? new TextDecoder().decode(request.body.body) : "",
+            );
+            return Effect.succeed(
+              HttpClientResponse.fromWeb(
+                request,
+                Response.json({
+                  contractVersion: "1",
+                  eventId: `bob-terminal-${NodeCrypto.createHash("sha256").update("request").digest("hex")}`,
+                  acceptedSequence: 1,
+                }),
+              ),
+            );
+          }),
+        ),
+      ),
+    );
+    yield* Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      const service = yield* Receipts.ExecutionReceipts;
+      yield* sql`INSERT INTO bob_execution_admissions (request_id,attempt_id,owner,request_json,launch_json,admission_json,run_id,launched) VALUES ('request','attempt','bob',${yield* encodeJson(request)},'{}',${yield* encodeJson(admission)},'run',1)`;
+      yield* service.flush;
+      yield* service.flush;
+      const rows = yield* sql<{
+        payload_json: string;
+        delivered: number;
+      }>`SELECT * FROM bob_execution_receipts`;
+      assert.deepStrictEqual(publishCalls, []);
+      if (expected === null) {
+        assert.equal(rows.length, 0);
+        assert.equal(bodies.length, 0);
+        return;
+      }
+      assert.equal(rows.length, 1);
+      assert.equal(rows[0]!.delivered, 1);
+      assert.equal(bodies.length, 1);
+      const payload = JSON.parse(rows[0]!.payload_json) as Record<string, any>;
+      assert.equal(payload.outcome, expected);
+      assert.deepStrictEqual(payload.sourceSnapshot, {
+        repository: admission.target.repository,
+        commitSha: base,
+        treeDigest: NodeCrypto.createHash("sha256").update(`git-tree:${tree}`).digest("hex"),
+        dirty: false,
+      });
+      assert.isUndefined(payload.publishedHead);
+      assert.equal(payload.publishSkippedReason, "run ended before a checkpoint existed");
+      assert.deepStrictEqual(payload.evidenceRefs, []);
+      assert.equal(
+        payload.eventId,
+        `bob-terminal-${NodeCrypto.createHash("sha256").update("request").digest("hex")}`,
+      );
+    }).pipe(Effect.provide(live), Effect.scoped);
+  }).pipe(Effect.provide(ProcessRunner.layer.pipe(Layer.provideMerge(NodeServices.layer)))),
 );

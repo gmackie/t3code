@@ -5,7 +5,7 @@ import {
 } from "@t3tools/contracts/bobContract";
 // @effect-diagnostics-next-line nodeBuiltinImport:off -- receipt ids are synchronous sha256 digests of request ids.
 import * as NodeCrypto from "node:crypto";
-import { type OrchestrationV2RuntimeRequest, ThreadId } from "@t3tools/contracts";
+import { type OrchestrationV2RuntimeRequest, ProjectId, ThreadId } from "@t3tools/contracts";
 import {
   BobCoordinationError,
   type RecordExecutionReceiptInput,
@@ -23,6 +23,7 @@ import * as SqlClient from "effect/sql/SqlClient";
 import { HttpClient, HttpClientRequest } from "effect/http";
 import * as Bob from "./BobCoordination.ts";
 import * as ExecutionPublish from "./ExecutionPublish.ts";
+import * as ProjectService from "../project/ProjectService.ts";
 import * as ThreadManagement from "../orchestration-v2/ThreadManagementService.ts";
 import * as ProcessRunner from "../processRunner.ts";
 import * as ServerConfig from "../config.ts";
@@ -65,6 +66,7 @@ export class ExecutionReceipts extends Context.Service<
 export const make = Effect.fn("ExecutionReceipts.make")(function* (startWorkers = true) {
   const sql = yield* SqlClient.SqlClient;
   const threads = yield* ThreadManagement.ThreadManagementService;
+  const projects = yield* ProjectService.ProjectService;
   const process = yield* ProcessRunner.ProcessRunner;
   const fs = yield* FileSystem.FileSystem;
   const server = yield* ServerConfig.ServerConfig;
@@ -148,23 +150,31 @@ export const make = Effect.fn("ExecutionReceipts.make")(function* (startWorkers 
           (scope) => scope.id === checkpoint.scopeId && scope.kind === "root_run",
         ),
     );
-    // Never substitute the current working tree for the immutable terminal checkpoint.
-    if (!checkpoint) return;
-    const scope = projection.checkpointScopes.find((scope) => scope.id === checkpoint.scopeId)!;
-    const commitSha = yield* git(scope.cwd, [
-      "rev-parse",
-      "--verify",
-      `${checkpoint.ref}^{commit}`,
-    ]);
-    const treeOid = yield* git(scope.cwd, ["rev-parse", "--verify", `${commitSha}^{tree}`]);
+    const outcome =
+      run.status === "completed" ? "succeeded" : run.status === "failed" ? "failed" : "cancelled";
+    // Never substitute the current working tree for the immutable terminal checkpoint,
+    // and never claim success without one. A run that failed or was cancelled before
+    // any checkpoint existed (e.g. workspace preparation failed) reports the request's
+    // base revision, resolved in the project's repository where the worktree would start.
+    if (!checkpoint && outcome === "succeeded") return;
+    const scope = checkpoint
+      ? projection.checkpointScopes.find((scope) => scope.id === checkpoint.scopeId)!
+      : undefined;
+    const cwd =
+      scope?.cwd ??
+      (yield* projects
+        .getById(ProjectId.make(admission.target.projectId))
+        .pipe(Effect.flatMap(Effect.fromOption), Effect.mapError(unavailable))).workspaceRoot;
+    const revision =
+      checkpoint?.ref ?? (yield* decodeRequestJson(row.request_json)).workspace.baseRevision;
+    const commitSha = yield* git(cwd, ["rev-parse", "--verify", `${revision}^{commit}`]);
+    const treeOid = yield* git(cwd, ["rev-parse", "--verify", `${commitSha}^{tree}`]);
     if (!/^[a-f0-9]{40}$/.test(commitSha) || !/^[a-f0-9]{40}$/.test(treeOid))
       return yield* unavailable();
     const treeDigest = NodeCrypto.createHash("sha256").update(`git-tree:${treeOid}`).digest("hex");
     const evidenceId = NodeCrypto.createHash("sha256").update(row.request_id).digest("hex");
-    const outcome =
-      run.status === "completed" ? "succeeded" : run.status === "failed" ? "failed" : "cancelled";
     // Publishing never fails the receipt; its outcome stays the run's outcome.
-    const published = outcome === "succeeded" ? yield* publication(row, scope.cwd) : {};
+    const published = outcome === "succeeded" ? yield* publication(row, cwd) : {};
     const receipt: RecordExecutionReceiptInput = {
       contractVersion: "1",
       eventId: `bob-terminal-${NodeCrypto.createHash("sha256").update(row.request_id).digest("hex")}`,
@@ -181,10 +191,17 @@ export const make = Effect.fn("ExecutionReceipts.make")(function* (startWorkers 
         treeDigest,
         dirty: false,
       },
-      evidenceRefs: [`t3-checkpoint:${evidenceId}`],
-      ...published,
+      evidenceRefs: checkpoint ? [`t3-checkpoint:${evidenceId}`] : [],
+      ...(checkpoint
+        ? published
+        : { publishSkippedReason: "run ended before a checkpoint existed" }),
     };
     const payloadJson = yield* encodeReceiptPayloadJson(receipt);
+    // Without a checkpoint there is no run output to preserve.
+    if (!checkpoint) {
+      yield* sql`INSERT OR IGNORE INTO bob_execution_receipts (request_id,payload_json) VALUES (${row.request_id},${payloadJson})`;
+      return;
+    }
     // The checkpoint is a Git commit, including any captured worktree changes.
     // Preserve it locally before recording a receipt; it is not PR-head evidence.
     const directory = `${server.stateDir}/bob-evidence`;
@@ -196,18 +213,18 @@ export const make = Effect.fn("ExecutionReceipts.make")(function* (startWorkers 
       const result = yield* process.run({
         command: "git",
         args: ["bundle", "create", temporaryPath, checkpoint.ref],
-        cwd: scope.cwd,
+        cwd,
         timeout: "30 seconds",
         maxOutputBytes: 4096,
       });
       if (result.code !== 0) return yield* unavailable();
-      const heads = yield* git(scope.cwd, ["bundle", "list-heads", temporaryPath]);
+      const heads = yield* git(cwd, ["bundle", "list-heads", temporaryPath]);
       if (!heads.startsWith(`${commitSha} `)) return yield* unavailable();
       yield* fs.rename(temporaryPath, bundlePath);
     }
     // A crash may leave a bundle before its outbox row. Verify that existing
     // evidence still matches the checkpoint before recording the receipt.
-    const preservedHeads = yield* git(scope.cwd, ["bundle", "list-heads", bundlePath]);
+    const preservedHeads = yield* git(cwd, ["bundle", "list-heads", bundlePath]);
     if (!preservedHeads.split("\n").some((head) => head.startsWith(`${commitSha} `)))
       return yield* unavailable();
     yield* sql`INSERT OR IGNORE INTO bob_execution_receipts (request_id,payload_json) VALUES (${row.request_id},${payloadJson})`;
