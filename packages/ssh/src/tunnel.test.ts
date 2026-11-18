@@ -1484,10 +1484,17 @@ const canBind = (port) =>
   const isAlive = (pid: number) => {
     try {
       process.kill(pid, 0);
-      return true;
     } catch {
       return false;
     }
+    // Containers can retain a terminated server as a zombie until PID 1 reaps it.
+    const status = NodeChildProcess.spawnSync("ps", ["-o", "stat=", "-p", String(pid)], {
+      encoding: "utf8",
+    });
+    assert.isUndefined(status.error);
+    if (status.status === 1 && status.stdout.trim() === "") return false;
+    assert.equal(status.status, 0, status.stderr);
+    return !status.stdout.trimStart().startsWith("Z");
   };
 
   const freeLoopbackPort = Effect.callback<number>((resume) => {
