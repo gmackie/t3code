@@ -27,8 +27,8 @@ import { msg } from "gt-react";
 import { m, type MessageResolver } from "../../i18n/messages";
 
 export const DESKTOP_UPDATE_CHANNEL_OPTIONS = [
-  { value: "latest", label: "Stable" },
-  { value: "nightly", label: "Nightly" },
+  { value: "latest", label: m(msg("Stable")) },
+  { value: "nightly", label: m(msg("Nightly")) },
   { value: "gmacko", label: "GMACKO" },
 ] as const satisfies ReadonlyArray<{
   readonly value: DesktopUpdateChannel;

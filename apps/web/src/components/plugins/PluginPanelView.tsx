@@ -1,3 +1,4 @@
+import { msg, useMessages } from "gt-react";
 import type {
   EnvironmentId,
   McpAppOpenPanelResult,
@@ -38,6 +39,8 @@ export function PluginPanelView(props: {
   readonly threadId?: ThreadId;
   readonly cwd?: string;
 }) {
+  const m = useMessages();
+
   const openPanel = useAtomCommand(mcpAppEnvironment.openPanel, { reportFailure: false });
   const [opened, setOpened] = useState<Opened>({ status: "opening" });
   // A finished sign-in bumps this to open the panel again.
@@ -63,10 +66,10 @@ export function PluginPanelView(props: {
 
   // Opening runs the panel's opening tool on the server: once per panel and project, and again
   // after a sign-in (`attempt`). The active thread reaches an open view as host context instead.
-  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- see above
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Open per panel/project; active thread changes only update host context.
   useEffect(() => {
     let current = true;
-    // oxlint-disable-next-line react/exhaustive-effect-dependencies -- see above; the thread id is read once per open
+    // oxlint-disable-next-line react/exhaustive-effect-dependencies -- Open per panel/project or retry; thread changes only update host context.
     void openPanel({
       environmentId,
       input: {
@@ -81,7 +84,7 @@ export function PluginPanelView(props: {
         const error = squashAtomCommandFailure(result);
         setOpened({
           status: "failed",
-          message: error instanceof Error ? error.message : "The panel couldn't be opened.",
+          message: error instanceof Error ? error.message : m(msg("The panel couldn't be opened.")),
         });
         return;
       }
@@ -102,18 +105,20 @@ export function PluginPanelView(props: {
     return () => {
       current = false;
     };
-  }, [environmentId, pluginId, panelId, projectId, attempt]);
+  }, [environmentId, pluginId, panelId, projectId, attempt, m]);
 
   switch (opened.status) {
     case "opening":
-      return <PanelNotice>Opening…</PanelNotice>;
+      return <PanelNotice>{m(msg("Opening…"))}</PanelNotice>;
     case "failed":
       return <PanelNotice>{opened.message}</PanelNotice>;
     case "needs-auth":
       return (
         <div className="flex size-full flex-col items-center justify-center gap-3 p-4">
           <p className="text-center text-muted-foreground text-sm">
-            Sign in to {opened.server} to use this panel.
+            {m(msg("Sign in to "))}
+            {opened.server}
+            {m(msg(" to use this panel."))}
           </p>
           {signsInWithOAuth ? (
             <McpOAuthSignIn

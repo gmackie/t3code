@@ -1,3 +1,4 @@
+import { msg, useMessages } from "gt-react";
 import type {
   GmackoChangelogBuild,
   GmackoChangelogInput,
@@ -67,6 +68,8 @@ function UpstreamNightlyRow({
   installedVersion: string;
   onJump: (tab: ChangelogTab, version: string) => void;
 }) {
+  const m = useMessages();
+
   const changes = useMemo(() => parseUpstreamChanges(nightly.bodyMarkdown), [nightly.bodyMarkdown]);
   const status = nightlyShipStatus(nightly.firstGmackoVersion, installedVersion);
   return (
@@ -76,15 +79,18 @@ function UpstreamNightlyRow({
     >
       <ReleaseHeader version={nightly.version} url={nightly.url} publishedAt={nightly.publishedAt}>
         {status.kind === "unshipped" ? (
-          <Badge variant="outline">Not in a GMACKO build yet</Badge>
+          <Badge variant="outline">{m(msg("Not in a GMACKO build yet"))}</Badge>
         ) : (
           <>
             <Badge variant={status.kind === "installed" ? "success" : "info"}>
-              {status.kind === "installed" ? "In your build" : "In a newer GMACKO build"}
+              {status.kind === "installed"
+                ? m(msg("In your build"))
+                : m(msg("In a newer GMACKO build"))}
             </Badge>
             <span className="text-xs">
               <InlineButton tone="muted" onClick={() => onJump("gmacko", status.version)}>
-                First shipped in {status.version}
+                {m(msg("First shipped in "))}
+                {status.version}
               </InlineButton>
             </span>
           </>
@@ -112,7 +118,7 @@ function UpstreamNightlyRow({
           ))}
         </ul>
       ) : (
-        <p className="text-xs text-muted-foreground">No release notes.</p>
+        <p className="text-xs text-muted-foreground">{m(msg("No release notes."))}</p>
       )}
     </div>
   );
@@ -129,35 +135,44 @@ function GmackoBuildRow({
   canJumpToNightly: boolean;
   onJump: (tab: ChangelogTab, version: string) => void;
 }) {
+  const m = useMessages();
+
   const nightlyVersion = build.upstreamNightlyTag
     ? nightlyVersionOfTag(build.upstreamNightlyTag)
     : null;
   return (
     <div id={changelogAnchorId("gmacko", build.version)} className="space-y-1.5 px-3 py-3 sm:px-4">
       <ReleaseHeader version={build.version} url={build.url} publishedAt={build.publishedAt}>
-        {installed ? <Badge variant="success">Installed</Badge> : null}
+        {installed ? <Badge variant="success">{m(msg("Installed"))}</Badge> : null}
         {nightlyVersion ? (
           canJumpToNightly ? (
             <span className="text-xs">
               <InlineButton tone="muted" onClick={() => onJump("upstream", nightlyVersion)}>
-                Includes upstream {nightlyVersion}
+                {m(msg("Includes upstream "))}
+                {nightlyVersion}
               </InlineButton>
             </span>
           ) : (
             <span className="text-xs text-muted-foreground">
-              Includes upstream {nightlyVersion}
+              {m(msg("Includes upstream "))}
+              {nightlyVersion}
             </span>
           )
         ) : build.upstreamBaseSha ? (
           <span className="text-xs text-muted-foreground">
-            Upstream main at {shortSha(build.upstreamBaseSha)}
+            {m(msg("Upstream main at "))}
+            {shortSha(build.upstreamBaseSha)}
           </span>
         ) : null}
       </ReleaseHeader>
       {!build.hasManifest ? (
-        <p className="text-xs text-muted-foreground">No changelog was recorded for this build.</p>
+        <p className="text-xs text-muted-foreground">
+          {m(msg("No changelog was recorded for this build."))}
+        </p>
       ) : build.changes.length === 0 ? (
-        <p className="text-xs text-muted-foreground">No fork changes since the previous build.</p>
+        <p className="text-xs text-muted-foreground">
+          {m(msg("No fork changes since the previous build."))}
+        </p>
       ) : (
         <ul className="space-y-1 text-xs text-muted-foreground">
           {build.changes.map((change) =>
@@ -176,7 +191,10 @@ function GmackoBuildRow({
                         </li>
                       ))}
                       {change.omittedCommits > 0 ? (
-                        <li>…and {change.omittedCommits} more</li>
+                        <li>
+                          {m(msg("…and "))}
+                          {change.omittedCommits} more
+                        </li>
                       ) : null}
                     </ul>
                   </details>
@@ -199,6 +217,8 @@ function GmackoBuildRow({
  * cross-linked by which build first shipped each nightly.
  */
 export function ChangelogSettingsPanel() {
+  const m = useMessages();
+
   const { environment } = useSettingsScope();
   const environmentId = environment?.environmentId ?? null;
   // A forced refresh is a different query input, so the server skips its cache.
@@ -222,7 +242,7 @@ export function ChangelogSettingsPanel() {
       size="icon-xs"
       variant="ghost-muted"
       disabled={isPending}
-      aria-label="Refresh changelog"
+      aria-label={m(msg("Refresh changelog"))}
       onClick={() => (input.refresh ? refresh() : setInput({ refresh: true }))}
     >
       <RefreshIcon refreshing={isPending} />
@@ -233,19 +253,20 @@ export function ChangelogSettingsPanel() {
     <SettingsPageContainer>
       <div className="flex flex-wrap items-center justify-between gap-2 px-3 sm:px-4">
         <ToggleGroup
-          aria-label="Changelog source"
+          aria-label={m(msg("Changelog source"))}
           variant="segmented"
           value={[tab]}
           onValueChange={(next) => {
             if (next[0] === "upstream" || next[0] === "gmacko") setTab(next[0]);
           }}
         >
-          <Toggle value="upstream">Upstream nightly</Toggle>
-          <Toggle value="gmacko">GMACKO builds</Toggle>
+          <Toggle value="upstream">{m(msg("Upstream nightly"))}</Toggle>
+          <Toggle value="gmacko">{m(msg("GMACKO builds"))}</Toggle>
         </ToggleGroup>
         {data?.fetchedAt ? (
           <span className="text-xs text-muted-foreground">
-            Updated {formatRelativeTimeLabel(data.fetchedAt)}
+            {m(msg("Updated "))}
+            {formatRelativeTimeLabel(data.fetchedAt)}
           </span>
         ) : null}
       </div>
@@ -256,7 +277,7 @@ export function ChangelogSettingsPanel() {
         </div>
       ) : null}
       {tab === "upstream" ? (
-        <SettingsSection title="Upstream nightlies" headerAction={refreshAction}>
+        <SettingsSection title={m(msg("Upstream nightlies"))} headerAction={refreshAction}>
           <SettingsGroup>
             {data && data.upstream.length > 0 ? (
               data.upstream.map((nightly) => (
@@ -269,13 +290,13 @@ export function ChangelogSettingsPanel() {
               ))
             ) : (
               <p className="px-3 py-3 text-xs text-muted-foreground sm:px-4">
-                {isPending ? "Loading releases…" : "No upstream nightlies found."}
+                {isPending ? m(msg("Loading releases…")) : m(msg("No upstream nightlies found."))}
               </p>
             )}
           </SettingsGroup>
         </SettingsSection>
       ) : (
-        <SettingsSection title="GMACKO builds" headerAction={refreshAction}>
+        <SettingsSection title={m(msg("GMACKO builds"))} headerAction={refreshAction}>
           <SettingsGroup>
             {data && data.builds.length > 0 ? (
               data.builds.map((build) => (
@@ -292,7 +313,7 @@ export function ChangelogSettingsPanel() {
               ))
             ) : (
               <p className="px-3 py-3 text-xs text-muted-foreground sm:px-4">
-                {isPending ? "Loading releases…" : "No GMACKO builds found."}
+                {isPending ? m(msg("Loading releases…")) : m(msg("No GMACKO builds found."))}
               </p>
             )}
           </SettingsGroup>

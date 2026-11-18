@@ -1,3 +1,4 @@
+import { msg, useMessages } from "gt-react-native";
 import { LegendList } from "@legendapp/list/react-native";
 import type { EnvironmentId, SystemsRun, SystemsTraceEvent } from "@t3tools/contracts";
 import { formatTime, isActiveRun } from "@t3tools/client-runtime/systems-presentation";
@@ -31,6 +32,8 @@ export function TraceList(props: {
   readonly run: SystemsRun;
   readonly header: ReactElement;
 }) {
+  const m = useMessages();
+
   const { environmentId, run } = props;
   const [cursors, setCursors] = useState<ReadonlyArray<string>>(["0"]);
   const { projectId, runId } = run;
@@ -97,11 +100,11 @@ export function TraceList(props: {
           ) : null}
           {run.eventCount === 0 ? (
             <Text textRole="footnote" className="text-foreground-muted">
-              No events yet.
+              {m(msg("No events yet."))}
             </Text>
           ) : null}
           {next !== null ? (
-            <Button label="Load more" loading={loading} onPress={() => load(next)} />
+            <Button label={m(msg("Load more"))} loading={loading} onPress={() => load(next)} />
           ) : null}
         </View>
       }

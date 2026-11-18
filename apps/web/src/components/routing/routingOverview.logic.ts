@@ -1,3 +1,5 @@
+import { m } from "~/i18n/messages";
+import { msg } from "gt-react";
 import type { RoutingMetricRow, RoutingWindow } from "@t3tools/contracts";
 
 export type RoutingRange = "24h" | "7d";
@@ -6,8 +8,8 @@ export const RANGE_OPTIONS: ReadonlyArray<{
   readonly value: RoutingRange;
   readonly label: string;
 }> = [
-  { value: "24h", label: "24 hours" },
-  { value: "7d", label: "7 days" },
+  { value: "24h", label: m(msg("24 hours")) },
+  { value: "7d", label: m(msg("7 days")) },
 ];
 
 const HOUR = 3600;

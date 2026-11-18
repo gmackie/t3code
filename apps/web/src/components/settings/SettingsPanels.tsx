@@ -445,7 +445,11 @@ function AboutVersionSection() {
                       selectedUpdateChannel !== "nightly"
                     }
                   >
-                    {gt(option.label)}
+                    {option.value === "gmacko"
+                      ? "GMACKO"
+                      : option.value === "nightly"
+                        ? gt("Nightly")
+                        : gt("Stable")}
                   </SelectItem>
                 ))}
               </SelectPopup>

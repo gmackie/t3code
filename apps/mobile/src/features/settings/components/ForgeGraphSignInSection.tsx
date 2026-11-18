@@ -1,3 +1,4 @@
+import { msg, useMessages } from "gt-react-native";
 import { useAtomValue } from "@effect/atom-react";
 import { AsyncResult } from "effect/reactivity";
 import {
@@ -31,6 +32,8 @@ export function ForgeGraphSignInSection(props: {
   /** Names the environment in the title, for when several are selected. */
   readonly showEnvironmentLabel: boolean;
 }) {
+  const m = useMessages();
+
   const environmentId = props.environment.environmentId;
   const discovery = useEnvironmentQuery(
     sourceControlEnvironment.discovery({ environmentId, input: {} }),
@@ -39,7 +42,11 @@ export function ForgeGraphSignInSection(props: {
   if (auth === null) return null;
   return (
     <SettingsSection
-      title={props.showEnvironmentLabel ? `ForgeGraph · ${props.environment.label}` : "ForgeGraph"}
+      title={
+        props.showEnvironmentLabel
+          ? m(msg("ForgeGraph · {value0}", { value0: props.environment.label }))
+          : "ForgeGraph"
+      }
     >
       <ForgeGraphSignIn
         environment={props.environment}
@@ -58,6 +65,8 @@ function ForgeGraphSignIn(props: {
   /** Rescans discovery once a token is saved or removed. */
   readonly onChanged: () => void;
 }) {
+  const m = useMessages();
+
   const environmentId = props.environment.environmentId;
   const savedInT3 =
     readForgeGraphSettings(props.environment.serverConfig.settings).token.length > 0;
@@ -129,7 +138,7 @@ function ForgeGraphSignIn(props: {
         {pending ? (
           <>
             <Text className="text-sm text-foreground-muted">
-              Approve this code in ForgeGraph. This page updates once you do.
+              {m(msg("Approve this code in ForgeGraph. This page updates once you do."))}
             </Text>
             <Text selectable className="font-mono text-2xl tracking-widest text-foreground">
               {pending.userCode}
@@ -151,10 +160,10 @@ function ForgeGraphSignIn(props: {
       {pending ? (
         <SettingsActionRow
           icon="globe"
-          label="Open ForgeGraph to approve"
+          label={m(msg("Open ForgeGraph to approve"))}
           onPress={() => {
             void Linking.openURL(pending.verificationUrl).catch(() =>
-              setError(`Could not open ${pending.verificationUrl}.`),
+              setError(m(msg("Could not open {value0}.", { value0: pending.verificationUrl }))),
             );
           }}
         />
@@ -162,7 +171,7 @@ function ForgeGraphSignIn(props: {
       {view.canCancel ? (
         <SettingsActionRow
           icon="xmark"
-          label="Cancel"
+          label={m(msg("Cancel"))}
           disabled={busy}
           loading={busy}
           onPress={() => void run(cancel)}
@@ -179,7 +188,7 @@ function ForgeGraphSignIn(props: {
           {view.canSignOut ? (
             <SettingsActionRow
               icon="person.crop.circle"
-              label="Sign out"
+              label={m(msg("Sign out"))}
               tone="danger"
               disabled={busy || !canSignIn}
               onPress={() => void run(signOut, props.onChanged)}

@@ -1,3 +1,4 @@
+import { msg, mFallback as m } from "gt-i18n";
 import { WS_METHODS } from "@t3tools/contracts";
 import type { Atom } from "effect/reactivity";
 import type { EnvironmentRegistry } from "../connection/registry.ts";
@@ -34,5 +35,5 @@ export function projectKnowledgeFailure(result: {
   const failure = squashAtomCommandFailure(result);
   return failure instanceof Error && failure.message.trim()
     ? failure.message
-    : "Project knowledge did not answer. Try again; your draft has been kept.";
+    : m(msg("Project knowledge did not answer. Try again; your draft has been kept."));
 }

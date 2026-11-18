@@ -1,3 +1,4 @@
+import { msg, useMessages } from "gt-react-native";
 import { useAtomValue } from "@effect/atom-react";
 import type { EnvironmentProject } from "@t3tools/client-runtime/state/shell";
 import {
@@ -17,6 +18,8 @@ import { useAtomCommand } from "../../state/use-atom-command";
 import { SettingsSection } from "./components/SettingsSection";
 
 export function ProjectKnowledgeSection({ project }: { readonly project: EnvironmentProject }) {
+  const m = useMessages();
+
   const { environments } = useEnvironments();
   const environment = environments.find((value) => value.environmentId === project.environmentId);
   const canSearch = useAtomValue(projectKnowledge.search.permissionAtom(project.environmentId));
@@ -91,13 +94,15 @@ export function ProjectKnowledgeSection({ project }: { readonly project: Environ
     setPending(false);
   };
   return (
-    <SettingsSection title="Project knowledge" footer={project.workspaceRoot}>
+    <SettingsSection title={m(msg("Project knowledge"))} footer={project.workspaceRoot}>
       <View className="gap-3 p-4">
-        <AppText>Search docs and saved notes. Notes change only when explicitly saved.</AppText>
+        <AppText>
+          {m(msg("Search docs and saved notes. Notes change only when explicitly saved."))}
+        </AppText>
         {error ? <AppText accessibilityRole="alert">{error}</AppText> : null}
         {!open ? (
           <Button
-            label="Open knowledge"
+            label={m(msg("Open knowledge"))}
             onPress={() => {
               setOpen(true);
               if (canReadNotes) void loadNotes();
@@ -106,8 +111,8 @@ export function ProjectKnowledgeSection({ project }: { readonly project: Environ
         ) : (
           <>
             <AppTextInput
-              accessibilityLabel="Search project knowledge"
-              placeholder="Search docs and notes"
+              accessibilityLabel={m(msg("Search project knowledge"))}
+              placeholder={m(msg("Search docs and notes"))}
               value={query}
               maxLength={256}
               onChangeText={setQuery}
@@ -117,30 +122,35 @@ export function ProjectKnowledgeSection({ project }: { readonly project: Environ
               }}
             />
             <Button
-              label="Search"
+              label={m(msg("Search"))}
               disabled={pending || !canSearch || !query.trim()}
               onPress={() => void runSearch()}
             />
             {results ? (
               <View className="gap-3">
                 {results.indexingIncomplete ? (
-                  <AppText>Some passages remain to be indexed. Search again to continue.</AppText>
+                  <AppText>
+                    {m(msg("Some passages remain to be indexed. Search again to continue."))}
+                  </AppText>
                 ) : null}
                 {results.retrieval === "literal" ? (
                   <AppText>
-                    Semantic search unavailable. Showing text matches. Set up Ollama on this
-                    environment to search by meaning.
+                    {m(
+                      msg(
+                        "Semantic search unavailable. Showing text matches. Set up Ollama on this environment to search by meaning.",
+                      ),
+                    )}
                   </AppText>
                 ) : results.retrieval === "hybrid" ? (
-                  <AppText>Searching by meaning and text.</AppText>
+                  <AppText>{m(msg("Searching by meaning and text."))}</AppText>
                 ) : null}
                 {!results.docsAvailable ? (
                   <AppText>
-                    No docs folder in this checkout. Saved notes are still available.
+                    {m(msg("No docs folder in this checkout. Saved notes are still available."))}
                   </AppText>
                 ) : null}
                 {results.matches.length === 0 ? (
-                  <AppText>No matches.</AppText>
+                  <AppText>{m(msg("No matches."))}</AppText>
                 ) : (
                   results.matches.map((hit) => (
                     <View key={`${hit.source}:${hit.path}:${hit.startLine}`}>
@@ -155,7 +165,7 @@ export function ProjectKnowledgeSection({ project }: { readonly project: Environ
                   ))
                 )}
                 {results.truncated ? (
-                  <AppText>More matches available. Narrow your search.</AppText>
+                  <AppText>{m(msg("More matches available. Narrow your search."))}</AppText>
                 ) : null}
               </View>
             ) : null}
@@ -170,19 +180,21 @@ export function ProjectKnowledgeSection({ project }: { readonly project: Environ
                     .map((line, index) => `${source.startLine + index}  ${line}`)
                     .join("\n")}
                 </AppText>
-                {source.truncated ? <AppText>Source passage is shortened.</AppText> : null}
+                {source.truncated ? (
+                  <AppText>{m(msg("Source passage is shortened."))}</AppText>
+                ) : null}
                 {source.nextStartLine !== undefined ? (
                   <Button
-                    label="Read next passage"
+                    label={m(msg("Read next passage"))}
                     disabled={pending}
                     onPress={() => void inspect(source, source.nextStartLine)}
                   />
                 ) : null}
               </View>
             ) : null}
-            <AppText>Saved project notes</AppText>
+            <AppText>{m(msg("Saved project notes"))}</AppText>
             <AppTextInput
-              accessibilityLabel="Saved project notes"
+              accessibilityLabel={m(msg("Saved project notes"))}
               value={draft}
               onChangeText={setDraft}
               maxLength={PROJECT_NOTES_MAX_LENGTH}
@@ -191,12 +203,12 @@ export function ProjectKnowledgeSection({ project }: { readonly project: Environ
             />
             <AppText>{draft.length} / 16,000 characters. Save an empty note to clear it.</AppText>
             <Button
-              label="Save notes"
+              label={m(msg("Save notes"))}
               disabled={pending || !notes || !canSave || draft === notes.content}
               onPress={() => void save()}
             />
             <Button
-              label="Reload notes (discard draft)"
+              label={m(msg("Reload notes (discard draft)"))}
               disabled={pending || !canReadNotes}
               onPress={() => void loadNotes()}
             />

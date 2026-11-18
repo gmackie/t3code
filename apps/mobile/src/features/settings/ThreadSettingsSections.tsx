@@ -1,3 +1,4 @@
+import { msg, useMessages } from "gt-react-native";
 import { T, useGT } from "gt-react-native";
 import { Button } from "../../components/ui/Button";
 import {
@@ -328,15 +329,21 @@ function MachineBetaSection({
 }
 
 function QuestionSettingsSection() {
+  const m = useMessages();
+
   const preferencesResult = useAtomValue(mobilePreferencesAtom);
   const savePreferences = useAtomSet(updateMobilePreferencesAtom);
 
   return (
-    <SettingsSection title="Questions">
+    <SettingsSection title={m(msg("Questions"))}>
       <SettingsSwitchRow
         icon="list.number"
-        label="One question at a time"
-        subtitle="Use Back and Next in compact and expanded views. Turn off to scroll through all questions."
+        label={m(msg("One question at a time"))}
+        subtitle={m(
+          msg(
+            "Use Back and Next in compact and expanded views. Turn off to scroll through all questions.",
+          ),
+        )}
         value={
           !AsyncResult.isSuccess(preferencesResult) ||
           preferencesResult.value.questionNavigationEnabled !== false

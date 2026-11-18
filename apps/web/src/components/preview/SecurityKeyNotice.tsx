@@ -1,3 +1,4 @@
+import { msg, useMessages } from "gt-react";
 import { KeyRound } from "lucide-react";
 
 import { Button } from "~/components/ui/button";
@@ -14,6 +15,8 @@ const hostOf = (origin: string) => (URL.canParse(origin) ? new URL(origin).host 
  * It clears itself when the page's request settles; the page owns cancelling it.
  */
 export function SecurityKeyNotice({ origin, onOpenInBrowser }: Props) {
+  const m = useMessages();
+
   return (
     <div className="pointer-events-none absolute inset-x-0 top-3 z-20 flex justify-center px-3">
       <div
@@ -22,15 +25,19 @@ export function SecurityKeyNotice({ origin, onOpenInBrowser }: Props) {
       >
         <KeyRound className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
         <div className="min-w-0 flex-1">
-          <p className="font-medium text-foreground">Touch your security key</p>
+          <p className="font-medium text-foreground">{m(msg("Touch your security key"))}</p>
           <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
-            {hostOf(origin)} is waiting for your security key. Keys that need a PIN only work in
-            your system browser.
+            {hostOf(origin)}
+            {m(
+              msg(
+                " is waiting for your security key. Keys that need a PIN only work in your system browser.",
+              ),
+            )}
           </p>
         </div>
         {onOpenInBrowser ? (
           <Button type="button" variant="outline" size="xs" onClick={onOpenInBrowser}>
-            Open in system browser
+            {m(msg("Open in system browser"))}
           </Button>
         ) : null}
       </div>

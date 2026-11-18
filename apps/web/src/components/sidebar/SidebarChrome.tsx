@@ -1,3 +1,5 @@
+import { useMessages } from "gt-react";
+import { msg } from "gt-react";
 import {
   ArrowLeftIcon,
   ArrowRightIcon,
@@ -233,6 +235,8 @@ function SidebarUtilityItem({
 }
 
 const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
+  const m = useMessages();
+
   const navigate = useNavigate();
   const navigateToMainApp = useNavigateToMainApp();
   const gt = useGT();
@@ -299,7 +303,7 @@ const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
         <>
           <SidebarUtilityItem
             icon={<FolderIcon />}
-            label="Projects"
+            label={m(msg("Projects"))}
             onClick={handleProjectsClick}
           />
           <SidebarUtilityItem
@@ -328,7 +332,7 @@ const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
           />
           <SidebarUtilityItem
             icon={<WaypointsIcon />}
-            label="Routing"
+            label={m(msg("Routing"))}
             onClick={handleRoutingClick}
           />
         </>

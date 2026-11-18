@@ -369,7 +369,7 @@ export const SETTINGS_SEARCH_ITEMS = [
   },
   {
     id: "window-opacity",
-    title: "Window opacity",
+    title: msg("Window opacity"),
     to: "/settings/appearance",
     searchTerms: ["transparent transparency full app glass glassy macos"],
     desktopOnly: true,
@@ -1093,12 +1093,12 @@ export const SETTINGS_SEARCH_ITEMS = [
   },
   {
     id: "plugins",
-    title: "Plugins",
+    title: msg("Plugins"),
     to: "/settings/plugins",
   },
   {
     id: "tools-skills",
-    title: "Skills",
+    title: msg("Skills"),
     to: "/settings/tools",
     scope: "project-defaults",
     searchTerms: [
@@ -1107,7 +1107,7 @@ export const SETTINGS_SEARCH_ITEMS = [
   },
   {
     id: "tools-mcp-servers",
-    title: "MCP servers",
+    title: msg("MCP servers"),
     to: "/settings/tools",
     scope: "project-defaults",
     searchTerms: [

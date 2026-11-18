@@ -260,7 +260,9 @@ export function buildPluginPanelActionItems(input: {
           .filter((panel) => !opened.has(panel.id))
           .map((panel) => ({
             id: `open-${panel.id}`,
-            title: `${manifest.displayName}: Open ${panel.title}`,
+            title: m(
+              msg("{value0}: Open {value1}", { value0: manifest.displayName, value1: panel.title }),
+            ),
             panel: panel.id,
           })),
       ];

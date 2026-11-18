@@ -1,3 +1,4 @@
+import { msg } from "gt-react-native";
 import { usesExpoPush } from "../agent-awareness/capabilities";
 import {
   navigationCustomizationAvailable,
@@ -146,6 +147,8 @@ function ConfiguredSettingsRouteScreen() {
 }
 
 function LocalSettingsRouteScreen() {
+  const m = useMessages();
+
   const gt = useGT();
   const { savedConnectionsById } = useSavedRemoteConnections();
   return (
@@ -158,7 +161,7 @@ function LocalSettingsRouteScreen() {
               {
                 id: "SettingsNotifications",
                 icon: "bell.badge",
-                label: "Notifications",
+                label: m(msg("Notifications")),
                 target: "SettingsNotifications",
               } as const,
             ]

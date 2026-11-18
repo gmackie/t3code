@@ -1,3 +1,4 @@
+import { msg, useMessages } from "gt-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useEnvironmentQuery } from "../state/query";
 import { cadQuery } from "./query";
@@ -23,6 +24,8 @@ export function VeritasView({
   manifest: KiCadProjectManifest;
   assetUrl: (path: string) => string;
 }) {
+  const m = useMessages();
+
   const initialStatus = useEnvironmentQuery(
     useMemo(
       () =>
@@ -88,12 +91,12 @@ export function VeritasView({
         if (generation.current === current) setStatus(next);
       } catch (cause) {
         if (generation.current === current && !controller.current?.signal.aborted)
-          setError(cause instanceof Error ? cause.message : "Unable to reach Veritas.");
+          setError(cause instanceof Error ? cause.message : m(msg("Unable to reach Veritas.")));
       } finally {
         if (generation.current === current) setBusy(false);
       }
     },
-    [endpoint],
+    [endpoint, m],
   );
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Cancel the mounted Veritas view's outstanding imperative submissions on endpoint change or teardown.
   useEffect(() => {
@@ -111,13 +114,13 @@ export function VeritasView({
       <div className="mx-auto max-w-4xl space-y-6">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h2 className="text-lg font-semibold">Veritas</h2>
+            <h2 className="text-lg font-semibold">{m(msg("Veritas"))}</h2>
             <p className="text-xs text-muted-foreground">
-              Design snapshots, sourced parts, review evidence, and production.
+              {m(msg("Design snapshots, sourced parts, review evidence, and production."))}
             </p>
           </div>
           <button className={buttonClass} disabled={busy} onClick={() => void request()}>
-            {busy ? "Working…" : "Refresh status"}
+            {busy ? m(msg("Working…")) : m(msg("Refresh status"))}
           </button>
         </div>
         {(error || initialStatus.error) && (
@@ -132,26 +135,37 @@ export function VeritasView({
         )}
         {status && !status.configured && (
           <p className="rounded border border-border p-3">
-            Connect this environment by setting <code>VERITAS_URL</code> and{" "}
-            <code>VERITAS_API_TOKEN</code> on its T3 server, then restart that server. Use a Veritas
-            service token with design review access.
+            {m(msg("Connect this environment by setting "))}
+            <code>VERITAS_URL</code> and <code>VERITAS_API_TOKEN</code>
+            {m(
+              msg(
+                " on its T3 server, then restart that server. Use a Veritas service token with design review access.",
+              ),
+            )}
           </p>
         )}
         {status?.link.pendingOperation && (
           <p className="rounded border border-border p-3" role="status">
-            A {status.link.pendingOperation} submission has an uncertain outcome. Check Veritas,
-            then link the resulting review or production run below. Refreshing will not submit it
-            again.
+            A {status.link.pendingOperation}
+            {m(
+              msg(
+                " submission has an uncertain outcome. Check Veritas, then link the resulting review or production run below. Refreshing will not submit it again.",
+              ),
+            )}
           </p>
         )}
         <section className="space-y-2">
-          <h3 className="font-medium">Design</h3>
+          <h3 className="font-medium">{m(msg("Design"))}</h3>
           <p className="text-xs text-muted-foreground">
-            {manifest.files.length} saved CAD files in this workspace. Review sends an immutable ZIP
-            snapshot; subsequent edits stay local until a new review.
+            {manifest.files.length}
+            {m(
+              msg(
+                " saved CAD files in this workspace. Review sends an immutable ZIP snapshot; subsequent edits stay local until a new review.",
+              ),
+            )}
           </p>
           <details>
-            <summary className="cursor-pointer text-xs">Saved design files</summary>
+            <summary className="cursor-pointer text-xs">{m(msg("Saved design files"))}</summary>
             <ul className="mt-2 max-h-44 space-y-1 overflow-auto text-xs">
               {manifest.files.map((file) => (
                 <li key={file.path}>
@@ -169,7 +183,8 @@ export function VeritasView({
           </details>
           {status?.link.snapshotSha256 && (
             <p className="break-all font-mono text-[10px] text-muted-foreground">
-              Submitted snapshot SHA-256: {status.link.snapshotSha256}
+              {m(msg("Submitted snapshot SHA-256: "))}
+              {status.link.snapshotSha256}
             </p>
           )}
           <button
@@ -177,17 +192,24 @@ export function VeritasView({
             disabled={!canOperate || !status?.canShareSnapshot || linkedReviewCurrent}
             onClick={() => void request({ type: "review", revision: manifest.revision })}
           >
-            {linkedReviewCurrent ? "This snapshot has a review" : "Send saved design for review"}
+            {linkedReviewCurrent
+              ? m(msg("This snapshot has a review"))
+              : m(msg("Send saved design for review"))}
           </button>
           {status?.configured && !status.canShareSnapshot && (
             <p className="text-xs text-muted-foreground">
-              Set <code>VERITAS_CAD_PUBLIC_URL</code> to this T3 server’s address reachable by the
-              Veritas review agent. Snapshot access expires after 30 minutes.
+              {m(msg("Set "))}
+              <code>VERITAS_CAD_PUBLIC_URL</code>
+              {m(
+                msg(
+                  " to this T3 server’s address reachable by the Veritas review agent. Snapshot access expires after 30 minutes.",
+                ),
+              )}
             </p>
           )}
         </section>
         <section className="space-y-2">
-          <h3 className="font-medium">Review</h3>
+          <h3 className="font-medium">{m(msg("Review"))}</h3>
           {status?.review ? (
             <>
               <p>
@@ -196,7 +218,7 @@ export function VeritasView({
               </p>
               {!linkedReviewCurrent && status.link.snapshotRevision && (
                 <p className="text-xs text-muted-foreground">
-                  The saved design has changed since this review.
+                  {m(msg("The saved design has changed since this review."))}
                 </p>
               )}
               {status.review.error && <p role="alert">{status.review.error}</p>}
@@ -207,18 +229,18 @@ export function VeritasView({
                   target="_blank"
                   rel="noreferrer"
                 >
-                  Open signed evidence bundle
+                  {m(msg("Open signed evidence bundle"))}
                 </a>
               )}
             </>
           ) : (
             <p className="text-xs text-muted-foreground">
-              Send a snapshot or link an existing Veritas review.
+              {m(msg("Send a snapshot or link an existing Veritas review."))}
             </p>
           )}
         </section>
         <section className="space-y-2">
-          <h3 className="font-medium">Parts and BOM</h3>
+          <h3 className="font-medium">{m(msg("Parts and BOM"))}</h3>
           {status?.bom.length ? (
             <div className="overflow-auto">
               <table className="w-full text-left text-xs">
@@ -238,7 +260,7 @@ export function VeritasView({
                     <tr key={line.id}>
                       <td className="border-b border-border p-2">{line.refdesList.join(", ")}</td>
                       <td className="border-b border-border p-2">
-                        {line.partNumber ?? "Unresolved"}
+                        {line.partNumber ?? m(msg("Unresolved"))}
                         <div className="text-muted-foreground">
                           {line.manufacturer} {line.lcscNumber}
                         </div>
@@ -249,12 +271,12 @@ export function VeritasView({
                         <div className="text-muted-foreground">{line.footprint}</div>
                       </td>
                       <td className="border-b border-border p-2">
-                        {line.inStock ?? "Unknown"}
+                        {line.inStock ?? m(msg("Unknown"))}
                         {line.eol && line.eol !== "active" ? ` · ${line.eol}` : ""}
                       </td>
                       <td className="border-b border-border p-2">
                         {line.unitPriceMicrousd === null
-                          ? "Unknown"
+                          ? m(msg("Unknown"))
                           : `$${(line.unitPriceMicrousd / 1_000_000).toFixed(4)}`}
                       </td>
                     </tr>
@@ -264,18 +286,21 @@ export function VeritasView({
             </div>
           ) : (
             <p className="text-xs text-muted-foreground">
-              Veritas publishes sourced parts here after processing the review.
+              {m(msg("Veritas publishes sourced parts here after processing the review."))}
             </p>
           )}
         </section>
         {status && status.bom.length >= 500 && (
           <p role="status" className="text-xs text-muted-foreground">
-            Veritas returned its 500-line BOM limit. This may be an incomplete BOM; prepare
-            production in Veritas after confirming all parts.
+            {m(
+              msg(
+                "Veritas returned its 500-line BOM limit. This may be an incomplete BOM; prepare production in Veritas after confirming all parts.",
+              ),
+            )}
           </p>
         )}
         <section className="space-y-2">
-          <h3 className="font-medium">Manufacturing</h3>
+          <h3 className="font-medium">{m(msg("Manufacturing"))}</h3>
           {status?.production ? (
             <>
               <p>
@@ -293,13 +318,15 @@ export function VeritasView({
           ) : (
             <>
               <p className="text-xs text-muted-foreground">
-                Prepare fabrication, parts, and assembly work from the reviewed BOM. Enter the saved
-                board’s dimensions and layer count for fabrication estimates. Orders are placed
-                separately in Veritas’s vendor workflow.
+                {m(
+                  msg(
+                    "Prepare fabrication, parts, and assembly work from the reviewed BOM. Enter the saved board’s dimensions and layer count for fabrication estimates. Orders are placed separately in Veritas’s vendor workflow.",
+                  ),
+                )}
               </p>
               <div className="flex flex-wrap items-end gap-3">
                 <label className="space-y-1 text-xs">
-                  Boards
+                  {m(msg("Boards"))}
                   <input
                     type="number"
                     min={1}
@@ -310,7 +337,7 @@ export function VeritasView({
                   />
                 </label>
                 <label className="space-y-1 text-xs">
-                  Assembly
+                  {m(msg("Assembly"))}
                   <select
                     className={inputClass}
                     value={route}
@@ -320,9 +347,9 @@ export function VeritasView({
                         setRoute(value);
                     }}
                   >
-                    <option value="hand">Hand assembly</option>
-                    <option value="turnkey">Turnkey</option>
-                    <option value="lumen-pnp">Lumen pick and place</option>
+                    <option value="hand">{m(msg("Hand assembly"))}</option>
+                    <option value="turnkey">{m(msg("Turnkey"))}</option>
+                    <option value="lumen-pnp">{m(msg("Lumen pick and place"))}</option>
                   </select>
                 </label>
                 {(
@@ -348,7 +375,7 @@ export function VeritasView({
                   </label>
                 ))}
                 <label className="space-y-1 text-xs">
-                  Finish
+                  {m(msg("Finish"))}
                   <select
                     className={inputClass}
                     value={fab.finish}
@@ -384,7 +411,7 @@ export function VeritasView({
                       });
                   }}
                 >
-                  Prepare production run
+                  {m(msg("Prepare production run"))}
                 </button>
               </div>
             </>
@@ -392,7 +419,9 @@ export function VeritasView({
         </section>
         {status?.canOperate && (
           <details className="border-t border-border pt-3">
-            <summary className="cursor-pointer text-xs">Link an existing Veritas project</summary>
+            <summary className="cursor-pointer text-xs">
+              {m(msg("Link an existing Veritas project"))}
+            </summary>
             <form
               className="mt-3 space-y-3"
               key={`${status.link.projectId}:${status.link.reviewId}:${status.link.productionRunId}`}
@@ -420,7 +449,7 @@ export function VeritasView({
               ))}
               <div className="flex gap-2">
                 <button className={buttonClass} disabled={busy || !status.configured}>
-                  Save connection
+                  {m(msg("Save connection"))}
                 </button>
                 <button
                   type="button"
@@ -428,7 +457,7 @@ export function VeritasView({
                   disabled={busy}
                   onClick={() => void request({ type: "unlink" })}
                 >
-                  Unlink workspace
+                  {m(msg("Unlink workspace"))}
                 </button>
               </div>
             </form>

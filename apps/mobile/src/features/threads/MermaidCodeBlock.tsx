@@ -1,3 +1,4 @@
+import { msg, useMessages } from "gt-react-native";
 import { memo, useEffect, useMemo, useState, type ReactNode } from "react";
 import { Modal, Pressable, StyleSheet, Text, View } from "react-native";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
@@ -18,6 +19,8 @@ function Diagram({
   expanded?: boolean;
   onError: () => void;
 }) {
+  const m = useMessages();
+
   const [height, setHeight] = useState(160);
   const [ready, setReady] = useState(expanded);
   // Streaming source remounts this preview. Wait for a pause before starting
@@ -35,7 +38,7 @@ function Diagram({
   if (!ready)
     return (
       <Text style={[styles.notice, { color: dark ? "#fafafa" : "#18181b" }]}>
-        Preparing diagram…
+        {m(msg("Preparing diagram…"))}
       </Text>
     );
   return (
@@ -67,6 +70,8 @@ export const MermaidCodeBlock = memo(function MermaidCodeBlock({
   source: string;
   fallback: ReactNode;
 }) {
+  const m = useMessages();
+
   const { themeAppearance } = useAppearancePreferences();
   const dark = themeAppearance === "dark";
   const [showSource, setShowSource] = useState(false);
@@ -88,20 +93,22 @@ export const MermaidCodeBlock = memo(function MermaidCodeBlock({
           }}
           style={styles.button}
         >
-          <Text style={{ color }}>{failed ? "Retry" : showSource ? "Diagram" : "Source"}</Text>
+          <Text style={{ color }}>
+            {failed ? m(msg("Retry")) : showSource ? m(msg("Diagram")) : m(msg("Source"))}
+          </Text>
         </Pressable>
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="Expand diagram"
+          accessibilityLabel={m(msg("Expand diagram"))}
           onPress={() => setExpanded(true)}
           style={styles.button}
         >
-          <Text style={{ color }}>Expand</Text>
+          <Text style={{ color }}>{m(msg("Expand"))}</Text>
         </Pressable>
       </View>
       {failed ? (
         <Text style={[styles.notice, { color }]}>
-          Unable to render diagram. Source is shown below.
+          {m(msg("Unable to render diagram. Source is shown below."))}
         </Text>
       ) : null}
       {showSource || failed ? (
@@ -113,13 +120,13 @@ export const MermaidCodeBlock = memo(function MermaidCodeBlock({
         <SafeAreaProvider>
           <SafeAreaView style={[styles.expanded, { backgroundColor }]}>
             <View style={styles.toolbar}>
-              <Text style={{ color }}>Pinch to zoom · Drag to pan</Text>
+              <Text style={{ color }}>{m(msg("Pinch to zoom · Drag to pan"))}</Text>
               <Pressable
                 accessibilityRole="button"
                 onPress={() => setExpanded(false)}
                 style={styles.button}
               >
-                <Text style={{ color }}>Close</Text>
+                <Text style={{ color }}>{m(msg("Close"))}</Text>
               </Pressable>
             </View>
             {expanded ? (

@@ -908,6 +908,8 @@ function readRouteThreadKey(router: AnyRouter): string | null {
 }
 
 export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReveal }) {
+  const m = useMessages();
+
   const gt = useGT();
   const messages = useMessages();
   const {
@@ -3168,8 +3170,16 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                               <Button
                                 size="icon-xs"
                                 variant="ghost-muted"
-                                aria-label={`Linear issues for ${project?.displayName ?? item.label}`}
-                                title={`Linear issues for ${project?.displayName ?? item.label}`}
+                                aria-label={m(
+                                  msg("Linear issues for {value0}", {
+                                    value0: project?.displayName ?? item.label,
+                                  }),
+                                )}
+                                title={m(
+                                  msg("Linear issues for {value0}", {
+                                    value0: project?.displayName ?? item.label,
+                                  }),
+                                )}
                                 onPointerDown={(event) => event.stopPropagation()}
                                 onClick={(event) => {
                                   handleProjectIssues(event, issueProject);

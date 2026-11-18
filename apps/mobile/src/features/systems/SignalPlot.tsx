@@ -1,3 +1,4 @@
+import { msg, useMessages } from "gt-react-native";
 import type { EnvironmentId, SystemsRun } from "@t3tools/contracts";
 import { plotSignals } from "@t3tools/client-runtime/systems-presentation";
 import { useState } from "react";
@@ -18,6 +19,8 @@ export function SignalPlot(props: {
   readonly environmentId: EnvironmentId;
   readonly run: SystemsRun;
 }) {
+  const m = useMessages();
+
   const { run } = props;
   const [chosen, setChosen] = useState<ReadonlyArray<string>>(() =>
     run.probes.slice(0, 2).map((probe) => probe.id),
@@ -47,7 +50,7 @@ export function SignalPlot(props: {
       onLayout={(event) => setWidth(Math.floor(event.nativeEvent.layout.width))}
     >
       <Text textRole="footnote" className="font-t3-medium text-foreground-muted">
-        Signals
+        {m(msg("Signals"))}
       </Text>
       <View className="flex-row flex-wrap gap-1.5">
         {run.probes.map((probe) => {
@@ -74,11 +77,14 @@ export function SignalPlot(props: {
       {plot?.series.map((series, index) => (
         <View key={series.signalId} className="gap-1">
           <Text textRole="caption" className="text-foreground-muted">
-            {series.signalId} [{series.unit}] min {series.min} · max {series.max} · t {plot.t0}–
-            {plot.t1} s
+            {series.signalId} [{series.unit}
+            {m(msg("] min "))}
+            {series.min}
+            {m(msg(" · max "))}
+            {series.max} · t {plot.t0}–{plot.t1} s
           </Text>
           <Svg
-            accessibilityLabel={`${series.signalId} over time`}
+            accessibilityLabel={m(msg("{value0} over time", { value0: series.signalId }))}
             width={width}
             height={PLOT_HEIGHT + 2}
             viewBox={`-1 -1 ${width + 2} ${PLOT_HEIGHT + 2}`}

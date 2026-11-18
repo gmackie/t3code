@@ -1,3 +1,5 @@
+import { m } from "~/i18n/messages";
+import { msg, useMessages } from "gt-react";
 import { Link } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 
@@ -32,12 +34,14 @@ import {
 } from "./routingOverview.logic";
 
 const FUNNEL_STAGES = [
-  { series: "decisions.source", title: "Decisions by source" },
-  { series: "decisions.tier", title: "Decisions by tier" },
-  { series: "decisions.model", title: "Decisions by model" },
+  { series: "decisions.source", title: m(msg("Decisions by source")) },
+  { series: "decisions.tier", title: m(msg("Decisions by tier")) },
+  { series: "decisions.model", title: m(msg("Decisions by model")) },
 ] as const;
 
 export function RoutingPage() {
+  const m = useMessages();
+
   const [range, setRange] = useState<RoutingRange>("24h");
   const environments = useRoutingOverviews();
   const configured = environments.filter(
@@ -52,13 +56,13 @@ export function RoutingPage() {
       <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-background text-foreground">
         <WorkspacePageHeader electron={isElectron} className="h-auto">
           <div className="flex w-full min-w-0 items-center justify-between gap-3 py-2">
-            <WorkspaceBreadcrumb ariaLabel="Routing breadcrumb" className="min-w-0">
+            <WorkspaceBreadcrumb ariaLabel={m(msg("Routing breadcrumb"))} className="min-w-0">
               <WorkspaceBreadcrumbItem current>
-                <h1>Routing</h1>
+                <h1>{m(msg("Routing"))}</h1>
               </WorkspaceBreadcrumbItem>
             </WorkspaceBreadcrumb>
             <ToggleGroup
-              aria-label="Routing range"
+              aria-label={m(msg("Routing range"))}
               variant="segmented"
               value={[range]}
               onValueChange={(next) => {
@@ -101,27 +105,34 @@ export function RoutingPage() {
 }
 
 function RoutingUnconfigured({ hasEnvironments }: { readonly hasEnvironments: boolean }) {
+  const m = useMessages();
+
   return (
     <div className="flex max-w-prose flex-col gap-3 text-sm text-muted-foreground">
-      <h2 className="text-base font-medium text-foreground">No router configured</h2>
+      <h2 className="text-base font-medium text-foreground">{m(msg("No router configured"))}</h2>
       {hasEnvironments ? (
         <>
           <p>
-            Routing shows what a Pistache router decided for the requests your OpenCode threads send
-            through it. To connect one, add an OpenCode provider instance with the id{" "}
+            {m(
+              msg(
+                "Routing shows what a Pistache router decided for the requests your OpenCode threads send through it. To connect one, add an OpenCode provider instance with the id",
+              ),
+            )}{" "}
             <code>pistache</code> in{" "}
             <Link to="/settings/providers" className="text-foreground underline">
-              Settings → Providers
+              {m(msg("Settings → Providers"))}
             </Link>{" "}
-            and set two environment variables on it: <code>PISTACHE_API_KEY</code> (mark it
-            sensitive) and either <code>PISTACHE_BASE_URL</code> or an{" "}
-            <code>OPENCODE_CONFIG_CONTENT</code> whose <code>pistache</code> provider has a{" "}
-            <code>baseURL</code>.
+            {m(msg("and set two environment variables on it: "))}
+            <code>PISTACHE_API_KEY</code>
+            {m(msg(" (mark it sensitive) and either "))}
+            <code>PISTACHE_BASE_URL</code>
+            {m(msg(" or an"))} <code>OPENCODE_CONFIG_CONTENT</code> whose <code>pistache</code>
+            {m(msg(" provider has a"))} <code>baseURL</code>.
           </p>
-          <p>The page fills in on the next provider refresh after you save.</p>
+          <p>{m(msg("The page fills in on the next provider refresh after you save."))}</p>
         </>
       ) : (
-        <p>Connect an environment to see routing.</p>
+        <p>{m(msg("Connect an environment to see routing."))}</p>
       )}
     </div>
   );
@@ -136,6 +147,8 @@ function EnvironmentRouting({
   readonly range: RoutingRange;
   readonly showLabel: boolean;
 }) {
+  const m = useMessages();
+
   const overview = environment.overview;
   const timeZone = useMemo(() => new Intl.DateTimeFormat().resolvedOptions().timeZone, []);
   // "Now" is the server's fetch time, so the hour grid only moves when fresh data arrives.
@@ -169,18 +182,22 @@ function EnvironmentRouting({
       ) : null}
       {environment.error !== null || overview?.error ? (
         <Alert variant="error">
-          <AlertTitle>Router unreachable</AlertTitle>
+          <AlertTitle>{m(msg("Router unreachable"))}</AlertTitle>
           <AlertDescription>
             {environment.error ?? overview?.error}
             {overview?.fetchedAt
-              ? ` Showing data from ${formatDateTimeShort(overview.fetchedAt, timeZone)}.`
+              ? m(
+                  msg(" Showing data from {value0}.", {
+                    value0: formatDateTimeShort(overview.fetchedAt, timeZone),
+                  }),
+                )
               : ""}
           </AlertDescription>
         </Alert>
       ) : null}
       {overview && overview.alerts.length > 0 ? (
         <section className="flex flex-col gap-2">
-          <h2 className="text-sm font-medium text-foreground">Alerts</h2>
+          <h2 className="text-sm font-medium text-foreground">{m(msg("Alerts"))}</h2>
           <ul className="flex flex-col gap-1 text-sm">
             {overview.alerts.slice(0, 10).map((alert) => (
               <li key={`${alert.at}:${alert.title}`} className="flex justify-between gap-3">
@@ -195,32 +212,42 @@ function EnvironmentRouting({
       ) : null}
 
       <section className="grid grid-cols-2 gap-x-6 gap-y-4 md:grid-cols-4">
-        <Metric label="Decisions" value={formatCount(decisions)} />
+        <Metric label={m(msg("Decisions"))} value={formatCount(decisions)} />
         <Metric
-          label="Downgrades"
+          label={m(msg("Downgrades"))}
           value={formatCount(downgrades.downgrades)}
           detail={decisions === 0 ? undefined : formatPercent(downgrades.downgrades / decisions)}
         />
         <Metric
-          label="Downgrade failures"
+          label={m(msg("Downgrade failures"))}
           value={
             downgrades.failureRate === null ? "Not measured" : formatPercent(downgrades.failureRate)
           }
-          detail={`${formatCount(downgrades.failed)} of ${formatCount(downgrades.failed + downgrades.completed)} settled`}
+          detail={m(
+            msg("{value0} of {value1} settled", {
+              value0: formatCount(downgrades.failed),
+              value1: formatCount(downgrades.failed + downgrades.completed),
+            }),
+          )}
         />
         <Metric
           label="Windows"
           value={formatCount(windows.length)}
           detail={
             windows[0]
-              ? `lowest ${windows[0].remainingPercent}% ${windows[0].window.label}`
+              ? m(
+                  msg("lowest {value0}% {value1}", {
+                    value0: windows[0].remainingPercent,
+                    value1: windows[0].window.label,
+                  }),
+                )
               : undefined
           }
         />
       </section>
 
       <section className="flex flex-col gap-6">
-        <h2 className="text-sm font-medium text-foreground">Funnel</h2>
+        <h2 className="text-sm font-medium text-foreground">{m(msg("Funnel"))}</h2>
         {stacks.map((stage) => (
           <StackedHourChart
             key={stage.series}
@@ -234,29 +261,32 @@ function EnvironmentRouting({
 
       <section className="grid gap-8 md:grid-cols-2">
         <div className="flex flex-col gap-3">
-          <h2 className="text-sm font-medium text-foreground">Cache hit rate</h2>
+          <h2 className="text-sm font-medium text-foreground">{m(msg("Cache hit rate"))}</h2>
           {cache.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No outcomes in this range.</p>
+            <p className="text-sm text-muted-foreground">{m(msg("No outcomes in this range."))}</p>
           ) : (
             cache.map((entry) => (
               <div key={entry.model} className="flex flex-col gap-1">
                 <div className="flex justify-between gap-3 text-sm">
                   <span className="min-w-0 truncate text-foreground">{entry.model}</span>
                   <span className="shrink-0 text-muted-foreground tabular-nums">
-                    {entry.rate === null ? "Not measured" : formatPercent(entry.rate)} ·{" "}
+                    {entry.rate === null ? m(msg("Not measured")) : formatPercent(entry.rate)} ·{" "}
                     {formatTokens(entry.cachedTokens)}/{formatTokens(entry.inputTokens)}
                   </span>
                 </div>
-                <RatioBar value={entry.rate ?? 0} label={`${entry.model} cache hit rate`} />
+                <RatioBar
+                  value={entry.rate ?? 0}
+                  label={m(msg("{value0} cache hit rate", { value0: entry.model }))}
+                />
               </div>
             ))
           )}
         </div>
         <div className="flex flex-col gap-3">
-          <h2 className="text-sm font-medium text-foreground">Subscription windows</h2>
+          <h2 className="text-sm font-medium text-foreground">{m(msg("Subscription windows"))}</h2>
           {windows.length === 0 ? (
             <p className="text-sm text-muted-foreground">
-              The router has not observed any windows.
+              {m(msg("The router has not observed any windows."))}
             </p>
           ) : (
             windows.map((view) => (
@@ -269,7 +299,9 @@ function EnvironmentRouting({
                     </span>
                   </span>
                   <span className="shrink-0 text-muted-foreground tabular-nums">
-                    {view.remainingPercent}% left · {formatHoursToReset(view.hoursToReset)}
+                    {view.remainingPercent}
+                    {m(msg("% left · "))}
+                    {formatHoursToReset(view.hoursToReset)}
                   </span>
                 </div>
                 <RatioBar
@@ -284,7 +316,7 @@ function EnvironmentRouting({
 
       {overview && overview.usage.length > 0 ? (
         <section className="flex flex-col gap-2">
-          <h2 className="text-sm font-medium text-foreground">Operator counters</h2>
+          <h2 className="text-sm font-medium text-foreground">{m(msg("Operator counters"))}</h2>
           <div className="grid grid-cols-2 gap-x-6 gap-y-4 md:grid-cols-4">
             {overview.usage.map((counter) => (
               <Metric
@@ -294,7 +326,7 @@ function EnvironmentRouting({
                 detail={
                   counter.threshold === null
                     ? undefined
-                    : `alerts at ${formatCount(counter.threshold)}`
+                    : m(msg("alerts at {value0}", { value0: formatCount(counter.threshold) }))
                 }
               />
             ))}

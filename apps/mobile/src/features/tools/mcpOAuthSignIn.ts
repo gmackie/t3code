@@ -1,3 +1,5 @@
+import { m } from "../../i18n/messages";
+import { msg, useMessages } from "gt-react-native";
 import type { EnvironmentId, McpOAuthSignInEvent, ProjectId } from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
 import * as Option from "effect/Option";
@@ -70,7 +72,7 @@ export function signInToMcpServer(input: {
         const error = Cause.squash(result.cause);
         return finish({
           status: "failed",
-          message: error instanceof Error ? error.message : "The sign-in failed.",
+          message: error instanceof Error ? error.message : m(msg("The sign-in failed.")),
         });
       }
       const event = Option.getOrNull(AsyncResult.value(result));
@@ -98,7 +100,9 @@ export function signInToMcpServer(input: {
             finish({
               status: "failed",
               message:
-                error instanceof Error ? error.message : "The sign-in page could not be opened.",
+                error instanceof Error
+                  ? error.message
+                  : m(msg("The sign-in page could not be opened.")),
             }),
         );
       }
@@ -110,6 +114,8 @@ export function signInToMcpServer(input: {
 
 /** `signInToMcpServer` bound to an environment's current connection; null until it has one. */
 export function useMcpOAuthSignIn(environmentId: EnvironmentId) {
+  const m = useMessages();
+
   const connection = usePreparedConnection(environmentId);
   const httpBaseUrl = Option.isSome(connection) ? connection.value.httpBaseUrl : null;
   const pending = useRef<AbortController | null>(null);
@@ -121,7 +127,7 @@ export function useMcpOAuthSignIn(environmentId: EnvironmentId) {
       if (httpBaseUrl === null) {
         return Promise.resolve<McpOAuthSignInOutcome>({
           status: "failed",
-          message: "This environment isn't connected.",
+          message: m(msg("This environment isn't connected.")),
         });
       }
       const controller = new AbortController();
@@ -134,7 +140,7 @@ export function useMcpOAuthSignIn(environmentId: EnvironmentId) {
         signal: controller.signal,
       });
     },
-    [environmentId, httpBaseUrl],
+    [environmentId, httpBaseUrl, m],
   );
   return httpBaseUrl === null ? null : signIn;
 }
