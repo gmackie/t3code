@@ -23,9 +23,9 @@ import { openZipArchive } from "../zipArchive.ts";
 
 // Update the version, sizes and hashes from each full chrome zip listed at
 // https://googlechromelabs.github.io/chrome-for-testing/known-good-versions-with-downloads.json
-// (not chrome-headless-shell, which Google and Cloudflare sign-in refuse). Never pin below
-// 156.0.8078.70: older SPKI blocklists trust compromised eMudhra intermediates (crrev.com/c/8627687).
-const VERSION = "156.0.8078.70";
+// Use full Chrome for sign-in; never pin below 156.0.8078.70, whose SPKI blocklist rejects
+// compromised eMudhra intermediates (crrev.com/c/8627687).
+export const VERSION = "156.0.8078.70";
 const ARCHIVES = {
   linux64: {
     bytes: 201_035_256,

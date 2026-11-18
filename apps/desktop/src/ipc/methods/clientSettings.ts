@@ -3,6 +3,7 @@ import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
+import { applyLanguage } from "../../i18n/messages.ts";
 import * as DesktopClientSettings from "../../settings/DesktopClientSettings.ts";
 import * as DesktopSnapShot from "../../snapShot/DesktopSnapShot.ts";
 import * as DesktopWindow from "../../window/DesktopWindow.ts";
@@ -30,5 +31,6 @@ export const setClientSettings = DesktopIpc.makeIpcMethod({
     yield* snapShot.configure(settings);
     const desktopWindow = yield* DesktopWindow.DesktopWindow;
     yield* desktopWindow.setWindowOpacity(settings.windowOpacity);
+    yield* applyLanguage(settings.language);
   }),
 });
