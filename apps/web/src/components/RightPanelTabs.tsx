@@ -199,7 +199,7 @@ const SURFACE_DISABLED_REASONS = {
   files: msg("Files are only available when a project is open."),
   diff: msg("Diff is only available for server threads in Git repositories."),
   pullRequest: msg("This thread's branch has no pull request yet."),
-  pullRequests: msg("No linked pull requests are available for this thread."),
+  pullRequests: msg("This thread has no linked items."),
   device: msg("Devices are only available from a thread."),
   kicad: msg("KiCad is only available when a project is open."),
   reverse: msg("Reverse Workbench is only available when a project is open."),
@@ -227,7 +227,7 @@ const SURFACE_UNAVAILABLE_HINTS = {
   files: msg("Available when a project is open."),
   diff: msg("Available for Git repositories."),
   pullRequest: msg("No pull request on this branch yet."),
-  pullRequests: msg("No linked pull requests available."),
+  pullRequests: msg("No linked items available."),
   device: msg("Available from a thread."),
   kicad: msg("Available when a project is open."),
   reverse: msg("Available when a project is open."),
@@ -419,7 +419,7 @@ function RightPanelEmptyState(props: {
       onClick: props.onAddPullRequest,
     },
     {
-      label: msg("Linked pull requests"),
+      label: msg("Linked items"),
       icon: PullRequestGlyph.link,
       shortcut: "L",
       available: props.pullRequestsAvailable,
@@ -678,7 +678,7 @@ function surfaceTitle(
     case "pull-request":
       return `#${surface.number}`;
     case "pull-requests":
-      return resolve(msg("Pull requests"));
+      return resolve(msg("Linked items"));
     case "work":
       return resolve(msg("Work"));
     case "plugin":
@@ -1306,7 +1306,7 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
       onClick: props.onAddPullRequest,
     },
     {
-      label: msg("Linked pull requests"),
+      label: msg("Linked items"),
       icon: PullRequestGlyph.link,
       shortcut: "L",
       available: props.pullRequestsAvailable,
