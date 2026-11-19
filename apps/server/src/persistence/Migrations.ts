@@ -126,6 +126,7 @@ import Migration0097 from "./Migrations/097_TurnItemInlineWorkOutput.ts";
 import Migration0098 from "./Migrations/098_RepairStaleTitleRegeneration.ts";
 import BobExecutionPublications from "./Migrations/099_BobExecutionPublications.ts";
 import IssueTrackerBindings from "./Migrations/100_IssueTrackerBindings.ts";
+import BackgroundRecoveryIndexes from "./Migrations/102_BackgroundRecoveryIndexes.ts";
 import ActiveShellIndexIndexes from "./Migrations/101_ActiveShellIndexIndexes.ts";
 
 const migrationEntries = [
@@ -235,6 +236,7 @@ const migrationEntries = [
   [99, "BobExecutionPublications", BobExecutionPublications],
   [100, "IssueTrackerBindings", IssueTrackerBindings],
   [101, "ActiveShellIndexIndexes", ActiveShellIndexIndexes],
+  [102, "BackgroundRecoveryIndexes", BackgroundRecoveryIndexes],
 ] as const;
 
 export const migrationManifest = migrationEntries.map(([id, name]) => [id, name] as const);
