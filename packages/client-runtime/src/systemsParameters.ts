@@ -1,3 +1,4 @@
+import { msg, mFallback as m } from "gt-i18n";
 import type { SystemsPatchOperation, SystemsSemanticDiffResult } from "@t3tools/contracts";
 
 /** A scalar node parameter of a system document, addressed by its JSON Pointer. */
@@ -69,11 +70,11 @@ export function parseParameterDraft(
   if (typeof original === "string") return { value: text };
   if (typeof original === "boolean") {
     if (text === "true" || text === "false") return { value: text === "true" };
-    return { error: "Enter true or false" };
+    return { error: m(msg("Enter true or false")) };
   }
   const trimmed = text.trim();
   const value = Number(trimmed);
-  if (trimmed === "" || !Number.isFinite(value)) return { error: "Enter a finite number" };
+  if (trimmed === "" || !Number.isFinite(value)) return { error: m(msg("Enter a finite number")) };
   return { value };
 }
 

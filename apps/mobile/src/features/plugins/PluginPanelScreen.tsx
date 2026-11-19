@@ -1,3 +1,4 @@
+import { msg, useMessages } from "gt-react-native";
 import { useNavigation, type StaticScreenProps } from "@react-navigation/native";
 import {
   EnvironmentId,
@@ -62,6 +63,8 @@ function panelView(
 }
 
 export function PluginPanelScreen({ route }: PluginPanelScreenProps) {
+  const m = useMessages();
+
   const navigation = useNavigation();
   const params = route.params;
   const environmentId = EnvironmentId.make(params.environmentId);
@@ -73,7 +76,7 @@ export function PluginPanelScreen({ route }: PluginPanelScreenProps) {
   const transport = manifest?.mcpServer.transport;
   return (
     <View className="flex-1 bg-screen">
-      <AppBar title={panelTitle ?? "Plugin"} onBack={() => navigation.goBack()} />
+      <AppBar title={panelTitle ?? m(msg("Plugin"))} onBack={() => navigation.goBack()} />
       {/* Changed params open a different panel, which needs its own view and opening call. */}
       <PluginPanel
         key={[
@@ -103,6 +106,8 @@ function PluginPanel(props: {
   /** Only an OAuth server can be signed in to from here; others just report the state. */
   readonly signsInWithOAuth: boolean;
 }) {
+  const m = useMessages();
+
   const navigation = useNavigation();
   const signIn = useMcpOAuthSignIn(props.environmentId);
   const [signingIn, setSigningIn] = useState(false);
@@ -143,7 +148,7 @@ function PluginPanel(props: {
         message:
           error instanceof Error && error.message.trim() !== ""
             ? error.message
-            : "This panel could not be opened.",
+            : m(msg("This panel could not be opened.")),
       });
     });
   });
@@ -196,15 +201,16 @@ function PluginPanel(props: {
       ) : state._tag === "needs-auth" ? (
         <View className="flex-1 items-center justify-center px-6">
           <Text className="text-center text-base font-semibold text-foreground">
-            Sign in to {state.server}
+            {m(msg("Sign in to "))}
+            {state.server}
           </Text>
           <Text className="mt-1 text-center text-sm text-foreground-muted">
-            This panel needs you to sign in to its server first.
+            {m(msg("This panel needs you to sign in to its server first."))}
           </Text>
           {props.signsInWithOAuth && signIn !== null ? (
             <View className="mt-4">
               <Button
-                label="Sign in"
+                label={m(msg("Sign in"))}
                 loading={signingIn}
                 disabled={signingIn}
                 onPress={() => signInAndReopen(state.server)}

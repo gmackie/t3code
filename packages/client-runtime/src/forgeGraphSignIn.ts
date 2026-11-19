@@ -1,3 +1,4 @@
+import { msg, mFallback as m } from "gt-i18n";
 /**
  * What every client shows while an environment signs in to ForgeGraph. The server runs the device
  * flow and keeps the token, so web, mobile and the command palette only describe where it stands
@@ -33,7 +34,7 @@ export interface ForgeGraphSignInView {
   readonly message: string | null;
   readonly canCancel: boolean;
   readonly canSignOut: boolean;
-  readonly signInLabel: "Sign in with ForgeGraph" | "Sign in again";
+  readonly signInLabel: string;
 }
 
 export function forgeGraphSignInView(input: ForgeGraphSignInViewInput): ForgeGraphSignInView {
@@ -53,7 +54,7 @@ export function forgeGraphSignInView(input: ForgeGraphSignInViewInput): ForgeGra
     message: waiting ? null : (input.state?.message ?? null),
     canCancel: waiting,
     canSignOut: !waiting && input.savedInT3,
-    signInLabel: input.savedInT3 ? "Sign in again" : "Sign in with ForgeGraph",
+    signInLabel: input.savedInT3 ? m(msg("Sign in again")) : m(msg("Sign in with ForgeGraph")),
   };
 }
 
@@ -68,5 +69,5 @@ export function forgeGraphSignInFailure(result: {
   const failure = squashAtomCommandFailure(result);
   return failure instanceof Error && failure.message.trim().length > 0
     ? failure.message
-    : "ForgeGraph did not answer. Try again.";
+    : m(msg("ForgeGraph did not answer. Try again."));
 }

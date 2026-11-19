@@ -1,3 +1,5 @@
+import { m } from "~/i18n/messages";
+import { msg } from "gt-react";
 import type { ProviderInstanceId, RoutingDecision, RoutingThreadHistory } from "@t3tools/contracts";
 
 /** The badge is only meaningful for threads that run through the router. */
@@ -19,7 +21,14 @@ export function latestRoutingDecision(
 
 /** "Routed to Sol (tier 2) · extraction 0.92" */
 export function formatRoutingDecision(decision: RoutingDecision): string {
-  return `Routed to ${decision.label} (tier ${decision.tier}) · ${decision.kind} ${decision.confidence.toFixed(2)}`;
+  return m(
+    msg("Routed to {value0} (tier {value1}) · {value2} {value3}", {
+      value0: decision.label,
+      value1: decision.tier,
+      value2: decision.kind,
+      value3: decision.confidence.toFixed(2),
+    }),
+  );
 }
 
 /** Short trigger text: the model label plus the tier. */
@@ -30,9 +39,9 @@ export function formatRoutingBadgeLabel(decision: RoutingDecision): string {
 export function formatRoutingAdvice(advice: RoutingDecision["advice"]): string | null {
   switch (advice) {
     case "compact":
-      return "The router advises compacting this thread before the next turn.";
+      return m(msg("The router advises compacting this thread before the next turn."));
     case "handoff":
-      return "The router is switching models; the cached prefix will go cold.";
+      return m(msg("The router is switching models; the cached prefix will go cold."));
     case null:
       return null;
   }

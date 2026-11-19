@@ -1,3 +1,4 @@
+import { msg, useMessages } from "gt-react-native";
 import { useAtomSet, useAtomValue } from "@effect/atom-react";
 import { AsyncResult } from "effect/reactivity";
 import { settlePromise } from "@t3tools/client-runtime/state/runtime";
@@ -24,6 +25,8 @@ async function requestExpoPushPermission(): Promise<boolean> {
 }
 
 export function SettingsExpoNotifications() {
+  const m = useMessages();
+
   const preferences = useAtomValue(mobilePreferencesAtom);
   const save = useAtomSet(updateMobilePreferencesAtom);
   const status = useExpoPushStatus();
@@ -42,26 +45,26 @@ export function SettingsExpoNotifications() {
     const granted = await settlePromise(requestExpoPushPermission);
     setRequesting(false);
     if (AsyncResult.isFailure(granted)) {
-      Alert.alert("Could not enable notifications", "Please try again.");
+      Alert.alert(m(msg("Could not enable notifications")), m(msg("Please try again.")));
     } else if (!granted.value) {
       Alert.alert(
-        "Notifications are disabled",
-        "Allow notifications for T3 Code in system Settings.",
+        m(msg("Notifications are disabled")),
+        m(msg("Allow notifications for T3 Code in system Settings.")),
       );
     } else {
       save({ expoPushEnabled: true });
     }
   };
   return (
-    <SettingsScreen title="Notifications">
+    <SettingsScreen title={m(msg("Notifications"))}>
       <ScreenScrollView
         contentInsetAdjustmentBehavior="automatic"
         contentContainerClassName="px-5 pt-4"
       >
-        <SettingsSection title="Agent alerts">
+        <SettingsSection title={m(msg("Agent alerts"))}>
           <SettingsSwitchRow
             icon="bell.badge"
-            label="Device Notifications"
+            label={m(msg("Device Notifications"))}
             value={enabled}
             disabled={!configured || requesting || !AsyncResult.isSuccess(preferences)}
             onValueChange={(value) => {
@@ -71,25 +74,37 @@ export function SettingsExpoNotifications() {
         </SettingsSection>
         <AppText className="text-sm text-foreground-muted">
           {!configured
-            ? "This build needs its GMACKO notification configuration."
+            ? m(msg("This build needs its GMACKO notification configuration."))
             : status.pending
-              ? "Updating notification preferences…"
+              ? m(msg("Updating notification preferences…"))
               : status.failed > 0
-                ? "Some environments could not be updated. Reconnect to them to finish enabling or disabling alerts."
+                ? m(
+                    msg(
+                      "Some environments could not be updated. Reconnect to them to finish enabling or disabling alerts.",
+                    ),
+                  )
                 : enabled
-                  ? `Notifications registered with ${status.registered} paired environment${status.registered === 1 ? "" : "s"}.`
-                  : "Notifications are off."}
+                  ? m(
+                      msg("Notifications registered with {value0} paired environment{value1}.", {
+                        value0: status.registered,
+                        value1: status.registered === 1 ? "" : "s",
+                      }),
+                    )
+                  : m(msg("Notifications are off."))}
         </AppText>
         <AppText className="mt-4 text-sm text-foreground-muted">
-          Receive alerts when an agent finishes, fails, needs approval, or asks for input. Pair with
-          an environment first. It must stay running and have internet access.
+          {m(
+            msg(
+              "Receive alerts when an agent finishes, fails, needs approval, or asks for input. Pair with an environment first. It must stay running and have internet access.",
+            ),
+          )}
         </AppText>
         {Platform.OS === "ios" ? (
           <>
-            <SettingsSection title="Lock Screen">
+            <SettingsSection title={m(msg("Lock Screen"))}>
               <SettingsSwitchRow
                 icon="bell.badge"
-                label="Live Activities"
+                label={m(msg("Live Activities"))}
                 value={activitiesEnabled}
                 disabled={!AsyncResult.isSuccess(preferences)}
                 onValueChange={(value) => save({ liveActivitiesEnabled: value })}
@@ -97,12 +112,24 @@ export function SettingsExpoNotifications() {
             </SettingsSection>
             <AppText className="text-sm text-foreground-muted">
               {!activitiesEnabled
-                ? "Live Activities are off."
+                ? m(msg("Live Activities are off."))
                 : activityStatus.failed > 0
-                  ? "Some activities could not connect. Reopen the app after reconnecting to your environments."
+                  ? m(
+                      msg(
+                        "Some activities could not connect. Reopen the app after reconnecting to your environments.",
+                      ),
+                    )
                   : activityStatus.unavailable > 0
-                    ? "An environment needs an update or Live Activity setup before it can update the Lock Screen."
-                    : "Open the app while an agent is working to start its activity. It continues updating while your phone is locked."}
+                    ? m(
+                        msg(
+                          "An environment needs an update or Live Activity setup before it can update the Lock Screen.",
+                        ),
+                      )
+                    : m(
+                        msg(
+                          "Open the app while an agent is working to start its activity. It continues updating while your phone is locked.",
+                        ),
+                      )}
             </AppText>
           </>
         ) : null}

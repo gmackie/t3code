@@ -1,3 +1,5 @@
+import { m } from "~/i18n/messages";
+import { msg, useMessages } from "gt-react";
 /* eslint-disable react/iframe-missing-sandbox -- The explicitly configured dashboard needs its web origin for its own API requests. */
 import { Clipboard, Download, ExternalLink, FlaskConical, Gauge, Link2 } from "lucide-react";
 import { useMemo, useState } from "react";
@@ -16,21 +18,21 @@ export type AnalysisViewProps = {
 type NumberField = Exclude<keyof AntennaSpecForm, "backend" | "secondBandEnabled">;
 
 const fields: { key: NumberField; label: string; unit: string; step?: string }[] = [
-  { key: "boardWidthMm", label: "Board width", unit: "mm" },
-  { key: "boardHeightMm", label: "Board height", unit: "mm" },
-  { key: "radiatorWidthMm", label: "Radiator width", unit: "mm" },
-  { key: "radiatorLengthMm", label: "Radiator length", unit: "mm" },
-  { key: "feedXmm", label: "Feed X", unit: "mm" },
-  { key: "feedYmm", label: "Feed Y", unit: "mm" },
-  { key: "groundXmm", label: "Ground X", unit: "mm" },
-  { key: "groundYmm", label: "Ground Y", unit: "mm" },
-  { key: "lowerMhz", label: "Band start", unit: "MHz" },
-  { key: "upperMhz", label: "Band end", unit: "MHz" },
-  { key: "samples", label: "Frequency samples", unit: "count", step: "1" },
-  { key: "targetDb", label: "S11 target", unit: "dB" },
-  { key: "maxSteps", label: "Max steps", unit: "count", step: "1" },
-  { key: "lowerMhz2", label: "Band 2 start", unit: "MHz" },
-  { key: "upperMhz2", label: "Band 2 end", unit: "MHz" },
+  { key: "boardWidthMm", label: m(msg("Board width")), unit: "mm" },
+  { key: "boardHeightMm", label: m(msg("Board height")), unit: "mm" },
+  { key: "radiatorWidthMm", label: m(msg("Radiator width")), unit: "mm" },
+  { key: "radiatorLengthMm", label: m(msg("Radiator length")), unit: "mm" },
+  { key: "feedXmm", label: m(msg("Feed X")), unit: "mm" },
+  { key: "feedYmm", label: m(msg("Feed Y")), unit: "mm" },
+  { key: "groundXmm", label: m(msg("Ground X")), unit: "mm" },
+  { key: "groundYmm", label: m(msg("Ground Y")), unit: "mm" },
+  { key: "lowerMhz", label: m(msg("Band start")), unit: "MHz" },
+  { key: "upperMhz", label: m(msg("Band end")), unit: "MHz" },
+  { key: "samples", label: m(msg("Frequency samples")), unit: "count", step: "1" },
+  { key: "targetDb", label: m(msg("S11 target")), unit: "dB" },
+  { key: "maxSteps", label: m(msg("Max steps")), unit: "count", step: "1" },
+  { key: "lowerMhz2", label: m(msg("Band 2 start")), unit: "MHz" },
+  { key: "upperMhz2", label: m(msg("Band 2 end")), unit: "MHz" },
 ];
 
 function validDashboardUrl(value: string | undefined): value is string {
@@ -53,6 +55,8 @@ function downloadSpec(json: string) {
 }
 
 export function AnalysisView({ workspace, dashboardUrl }: AnalysisViewProps) {
+  const m = useMessages();
+
   const [form, setForm] = useState<AntennaSpecForm>(defaultAntennaSpecForm);
   const [copied, setCopied] = useState(false);
   const errors = useMemo(() => validateAntennaSpec(form), [form]);
@@ -76,7 +80,7 @@ export function AnalysisView({ workspace, dashboardUrl }: AnalysisViewProps) {
     <div className="flex h-full min-h-0 flex-col overflow-auto bg-background text-foreground">
       <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-border px-3 py-2">
         <FlaskConical className="size-4 text-muted-foreground" />
-        <span className="font-medium">Antenna analysis</span>
+        <span className="font-medium">{m(msg("Antenna analysis"))}</span>
         <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
           {workspaceName}
         </span>
@@ -87,7 +91,8 @@ export function AnalysisView({ workspace, dashboardUrl }: AnalysisViewProps) {
             rel="noopener noreferrer"
             className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs hover:bg-accent"
           >
-            <ExternalLink className="size-3.5" /> Open dashboard
+            <ExternalLink className="size-3.5" />
+            {m(msg(" Open dashboard"))}
           </a>
         )}
       </div>
@@ -95,11 +100,16 @@ export function AnalysisView({ workspace, dashboardUrl }: AnalysisViewProps) {
         <section className="rounded-md border border-border p-3">
           <div className="mb-3 flex items-center gap-2">
             <Gauge className="size-4 text-muted-foreground" />
-            <h2 className="text-xs font-medium uppercase tracking-wide">Problem specification</h2>
+            <h2 className="text-xs font-medium uppercase tracking-wide">
+              {m(msg("Problem specification"))}
+            </h2>
           </div>
           <p className="mb-3 text-xs text-muted-foreground">
-            Create a planar starter mesh for the antenna-rl EMerge workflow. Dimensions are in mm;
-            exported frequencies are in Hz.
+            {m(
+              msg(
+                "Create a planar starter mesh for the antenna-rl EMerge workflow. Dimensions are in mm; exported frequencies are in Hz.",
+              ),
+            )}
           </p>
           <div className="grid grid-cols-2 gap-2">
             {fields.map(({ key, label, unit, step }) => (
@@ -120,9 +130,9 @@ export function AnalysisView({ workspace, dashboardUrl }: AnalysisViewProps) {
             ))}
           </div>
           <label className="mt-2 block text-xs">
-            <span className="mb-1 block text-muted-foreground">Analysis backend</span>
+            <span className="mb-1 block text-muted-foreground">{m(msg("Analysis backend"))}</span>
             <select
-              aria-label="Analysis backend"
+              aria-label={m(msg("Analysis backend"))}
               value={form.backend}
               onChange={(event) =>
                 setForm((old) => ({
@@ -132,8 +142,8 @@ export function AnalysisView({ workspace, dashboardUrl }: AnalysisViewProps) {
               }
               className="w-full rounded border border-border bg-background px-2 py-1.5"
             >
-              <option value="emerge">EMerge dashboard</option>
-              <option value="openems">openEMS spec only (no adapter)</option>
+              <option value="emerge">{m(msg("EMerge dashboard"))}</option>
+              <option value="openems">{m(msg("openEMS spec only (no adapter)"))}</option>
             </select>
           </label>
           <label className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
@@ -144,7 +154,7 @@ export function AnalysisView({ workspace, dashboardUrl }: AnalysisViewProps) {
                 setForm((old) => ({ ...old, secondBandEnabled: event.target.checked }))
               }
             />
-            Include second frequency band
+            {m(msg("Include second frequency band"))}
           </label>
           {errors.length > 0 && (
             <div
@@ -161,7 +171,8 @@ export function AnalysisView({ workspace, dashboardUrl }: AnalysisViewProps) {
               onClick={() => downloadSpec(json)}
               className="inline-flex items-center gap-1 rounded bg-accent px-2 py-1.5 text-xs hover:bg-accent/80 disabled:opacity-40"
             >
-              <Download className="size-3.5" /> Download spec
+              <Download className="size-3.5" />
+              {m(msg(" Download spec"))}
             </button>
             <button
               type="button"
@@ -169,13 +180,21 @@ export function AnalysisView({ workspace, dashboardUrl }: AnalysisViewProps) {
               onClick={() => void copy()}
               className="inline-flex items-center gap-1 rounded border border-border px-2 py-1.5 text-xs hover:bg-accent disabled:opacity-40"
             >
-              <Clipboard className="size-3.5" /> {copied ? "Copied" : "Copy JSON"}
+              <Clipboard className="size-3.5" /> {copied ? m(msg("Copied")) : m(msg("Copy JSON"))}
             </button>
           </div>
           <p className="mt-3 text-[11px] text-muted-foreground">
             {form.backend === "openems"
-              ? "openEMS integration is spec-only; no openEMS adapter or solve is connected."
-              : "Export creates a problem document only. It does not start a solver or training run."}
+              ? m(
+                  msg(
+                    "openEMS integration is spec-only; no openEMS adapter or solve is connected.",
+                  ),
+                )
+              : m(
+                  msg(
+                    "Export creates a problem document only. It does not start a solver or training run.",
+                  ),
+                )}
           </p>
         </section>
         <section className="flex min-h-[360px] min-w-0 flex-col rounded-md border border-border">
@@ -183,19 +202,24 @@ export function AnalysisView({ workspace, dashboardUrl }: AnalysisViewProps) {
             <>
               <div className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-2 text-xs">
                 <Link2 className="size-3.5 text-muted-foreground" />
-                <span className="truncate text-muted-foreground">Configured EMerge dashboard</span>
+                <span className="truncate text-muted-foreground">
+                  {m(msg("Configured EMerge dashboard"))}
+                </span>
               </div>
               <iframe
                 sandbox="allow-scripts allow-same-origin allow-downloads allow-popups allow-forms"
-                title="EMerge antenna dashboard"
+                title={m(msg("EMerge antenna dashboard"))}
                 src={dashboard}
                 className="min-h-[360px] w-full flex-1 border-0"
               />
             </>
           ) : (
             <div className="flex h-full min-h-[360px] items-center justify-center p-6 text-center text-xs text-muted-foreground">
-              Configure an EMerge dashboard URL in the project settings to embed its live results
-              here.
+              {m(
+                msg(
+                  "Configure an EMerge dashboard URL in the project settings to embed its live results here.",
+                ),
+              )}
             </div>
           )}
         </section>

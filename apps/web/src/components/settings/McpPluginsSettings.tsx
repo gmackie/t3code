@@ -1,3 +1,5 @@
+import { m } from "~/i18n/messages";
+import { msg, useMessages } from "gt-react";
 import { useAtomRefresh } from "@effect/atom-react";
 import type { EnvironmentId, McpPluginEntry, McpServerVariable } from "@t3tools/contracts";
 import {
@@ -28,7 +30,7 @@ const reportFailure = (title: string, result: AtomCommandResult<unknown, unknown
   toastManager.add({
     type: "error",
     title,
-    description: error instanceof Error ? error.message : "Something went wrong.",
+    description: error instanceof Error ? error.message : m(msg("Something went wrong.")),
   });
 };
 
@@ -48,6 +50,8 @@ export function McpPluginsSettingsSection() {
 }
 
 function McpPluginsSettings(props: { readonly environmentId: EnvironmentId }) {
+  const m = useMessages();
+
   const listAtom = mcpPluginEnvironment.list({ environmentId: props.environmentId, input: {} });
   const plugins = useEnvironmentQuery(listAtom).data ?? EMPTY_PLUGINS;
   const refresh = useAtomRefresh(listAtom);
@@ -71,7 +75,7 @@ function McpPluginsSettings(props: { readonly environmentId: EnvironmentId }) {
   };
 
   return (
-    <SettingsSection title="MCP plugins">
+    <SettingsSection title={m(msg("MCP plugins"))}>
       {plugins.map((plugin) => {
         const { manifest } = plugin;
         const panels = manifest.contributes.panels.length;
@@ -88,7 +92,13 @@ function McpPluginsSettings(props: { readonly environmentId: EnvironmentId }) {
               }
               description={
                 manifest.description ??
-                `Server "${manifest.mcpServer.name}" · ${panels} ${panels === 1 ? "panel" : "panels"}`
+                m(
+                  msg('Server "{value0}" · {value1} {value2}', {
+                    value0: manifest.mcpServer.name,
+                    value1: panels,
+                    value2: panels === 1 ? "panel" : "panels",
+                  }),
+                )
               }
               control={
                 <>
@@ -106,7 +116,9 @@ function McpPluginsSettings(props: { readonly environmentId: EnvironmentId }) {
                     </MenuTrigger>
                     <MenuPopup align="end">
                       {plugin.directory !== undefined && pluginVariables(plugin).length > 0 ? (
-                        <MenuItem onClick={() => setConfiguring(manifest.id)}>Configure</MenuItem>
+                        <MenuItem onClick={() => setConfiguring(manifest.id)}>
+                          {m(msg("Configure"))}
+                        </MenuItem>
                       ) : null}
                       <MenuItem
                         variant="destructive"
@@ -119,7 +131,7 @@ function McpPluginsSettings(props: { readonly environmentId: EnvironmentId }) {
                           )
                         }
                       >
-                        Uninstall
+                        {m(msg("Uninstall"))}
                       </MenuItem>
                     </MenuPopup>
                   </Menu>
@@ -158,8 +170,8 @@ function McpPluginsSettings(props: { readonly environmentId: EnvironmentId }) {
         );
       })}
       <SettingsRow
-        title="Install from a folder"
-        description="A folder on this environment's machine with a t3-plugin.json."
+        title={m(msg("Install from a folder"))}
+        description={m(msg("A folder on this environment's machine with a t3-plugin.json."))}
         control={
           <form
             className="flex items-center gap-2"
@@ -174,13 +186,13 @@ function McpPluginsSettings(props: { readonly environmentId: EnvironmentId }) {
           >
             <Input
               size="sm"
-              aria-label="Plugin folder"
+              aria-label={m(msg("Plugin folder"))}
               placeholder="/path/to/plugin"
               value={directory}
               onChange={(event) => setDirectory(event.target.value)}
             />
             <Button size="sm" type="submit" disabled={pending || directory.trim() === ""}>
-              Install
+              {m(msg("Install"))}
             </Button>
           </form>
         }
@@ -195,6 +207,8 @@ function PluginVariablesForm(props: {
   readonly onCancel: () => void;
   readonly onSave: (variables: Record<string, string>) => void;
 }) {
+  const m = useMessages();
+
   const [values, setValues] = useState<Record<string, string>>({});
   return (
     <form
@@ -215,7 +229,7 @@ function PluginVariablesForm(props: {
           <Input
             size="sm"
             type={variable.sensitive ? "password" : "text"}
-            placeholder="Leave blank to keep the current value"
+            placeholder={m(msg("Leave blank to keep the current value"))}
             value={values[variable.name] ?? ""}
             onChange={(event) =>
               setValues((current) => ({ ...current, [variable.name]: event.target.value }))
@@ -225,10 +239,10 @@ function PluginVariablesForm(props: {
       ))}
       <div className="flex justify-end gap-2">
         <Button size="sm" variant="ghost" onClick={props.onCancel}>
-          Cancel
+          {m(msg("Cancel"))}
         </Button>
         <Button size="sm" type="submit" disabled={props.disabled}>
-          Save
+          {m(msg("Save"))}
         </Button>
       </div>
     </form>

@@ -1,3 +1,5 @@
+import { msg } from "gt-react";
+import { m } from "~/i18n/messages";
 import {
   AuthProvidersManageScope,
   requiredScopesForServerSettingsPatch,
@@ -40,7 +42,7 @@ import { McpOAuthSignIn } from "./McpOAuthSignIn";
 import { McpServerDialog } from "./McpServerDialog";
 import { useSettingsScope } from "./SettingsScopeContext";
 import { SettingsPageContainer, SettingsRow, SettingsSection } from "./settingsLayout";
-import { searchableSetting } from "./settingsSearch";
+import { useSearchableSetting } from "./settingsSearch";
 import {
   collectSkillRows,
   filterSkillRows,
@@ -130,8 +132,10 @@ function usePersistToolsPatch() {
         if (!config?.environment.capabilities.agentTools) {
           toastManager.add({
             type: "warning",
-            title: "Tools not saved",
-            description: `Update ${target.label} to manage skills and MCP servers.`,
+            title: m(msg("Tools not saved")),
+            description: m(
+              msg("Update {value0} to manage skills and MCP servers.", { value0: target.label }),
+            ),
           });
           return false;
         }
@@ -148,8 +152,8 @@ function usePersistToolsPatch() {
         } catch (error) {
           toastManager.add({
             type: "warning",
-            title: "Tools not saved",
-            description: error instanceof Error ? error.message : "Could not update tools.",
+            title: m(msg("Tools not saved")),
+            description: error instanceof Error ? error.message : m(msg("Could not update tools.")),
           });
           return false;
         }
@@ -160,8 +164,12 @@ function usePersistToolsPatch() {
         if (missing) {
           toastManager.add({
             type: "warning",
-            title: "Tools not saved",
-            description: `This connection lacks permission to change tools on ${target.label}.`,
+            title: m(msg("Tools not saved")),
+            description: m(
+              msg("This connection lacks permission to change tools on {value0}.", {
+                value0: target.label,
+              }),
+            ),
           });
           return false;
         }
@@ -173,8 +181,10 @@ function usePersistToolsPatch() {
           written.current.delete(target.environmentId);
           toastManager.add({
             type: "warning",
-            title: "Tools not saved",
-            description: `Could not save tools on ${target.label}. Try again.`,
+            title: m(msg("Tools not saved")),
+            description: m(
+              msg("Could not save tools on {value0}. Try again.", { value0: target.label }),
+            ),
           });
           return false;
         }
@@ -191,8 +201,8 @@ function usePersistToolsPatch() {
           written.current.delete(target.environmentId);
           toastManager.add({
             type: "warning",
-            title: "Tools not saved",
-            description: error instanceof Error ? error.message : "Could not update tools.",
+            title: m(msg("Tools not saved")),
+            description: error instanceof Error ? error.message : m(msg("Could not update tools.")),
           });
           return false;
         });
@@ -237,7 +247,7 @@ export function ToolsSettings({
     <SettingsPageContainer>
       <div className="px-3 sm:px-4">
         <ToggleGroup
-          aria-label="Tools"
+          aria-label={m(msg("Tools"))}
           variant="segmented"
           value={[tab]}
           onValueChange={(next) => {
@@ -245,15 +255,19 @@ export function ToolsSettings({
             if (value === "skills" || value === "mcp") selectTab(value);
           }}
         >
-          <Toggle value="skills">Skills</Toggle>
-          <Toggle value="mcp">MCP servers</Toggle>
+          <Toggle value="skills">{m(msg("Skills"))}</Toggle>
+          <Toggle value="mcp">{m(msg("MCP servers"))}</Toggle>
         </ToggleGroup>
       </div>
       {unsupported.length > 0 ? (
-        <SettingsSection title="Update environment">
+        <SettingsSection title={m(msg("Update environment"))}>
           <SettingsRow
-            title="Tools settings need a newer server"
-            description={`Update ${[...new Set(unsupported.map((target) => target.label))].join(", ")} to manage skills and MCP servers for this scope.`}
+            title={m(msg("Tools settings need a newer server"))}
+            description={m(
+              msg("Update {value0} to manage skills and MCP servers for this scope.", {
+                value0: [...new Set(unsupported.map((target) => target.label))].join(", "),
+              }),
+            )}
           />
         </SettingsSection>
       ) : tab === "mcp" ? (
@@ -271,6 +285,7 @@ export function ToolsSettings({
 function SkillsPanel({ persist }: { readonly persist: ReturnType<typeof usePersistToolsPatch> }) {
   const { scope, target } = useSettingsScope();
   const environmentId = target?.environmentId ?? null;
+  const searchableSetting = useSearchableSetting();
   const targets = useToolsTargets();
   const cwd = targets.find((candidate) => candidate.environmentId === environmentId)?.cwd ?? null;
   const providers =
@@ -347,10 +362,10 @@ function SkillsPanel({ persist }: { readonly persist: ReturnType<typeof usePersi
             </InputGroupAddon>
             <InputGroupInput
               size="sm"
-              placeholder="Filter skills"
+              placeholder={m(msg("Filter skills"))}
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              aria-label="Filter skills"
+              aria-label={m(msg("Filter skills"))}
             />
           </InputGroup>
           <Tooltip>
@@ -359,7 +374,7 @@ function SkillsPanel({ persist }: { readonly persist: ReturnType<typeof usePersi
                 <Button
                   size="icon-sm"
                   variant="outline"
-                  aria-label="Rescan skills"
+                  aria-label={m(msg("Rescan skills"))}
                   disabled={refreshing || environmentId === null}
                   onClick={() => void refresh(true)}
                 />
@@ -367,24 +382,28 @@ function SkillsPanel({ persist }: { readonly persist: ReturnType<typeof usePersi
             >
               <RefreshCwIcon className={refreshing ? "size-3.5 animate-spin" : "size-3.5"} />
             </TooltipTrigger>
-            <TooltipPopup side="top">Rescan skill folders</TooltipPopup>
+            <TooltipPopup side="top">{m(msg("Rescan skill folders"))}</TooltipPopup>
           </Tooltip>
         </div>
       </SettingsSection>
       {rows.length === 0 ? (
-        <SettingsSection title="Skills">
+        <SettingsSection title={m(msg("Skills"))}>
           <SettingsRow
-            title={refreshing ? "Looking for skills…" : "No skills found"}
+            title={refreshing ? m(msg("Looking for skills…")) : m(msg("No skills found"))}
             description={
               refreshing
                 ? undefined
-                : "Agents load skills from folders like ~/.agents/skills and .claude/skills. Add one there and rescan."
+                : m(
+                    msg(
+                      "Agents load skills from folders like ~/.agents/skills and .claude/skills. Add one there and rescan.",
+                    ),
+                  )
             }
           />
         </SettingsSection>
       ) : groups.length === 0 ? (
-        <SettingsSection title="Skills">
-          <SettingsRow title={`No skills match “${query.trim()}”`} />
+        <SettingsSection title={m(msg("Skills"))}>
+          <SettingsRow title={m(msg("No skills match “{value0}”", { value0: query.trim() }))} />
         </SettingsSection>
       ) : (
         groups.map(({ group, rows: groupRows }) => (
@@ -414,9 +433,11 @@ function SkillsPanel({ persist }: { readonly persist: ReturnType<typeof usePersi
         ))
       )}
       <p className="px-3 text-xs text-muted-foreground sm:px-4">
-        Turning a skill off hides it from Claude, Codex and OpenCode 1, and from the composer's
-        skill menu. Cursor, Grok, Antigravity, Pi, Muse and OpenCode 2 may still load it on their
-        own. Changes apply to new sessions.
+        {m(
+          msg(
+            "Turning a skill off hides it from Claude, Codex and OpenCode 1, and from the composer's\n        skill menu. Cursor, Grok, Antigravity, Pi, Muse and OpenCode 2 may still load it on their\n        own. Changes apply to new sessions.",
+          ),
+        )}
       </p>
     </>
   );
@@ -445,14 +466,14 @@ function SkillSettingsRow({
           <span className="truncate font-mono">{row.name}</span>
           {overridden ? (
             <Badge variant="info" size="sm">
-              This project
+              {m(msg("This project"))}
             </Badge>
           ) : null}
         </span>
       }
       description={
         lockedOff
-          ? "Turned off in the agent's own settings."
+          ? m(msg("Turned off in the agent's own settings."))
           : (row.description ?? row.paths[0] ?? undefined)
       }
       className={disabled || lockedOff ? "[&_h3]:text-muted-foreground" : undefined}
@@ -501,6 +522,7 @@ function McpServersPanel({
   readonly persist: ReturnType<typeof usePersistToolsPatch>;
 }) {
   const { scope, target, connectedEnvironments } = useSettingsScope();
+  const searchableSetting = useSearchableSetting();
   const targets = useToolsTargets();
   const canWriteSettings = useScopedSettingsWriteAllowed();
   const managers = useEnvironmentsWithScope(connectedEnvironments, AuthProvidersManageScope);
@@ -595,8 +617,8 @@ function McpServersPanel({
     } catch (error) {
       toastManager.add({
         type: "warning",
-        title: "Tools not saved",
-        description: error instanceof Error ? error.message : "Could not update tools.",
+        title: m(msg("Tools not saved")),
+        description: error instanceof Error ? error.message : m(msg("Could not update tools.")),
       });
       return { saved: false, partial: completed.size > 0 };
     }
@@ -695,23 +717,33 @@ function McpServersPanel({
     <>
       <SettingsSection
         {...searchableSetting("tools-mcp-servers")}
-        title={isProjectScope ? "This project" : "MCP servers"}
+        title={isProjectScope ? m(msg("This project")) : m(msg("MCP servers"))}
         headerAction={
           canEditServers ? (
             <Button size="xs" variant="outline" onClick={() => setEditor({ mode: "add", targets })}>
               <PlusIcon className="size-3" aria-hidden />
-              Add server
+              {m(msg("Add server"))}
             </Button>
           ) : null
         }
       >
         {ownRows.length === 0 ? (
           <SettingsRow
-            title={isProjectScope ? "No servers just for this project" : "No servers yet"}
+            title={
+              isProjectScope ? m(msg("No servers just for this project")) : m(msg("No servers yet"))
+            }
             description={
               isProjectScope
-                ? "Add one here to give only this project's agents a server, or to point a shared server at a different account."
-                : "Servers added here reach supported agents, next to the servers each agent already loads from its own config."
+                ? m(
+                    msg(
+                      "Add one here to give only this project's agents a server, or to point a shared server at a different account.",
+                    ),
+                  )
+                : m(
+                    msg(
+                      "Servers added here reach supported agents, next to the servers each agent already loads from its own config.",
+                    ),
+                  )
             }
           />
         ) : (
@@ -731,7 +763,7 @@ function McpServersPanel({
         )}
       </SettingsSection>
       {isProjectScope && inheritedRows.length > 0 ? (
-        <SettingsSection title="Inherited">
+        <SettingsSection title={m(msg("Inherited"))}>
           {inheritedRows.map((row) => (
             <McpServerSettingsRow
               key={row.name}
@@ -747,13 +779,19 @@ function McpServersPanel({
       ) : null}
       {!canManageServers && connectedEnvironments.length > 0 ? (
         <p className="px-3 text-xs text-muted-foreground sm:px-4">
-          Adding or editing servers needs permission to manage providers on this environment.
+          {m(
+            msg(
+              "Adding or editing servers needs permission to manage providers on this environment.",
+            ),
+          )}
         </p>
       ) : (
         <p className="px-3 text-xs text-muted-foreground sm:px-4">
-          Servers you add here are given to Claude, Codex, Cursor, OpenCode, Grok and other ACP
-          agents. Pi, Muse and external OpenCode 1 servers aren't supported. Changes apply to new
-          sessions; use Restart agent session to pick them up in an open thread.
+          {m(
+            msg(
+              "Servers you add here are given to Claude, Codex, Cursor, OpenCode, Grok and other ACP\n          agents. Pi, Muse and external OpenCode 1 servers aren't supported. Changes apply to new\n          sessions; use Restart agent session to pick them up in an open thread.",
+            ),
+          )}
         </p>
       )}
       {editor ? (
@@ -809,15 +847,28 @@ function McpServersPanel({
       <AlertDialog open={removing !== null} onOpenChange={(open) => !open && setRemoving(null)}>
         <AlertDialogPopup>
           <AlertDialogHeader>
-            <AlertDialogTitle>Remove {removing?.name}?</AlertDialogTitle>
+            <AlertDialogTitle>
+              {m(msg("Remove"))}
+              {removing?.name}?
+            </AlertDialogTitle>
             <AlertDialogDescription>
               {removing?.replacesEnvironment
-                ? "New agent sessions use the environment configuration again, and this project's stored secrets are deleted. To stop using this server, turn off its inherited project switch."
-                : "New agent sessions stop getting this server, and its stored secrets are deleted."}
+                ? m(
+                    msg(
+                      "New agent sessions use the environment configuration again, and this project's stored secrets are deleted. To stop using this server, turn off its inherited project switch.",
+                    ),
+                  )
+                : m(
+                    msg(
+                      "New agent sessions stop getting this server, and its stored secrets are deleted.",
+                    ),
+                  )}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogClose render={<Button variant="outline" />}>Cancel</AlertDialogClose>
+            <AlertDialogClose render={<Button variant="outline" />}>
+              {m(msg("Cancel"))}
+            </AlertDialogClose>
             <Button
               variant="destructive"
               onClick={() => {
@@ -825,7 +876,7 @@ function McpServersPanel({
                 setRemoving(null);
               }}
             >
-              Remove
+              {m(msg("Remove"))}
             </Button>
           </AlertDialogFooter>
         </AlertDialogPopup>
@@ -860,21 +911,23 @@ function McpServerSettingsRow({
         <span className="flex min-w-0 items-center gap-1.5">
           <span className="truncate">{row.name}</span>
           <Badge variant="outline" size="sm">
-            {transport.type === "stdio" ? "Command" : "URL"}
+            {transport.type === "stdio" ? m(msg("Command")) : "URL"}
           </Badge>
           {row.replacesEnvironment ? (
             <Badge variant="info" size="sm">
-              Replaces environment's
+              {m(msg("Replaces environment's"))}
             </Badge>
           ) : null}
           {row.origin === "project-switch" ? (
             <Badge variant="info" size="sm">
-              {row.config.enabled ? "On" : "Off"} for this project
+              {row.config.enabled ? m(msg("On")) : m(msg("Off"))}
+              {m(msg("for this project"))}
             </Badge>
           ) : null}
           {row.config.plugin ? (
             <Badge variant="outline" size="sm">
-              From plugin {row.config.plugin.displayName}
+              {m(msg("From plugin"))}
+              {row.config.plugin.displayName}
             </Badge>
           ) : null}
         </span>
@@ -888,7 +941,7 @@ function McpServerSettingsRow({
           {oauthControl}
           {onReset ? (
             <Button size="xs" variant="ghost" onClick={onReset} disabled={!canSwitch}>
-              Reset
+              {m(msg("Reset"))}
             </Button>
           ) : null}
           {canEdit && onEdit && onRemove && row.config.plugin === undefined ? (
@@ -901,9 +954,9 @@ function McpServerSettingsRow({
                 <MoreHorizontalIcon className="size-4" />
               </MenuTrigger>
               <MenuPopup align="end">
-                <MenuItem onClick={onEdit}>Edit</MenuItem>
+                <MenuItem onClick={onEdit}>{m(msg("Edit"))}</MenuItem>
                 <MenuItem variant="destructive" onClick={onRemove}>
-                  Remove
+                  {m(msg("Remove"))}
                 </MenuItem>
               </MenuPopup>
             </Menu>

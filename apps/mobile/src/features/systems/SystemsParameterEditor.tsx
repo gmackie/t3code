@@ -1,3 +1,4 @@
+import { msg, useMessages } from "gt-react-native";
 import type { EnvironmentId, ProjectId, SystemsModelPatchResult } from "@t3tools/contracts";
 import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
 import {
@@ -26,6 +27,8 @@ export function SystemsParameterEditor(props: {
   readonly file: string;
   readonly onSaved: () => void;
 }) {
+  const m = useMessages();
+
   const { environmentId, projectId, path, file } = props;
   const model = useEnvironmentQuery(
     systemsEnvironment.model({ environmentId, input: { projectId, path, file } }),
@@ -45,7 +48,8 @@ export function SystemsParameterEditor(props: {
   if (!model.data)
     return (
       <Text textRole="footnote" className="text-foreground-muted">
-        Loading {file}…
+        {m(msg("Loading "))}
+        {file}…
       </Text>
     );
   const { revision } = model.data;
@@ -87,7 +91,7 @@ export function SystemsParameterEditor(props: {
   if (nodes.length === 0)
     return (
       <Text textRole="footnote" className="text-foreground-muted">
-        No node parameters.
+        {m(msg("No node parameters."))}
       </Text>
     );
   return (
@@ -145,16 +149,25 @@ export function SystemsParameterEditor(props: {
         </View>
       ))}
       <View className="flex-row flex-wrap items-center gap-2">
-        <Button label="Check" disabled={blocked} onPress={() => void submit(true)} />
+        <Button label={m(msg("Check"))} disabled={blocked} onPress={() => void submit(true)} />
         <Button
-          label={operations.length > 0 ? `Save (${operations.length})` : "Save"}
+          label={
+            operations.length > 0
+              ? m(msg("Save ({value0})", { value0: operations.length }))
+              : m(msg("Save"))
+          }
           tone="primary"
           disabled={blocked}
           loading={busy}
           onPress={() => void submit(false)}
         />
         {operations.length > 0 ? (
-          <Button label="Revert" tone="text" disabled={busy} onPress={() => setTexts(new Map())} />
+          <Button
+            label={m(msg("Revert"))}
+            tone="text"
+            disabled={busy}
+            onPress={() => setTexts(new Map())}
+          />
         ) : null}
       </View>
       {error ? (
@@ -165,7 +178,7 @@ export function SystemsParameterEditor(props: {
       {result ? (
         <View className="gap-1">
           <SystemsBadge
-            label={result.status === "dry_run" ? "checks pass" : result.status}
+            label={result.status === "dry_run" ? m(msg("checks pass")) : result.status}
             tone={result.status === "rejected" ? "error" : "success"}
           />
           {semanticChangeSummary(result.semanticDiff).map((line) => (

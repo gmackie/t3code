@@ -1,3 +1,5 @@
+import { m } from "~/i18n/messages";
+import { msg } from "gt-react";
 import {
   isValidMcpServerName,
   type McpOAuthSettings,
@@ -548,12 +550,12 @@ export function mcpServerFromDraft(
       field: "name",
       message:
         name === "t3-code"
-          ? "t3-code is reserved for T3 Code's own server."
-          : "Use lowercase letters, digits, - or _, starting with a letter.",
+          ? m(msg("t3-code is reserved for T3 Code's own server."))
+          : m(msg("Use lowercase letters, digits, - or _, starting with a letter.")),
     };
   }
   if (takenNames.has(name)) {
-    return { ok: false, field: "name", message: "A server with this name already exists." };
+    return { ok: false, field: "name", message: m(msg("A server with this name already exists.")) };
   }
   const variableNames = new Set<string>();
   for (const variable of draft.type === "stdio" ? draft.env : draft.headers) {
@@ -563,7 +565,7 @@ export function mcpServerFromDraft(
         return {
           ok: false,
           field: "variables",
-          message: "Enter a variable name or remove the row.",
+          message: m(msg("Enter a variable name or remove the row.")),
         };
       }
       continue;
@@ -573,7 +575,11 @@ export function mcpServerFromDraft(
       return {
         ok: false,
         field: "variables",
-        message: `Enter a value for ${name}, or keep it secret to reuse the stored value.`,
+        message: m(
+          msg("Enter a value for {value0}, or keep it secret to reuse the stored value.", {
+            value0: name,
+          }),
+        ),
       };
     }
     const key = draft.type === "http" ? name.toLowerCase() : name;
@@ -581,7 +587,12 @@ export function mcpServerFromDraft(
       return {
         ok: false,
         field: "variables",
-        message: `Duplicate ${draft.type === "stdio" ? "environment variable" : "header"} name: ${name}.`,
+        message: m(
+          msg("Duplicate {value0} name: {value1}.", {
+            value0: draft.type === "stdio" ? "environment variable" : "header",
+            value1: name,
+          }),
+        ),
       };
     }
     variableNames.add(key);
@@ -589,7 +600,11 @@ export function mcpServerFromDraft(
   if (draft.type === "stdio") {
     const command = draft.command.trim();
     if (command.length === 0) {
-      return { ok: false, field: "command", message: "Enter the command that starts the server." };
+      return {
+        ok: false,
+        field: "command",
+        message: m(msg("Enter the command that starts the server.")),
+      };
     }
     return {
       ok: true,
@@ -604,7 +619,7 @@ export function mcpServerFromDraft(
   }
   const url = draft.url.trim();
   if (!/^https?:\/\/\S+$/i.test(url)) {
-    return { ok: false, field: "url", message: "Enter an http:// or https:// URL." };
+    return { ok: false, field: "url", message: m(msg("Enter an http:// or https:// URL.")) };
   }
   return {
     ok: true,

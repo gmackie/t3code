@@ -1,3 +1,4 @@
+import { msg, useMessages } from "gt-react";
 import { bobOperationSchemas } from "@t3tools/contracts/bobContract";
 import { randomUUID } from "~/lib/utils";
 import type { EnvironmentId, ProjectId, IssueItem } from "@t3tools/contracts";
@@ -67,6 +68,8 @@ function WorkContent({
   projectId: ProjectId;
   connection: EnvironmentQueryView<import("@t3tools/contracts/bobCoordination").BobConnectionState>;
 }) {
+  const m = useMessages();
+
   const overview = useEnvironmentQuery(
     connection.data?.configured
       ? bobCoordination.overview({ environmentId, input: { projectId } })
@@ -170,12 +173,12 @@ function WorkContent({
         }
       } catch (cause) {
         if (current === generation.current)
-          setError(cause instanceof Error ? cause.message : "Could not refresh Bob work.");
+          setError(cause instanceof Error ? cause.message : m(msg("Could not refresh Bob work.")));
       } finally {
         if (current === generation.current) setBusy(false);
       }
     },
-    [binding, loadPlan, request, overview.data?.plans],
+    [binding, loadPlan, request, overview.data?.plans, m],
   );
   const mutate = async (command: BobOperationInput) => {
     setBusy(true);
@@ -194,7 +197,9 @@ function WorkContent({
       // retains the same command ID for replay.
       if (isBobCoordinationError(cause) && cause.status >= 400 && cause.status < 500)
         setPending(null);
-      setError(cause instanceof Error ? cause.message : "Bob could not confirm the request.");
+      setError(
+        cause instanceof Error ? cause.message : m(msg("Bob could not confirm the request.")),
+      );
     } finally {
       setBusy(false);
     }
@@ -229,7 +234,7 @@ function WorkContent({
       });
       setSelected(new Set());
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Could not capture issue scope.");
+      setError(cause instanceof Error ? cause.message : m(msg("Could not capture issue scope.")));
     }
   };
   const loadIssues = async () => {
@@ -239,7 +244,7 @@ function WorkContent({
     if (result._tag === "Success") setIssues(result.value.issues);
     else {
       const cause = squashAtomCommandFailure(result);
-      setError(cause instanceof Error ? cause.message : "Could not load project issues.");
+      setError(cause instanceof Error ? cause.message : m(msg("Could not load project issues.")));
     }
     setBusy(false);
   };
@@ -248,8 +253,10 @@ function WorkContent({
       <div className="space-y-5 p-4">
         <div className="flex items-center justify-between gap-2">
           <div>
-            <h2 className="font-semibold">Work</h2>
-            <p className="text-xs text-muted-foreground">Plans and execution coordinated by Bob</p>
+            <h2 className="font-semibold">{m(msg("Work"))}</h2>
+            <p className="text-xs text-muted-foreground">
+              {m(msg("Plans and execution coordinated by Bob"))}
+            </p>
           </div>
           <Button
             size="sm"
@@ -257,13 +264,16 @@ function WorkContent({
             disabled={busy || !connection.data?.configured}
             onClick={() => void refresh(plan?.planId)}
           >
-            Refresh
+            {m(msg("Refresh"))}
           </Button>
         </div>
         {!connection.data?.configured && (
           <p className="text-sm text-muted-foreground">
-            Connect this environment to Bob to manage plans. Project issues and pull requests remain
-            available in their existing views.
+            {m(
+              msg(
+                "Connect this environment to Bob to manage plans. Project issues and pull requests remain available in their existing views.",
+              ),
+            )}
           </p>
         )}
         {(error || connection.error) && (
@@ -274,21 +284,24 @@ function WorkContent({
         {pending && (
           <div className="space-y-2 rounded-lg border p-3">
             <p className="text-sm">
-              This request is retained for safe replay. Refresh to inspect the current state, or
-              retry the same request.
+              {m(
+                msg(
+                  "This request is retained for safe replay. Refresh to inspect the current state, or retry the same request.",
+                ),
+              )}
             </p>
             <Button size="sm" disabled={busy} onClick={() => void mutate(pending)}>
-              Retry same request
+              {m(msg("Retry same request"))}
             </Button>
           </div>
         )}
         {connection.data?.configured && (
           <>
             <section className="space-y-2">
-              <h3 className="text-sm font-medium">Plans</h3>
+              <h3 className="text-sm font-medium">{m(msg("Plans"))}</h3>
               {plans.length === 0 && (
                 <p className="text-sm text-muted-foreground">
-                  No plans yet. Select project issues below to create one.
+                  {m(msg("No plans yet. Select project issues below to create one."))}
                 </p>
               )}
               {plans.map((entry) => (
@@ -310,21 +323,21 @@ function WorkContent({
                   disabled={busy}
                   onClick={() => void refresh(plan?.planId, nextPlanId)}
                 >
-                  More plans
+                  {m(msg("More plans"))}
                 </Button>
               )}
             </section>
             {binding && supports("CreatePlan") && (
               <section className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <h3 className="text-sm font-medium">Plan from project issues</h3>
+                  <h3 className="text-sm font-medium">{m(msg("Plan from project issues"))}</h3>
                   <Button
                     size="sm"
                     variant="ghost"
                     disabled={busy}
                     onClick={() => void loadIssues()}
                   >
-                    Load issues
+                    {m(msg("Load issues"))}
                   </Button>
                 </div>
                 {issues
@@ -354,11 +367,15 @@ function WorkContent({
                   disabled={busy || selected.size === 0 || pending !== null}
                   onClick={() => void createPlan()}
                 >
-                  Create plan from {selected.size} issues
+                  {m(msg("Create plan from "))}
+                  {selected.size} issues
                 </Button>
                 <p className="text-xs text-muted-foreground">
-                  New plans are drafts. Execution success keeps production work open until
-                  deployment and health are verified.
+                  {m(
+                    msg(
+                      "New plans are drafts. Execution success keeps production work open until deployment and health are verified.",
+                    ),
+                  )}
                 </p>
               </section>
             )}
@@ -366,7 +383,9 @@ function WorkContent({
               <section className="space-y-3">
                 <div>
                   <h3 className="text-sm font-medium">
-                    {plan.state} · version {plan.resourceVersion}
+                    {plan.state}
+                    {m(msg(" · version "))}
+                    {plan.resourceVersion}
                   </h3>
                   <div className="mt-2 flex gap-2">
                     {supports("ControlPlan") &&
@@ -406,13 +425,13 @@ function WorkContent({
                   </div>
                 </div>
                 <label className="block space-y-1 text-xs">
-                  <span>Execution profile</span>
+                  <span>{m(msg("Execution profile"))}</span>
                   <select
                     className="w-full rounded border bg-background p-2"
                     value={profile}
                     onChange={(event) => setProfile(event.target.value)}
                   >
-                    <option value="">Choose an environment profile</option>
+                    <option value="">{m(msg("Choose an environment profile"))}</option>
                     {connection.data.executionProfiles.map((id) => (
                       <option key={id} value={id}>
                         {id}
@@ -421,23 +440,26 @@ function WorkContent({
                   </select>
                 </label>
                 <label className="block space-y-1 text-xs">
-                  <span>Base commit for new executions</span>
+                  <span>{m(msg("Base commit for new executions"))}</span>
                   <Input
                     value={baseRevision}
-                    placeholder="40-character commit SHA"
+                    placeholder={m(msg("40-character commit SHA"))}
                     onChange={(event) => setBaseRevision(event.target.value)}
                   />
                 </label>
                 <label className="block space-y-1 text-xs">
-                  <span>Acceptance criteria for execution (one per line)</span>
+                  <span>{m(msg("Acceptance criteria for execution (one per line)"))}</span>
                   <Textarea
                     value={acceptanceCriteria}
                     onChange={(event) => setAcceptanceCriteria(event.target.value)}
                   />
                 </label>
                 <p className="text-xs text-muted-foreground">
-                  Load project issues to verify their current scope before execution. Requests are
-                  queued in Bob; its configured dispatch worker admits them.
+                  {m(
+                    msg(
+                      "Load project issues to verify their current scope before execution. Requests are queued in Bob; its configured dispatch worker admits them.",
+                    ),
+                  )}
                 </p>
                 {items.map((item) => {
                   const definition = plan.definition.items.find(
@@ -460,12 +482,15 @@ function WorkContent({
                             {definition.target.environmentId} · {item.state}
                           </p>
                         </div>
-                        <span className="text-xs">Target: {definition.completionTarget}</span>
+                        <span className="text-xs">
+                          {m(msg("Target: "))}
+                          {definition.completionTarget}
+                        </span>
                       </div>
                       <p className="text-xs">
                         {item.achievedMilestones.length
                           ? item.achievedMilestones.join(" → ")
-                          : "No milestone confirmed"}
+                          : m(msg("No milestone confirmed"))}
                       </p>
                       {item.execution?.thread && (
                         <Link
@@ -476,12 +501,13 @@ function WorkContent({
                           }}
                           className="text-sm underline"
                         >
-                          Open execution thread
+                          {m(msg("Open execution thread"))}
                         </Link>
                       )}
                       {item.evidenceRefs.length > 0 && (
                         <p className="break-words text-xs text-muted-foreground">
-                          Evidence: {item.evidenceRefs.join(", ")}
+                          {m(msg("Evidence: "))}
+                          {item.evidenceRefs.join(", ")}
                         </p>
                       )}
                       {supports("RequestExecution") && item.state === "ready" && (
@@ -502,7 +528,11 @@ function WorkContent({
                               .then((snapshot) => {
                                 if (snapshot !== definition.issueSnapshotRef) {
                                   setError(
-                                    "Issue scope changed since plan creation. Create a new plan with the current scope.",
+                                    m(
+                                      msg(
+                                        "Issue scope changed since plan creation. Create a new plan with the current scope.",
+                                      ),
+                                    ),
                                   );
                                   return;
                                 }
@@ -540,12 +570,12 @@ function WorkContent({
                                 setError(
                                   cause instanceof Error
                                     ? cause.message
-                                    : "Could not capture issue scope.",
+                                    : m(msg("Could not capture issue scope.")),
                                 ),
                               );
                           }}
                         >
-                          Request execution
+                          {m(msg("Request execution"))}
                         </Button>
                       )}
                       {canRetry(item) && supports("RetryItem") && (
@@ -569,16 +599,18 @@ function WorkContent({
                             });
                           }}
                         >
-                          Retry terminal attempt
+                          {m(msg("Retry terminal attempt"))}
                         </Button>
                       )}
                     </article>
                   );
                 })}
                 <p className="text-xs text-muted-foreground">
-                  Validation, PR/CI, and deployment evidence determine later milestones. Use the
-                  existing pull request and delivery views to inspect them; execution alone does not
-                  complete production work.
+                  {m(
+                    msg(
+                      "Validation, PR/CI, and deployment evidence determine later milestones. Use the existing pull request and delivery views to inspect them; execution alone does not complete production work.",
+                    ),
+                  )}
                 </p>
               </section>
             )}
