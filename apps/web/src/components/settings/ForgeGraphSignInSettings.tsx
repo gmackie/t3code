@@ -1,3 +1,4 @@
+import { msg, useMessages } from "gt-react";
 import { useAtomValue } from "@effect/atom-react";
 import type {
   EnvironmentId,
@@ -34,6 +35,8 @@ export function ForgeGraphSignInSettings({
   /** Rescans discovery, so the signed-in account shows once the token is saved or removed. */
   readonly onChanged: () => void;
 }) {
+  const m = useMessages();
+
   const { token } = useEnvironmentSettings(environmentId, readForgeGraphSettings);
   const canSignIn = useAtomValue(
     sourceControlEnvironment.forgeGraphSignInStart.permissionAtom(environmentId),
@@ -104,7 +107,7 @@ export function ForgeGraphSignInSettings({
       {view.pending ? (
         <div className="grid gap-2 rounded-md border border-border p-3">
           <p className="text-xs text-muted-foreground">
-            Approve this code in ForgeGraph. This page updates once you do.
+            {m(msg("Approve this code in ForgeGraph. This page updates once you do."))}
           </p>
           <code className="font-mono text-base tracking-widest">{view.pending.userCode}</code>
           <InlineButton
@@ -112,7 +115,8 @@ export function ForgeGraphSignInSettings({
               <a href={view.pending.verificationUrl} target="_blank" rel="noreferrer noopener" />
             }
           >
-            Open {view.pending.verificationUrl}
+            {m(msg("Open "))}
+            {view.pending.verificationUrl}
             <ExternalLinkIcon aria-hidden className="size-3" />
           </InlineButton>
         </div>
@@ -131,7 +135,7 @@ export function ForgeGraphSignInSettings({
       <div className="flex justify-end gap-2">
         {view.canCancel ? (
           <Button size="xs" variant="outline" disabled={busy} onClick={() => void run(cancel)}>
-            Cancel
+            {m(msg("Cancel"))}
           </Button>
         ) : (
           <>
@@ -146,7 +150,7 @@ export function ForgeGraphSignInSettings({
                   })
                 }
               >
-                Sign out
+                {m(msg("Sign out"))}
               </Button>
             ) : null}
             <Button size="xs" disabled={busy || !canSignIn} onClick={() => void run(start)}>

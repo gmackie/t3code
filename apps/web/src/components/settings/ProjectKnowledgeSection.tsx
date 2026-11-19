@@ -1,3 +1,4 @@
+import { msg, useMessages } from "gt-react";
 import { useAtomValue } from "@effect/atom-react";
 import type { EnvironmentProject } from "@t3tools/client-runtime/state/shell";
 import {
@@ -21,6 +22,8 @@ export function ProjectKnowledgeSection({
 }: {
   readonly project: Pick<EnvironmentProject, "id" | "environmentId" | "workspaceRoot">;
 }) {
+  const m = useMessages();
+
   const environment = useEnvironment(project.environmentId);
   const canSearch = useAtomValue(projectKnowledge.search.permissionAtom(project.environmentId));
   const canReadNotes = useAtomValue(
@@ -94,12 +97,12 @@ export function ProjectKnowledgeSection({
     setPending(false);
   };
   return (
-    <SettingsSection title="Project knowledge">
+    <SettingsSection title={m(msg("Project knowledge"))}>
       <p className="break-all text-xs text-muted-foreground">
         {environment?.label}: {project.workspaceRoot}
       </p>
       <p className="text-sm text-muted-foreground">
-        Search docs and saved notes. Notes change only when explicitly saved.
+        {m(msg("Search docs and saved notes. Notes change only when explicitly saved."))}
       </p>
       {error ? (
         <p role="alert" className="text-sm text-destructive">
@@ -115,7 +118,7 @@ export function ProjectKnowledgeSection({
               if (canReadNotes) void loadNotes();
             }}
           >
-            Open knowledge
+            {m(msg("Open knowledge"))}
           </Button>
         </div>
       ) : (
@@ -128,39 +131,44 @@ export function ProjectKnowledgeSection({
             }}
           >
             <Input
-              aria-label="Search project knowledge"
-              placeholder="Search docs and notes"
+              aria-label={m(msg("Search project knowledge"))}
+              placeholder={m(msg("Search docs and notes"))}
               value={query}
               maxLength={256}
               onChange={(event) => setQuery(event.target.value)}
               disabled={pending || !canSearch}
             />
             <Button type="submit" disabled={pending || !canSearch || !query.trim()}>
-              Search
+              {m(msg("Search"))}
             </Button>
           </form>
           {results ? (
             <div className="flex flex-col gap-2" aria-live="polite">
               {results.indexingIncomplete ? (
                 <p className="text-sm text-muted-foreground">
-                  Some passages remain to be indexed. Search again to continue.
+                  {m(msg("Some passages remain to be indexed. Search again to continue."))}
                 </p>
               ) : null}
               {results.retrieval === "literal" ? (
                 <p className="text-sm text-muted-foreground">
-                  Semantic search unavailable. Showing text matches. Set up Ollama on this
-                  environment to search by meaning.
+                  {m(
+                    msg(
+                      "Semantic search unavailable. Showing text matches. Set up Ollama on this environment to search by meaning.",
+                    ),
+                  )}
                 </p>
               ) : results.retrieval === "hybrid" ? (
-                <p className="text-sm text-muted-foreground">Searching by meaning and text.</p>
+                <p className="text-sm text-muted-foreground">
+                  {m(msg("Searching by meaning and text."))}
+                </p>
               ) : null}
               {!results.docsAvailable ? (
                 <p className="text-sm text-muted-foreground">
-                  No docs folder in this checkout. Saved notes are still available.
+                  {m(msg("No docs folder in this checkout. Saved notes are still available."))}
                 </p>
               ) : null}
               {results.matches.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No matches.</p>
+                <p className="text-sm text-muted-foreground">{m(msg("No matches."))}</p>
               ) : (
                 results.matches.map((hit) => (
                   <div key={`${hit.source}:${hit.path}:${hit.startLine}`}>
@@ -173,7 +181,7 @@ export function ProjectKnowledgeSection({
               )}
               {results.truncated ? (
                 <p className="text-sm text-muted-foreground">
-                  More matches available. Narrow your search.
+                  {m(msg("More matches available. Narrow your search."))}
                 </p>
               ) : null}
             </div>
@@ -189,22 +197,22 @@ export function ProjectKnowledgeSection({
                   .map((line, index) => `${source.startLine + index}  ${line}`)
                   .join("\n")}
               </pre>
-              {source.truncated ? <p>Source passage is shortened.</p> : null}
+              {source.truncated ? <p>{m(msg("Source passage is shortened."))}</p> : null}
               {source.nextStartLine !== undefined ? (
                 <Button
                   variant="outline"
                   disabled={pending}
                   onClick={() => void inspect(source, source.nextStartLine)}
                 >
-                  Read next passage
+                  {m(msg("Read next passage"))}
                 </Button>
               ) : null}
             </div>
           ) : null}
           <label className="flex flex-col gap-2 text-sm">
-            Saved project notes
+            {m(msg("Saved project notes"))}
             <Textarea
-              aria-label="Saved project notes"
+              aria-label={m(msg("Saved project notes"))}
               value={draft}
               onChange={(event) => setDraft(event.target.value)}
               maxLength={PROJECT_NOTES_MAX_LENGTH}
@@ -220,14 +228,14 @@ export function ProjectKnowledgeSection({
               disabled={pending || !notes || !canSave || draft === notes.content}
               onClick={() => void save()}
             >
-              Save notes
+              {m(msg("Save notes"))}
             </Button>
             <Button
               variant="outline"
               disabled={pending || !canReadNotes}
               onClick={() => void loadNotes()}
             >
-              Reload notes (discard draft)
+              {m(msg("Reload notes (discard draft)"))}
             </Button>
           </div>
         </div>

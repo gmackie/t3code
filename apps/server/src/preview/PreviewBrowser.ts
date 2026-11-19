@@ -23,9 +23,9 @@ import { openZipArchive } from "../zipArchive.ts";
 
 // Update the version, sizes and hashes from each full chrome zip listed at
 // https://googlechromelabs.github.io/chrome-for-testing/known-good-versions-with-downloads.json
-// (not chrome-headless-shell, which Google and Cloudflare sign-in refuse). Never pin below
-// 156.0.8078.70: older SPKI blocklists trust compromised eMudhra intermediates (crrev.com/c/8627687).
-const VERSION = "156.0.8078.70";
+// Use full Chrome for sign-in; never pin below 156.0.8078.70, whose SPKI blocklist rejects
+// compromised eMudhra intermediates (crrev.com/c/8627687).
+export const VERSION = "156.0.8078.70";
 const ARCHIVES = {
   linux64: {
     bytes: 201_035_256,
@@ -74,18 +74,6 @@ export const browserExecutable = (platform: NodeJS.Platform) =>
     : platform === "darwin"
       ? "Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing"
       : "chrome";
-
-const UA_PLATFORMS: Partial<Record<NodeJS.Platform, string>> = {
-  darwin: "Macintosh; Intel Mac OS X 10_15_7",
-  win32: "Windows NT 10.0; Win64; x64",
-};
-
-/**
- * The user agent Chrome itself sends, which headless Chrome reports as `HeadlessChrome`.
- * Chrome freezes the platform and minor version fields, so only the major version varies.
- */
-export const browserUserAgent = (platform: NodeJS.Platform) =>
-  `Mozilla/5.0 (${UA_PLATFORMS[platform] ?? "X11; Linux x86_64"}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${VERSION.split(".")[0]}.0.0.0 Safari/537.36`;
 
 export interface PreviewBrowserRelease {
   readonly version: string;

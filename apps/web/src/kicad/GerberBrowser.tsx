@@ -1,3 +1,4 @@
+import { msg, useMessages } from "gt-react";
 import { useEffect, useState } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { PrismGerberView } from "./PrismGerberView";
@@ -28,6 +29,8 @@ export function GerberBrowser({
   url: (paths: string[]) => string;
   read: (url: string, signal: AbortSignal) => Promise<Response>;
 }) {
+  const m = useMessages();
+
   const [preset, setPreset] = useState<GerberPreset>("layer");
   const chosen = gerberPresetPaths(paths, selected, preset);
   const index = paths.indexOf(selected);
@@ -70,7 +73,7 @@ export function GerberBrowser({
         <button
           type="button"
           className="kicad-icon-button"
-          aria-label="Previous Gerber layer"
+          aria-label={m(msg("Previous Gerber layer"))}
           onClick={() => step(-1)}
         >
           <ChevronLeft size={14} />
@@ -81,13 +84,13 @@ export function GerberBrowser({
         <button
           type="button"
           className="kicad-icon-button"
-          aria-label="Next Gerber layer"
+          aria-label={m(msg("Next Gerber layer"))}
           onClick={() => step(1)}
         >
           <ChevronRight size={14} />
         </button>
         <select
-          aria-label="Gerber inspection preset"
+          aria-label={m(msg("Gerber inspection preset"))}
           value={preset}
           onChange={(event) => setPreset(event.target.value as GerberPreset)}
           className="min-w-0 flex-1 rounded border border-border bg-background px-2 py-1"
@@ -107,7 +110,9 @@ export function GerberBrowser({
             className="absolute inset-0 flex items-center justify-center bg-background/90 p-4 text-center text-xs text-muted-foreground"
           >
             {svg.error ||
-              (!chosen.length ? "No matching layers in this fabrication set." : "Loading layers…")}
+              (!chosen.length
+                ? m(msg("No matching layers in this fabrication set."))
+                : m(msg("Loading layers…")))}
           </div>
         )}
       </div>

@@ -1,3 +1,4 @@
+import { msg, useMessages } from "gt-react";
 import type {
   EnvironmentId,
   McpOAuthSignInEvent,
@@ -39,6 +40,8 @@ export function McpOAuthSignIn({
   readonly canManage: boolean;
   readonly onChanged: () => void;
 }) {
+  const m = useMessages();
+
   const httpBaseUrl = useEnvironmentHttpBaseUrl(environmentId);
   const [signIn, setSignIn] = useState<McpOAuthSignInInput | null>(null);
   const abort = useRef<AbortController | null>(null);
@@ -83,11 +86,14 @@ export function McpOAuthSignIn({
     setSignIn(null);
     if (connected === true) {
       onChanged();
-      toastManager.add({ type: "success", title: `Signed in to ${server}` });
+      toastManager.add({
+        type: "success",
+        title: m(msg("Signed in to {value0}", { value0: server })),
+      });
     } else if (AsyncResult.isFailure(result)) {
       toastManager.add({
         type: "error",
-        title: "Sign-in failed",
+        title: m(msg("Sign-in failed")),
         description: formatEnvironmentQueryError(result.cause),
       });
     }
@@ -103,11 +109,11 @@ export function McpOAuthSignIn({
             target="_blank"
             rel="noreferrer"
           >
-            Open sign-in page
+            {m(msg("Open sign-in page"))}
           </a>
         ) : null}
         <Button size="xs" variant="ghost" onClick={cancel}>
-          Cancel
+          {m(msg("Cancel"))}
         </Button>
       </span>
     );
@@ -118,11 +124,11 @@ export function McpOAuthSignIn({
     <span className="flex items-center gap-1.5">
       {state === "connected" ? (
         <Badge variant="success" size="sm">
-          Signed in
+          {m(msg("Signed in"))}
         </Badge>
       ) : state === "needs-auth" ? (
         <Badge variant="warning" size="sm">
-          Sign-in expired
+          {m(msg("Sign-in expired"))}
         </Badge>
       ) : null}
       {state === "connected" ? (
@@ -134,7 +140,7 @@ export function McpOAuthSignIn({
             void signOut({ environmentId, input: { server, ...scoped } }).then(onChanged)
           }
         >
-          Sign out
+          {m(msg("Sign out"))}
         </Button>
       ) : (
         <Button
@@ -143,7 +149,7 @@ export function McpOAuthSignIn({
           disabled={!canManage || httpBaseUrl === null}
           onClick={() => void start()}
         >
-          {state === "needs-auth" ? "Reconnect" : "Sign in"}
+          {state === "needs-auth" ? m(msg("Reconnect")) : m(msg("Sign in"))}
         </Button>
       )}
     </span>

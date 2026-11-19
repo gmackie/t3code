@@ -2,6 +2,7 @@ import {
   CLIENT_GUARDED_RPC_SCOPES,
   type DeviceListInput,
   clientRpcRequiredScopes,
+  containsSecretReference,
   authScopeRequiredResponse,
   AssetCreateUrlInput,
   AuthAccessReadScope,
@@ -192,6 +193,7 @@ export const RPC_REQUIRED_SCOPES = {
   [WS_METHODS.issuesComments]: AuthOrchestrationReadScope,
   [WS_METHODS.issuesTemplates]: AuthOrchestrationReadScope,
   [WS_METHODS.issuesCandidates]: AuthOrchestrationReadScope,
+  [WS_METHODS.issuesLinkedThreads]: AuthOrchestrationReadScope,
   [WS_METHODS.issueTrackersList]: AuthOrchestrationReadScope,
   [WS_METHODS.issueTrackersConnect]: AuthSettingsWriteScope,
   [WS_METHODS.issueTrackersBindProject]: AuthSettingsWriteScope,
@@ -362,6 +364,15 @@ const requiredScopesForRpcCall = (
   }
   if (method === WS_METHODS.serverUpdateSettings)
     return requiredScopesForSettingsUpdate(decodeSettingsUpdate(payload), current);
+  // These send the credential they are given to a URL the caller names, as a saved setting would.
+  if (
+    (method === WS_METHODS.deviceSimlockIdentity ||
+      method === WS_METHODS.deviceEasAccount ||
+      method === WS_METHODS.serverListTextGeneratorModels) &&
+    containsSecretReference(payload)
+  ) {
+    return [AuthSettingsWriteScope, AuthProvidersManageScope];
+  }
   if (method === WS_METHODS.projectsMutate) {
     return requiredScopesForProjectMutation(decodeProjectMutation(payload));
   }

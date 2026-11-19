@@ -1,3 +1,4 @@
+import { msg, useMessages } from "gt-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Maximize, Minus, Plus } from "lucide-react";
 import { observeResize } from "~/lib/observeResize";
@@ -6,6 +7,8 @@ import { paneLayout, useBoardViewport, type BoardRect } from "./vendor/fabricati
 
 /** Prism's fabrication camera and SVG pane, with T3 toolbar styling. */
 export function PrismGerberView({ svg, label }: { svg: string; label: string }) {
+  const m = useMessages();
+
   const board = useMemo<BoardRect | null>(() => {
     const values = new DOMParser()
       .parseFromString(svg, "image/svg+xml")
@@ -42,21 +45,21 @@ export function PrismGerberView({ svg, label }: { svg: string; label: string }) 
       <div className="flex shrink-0 items-center justify-end gap-1 border-b border-border px-2 py-1">
         <button
           className="kicad-icon-button"
-          aria-label="Zoom out"
+          aria-label={m(msg("Zoom out"))}
           onClick={() => viewport.zoomBy(1 / 1.4)}
         >
           <Minus size={14} />
         </button>
         <button
           className="kicad-icon-button"
-          aria-label="Fit Gerber layer"
+          aria-label={m(msg("Fit Gerber layer"))}
           onClick={viewport.reset}
         >
           <Maximize size={14} />
         </button>
         <button
           className="kicad-icon-button"
-          aria-label="Zoom in"
+          aria-label={m(msg("Zoom in"))}
           onClick={() => viewport.zoomBy(1.4)}
         >
           <Plus size={14} />

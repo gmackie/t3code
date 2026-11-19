@@ -1,3 +1,4 @@
+import { msg, useMessages } from "gt-react";
 import { scopeProjectRef } from "@t3tools/client-runtime/environment";
 import { inferProjectTitleFromPath } from "@t3tools/client-runtime/state/projects";
 import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
@@ -52,6 +53,8 @@ function IssueCard(props: {
   readonly onStartThread: (issue: IssueItem) => void;
   readonly onUpdateStatus: (issue: IssueItem, status: ProjectIssueStatus) => void;
 }) {
+  const m = useMessages();
+
   const { issue, onStartThread, onUpdateStatus, statusOptions, updatingIssueId } = props;
   const currentStatus = issue.statusName ?? issue.state;
   const currentStatusId = issue.statusId ?? currentStatus;
@@ -66,7 +69,12 @@ function IssueCard(props: {
           </div>
           <h3 className="line-clamp-2 font-semibold text-sm text-foreground">{issue.title}</h3>
           <div className="flex flex-wrap items-center gap-2 text-muted-foreground text-xs">
-            {issue.assigneeName ? <span>Assigned to {issue.assigneeName}</span> : null}
+            {issue.assigneeName ? (
+              <span>
+                {m(msg("Assigned to "))}
+                {issue.assigneeName}
+              </span>
+            ) : null}
             {issue.labels.length > 0 ? <span>{issue.labels.join(", ")}</span> : null}
           </div>
           {issue.descriptionMarkdown ? (
@@ -78,7 +86,7 @@ function IssueCard(props: {
       </div>
       <div className="mt-4 flex flex-wrap items-center gap-2">
         <select
-          aria-label={`Update status for ${issue.key}`}
+          aria-label={m(msg("Update status for {value0}", { value0: issue.key }))}
           className="h-8 rounded-md border border-input bg-background px-2 text-xs text-foreground"
           value={currentStatusId}
           disabled={updatingIssueId === issue.id}
@@ -98,7 +106,7 @@ function IssueCard(props: {
           ))}
         </select>
         <Button size="sm" variant="outline" onClick={() => onStartThread(issue)}>
-          Start thread
+          {m(msg("Start thread"))}
         </Button>
       </div>
     </article>
@@ -106,6 +114,8 @@ function IssueCard(props: {
 }
 
 export function ProjectIssueViewer({ environmentId, projectId }: ProjectIssueViewerProps) {
+  const m = useMessages();
+
   const projectRef = useMemo(
     () => scopeProjectRef(environmentId, projectId),
     [environmentId, projectId],
@@ -203,11 +213,12 @@ export function ProjectIssueViewer({ environmentId, projectId }: ProjectIssueVie
         setCreateIssueOpen(false);
       } else {
         const failure = squashAtomCommandFailure(result);
-        setError(failure instanceof Error ? failure.message : "Unable to create issue.");
+        setError(failure instanceof Error ? failure.message : m(msg("Unable to create issue.")));
       }
       setCreating(false);
     })();
   }, [
+    m,
     createProjectIssue,
     environmentId,
     newDescription,
@@ -237,12 +248,12 @@ export function ProjectIssueViewer({ environmentId, projectId }: ProjectIssueVie
           issueQuery.refresh();
         } else {
           const failure = squashAtomCommandFailure(result);
-          setError(failure instanceof Error ? failure.message : "Unable to update issue.");
+          setError(failure instanceof Error ? failure.message : m(msg("Unable to update issue.")));
         }
         setUpdatingIssueId(null);
       })();
     },
-    [environmentId, projectId, updateProjectIssueStatus, issueQuery],
+    [environmentId, projectId, updateProjectIssueStatus, issueQuery, m],
   );
 
   const startThreadForIssue = useCallback(
@@ -267,9 +278,9 @@ export function ProjectIssueViewer({ environmentId, projectId }: ProjectIssueVie
       <SidebarInset className="h-dvh min-h-0 bg-background text-foreground">
         <Empty>
           <EmptyHeader>
-            <EmptyTitle>Project not found</EmptyTitle>
+            <EmptyTitle>{m(msg("Project not found"))}</EmptyTitle>
             <EmptyDescription>
-              This project is no longer available in the current environment.
+              {m(msg("This project is no longer available in the current environment."))}
             </EmptyDescription>
           </EmptyHeader>
         </Empty>
@@ -282,9 +293,9 @@ export function ProjectIssueViewer({ environmentId, projectId }: ProjectIssueVie
       <SidebarInset className="h-dvh min-h-0 bg-background text-foreground">
         <Empty>
           <EmptyHeader>
-            <EmptyTitle>No linked issue project</EmptyTitle>
+            <EmptyTitle>{m(msg("No linked issue project"))}</EmptyTitle>
             <EmptyDescription>
-              Assign this project to a Linear project before viewing issues.
+              {m(msg("Assign this project to a Linear project before viewing issues."))}
             </EmptyDescription>
           </EmptyHeader>
         </Empty>
@@ -321,7 +332,7 @@ export function ProjectIssueViewer({ environmentId, projectId }: ProjectIssueVie
                 onClick={() => setViewMode("list")}
               >
                 <ListIcon className="size-3.5" />
-                List
+                {m(msg("List"))}
               </Button>
               <Button
                 size="sm"
@@ -329,11 +340,11 @@ export function ProjectIssueViewer({ environmentId, projectId }: ProjectIssueVie
                 onClick={() => setViewMode("kanban")}
               >
                 <KanbanIcon className="size-3.5" />
-                Kanban
+                {m(msg("Kanban"))}
               </Button>
               <Button size="sm" onClick={() => setCreateIssueOpen(true)}>
                 <PlusIcon className="size-3.5" />
-                Create issue
+                {m(msg("Create issue"))}
               </Button>
             </div>
           </div>
@@ -344,8 +355,8 @@ export function ProjectIssueViewer({ environmentId, projectId }: ProjectIssueVie
             <Input
               nativeInput
               value={query}
-              placeholder="Search issues"
-              aria-label="Search project issues"
+              placeholder={m(msg("Search issues"))}
+              aria-label={m(msg("Search project issues"))}
               className="max-w-sm"
               onChange={(event) => setQuery(event.currentTarget.value)}
               onKeyDown={(event) => {
@@ -354,7 +365,7 @@ export function ProjectIssueViewer({ environmentId, projectId }: ProjectIssueVie
             />
             <Button variant="outline" onClick={() => loadIssues(query)} disabled={loading}>
               <RefreshCwIcon className={cn("size-4", loading ? "animate-spin" : "")} />
-              Refresh
+              {m(msg("Refresh"))}
             </Button>
           </section>
 
@@ -366,11 +377,11 @@ export function ProjectIssueViewer({ environmentId, projectId }: ProjectIssueVie
 
           {loading && issues.length === 0 ? (
             <div className="rounded-xl border border-border/70 px-4 py-8 text-center text-muted-foreground text-sm">
-              Loading issues...
+              {m(msg("Loading issues..."))}
             </div>
           ) : issues.length === 0 ? (
             <div className="rounded-xl border border-border/70 px-4 py-8 text-center text-muted-foreground text-sm">
-              No linked issues found.
+              {m(msg("No linked issues found."))}
             </div>
           ) : viewMode === "list" ? (
             <div className="grid gap-3">
@@ -422,21 +433,23 @@ export function ProjectIssueViewer({ environmentId, projectId }: ProjectIssueVie
       >
         <DialogPopup className="max-w-xl">
           <DialogHeader>
-            <DialogTitle>Create Linear issue</DialogTitle>
+            <DialogTitle>{m(msg("Create Linear issue"))}</DialogTitle>
             <DialogDescription>
-              Add a new issue to {mapping.linearProjectName} and choose its initial workflow status.
+              {m(msg("Add a new issue to "))}
+              {mapping.linearProjectName}
+              {m(msg(" and choose its initial workflow status."))}
             </DialogDescription>
           </DialogHeader>
           <DialogPanel className="space-y-3">
             <Input
               nativeInput
               value={newTitle}
-              placeholder="New issue title"
-              aria-label="New issue title"
+              placeholder={m(msg("New issue title"))}
+              aria-label={m(msg("New issue title"))}
               onChange={(event) => setNewTitle(event.currentTarget.value)}
             />
             <select
-              aria-label="New issue status"
+              aria-label={m(msg("New issue status"))}
               className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground"
               value={selectedStatusId}
               onChange={(event) => setNewStatusId(event.currentTarget.value)}
@@ -449,18 +462,18 @@ export function ProjectIssueViewer({ environmentId, projectId }: ProjectIssueVie
             </select>
             <Textarea
               value={newDescription}
-              placeholder="Optional issue description"
-              aria-label="New issue description"
+              placeholder={m(msg("Optional issue description"))}
+              aria-label={m(msg("New issue description"))}
               onChange={(event) => setNewDescription(event.currentTarget.value)}
             />
           </DialogPanel>
           <DialogFooter>
             <Button variant="outline" onClick={() => setCreateIssueOpen(false)}>
-              Cancel
+              {m(msg("Cancel"))}
             </Button>
             <Button disabled={creating || !newTitle.trim()} onClick={createIssue}>
               <PlusIcon className="size-4" />
-              Create issue
+              {m(msg("Create issue"))}
             </Button>
           </DialogFooter>
         </DialogPopup>

@@ -7,6 +7,7 @@ import type {
   WebFrameMain,
 } from "electron";
 import { app, BrowserWindow, dialog, webContents as electronWebContents } from "electron";
+import { msg } from "gt-i18n";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
@@ -14,6 +15,7 @@ import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 
 import * as DesktopEnvironment from "../app/DesktopEnvironment.ts";
+import { m } from "../i18n/messages.ts";
 import {
   PASSKEY_CREATE_CHANNEL,
   PASSKEY_GET_CHANNEL,
@@ -70,7 +72,7 @@ const notAllowed: PasskeyCeremonyResult = { success: false, error: "NotAllowedEr
 const accountLabel = (account: Electron.WebAuthnAccount) =>
   account.displayName && account.name && account.displayName !== account.name
     ? `${account.displayName} (${account.name})`
-    : (account.name ?? account.displayName ?? "Unnamed passkey");
+    : (account.name ?? account.displayName ?? m(msg("Unnamed passkey")));
 
 const ownerWindow = (frame: WebFrameMain | null) => {
   const contents = frame ? electronWebContents.fromFrame(frame) : undefined;
@@ -84,9 +86,9 @@ const chooseAccount = async (details: Electron.SelectWebauthnAccountDetails) => 
   if (details.accounts.length === 1) return onlyAccount?.credentialId;
   const options: Electron.MessageBoxOptions = {
     type: "none",
-    message: "Choose a passkey",
+    message: m(msg("Choose a passkey")),
     detail: details.relyingPartyId,
-    buttons: [...details.accounts.map(accountLabel), "Cancel"],
+    buttons: [...details.accounts.map(accountLabel), m(msg("Cancel"))],
     cancelId: details.accounts.length,
     defaultId: 0,
     noLink: true,

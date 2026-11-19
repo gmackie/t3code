@@ -1,3 +1,4 @@
+import { msg, useMessages } from "gt-react";
 import type { McpServerConfig, McpServerTransport } from "@t3tools/contracts";
 import { LockIcon, LockOpenIcon, PlusIcon, XIcon } from "lucide-react";
 import { useId, useState } from "react";
@@ -53,6 +54,8 @@ export function McpServerDialog({
     partial: boolean;
   }>;
 }) {
+  const m = useMessages();
+
   const id = useId();
   const [draft, setDraft] = useState<McpServerDraft>(() =>
     initial ? mcpServerDraftFrom(initial.name, initial.config) : EMPTY_MCP_SERVER_DRAFT,
@@ -95,8 +98,8 @@ export function McpServerDialog({
     } catch (error) {
       toastManager.add({
         type: "warning",
-        title: "Tools not saved",
-        description: error instanceof Error ? error.message : "Could not update tools.",
+        title: m(msg("Tools not saved")),
+        description: error instanceof Error ? error.message : m(msg("Could not update tools.")),
       });
     }
     setPending(false);
@@ -106,9 +109,13 @@ export function McpServerDialog({
     <Dialog open={open} onOpenChange={(next) => !pending && onOpenChange(next)}>
       <DialogPopup className="max-w-lg">
         <DialogHeader>
-          <DialogTitle>{initial ? `Edit ${initial.name}` : "Add MCP server"}</DialogTitle>
+          <DialogTitle>
+            {initial ? m(msg("Edit {value0}", { value0: initial.name })) : m(msg("Add MCP server"))}
+          </DialogTitle>
           <DialogDescription>
-            Saved for {scopeLabel}. Agents get it in their next session.
+            {m(msg("Saved for "))}
+            {scopeLabel}
+            {m(msg(". Agents get it in their next session."))}
           </DialogDescription>
         </DialogHeader>
         <DialogPanel inert={pending || retryOnly}>
@@ -121,11 +128,12 @@ export function McpServerDialog({
           >
             {initial === null ? (
               <div className="grid gap-1.5">
-                <Label htmlFor={`${id}-paste`}>Paste config (optional)</Label>
+                <Label htmlFor={`${id}-paste`}>{m(msg("Paste config (optional)"))}</Label>
                 <Textarea
                   id={`${id}-paste`}
                   size="sm"
                   rows={3}
+                  // oxlint-disable-next-line t3code/no-untranslated-copy -- JSON configuration example stays literal.
                   placeholder={'{ "linear": { "url": "https://mcp.linear.app/mcp" } }'}
                   value={paste}
                   onChange={(event) => applyPaste(event.target.value)}
@@ -133,13 +141,15 @@ export function McpServerDialog({
                 />
                 {pasteError ? (
                   <p className="text-xs text-destructive-foreground">
-                    Couldn't find a server in that JSON. Fill in the fields below instead.
+                    {m(
+                      msg("Couldn't find a server in that JSON. Fill in the fields below instead."),
+                    )}
                   </p>
                 ) : null}
               </div>
             ) : null}
             <div className="grid gap-1.5">
-              <Label htmlFor={`${id}-name`}>Name</Label>
+              <Label htmlFor={`${id}-name`}>{m(msg("Name"))}</Label>
               <Input
                 id={`${id}-name`}
                 font="mono"
@@ -155,9 +165,9 @@ export function McpServerDialog({
               ) : null}
             </div>
             <div className="grid gap-1.5">
-              <Label>Type</Label>
+              <Label>{m(msg("Type"))}</Label>
               <ToggleGroup
-                aria-label="Server type"
+                aria-label={m(msg("Server type"))}
                 variant="segmented"
                 value={[draft.type]}
                 onValueChange={(next) => {
@@ -165,14 +175,14 @@ export function McpServerDialog({
                   if (value === "stdio" || value === "http") update({ type: value });
                 }}
               >
-                <Toggle value="stdio">Command</Toggle>
+                <Toggle value="stdio">{m(msg("Command"))}</Toggle>
                 <Toggle value="http">URL</Toggle>
               </ToggleGroup>
             </div>
             {draft.type === "stdio" ? (
               <>
                 <div className="grid gap-1.5">
-                  <Label htmlFor={`${id}-command`}>Command</Label>
+                  <Label htmlFor={`${id}-command`}>{m(msg("Command"))}</Label>
                   <Input
                     id={`${id}-command`}
                     font="mono"
@@ -187,7 +197,7 @@ export function McpServerDialog({
                   ) : null}
                 </div>
                 <div className="grid gap-1.5">
-                  <Label htmlFor={`${id}-args`}>Arguments</Label>
+                  <Label htmlFor={`${id}-args`}>{m(msg("Arguments"))}</Label>
                   <Input
                     id={`${id}-args`}
                     font="mono"
@@ -217,10 +227,13 @@ export function McpServerDialog({
                 </div>
                 <div className="flex items-start justify-between gap-3">
                   <div className="grid gap-0.5">
-                    <Label htmlFor={`${id}-oauth`}>Sign in with OAuth</Label>
+                    <Label htmlFor={`${id}-oauth`}>{m(msg("Sign in with OAuth"))}</Label>
                     <p className="text-xs text-muted-foreground">
-                      T3 signs in once for this environment and keeps the token; agents never see
-                      it.
+                      {m(
+                        msg(
+                          "T3 signs in once for this environment and keeps the token; agents never see it.",
+                        ),
+                      )}
                     </p>
                   </div>
                   <Switch
@@ -232,22 +245,22 @@ export function McpServerDialog({
                 {draft.oauth ? (
                   <>
                     <div className="grid gap-1.5">
-                      <Label htmlFor={`${id}-oauth-scopes`}>Scopes</Label>
+                      <Label htmlFor={`${id}-oauth-scopes`}>{m(msg("Scopes"))}</Label>
                       <Input
                         id={`${id}-oauth-scopes`}
                         font="mono"
-                        placeholder="Leave empty for the server's defaults"
+                        placeholder={m(msg("Leave empty for the server's defaults"))}
                         value={draft.oauthScopes}
                         onChange={(event) => update({ oauthScopes: event.target.value })}
                         spellCheck={false}
                       />
                     </div>
                     <div className="grid gap-1.5">
-                      <Label htmlFor={`${id}-oauth-client`}>Client ID</Label>
+                      <Label htmlFor={`${id}-oauth-client`}>{m(msg("Client ID"))}</Label>
                       <Input
                         id={`${id}-oauth-client`}
                         font="mono"
-                        placeholder="Only if the server can't register clients itself"
+                        placeholder={m(msg("Only if the server can't register clients itself"))}
                         value={draft.oauthClientId}
                         onChange={(event) => update({ oauthClientId: event.target.value })}
                         spellCheck={false}
@@ -258,8 +271,8 @@ export function McpServerDialog({
               </>
             )}
             <VariablesEditor
-              label={draft.type === "stdio" ? "Environment variables" : "Headers"}
-              namePlaceholder={draft.type === "stdio" ? "API_KEY" : "Authorization"}
+              label={draft.type === "stdio" ? m(msg("Environment variables")) : m(msg("Headers"))}
+              namePlaceholder={draft.type === "stdio" ? m(msg("API_KEY")) : m(msg("Authorization"))}
               variables={variables}
               onChange={setVariables}
             />
@@ -272,16 +285,25 @@ export function McpServerDialog({
         </DialogPanel>
         {retryOnly ? (
           <p role="status" className="px-6 text-sm text-muted-foreground">
-            Some environments were updated. Retry to finish saving, or close and reopen the editor
-            to make further changes.
+            {m(
+              msg(
+                "Some environments were updated. Retry to finish saving, or close and reopen the editor to make further changes.",
+              ),
+            )}
           </p>
         ) : null}
         <DialogFooter variant="bare">
           <Button variant="outline" disabled={pending} onClick={() => onOpenChange(false)}>
-            Cancel
+            {m(msg("Cancel"))}
           </Button>
           <Button disabled={pending} onClick={() => void save()}>
-            {pending ? "Saving…" : retryOnly ? "Retry save" : initial ? "Save" : "Add server"}
+            {pending
+              ? m(msg("Saving…"))
+              : retryOnly
+                ? m(msg("Retry save"))
+                : initial
+                  ? m(msg("Save"))
+                  : m(msg("Add server"))}
           </Button>
         </DialogFooter>
       </DialogPopup>
@@ -300,6 +322,8 @@ function VariablesEditor({
   readonly variables: ReadonlyArray<McpVariableDraft>;
   readonly onChange: (next: ReadonlyArray<McpVariableDraft>) => void;
 }) {
+  const m = useMessages();
+
   const update = (id: string, patch: Partial<McpVariableDraft>) =>
     onChange(
       variables.map((variable) =>
@@ -337,7 +361,7 @@ function VariablesEditor({
           }
         >
           <PlusIcon className="size-3" aria-hidden />
-          Add
+          {m(msg("Add"))}
         </Button>
       </div>
       {variables.length === 0 ? null : (
@@ -360,7 +384,7 @@ function VariablesEditor({
                 className="min-w-0 flex-1"
                 type={variable.sensitive ? "password" : undefined}
                 autoComplete="off"
-                placeholder={variable.stored ? "Stored secret, type to replace" : "value"}
+                placeholder={variable.stored ? m(msg("Stored secret, type to replace")) : "value"}
                 value={variable.value}
                 onChange={(event) => update(variable.id, { value: event.target.value })}
                 aria-label={`${label} value ${index + 1}`}
@@ -374,7 +398,11 @@ function VariablesEditor({
                       size="icon-micro"
                       variant="ghost-muted"
                       aria-pressed={variable.sensitive}
-                      aria-label={`Mark ${variable.name || `${label} ${index + 1}`} as secret`}
+                      aria-label={m(
+                        msg("Mark {value0} as secret", {
+                          value0: variable.name || `${label} ${index + 1}`,
+                        }),
+                      )}
                       onClick={() =>
                         update(variable.id, {
                           sensitive: !variable.sensitive,
@@ -397,14 +425,16 @@ function VariablesEditor({
                   )}
                 </TooltipTrigger>
                 <TooltipPopup side="top">
-                  {variable.sensitive ? "Secret, kept on the server" : "Plain text"}
+                  {variable.sensitive ? m(msg("Secret, kept on the server")) : m(msg("Plain text"))}
                 </TooltipPopup>
               </Tooltip>
               <Button
                 type="button"
                 size="icon-micro"
                 variant="ghost-destructive"
-                aria-label={`Remove ${variable.name || `${label} ${index + 1}`}`}
+                aria-label={m(
+                  msg("Remove {value0}", { value0: variable.name || `${label} ${index + 1}` }),
+                )}
                 onClick={() => onChange(variables.filter((entry) => entry.id !== variable.id))}
               >
                 <XIcon className="size-3" />

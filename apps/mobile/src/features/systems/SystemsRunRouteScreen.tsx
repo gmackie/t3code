@@ -1,3 +1,4 @@
+import { msg, useMessages } from "gt-react-native";
 import { type StaticScreenProps } from "@react-navigation/native";
 import { EnvironmentId, ProjectId, type SystemsRun } from "@t3tools/contracts";
 import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
@@ -31,6 +32,8 @@ type Props = StaticScreenProps<{
 }>;
 
 export function SystemsRunRouteScreen({ route }: Props) {
+  const m = useMessages();
+
   const environmentId = EnvironmentId.make(route.params.environmentId);
   const projectId = ProjectId.make(route.params.projectId);
   const { runId } = route.params;
@@ -51,7 +54,7 @@ export function SystemsRunRouteScreen({ route }: Props) {
   const error = live.error ?? fetched.error;
   return (
     <View className="flex-1 bg-screen">
-      <NativeStackScreenOptions options={{ title: run?.experimentId ?? "Run" }} />
+      <NativeStackScreenOptions options={{ title: run?.experimentId ?? m(msg("Run")) }} />
       {run ? (
         <TraceList
           environmentId={environmentId}
@@ -64,7 +67,7 @@ export function SystemsRunRouteScreen({ route }: Props) {
             textRole="footnote"
             className={error ? "text-danger-foreground" : "text-foreground-muted"}
           >
-            {error ?? "Loading run…"}
+            {error ?? m(msg("Loading run…"))}
           </Text>
         </View>
       )}
@@ -73,6 +76,8 @@ export function SystemsRunRouteScreen({ route }: Props) {
 }
 
 function RunSummary(props: { readonly environmentId: EnvironmentId; readonly run: SystemsRun }) {
+  const m = useMessages();
+
   const { environmentId, run } = props;
   const cancelRun = useAtomCommand(systemsEnvironment.cancelRun, { reportFailure: false });
   const [error, setError] = useState<string | null>(null);
@@ -123,7 +128,12 @@ function RunSummary(props: { readonly environmentId: EnvironmentId; readonly run
           </Text>
         </View>
         {!terminal ? (
-          <Button label="Cancel" tone="danger" loading={cancelling} onPress={() => void cancel()} />
+          <Button
+            label={m(msg("Cancel"))}
+            tone="danger"
+            loading={cancelling}
+            onPress={() => void cancel()}
+          />
         ) : null}
         {error ? (
           <Text selectable textRole="footnote" className="text-danger-foreground">
@@ -166,13 +176,15 @@ function RunSummary(props: { readonly environmentId: EnvironmentId; readonly run
       <SignalPlot environmentId={environmentId} run={run} />
       {terminal ? <Comparison environmentId={environmentId} run={run} /> : null}
       <Text textRole="footnote" className="font-t3-medium text-foreground-muted">
-        Trace
+        {m(msg("Trace"))}
       </Text>
     </View>
   );
 }
 
 function Comparison(props: { readonly environmentId: EnvironmentId; readonly run: SystemsRun }) {
+  const m = useMessages();
+
   const compare = useEnvironmentQuery(
     systemsEnvironment.compare({
       environmentId: props.environmentId,
@@ -183,7 +195,7 @@ function Comparison(props: { readonly environmentId: EnvironmentId; readonly run
   return (
     <View className="gap-2">
       <Text textRole="footnote" className="font-t3-medium text-foreground-muted">
-        Expected trace
+        {m(msg("Expected trace"))}
       </Text>
       {compare.error ? (
         <Text textRole="footnote" className="text-danger-foreground">
@@ -192,7 +204,7 @@ function Comparison(props: { readonly environmentId: EnvironmentId; readonly run
       ) : null}
       {result && result.expectedRef === null ? (
         <Text textRole="footnote" className="text-foreground-muted">
-          No expected trace references this experiment.
+          {m(msg("No expected trace references this experiment."))}
         </Text>
       ) : null}
       {result && result.expectedRef !== null ? (

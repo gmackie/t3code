@@ -1,3 +1,4 @@
+import { msg, useMessages } from "gt-react";
 /* eslint-disable react/iframe-missing-sandbox -- The bundled CAD runtime needs same-origin module and worker access. */
 import { useEffect, useMemo, useRef, useState, type ComponentProps } from "react";
 import { ArrowLeftRight, Search } from "lucide-react";
@@ -36,6 +37,8 @@ function NativeFrame({
   onProbe: (selection: Selection) => void;
   onResult: (found: boolean, value: string) => void;
 }) {
+  const m = useMessages();
+
   const ref = useRef<HTMLIFrameElement>(null);
   const ready = useRef(false);
   const sentRevision = useRef<string | undefined>(undefined);
@@ -77,7 +80,7 @@ function NativeFrame({
     <iframe
       sandbox="allow-scripts allow-same-origin allow-downloads allow-popups allow-forms"
       ref={ref}
-      title={`Prism ${view === "pcb" ? "PCB" : "schematic"} viewer`}
+      title={m(msg("Prism {value0} viewer", { value0: view === "pcb" ? "PCB" : "schematic" }))}
       src="/kicad-viewer/runtime.html"
       className="h-full w-full border-0"
     />
@@ -94,6 +97,8 @@ function ProjectFrame({
   sheetsKey: string;
   read: (path: string, signal: AbortSignal) => Promise<string>;
 }) {
+  const m = useMessages();
+
   const { view, revision } = props;
   const query = useEnvironmentQuery(
     useMemo(
@@ -123,7 +128,7 @@ function ProjectFrame({
           role="status"
           className="absolute inset-0 flex items-center justify-center bg-background p-4 text-center text-xs text-muted-foreground"
         >
-          {query.error ?? "Loading saved project…"}
+          {query.error ?? m(msg("Loading saved project…"))}
         </div>
       )}
     </>
@@ -148,6 +153,8 @@ export function NativeProjectViews({
   read: (path: string, signal: AbortSignal) => Promise<string>;
   onView: (view: NativeView) => void;
 }) {
+  const m = useMessages();
+
   const [selection, setSelection] = useState<Selection | null>(null);
   const [query, setQuery] = useState("");
   const [net, setNet] = useState(false);
@@ -157,7 +164,7 @@ export function NativeProjectViews({
   const sheetsKey = JSON.stringify(sheets);
   const runProbe = (value: string, kind: "net" | "component", target: NativeView) => {
     if (!value.trim()) return;
-    setStatus(`Finding ${value}…`);
+    setStatus(m(msg("Finding {value0}…", { value0: value })));
     setProbe({
       id: ++requestId.current,
       value: value.trim(),
@@ -170,7 +177,7 @@ export function NativeProjectViews({
     const value =
       item.itemType === "net" ? item.net : (item.reference ?? item.designator ?? item.net);
     if (!value) {
-      setStatus("Select a component or net to cross-probe.");
+      setStatus(m(msg("Select a component or net to cross-probe.")));
       return;
     }
     const kind =
@@ -188,18 +195,18 @@ export function NativeProjectViews({
       >
         <Search size={14} className="text-muted-foreground" />
         <input
-          aria-label="Find component or net"
-          placeholder={net ? "Net name" : "Reference, e.g. U1"}
+          aria-label={m(msg("Find component or net"))}
+          placeholder={net ? m(msg("Net name")) : m(msg("Reference, e.g. U1"))}
           value={query}
           onChange={(event) => setQuery(event.target.value)}
           className="min-w-0 flex-1 bg-transparent px-1 py-1 outline-none"
         />
         <label className="flex items-center gap-1">
           <input type="checkbox" checked={net} onChange={(event) => setNet(event.target.checked)} />
-          Net
+          {m(msg("Net"))}
         </label>
         <button type="submit" className="rounded px-2 py-1 hover:bg-accent">
-          Find
+          {m(msg("Find"))}
         </button>
         <button
           type="button"
@@ -208,7 +215,8 @@ export function NativeProjectViews({
           className="flex items-center gap-1 rounded px-2 py-1 hover:bg-accent disabled:opacity-40"
         >
           <ArrowLeftRight size={14} />
-          Show in {view === "pcb" ? "schematic" : "PCB"}
+          {m(msg("Show in "))}
+          {view === "pcb" ? "schematic" : "PCB"}
         </button>
       </form>
       {status && (
@@ -241,7 +249,14 @@ export function NativeProjectViews({
                 onProbe={crossProbe}
                 onResult={(found, value) =>
                   setStatus(
-                    found ? `Located ${value}` : `No match for ${value} in this ${context}.`,
+                    found
+                      ? m(msg("Located {value0}", { value0: value }))
+                      : m(
+                          msg("No match for {value0} in this {value1}.", {
+                            value0: value,
+                            value1: context,
+                          }),
+                        ),
                   )
                 }
               />
@@ -251,7 +266,9 @@ export function NativeProjectViews({
                 role="status"
                 className="absolute inset-0 flex items-center justify-center bg-background p-4 text-center text-xs text-muted-foreground"
               >
-                No {context} file found.
+                {m(msg("No "))}
+                {context}
+                {m(msg(" file found."))}
               </div>
             )}
           </div>

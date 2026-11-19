@@ -1,3 +1,4 @@
+import { msg, useMessages } from "gt-react";
 import type { KiCadBom } from "@t3tools/contracts";
 import { Download, Search } from "lucide-react";
 import { useMemo, useState } from "react";
@@ -37,6 +38,8 @@ export function BomView({ path, revision, read }: BomViewProps) {
 }
 
 function BomContent({ path, read }: Omit<BomViewProps, "revision">) {
+  const m = useMessages();
+
   const result = useEnvironmentQuery(
     useMemo(() => cadQuery(async (signal) => parseBom(await read(path, signal))), [path, read]),
   );
@@ -76,7 +79,7 @@ function BomContent({ path, read }: Omit<BomViewProps, "revision">) {
         role="status"
         className="flex h-full items-center justify-center p-6 text-xs text-muted-foreground"
       >
-        Loading BOM…
+        {m(msg("Loading BOM…"))}
       </div>
     );
   }
@@ -84,23 +87,27 @@ function BomContent({ path, read }: Omit<BomViewProps, "revision">) {
   return (
     <div className="flex h-full min-h-0 flex-col bg-background text-foreground">
       <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-border px-3 py-2 text-xs">
-        <span className="font-medium">Bill of materials</span>
+        <span className="font-medium">{m(msg("Bill of materials"))}</span>
         <span className="min-w-0 flex-1 truncate text-muted-foreground">{path}</span>
         <button
           type="button"
           className="inline-flex items-center gap-1 rounded border border-border px-2 py-1 hover:bg-accent"
           onClick={() => downloadBom(bom.content, path)}
         >
-          <Download className="size-3.5" aria-hidden="true" /> Download CSV
+          <Download className="size-3.5" aria-hidden="true" />
+          {m(msg(" Download CSV"))}
         </button>
       </div>
       <div className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-1 border-b border-border px-3 py-2 text-[11px] text-muted-foreground">
         <span>
-          Preset: <strong className="font-medium text-foreground">{bom.preset}</strong>
+          {m(msg("Preset: "))}
+          <strong className="font-medium text-foreground">{bom.preset}</strong>
         </span>
         <span>
-          Source project:{" "}
-          <strong className="font-medium text-foreground">{bom.sourceProject ?? "None"}</strong>
+          {m(msg("Source project:"))}{" "}
+          <strong className="font-medium text-foreground">
+            {bom.sourceProject ?? m(msg("None"))}
+          </strong>
         </span>
         {bom.warnings.map((warning) => (
           <span key={warning} className="text-warning">
@@ -111,7 +118,7 @@ function BomContent({ path, read }: Omit<BomViewProps, "revision">) {
       <div className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-2">
         <Search className="size-3.5 text-muted-foreground" aria-hidden="true" />
         <label htmlFor="kicad-bom-search" className="sr-only">
-          Search BOM
+          {m(msg("Search BOM"))}
         </label>
         <input
           id="kicad-bom-search"
@@ -120,7 +127,7 @@ function BomContent({ path, read }: Omit<BomViewProps, "revision">) {
             setQuery(event.target.value);
             setPage(0);
           }}
-          placeholder="Search components…"
+          placeholder={m(msg("Search components…"))}
           className="min-w-0 flex-1 bg-transparent text-xs outline-none placeholder:text-muted-foreground"
         />
         <span className="text-[11px] text-muted-foreground">
@@ -130,9 +137,12 @@ function BomContent({ path, read }: Omit<BomViewProps, "revision">) {
       <div className="min-h-0 flex-1 overflow-auto">
         <table
           className="w-full border-collapse text-left text-xs"
-          aria-label="KiCad bill of materials"
+          aria-label={m(msg("KiCad bill of materials"))}
         >
-          <caption className="sr-only">KiCad bill of materials for {path}</caption>
+          <caption className="sr-only">
+            {m(msg("KiCad bill of materials for "))}
+            {path}
+          </caption>
           <thead className="sticky top-0 z-10 bg-background">
             <tr>
               {bom.columns.map((column) => (
@@ -163,13 +173,14 @@ function BomContent({ path, read }: Omit<BomViewProps, "revision">) {
         </table>
         {visibleRows.length === 0 && (
           <div className="p-8 text-center text-xs text-muted-foreground">
-            No matching components.
+            {m(msg("No matching components."))}
           </div>
         )}
       </div>
       <div className="flex shrink-0 items-center justify-between border-t border-border px-3 py-2 text-xs">
         <span className="text-muted-foreground">
-          Page {currentPage + 1} of {pageCount}
+          {m(msg("Page "))}
+          {currentPage + 1} of {pageCount}
         </span>
         <div className="flex gap-1">
           <button
@@ -178,7 +189,7 @@ function BomContent({ path, read }: Omit<BomViewProps, "revision">) {
             disabled={currentPage === 0}
             onClick={() => setPage((value) => Math.max(0, value - 1))}
           >
-            Previous
+            {m(msg("Previous"))}
           </button>
           <button
             type="button"
@@ -186,7 +197,7 @@ function BomContent({ path, read }: Omit<BomViewProps, "revision">) {
             disabled={currentPage >= pageCount - 1}
             onClick={() => setPage((value) => Math.min(pageCount - 1, value + 1))}
           >
-            Next
+            {m(msg("Next"))}
           </button>
         </div>
       </div>

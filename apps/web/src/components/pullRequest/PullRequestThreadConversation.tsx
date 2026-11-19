@@ -1,3 +1,4 @@
+import { msg, useMessages } from "gt-react";
 import { pullRequestCompletionScope } from "./PullRequestMarkdownTextarea";
 import type {
   EnvironmentId,
@@ -42,6 +43,8 @@ export function PullRequestThreadConversation({
   fixLabel?: string;
   onFix?: () => void;
 }) {
+  const m = useMessages();
+
   const replyToThread = useAtomCommand(pullRequestEnvironment.replyToThread, {
     reportFailure: false,
   });
@@ -85,7 +88,7 @@ export function PullRequestThreadConversation({
           </TooltipTrigger>
           <TooltipPopup>{location}</TooltipPopup>
         </Tooltip>
-        {thread.isOutdated ? <span className="shrink-0">Outdated</span> : null}
+        {thread.isOutdated ? <span className="shrink-0">{m(msg("Outdated"))}</span> : null}
       </p>
       <ReviewThreadCard
         completionScope={pullRequestCompletionScope(detail, environmentId, reference)}
@@ -108,7 +111,7 @@ export function PullRequestThreadConversation({
             input: { ...reference, threadId: thread.id, cursor },
           });
           if (result._tag === "Failure") {
-            toastManager.add({ type: "error", title: "More comments could not be loaded" });
+            toastManager.add({ type: "error", title: m(msg("More comments could not be loaded")) });
             return null;
           }
           return result.value;
