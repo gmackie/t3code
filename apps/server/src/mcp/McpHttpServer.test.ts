@@ -1143,6 +1143,7 @@ it.effect("answers 2026-07-28 discovery and keeps 2025-06-18 as the initialize f
         Layer.provide(ServerSettings.layerTest()),
         Layer.provide(
           Layer.mock(McpSessionRegistry.McpSessionRegistry)({
+            resolvePlugin: () => Effect.undefined,
             resolve: (presented) =>
               Effect.succeed(
                 presented === token
