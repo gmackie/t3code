@@ -1,7 +1,9 @@
 import { assert, describe, it } from "@effect/vitest";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
+import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
+import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 import { TestClock } from "effect/testing";
 
@@ -24,6 +26,14 @@ describe("ThreadViewers", () => {
         return fiber;
       });
 
+      assert.deepStrictEqual(yield* viewed, []);
+      const scope = yield* Scope.make();
+      yield* viewers.view("scoped").pipe(Effect.provideService(Scope.Scope, scope));
+      assert.isTrue(viewers.isViewed("scoped"));
+      yield* Scope.close(scope, Exit.void);
+      assert.isFalse(viewers.isViewed("scoped"));
+      assert.deepStrictEqual(yield* viewed, ["scoped"]);
+      yield* TestClock.adjust("2 minutes");
       assert.deepStrictEqual(yield* viewed, []);
       const first = yield* subscribe("thread-a");
       const second = yield* subscribe("thread-a");

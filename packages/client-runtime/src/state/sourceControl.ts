@@ -137,14 +137,10 @@ function forgeGraphSignInCommands<R, E>(
       execute: Effect.fn("sourceControl.forgeGraphSignInState")(function* () {
         const registry = yield* AtomRegistry.AtomRegistry;
         const supervisor = yield* EnvironmentSupervisor;
-        const result = yield* Effect.promise(() =>
-          forgeGraphSignInStatus.run(registry, {
-            environmentId: supervisor.target.environmentId,
-            input: {},
-          }),
-        );
-        if (result._tag === "Failure") return yield* Effect.failCause(result.cause);
-        return result.value;
+        return yield* forgeGraphSignInStatus.run(registry, {
+          environmentId: supervisor.target.environmentId,
+          input: {},
+        });
       }),
     }),
     forgeGraphSignInCancel: createEnvironmentRpcCommand(runtime, {

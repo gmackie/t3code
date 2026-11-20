@@ -298,6 +298,8 @@ const makeHarness = Effect.fn("makePullRequestSyncHarness")(function* (options: 
       ? Layer.empty
       : Layer.succeed(ThreadViewers.ThreadViewers, {
           track: () => (stream) => stream,
+          view: () => Effect.void,
+          isViewed: () => false,
           viewed: Ref.get(options.viewed),
         }),
   );

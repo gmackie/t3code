@@ -564,15 +564,7 @@ export const unlinkEnvironmentRecord = Effect.fn("relay.api.client.unlinkEnviron
       return false;
     }
 
-    // Deprovision after revocation commits; retry even if already revoked to finish failed Cloudflare cleanup.
-    const deprovisioned = yield* managedEndpointProvider.deprovision({
-      userId: input.userId,
-      environmentId: input.environmentId,
-      target: deprovisionTarget,
-      ...(cleanupLink?.endpoint.connectorLeaseId === undefined
-        ? {}
-        : { connectorLeaseId: cleanupLink.endpoint.connectorLeaseId }),
-    });
+    // Cleared before teardown, which can fail: a later link under another key shares this inbox.
     const endpointKey =
       deprovisionTarget && input.managedEndpointNamespace
         ? HeldHooks.endpointKeyForTunnelName(
@@ -591,6 +583,15 @@ export const unlinkEnvironmentRecord = Effect.fn("relay.api.client.unlinkEnviron
         ),
       );
     }
+    // Deprovision after revocation commits; retry even if already revoked to finish failed Cloudflare cleanup.
+    const deprovisioned = yield* managedEndpointProvider.deprovision({
+      userId: input.userId,
+      environmentId: input.environmentId,
+      target: deprovisionTarget,
+      ...(cleanupLink?.endpoint.connectorLeaseId === undefined
+        ? {}
+        : { connectorLeaseId: cleanupLink.endpoint.connectorLeaseId }),
+    });
     if (!deprovisioned) {
       const key = { userId: input.userId, environmentId: input.environmentId };
       const retryTarget = yield* managedEndpointProvider.prepareDeprovision(key);
@@ -935,6 +936,12 @@ export const layerClientApi = HttpApiBuilder.group(
               new RelayEnvironmentLinkProofInvalidError({
                 code: "environment_link_proof_invalid",
                 reason: "origin_not_allowed",
+                traceId,
+              }),
+            ManagedEndpointDeprovisioningFailed: (_error, traceId) =>
+              new RelayEnvironmentLinkUnavailableError({
+                code: "environment_link_unavailable",
+                reason: "managed_endpoint_provisioning_failed",
                 traceId,
               }),
             ManagedTunnelLimitExceeded: (limitError, traceId) =>
