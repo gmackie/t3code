@@ -1,5 +1,6 @@
+import { useAtomCommand } from "../../state/use-atom-command";
 import { msg, useMessages } from "gt-react-native";
-import { useAtomSet, useAtomValue } from "@effect/atom-react";
+import { useAtomValue } from "@effect/atom-react";
 import { AsyncResult } from "effect/reactivity";
 import { settlePromise } from "@t3tools/client-runtime/state/runtime";
 import { useState } from "react";
@@ -7,7 +8,7 @@ import { Alert, Platform } from "react-native";
 import * as Notifications from "expo-notifications";
 import { ScreenScrollView } from "../../components/ui/ScreenScrollView";
 import { AppText } from "../../components/ui/AppText";
-import { mobilePreferencesAtom, updateMobilePreferencesAtom } from "../../state/preferences";
+import { mobilePreferencesAtom, saveMobilePreferences } from "../../state/preferences";
 import { expoPushProjectId, useExpoPushStatus } from "../agent-awareness/ExpoPushCoordinator";
 import { useEnvironmentLiveActivityStatus } from "../agent-awareness/EnvironmentLiveActivityCoordinator";
 import { SettingsScreen } from "./components/SettingsScreen";
@@ -28,7 +29,7 @@ export function SettingsExpoNotifications() {
   const m = useMessages();
 
   const preferences = useAtomValue(mobilePreferencesAtom);
-  const save = useAtomSet(updateMobilePreferencesAtom);
+  const save = useAtomCommand(saveMobilePreferences);
   const status = useExpoPushStatus();
   const activityStatus = useEnvironmentLiveActivityStatus();
   const activitiesEnabled =

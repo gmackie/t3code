@@ -1,5 +1,5 @@
 import { msg, useMessages } from "gt-react-native";
-import { useAtomSet, useAtomValue } from "@effect/atom-react";
+import { useAtomValue } from "@effect/atom-react";
 import { useNavigation, type StaticScreenProps } from "@react-navigation/native";
 import { EnvironmentId, ProjectId, type SystemsCompileResult } from "@t3tools/contracts";
 import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
@@ -15,7 +15,7 @@ import { ErrorBanner } from "../../components/ui/ErrorBanner";
 import { ListSection } from "../../components/ui/ListSection";
 import { uuidv4 } from "../../lib/uuid";
 import { NativeStackScreenOptions } from "../../native/StackHeader";
-import { mobilePreferencesAtom, updateMobilePreferencesAtom } from "../../state/preferences";
+import { mobilePreferencesAtom, saveMobilePreferences } from "../../state/preferences";
 import { useEnvironmentQuery } from "../../state/query";
 import { systemsEnvironment } from "../../state/systems";
 import { useAtomCommand } from "../../state/use-atom-command";
@@ -63,7 +63,7 @@ function ProjectSystems(props: {
 
   const { environmentId, projectId } = props;
   const navigation = useNavigation();
-  const updatePreferences = useAtomSet(updateMobilePreferencesAtom);
+  const updatePreferences = useAtomCommand(saveMobilePreferences);
   const [draft, setDraft] = useState(props.storedPath);
   const [path, setPath] = useState(props.storedPath);
   const [editing, setEditing] = useState<string | null>(null);

@@ -1,3 +1,4 @@
+import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
 import {
   AuthOrchestrationReadScope,
@@ -57,6 +58,7 @@ const setup = Effect.gen(function* () {
     latestRunCompletedAt: null as DateTime.Utc | null,
   };
   const dependencies = Layer.mergeAll(
+    NodeServices.layer,
     Layer.succeed(LiveActivityApns.LiveActivityApns, {
       configured: Effect.sync(() => configured),
       send: (input) =>
@@ -65,8 +67,15 @@ const setup = Effect.gen(function* () {
           return response;
         }),
     }),
-    Layer.mock(ServerSecretStore.ServerSecretStore)({
-      get: (key) => Effect.sync(() => Option.fromUndefinedOr(values.get(key))),
+    Layer.succeed(ServerSecretStore.ServerSecretStore, {
+      create: () => Effect.die("unexpected create"),
+      remove: () => Effect.die("unexpected remove"),
+      getOrCreateRandom: () => Effect.die("unexpected random"),
+      get: (key) =>
+        Effect.sync(() => {
+          assert.isFalse(/[/\\\0]/.test(key));
+          return Option.fromUndefinedOr(values.get(key));
+        }),
       set: (key, value) =>
         Effect.sync(() => {
           values.set(key, value);

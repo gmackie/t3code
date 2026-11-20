@@ -875,6 +875,8 @@ const layerCoordinationDependencies = Layer.mergeAll(
 const layerRuntimeDependencies = layerCoordinationDependencies.pipe(
   Layer.provideMerge(layerUsage),
   Layer.provideMerge(layerBackground),
+  // The same layer the event sink uses; memoized, subscriptions and batch ranking share it.
+  Layer.provideMerge(ThreadViewers.layer),
   Layer.provideMerge(layerResourceDiagnostics),
   Layer.provideMerge(GmackoChangelog.layer),
   Layer.provideMerge(TraceDiagnostics.layer),
@@ -955,51 +957,53 @@ const layerMakeRoutes = Layer.mergeAll(
   Layer.effectDiscard(
     RemoteDelegation.RemoteDelegation.pipe(Effect.flatMap((remote) => remote.start())),
   ),
-).pipe(
-  Layer.provide(
-    PullRequestReviewGuideService.layer.pipe(Layer.provide(PullRequestReviewGuides.layer)),
-  ),
-  Layer.provide([layerGameSessions]),
-  // The firmware workbench HTTP route and the reverse RPCs share one service and Ghidra pool.
-  Layer.provide(ReverseWorkbench.layer),
-  // Systems runs belong to the environment; the WebSocket layer reuses this instance.
-  Layer.provide(SystemsService.layer),
-  // delegate_task to a linked environment, from /mcp and the follower above.
-  Layer.provide(RemoteDelegation.layer.pipe(Layer.provide(ProjectionStoreV2.layer))),
-  // Links agents ask for: shown in a thread from /mcp, answered over WebSocket.
-  Layer.provide(PeerLinkRequests.layer),
-  // Share the service so HTTP/WS clients single-flight reads and invalidate each other's cached patches.
-  Layer.provide(layerPullRequestService),
-  Layer.provide([layerThreadIssueService, layerIssueService]),
-  // The same activity instance RunExecutionService reports to, by layer memoization.
-  Layer.provide([layerServerBrowser]),
-  Layer.provide(PreviewBrowser.layer),
-  // Links to other environments, shared by Settings (WebSocket) and agents (/mcp).
-  Layer.provide(
-    PeerForwarding.layer.pipe(
-      Layer.provideMerge(PeerMcpClient.layer),
-      Layer.provideMerge(PeerLinks.layer),
+)
+  .pipe(
+    Layer.provide(
+      PullRequestReviewGuideService.layer.pipe(Layer.provide(PullRequestReviewGuides.layer)),
     ),
-  ),
-  Layer.provide(
-    SpeechService.layer.pipe(
-      Layer.provide(layerServerSettings),
-      Layer.provide(SpeechModelStore.layer),
+    Layer.provide([layerGameSessions]),
+    // The firmware workbench HTTP route and the reverse RPCs share one service and Ghidra pool.
+    Layer.provide(ReverseWorkbench.layer),
+    // Systems runs belong to the environment; the WebSocket layer reuses this instance.
+    Layer.provide(SystemsService.layer),
+    // delegate_task to a linked environment, from /mcp and the follower above.
+    Layer.provide(RemoteDelegation.layer.pipe(Layer.provide(ProjectionStoreV2.layer))),
+    // Links agents ask for: shown in a thread from /mcp, answered over WebSocket.
+    Layer.provide(PeerLinkRequests.layer),
+    // Share the service so HTTP/WS clients single-flight reads and invalidate each other's cached patches.
+    Layer.provide(layerPullRequestService),
+    Layer.provide([layerThreadIssueService, layerIssueService]),
+    // The same activity instance RunExecutionService reports to, by layer memoization.
+    Layer.provide([layerServerBrowser]),
+    Layer.provide(PreviewBrowser.layer),
+    // Links to other environments, shared by Settings (WebSocket) and agents (/mcp).
+    Layer.provide(
+      PeerForwarding.layer.pipe(
+        Layer.provideMerge(PeerMcpClient.layer),
+        Layer.provideMerge(PeerLinks.layer),
+      ),
     ),
-  ),
-  Layer.provide(CloudSpeech.layer.pipe(Layer.provide(SecretResolver.layer))),
-  Layer.provide(layerServerSettings),
-  Layer.provide(PreviewAutomationBroker.layer),
-  Layer.provide(ServerSelfUpdate.layer.pipe(Layer.provide(layerDesktopAppUpdate))),
-  Layer.provide(layerCommandReadiness),
-  Layer.provide(ServerHttp.layerBrowserApiCors),
-  Layer.provide(ServerHttp.layerHttpCompression),
-  Layer.provide([
-    ProjectKnowledge.layer.pipe(
-      Layer.provide(ProjectKnowledgeVectors.layer.pipe(Layer.provide(KnowledgeEmbeddings.layer))),
+    Layer.provide(
+      SpeechService.layer.pipe(
+        Layer.provide(layerServerSettings),
+        Layer.provide(SpeechModelStore.layer),
+      ),
     ),
-  ]),
-);
+    Layer.provide(CloudSpeech.layer.pipe(Layer.provide(SecretResolver.layer))),
+    Layer.provide(layerServerSettings),
+    Layer.provide(PreviewAutomationBroker.layer),
+    Layer.provide(ServerSelfUpdate.layer.pipe(Layer.provide(layerDesktopAppUpdate))),
+    Layer.provide(layerCommandReadiness),
+    Layer.provide(ServerHttp.layerBrowserApiCors),
+    Layer.provide(ServerHttp.layerHttpCompression),
+    Layer.provide([
+      ProjectKnowledge.layer.pipe(
+        Layer.provide(ProjectKnowledgeVectors.layer.pipe(Layer.provide(KnowledgeEmbeddings.layer))),
+      ),
+    ]),
+  )
+  .pipe(Layer.provide(ServerHttp.layerUnloggedSignedRequests));
 
 const layerMakeServer = Layer.unwrap(
   Effect.gen(function* () {
