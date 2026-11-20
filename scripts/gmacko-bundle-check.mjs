@@ -31,6 +31,8 @@ try {
           // xmlbuilder has a latent undefined `children` in insertBefore.
           // Its vendored desktop code is unrelated to application imports.
           ...(desktop ? ["children"] : []),
+          // node-gyp-build reads this only when its Webpack runtime guard succeeds.
+          ...(desktop ? ["__non_webpack_require__"] : []),
         ].map((name) => [name, "readonly"]),
       ),
       categories: { correctness: "off" },

@@ -52,3 +52,30 @@ it("does not allow AudioWorklet globals in ordinary application chunks", () => {
   expect(result.status).not.toBe(0);
   expect(result.stdout + result.stderr).toContain("AudioWorkletProcessor");
 });
+
+it("accepts node-gyp-build's guarded Webpack fallback only in desktop bundles", () => {
+  const directory = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "t3-bundle-test-"));
+  try {
+    const desktop = NodePath.join(directory, "apps/desktop/dist-electron");
+    NodeFS.mkdirSync(desktop, { recursive: true });
+    const output = NodePath.join(desktop, "main.cjs");
+    NodeFS.writeFileSync(
+      output,
+      "const runtimeRequire = typeof __webpack_require__ === 'function' ? __non_webpack_require__ : require; module.exports = runtimeRequire;\n",
+    );
+    const run = () =>
+      NodeChildProcess.spawnSync(process.execPath, [checker, "--desktop"], {
+        cwd: directory,
+        encoding: "utf8",
+        env: { ...process.env, GITHUB_ACTIONS: "true" },
+      });
+    const guarded = run();
+    expect(guarded.status, guarded.stdout + guarded.stderr).toBe(0);
+    NodeFS.appendFileSync(output, "missingDesktopImport();\n");
+    const missing = run();
+    expect(missing.status).not.toBe(0);
+    expect(missing.stdout + missing.stderr).toContain("missingDesktopImport");
+  } finally {
+    NodeFS.rmSync(directory, { recursive: true, force: true });
+  }
+});
