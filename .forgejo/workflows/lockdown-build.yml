@@ -44,7 +44,7 @@ env:
 jobs:
   candidate:
     runs-on: forgegraph-ci
-    timeout-minutes: 30
+    timeout-minutes: 45
     outputs:
       sha: ${{ steps.candidate.outputs.sha }}
       start_sha: ${{ steps.candidate.outputs.start_sha }}
@@ -55,11 +55,20 @@ jobs:
       version: ${{ steps.candidate.outputs.version }}
       tag: ${{ steps.candidate.outputs.tag }}
     steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: lockdown
-          fetch-depth: 0
-          path: lockdown-${{ github.run_id }}
+      - name: Fetch lockdown history
+        # Forgejo serves packs slowly (about 0.3 MB/s in run 1686), so take the shared upstream
+        # history from GitHub and let Forgejo send only lockdown's own commits.
+        shell: bash
+        env:
+          FORGEJO_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          git init -q "lockdown-$GITHUB_RUN_ID"
+          cd "lockdown-$GITHUB_RUN_ID"
+          git remote add origin "https://x-access-token:${FORGEJO_TOKEN}@git.forgegraf.com/${GITHUB_REPOSITORY}.git"
+          git fetch -q "https://github.com/${UPSTREAM_REPO}.git" main
+          git fetch origin lockdown
+          git checkout -q --detach origin/lockdown
       - uses: actions/setup-node@v4
         with:
           node-version-file: lockdown-${{ github.run_id }}/package.json
@@ -289,13 +298,22 @@ jobs:
   promote:
     needs: [candidate, verify, linux, macos]
     runs-on: forgegraph-ci
-    timeout-minutes: 10
+    timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ needs.candidate.outputs.sha }}
-          fetch-depth: 0
-          path: lockdown-${{ github.run_id }}
+      - name: Fetch lockdown history
+        shell: bash
+        env:
+          FORGEJO_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CANDIDATE_SHA: ${{ needs.candidate.outputs.sha }}
+          CANDIDATE_BRANCH: ${{ needs.candidate.outputs.branch }}
+        run: |
+          set -euo pipefail
+          git init -q "lockdown-$GITHUB_RUN_ID"
+          cd "lockdown-$GITHUB_RUN_ID"
+          git remote add origin "https://x-access-token:${FORGEJO_TOKEN}@git.forgegraf.com/${GITHUB_REPOSITORY}.git"
+          git fetch -q "https://github.com/${UPSTREAM_REPO}.git" main
+          git fetch origin lockdown "$CANDIDATE_BRANCH"
+          git checkout -q --detach "$CANDIDATE_SHA"
       - name: Promote only the verified candidate
         shell: bash
         working-directory: lockdown-${{ github.run_id }}
@@ -321,7 +339,7 @@ jobs:
     needs: [candidate, promote]
     if: ${{ !cancelled() && needs.promote.result == 'success' && inputs.skip_release != true }}
     runs-on: forgegraph-ci
-    timeout-minutes: 30
+    timeout-minutes: 45
     env:
       GH_TOKEN: ${{ secrets.GMACKO_GITHUB_TOKEN }}
       TAG: ${{ needs.candidate.outputs.tag }}
@@ -329,11 +347,18 @@ jobs:
       CANDIDATE_SHA: ${{ needs.candidate.outputs.sha }}
       UPSTREAM_SHA: ${{ needs.candidate.outputs.upstream_sha }}
     steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ needs.candidate.outputs.sha }}
-          fetch-depth: 0
-          path: lockdown-${{ github.run_id }}
+      - name: Fetch lockdown history
+        shell: bash
+        env:
+          FORGEJO_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          git init -q "lockdown-$GITHUB_RUN_ID"
+          cd "lockdown-$GITHUB_RUN_ID"
+          git remote add origin "https://x-access-token:${FORGEJO_TOKEN}@git.forgegraf.com/${GITHUB_REPOSITORY}.git"
+          git fetch -q "https://github.com/${UPSTREAM_REPO}.git" main
+          git fetch origin lockdown
+          git checkout -q --detach "$CANDIDATE_SHA"
       - name: Skip a revision that already has a release
         id: existing
         shell: bash
