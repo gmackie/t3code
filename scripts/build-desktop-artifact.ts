@@ -41,6 +41,7 @@ import {
   selectCliRuntimeExternalDependencies,
 } from "./lib/cli-external-packages.ts";
 import { loadRepoEnv } from "./lib/public-config.ts";
+import { LOCKDOWN_EDITION } from "@t3tools/shared/lockdownEdition";
 import { applyLockdownBuildConfig } from "./lib/lockdown-build-config.ts";
 import { selectDesktopRuntimeExternalDependencies } from "./lib/desktop-external-packages.ts";
 import { resolveCatalogDependencies } from "./lib/resolve-catalog.ts";
@@ -3898,8 +3899,10 @@ const buildDesktopArtifactUnlocked = Effect.fn("buildDesktopArtifactUnlocked")(f
   const stageProdResourcesDir = path.join(stageAppDir, "apps/desktop/prod-resources");
   yield* fs.copy(stageResourcesDir, stageProdResourcesDir);
 
+  // T3 Code Locked has no Clerk sign-in, so it signs with electron-builder's default
+  // hardened-runtime entitlements and needs no passkey provisioning profile.
   const configuredMacPasskeySigning =
-    options.platform === "mac" && options.signed
+    options.platform === "mac" && options.signed && !LOCKDOWN_EDITION
       ? yield* Effect.try({
           try: () => resolveMacPasskeySigningConfiguration(loadRepoEnv({ repoRoot })),
           catch: MacPasskeySigningConfigurationResolutionError.fromCause,

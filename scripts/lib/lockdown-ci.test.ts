@@ -67,3 +67,43 @@ exit 0
     NodeFS.rmSync(directory, { recursive: true, force: true });
   }
 });
+
+it("refuses to package a macOS release when signing is required but credentials are missing", () => {
+  const directory = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "lockdown-ci-test-"));
+  try {
+    const bin = NodePath.join(directory, "tools");
+    NodeFS.mkdirSync(bin);
+    NodeFS.writeFileSync(NodePath.join(bin, "pnpm"), "#!/bin/sh\nexit 0\n", { mode: 0o755 });
+    NodeFS.writeFileSync(
+      NodePath.join(bin, "node"),
+      `#!/bin/sh
+case "$1" in
+  scripts/build-desktop-artifact.ts) touch "$PACKAGING_MARKER" ;;
+esac
+exit 0
+`,
+      { mode: 0o755 },
+    );
+    const marker = NodePath.join(directory, "packaged");
+    const { CSC_LINK: _link, APPLE_API_KEY: _key, ...env } = process.env;
+    const result = NodeChildProcess.spawnSync(
+      "bash",
+      [buildScript, "mac", "arm64", NodePath.join(directory, "release"), "0.1.0-locked.1"],
+      {
+        cwd: directory,
+        env: {
+          ...env,
+          PATH: `${bin}:${process.env.PATH}`,
+          PACKAGING_MARKER: marker,
+          LOCKDOWN_MAC_SIGNING: "required",
+        },
+        encoding: "utf8",
+      },
+    );
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("macOS signing is required but CSC_LINK is not set");
+    expect(NodeFS.existsSync(marker)).toBe(false);
+  } finally {
+    NodeFS.rmSync(directory, { recursive: true, force: true });
+  }
+});
