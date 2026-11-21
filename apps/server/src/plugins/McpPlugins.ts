@@ -3,6 +3,7 @@ import {
   McpPluginError,
   McpPluginManifest,
   type McpPluginId,
+  type McpPluginUpdateInput,
   type McpPluginPanel,
   type McpPluginPanelId,
   type McpServerConfig,
@@ -73,16 +74,27 @@ export class McpPlugins extends Context.Service<
       readonly variables?: Readonly<Record<string, string>>;
     }) => Effect.Effect<McpPluginRecord, McpPluginError>;
     /** Installs the plugin whose `t3-plugin.json` is in `directory`. */
-    readonly installFromDirectory: (input: {
-      readonly directory: string;
-      readonly variables?: Readonly<Record<string, string>>;
-    }) => Effect.Effect<McpPluginRecord, McpPluginError>;
-    readonly uninstall: (pluginId: McpPluginId) => Effect.Effect<void, McpPluginError>;
+    readonly installFromDirectory: <E = never, R = never>(
+      input: {
+        readonly directory: string;
+        readonly variables?: Readonly<Record<string, string>>;
+      },
+      check?: Effect.Effect<unknown, E, R>,
+    ) => Effect.Effect<McpPluginRecord, McpPluginError | E, R>;
+    readonly update: <E = never, R = never>(
+      input: McpPluginUpdateInput,
+      check?: Effect.Effect<unknown, E, R>,
+    ) => Effect.Effect<McpPluginRecord, McpPluginError | E, R>;
+    readonly uninstall: <E = never, R = never>(
+      pluginId: McpPluginId,
+      check?: Effect.Effect<unknown, E, R>,
+    ) => Effect.Effect<void, McpPluginError | E, R>;
     /** Disabling also switches the Tools entry off; enabling switches it back on. */
-    readonly setEnabled: (
+    readonly setEnabled: <E = never, R = never>(
       pluginId: McpPluginId,
       enabled: boolean,
-    ) => Effect.Effect<McpPluginRecord, McpPluginError>;
+      check?: Effect.Effect<unknown, E, R>,
+    ) => Effect.Effect<McpPluginRecord, McpPluginError | E, R>;
     readonly resolvePanel: (input: {
       readonly pluginId: McpPluginId;
       readonly panelId: McpPluginPanelId;
@@ -272,65 +284,66 @@ const make = Effect.gen(function* () {
     Effect.ignoreCause({ log: true }),
   );
 
-  const install: McpPlugins["Service"]["install"] = Effect.fn("McpPlugins.install")(
-    function* (input) {
-      const { manifest } = input;
-      const name = manifest.mcpServer.name;
-      return yield* lock.withPermits(1)(
-        Effect.gen(function* () {
-          const records = yield* readRecords;
-          const previous = records.find((record) => record.manifest.id === manifest.id);
-          const record: McpPluginRecord = {
-            manifest,
-            enabled: previous?.enabled ?? true,
-            ...(input.directory === undefined ? {} : { directory: input.directory }),
-          };
-          const current = yield* currentSettings;
-          const values = {
-            ...storedValues(current.mcpServers[name]?.transport),
-            ...input.variables,
-          };
-          const renamed =
-            previous !== undefined && previous.manifest.mcpServer.name !== name
-              ? { [previous.manifest.mcpServer.name]: null }
-              : {};
-          // Checked under the settings write lock, so a user's entry can't appear in between.
-          yield* updateSettings(
-            { mcpServers: { ...renamed, [name]: toolsEntry(record, values) } },
-            (latest) => {
-              const existing = latest.mcpServers[name];
-              return existing !== undefined && existing.plugin?.id !== manifest.id
-                ? Effect.fail(
-                    new McpPluginError({
-                      reason: "server-name-taken",
-                      pluginId: manifest.id,
-                      server: name,
-                    }),
-                  )
-                : Effect.void;
-            },
-          );
-          yield* writeRecords([
-            ...records.filter((candidate) => candidate.manifest.id !== manifest.id),
-            record,
-          ]);
-          if (previous !== undefined) {
-            yield* pool.closeServer(previous.manifest.mcpServer.name);
-            yield* revokeToken(manifest.id);
-          }
-          return record;
-        }),
-      );
-    },
+  const writeInstall = Effect.fn("McpPlugins.writeInstall")(function* (
+    input: Parameters<McpPlugins["Service"]["install"]>[0],
+    records: ReadonlyArray<McpPluginRecord>,
+  ) {
+    const { manifest } = input;
+    const name = manifest.mcpServer.name;
+    const previous = records.find((record) => record.manifest.id === manifest.id);
+    const record: McpPluginRecord = {
+      manifest,
+      enabled: previous?.enabled ?? true,
+      ...(input.directory === undefined ? {} : { directory: input.directory }),
+    };
+    const current = yield* currentSettings;
+    const values = {
+      ...storedValues(current.mcpServers[previous?.manifest.mcpServer.name ?? name]?.transport),
+      ...input.variables,
+    };
+    const renamed =
+      previous !== undefined && previous.manifest.mcpServer.name !== name
+        ? { [previous.manifest.mcpServer.name]: null }
+        : {};
+    // Checked under the settings write lock, so a user's entry can't appear in between.
+    yield* updateSettings(
+      { mcpServers: { ...renamed, [name]: toolsEntry(record, values) } },
+      (latest) => {
+        const existing = latest.mcpServers[name];
+        return existing !== undefined && existing.plugin?.id !== manifest.id
+          ? Effect.fail(
+              new McpPluginError({
+                reason: "server-name-taken",
+                pluginId: manifest.id,
+                server: name,
+              }),
+            )
+          : Effect.void;
+      },
+    );
+    yield* writeRecords([
+      ...records.filter((candidate) => candidate.manifest.id !== manifest.id),
+      record,
+    ]);
+    if (previous !== undefined) {
+      yield* pool.closeServer(previous.manifest.mcpServer.name);
+      yield* revokeToken(manifest.id);
+    }
+    return record;
+  });
+
+  const install: McpPlugins["Service"]["install"] = Effect.fn("McpPlugins.install")((input) =>
+    lock.withPermits(1)(Effect.flatMap(readRecords, (records) => writeInstall(input, records))),
   );
 
   const uninstall: McpPlugins["Service"]["uninstall"] = Effect.fn("McpPlugins.uninstall")(
-    function* (pluginId) {
+    function* <E, R>(pluginId: McpPluginId, check?: Effect.Effect<unknown, E, R>) {
       yield* lock.withPermits(1)(
         Effect.gen(function* () {
           const { records, record } = yield* findRecord(pluginId);
           const name = record.manifest.mcpServer.name;
           const current = yield* currentSettings;
+          if (check !== undefined) yield* check;
           if (current.mcpServers[name]?.plugin?.id === pluginId) {
             yield* updateSettings({ mcpServers: { [name]: null } });
           }
@@ -344,7 +357,11 @@ const make = Effect.gen(function* () {
   );
 
   const setEnabled: McpPlugins["Service"]["setEnabled"] = Effect.fn("McpPlugins.setEnabled")(
-    function* (pluginId, enabled) {
+    function* <E, R>(
+      pluginId: McpPluginId,
+      enabled: boolean,
+      check?: Effect.Effect<unknown, E, R>,
+    ) {
       return yield* lock.withPermits(1)(
         Effect.gen(function* () {
           const { records, record } = yield* findRecord(pluginId);
@@ -352,6 +369,7 @@ const make = Effect.gen(function* () {
           const name = record.manifest.mcpServer.name;
           const current = yield* currentSettings;
           const entry = current.mcpServers[name];
+          if (check !== undefined) yield* check;
           if (entry?.plugin?.id === pluginId) {
             yield* updateSettings({ mcpServers: { [name]: { ...entry, enabled } } });
           }
@@ -395,19 +413,60 @@ const make = Effect.gen(function* () {
     },
   );
 
-  const installFromDirectory: McpPlugins["Service"]["installFromDirectory"] = Effect.fn(
-    "McpPlugins.installFromDirectory",
-  )(function* (input) {
-    const directory = path.resolve(input.directory);
-    const manifest = yield* fileSystem.readFileString(path.join(directory, "t3-plugin.json")).pipe(
+  const readManifest = (directory: string) =>
+    fileSystem.readFileString(path.join(directory, "t3-plugin.json")).pipe(
       Effect.flatMap(decodeManifestJson),
       Effect.mapError((cause) => new McpPluginError({ reason: "invalid-manifest", cause })),
     );
-    return yield* install({
-      manifest,
-      directory,
-      ...(input.variables === undefined ? {} : { variables: input.variables }),
-    });
+
+  const update: McpPlugins["Service"]["update"] = Effect.fn("McpPlugins.update")(
+    <E, R>(input: McpPluginUpdateInput, check?: Effect.Effect<unknown, E, R>) =>
+      lock.withPermits(1)(
+        Effect.gen(function* () {
+          const { records, record } = yield* findRecord(input.pluginId);
+          const source = input.directory ?? record.directory;
+          if (source === undefined) {
+            return yield* new McpPluginError({
+              reason: "missing-directory",
+              pluginId: input.pluginId,
+            });
+          }
+          const directory = path.resolve(source);
+          const manifest = yield* readManifest(directory);
+          if (manifest.id !== input.pluginId) {
+            return yield* new McpPluginError({
+              reason: "plugin-id-mismatch",
+              pluginId: input.pluginId,
+            });
+          }
+          if (check !== undefined) yield* check;
+          return yield* writeInstall({ manifest, directory }, records);
+        }),
+      ),
+  );
+
+  const installFromDirectory: McpPlugins["Service"]["installFromDirectory"] = Effect.fn(
+    "McpPlugins.installFromDirectory",
+  )(function* <E, R>(
+    input: Parameters<McpPlugins["Service"]["installFromDirectory"]>[0],
+    check?: Effect.Effect<unknown, E, R>,
+  ) {
+    const directory = path.resolve(input.directory);
+    const manifest = yield* readManifest(directory);
+    return yield* lock.withPermits(1)(
+      Effect.gen(function* () {
+        const records = yield* readRecords;
+        if (check !== undefined) yield* check;
+        return yield* writeInstall(
+          {
+            manifest,
+            directory,
+            ...(input.variables === undefined ? {} : { variables: input.variables }),
+          },
+          records,
+        );
+      }),
+    );
   });
 
   const guardSettingsPatch: McpPlugins["Service"]["guardSettingsPatch"] = Effect.fn(
@@ -443,6 +502,7 @@ const make = Effect.gen(function* () {
     list: readRecords,
     install,
     installFromDirectory,
+    update,
     uninstall,
     setEnabled,
     resolvePanel,

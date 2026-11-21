@@ -100,6 +100,12 @@ export type McpPluginInstallInput = typeof McpPluginInstallInput.Type;
 export const McpPluginIdInput = Schema.Struct({ pluginId: McpPluginId });
 export type McpPluginIdInput = typeof McpPluginIdInput.Type;
 
+export const McpPluginUpdateInput = Schema.Struct({
+  pluginId: McpPluginId,
+  directory: Schema.optionalKey(TrimmedNonEmptyString),
+});
+export type McpPluginUpdateInput = typeof McpPluginUpdateInput.Type;
+
 export const McpPluginSetEnabledInput = Schema.Struct({
   pluginId: McpPluginId,
   enabled: Schema.Boolean,
@@ -110,6 +116,8 @@ export class McpPluginError extends Schema.TaggedError<McpPluginError>()("McpPlu
   reason: Schema.Literals([
     "not-installed",
     "invalid-manifest",
+    "plugin-id-mismatch",
+    "missing-directory",
     "server-name-taken",
     "plugin-owned-server",
     "storage-failed",
@@ -124,6 +132,10 @@ export class McpPluginError extends Schema.TaggedError<McpPluginError>()("McpPlu
         return `Plugin "${this.pluginId}" isn't installed.`;
       case "invalid-manifest":
         return "The directory has no valid v2 t3-plugin.json.";
+      case "plugin-id-mismatch":
+        return `The manifest does not belong to plugin "${this.pluginId}".`;
+      case "missing-directory":
+        return `Plugin "${this.pluginId}" has no saved directory. Give the directory containing its t3-plugin.json.`;
       case "server-name-taken":
         return `Settings → Tools already has a server named "${this.server}". Rename or remove it to install this plugin.`;
       case "plugin-owned-server":
