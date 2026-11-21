@@ -9,7 +9,7 @@ export function launchArguments({ projectId, laneSha, upstreamSha, files, runUrl
     title: `Resolve nightly upstream conflict ${upstreamSha.slice(0, 8)}`,
     // Bump the version when the prompt changes so a stalled session from an
     // older prompt does not absorb the relaunch for the same commit pair.
-    clientRequestId: `nightly-conflict-v2-${laneSha}-${upstreamSha}`,
+    clientRequestId: `nightly-conflict-v3-${laneSha}-${upstreamSha}`,
     workspaceStrategy: {
       type: "worktree",
       baseRef: "forgejo/custom-local",
@@ -22,7 +22,7 @@ export function launchArguments({ projectId, laneSha, upstreamSha, files, runUrl
       `Conflicted files: ${JSON.stringify(files)}`,
       "This session runs unattended; nobody can answer credential or approval prompts, so never wait on one. Track the work in Kanbanger (search for an open issue titled `Sync custom-local with upstream main <short upstream SHA>` before creating one) when the `kanbanger` CLI works here. If it is unavailable, do not stop: proceed and state in the PR body that the Kanbanger issue still needs linking.",
       "Fetch the current lane and upstream; resolve the merge in this isolated worktree, preserving lane features and upstream behavior. Do not use blanket ours/theirs resolution. Re-key colliding upstream migrations above the lane's ids, keeping their names. Regenerate the lockfile with pnpm. Run focused checks on the conflicted areas, not repo-wide ones.",
-      "Open or update a PR to custom-local (FG_APP=t3code forge pr create), link it to the issue when there is one and to this T3 thread, and handle CI findings. Automatically approve (forge pr approve) only when all required checks pass on the exact head. Merge (forge pr merge) only when no GMACKO Nightly release run is active. Verify desktop/CLI publication and iOS TestFlight delivery. Finish with the PR URL, head SHA, check state, merge SHA, and any blockers.",
+      "Open or update a PR to custom-local (FG_APP=t3code forge pr create), link it to the issue when there is one and to this T3 thread, and handle CI findings. Automatically approve (forge pr approve) only when all required checks pass on the exact head. Merge (forge pr merge) only when no GMACKO Nightly release run is active. After merge, find and follow the GMACKO Nightly run for the merge SHA through Verify nightly delivery. The PR watch ends at merge and does not track the release. Use the workflow job logs if the ForgeGraph summary is stale. A published GitHub prerelease or a successful Xcode upload alone is insufficient: require the delivery receipt, which confirms desktop and CLI assets and the matching build is ready for internal TestFlight testing. Diagnose failed release jobs and recover or retry when safe. Keep this session working until delivery is verified or a concrete blocker prevents unattended recovery. Report the PR URL, head SHA, check state, merge SHA, nightly run and release URLs, TestFlight build number and state, and any blockers.",
     ].join("\n\n"),
   };
 }
