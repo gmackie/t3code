@@ -11,7 +11,7 @@ The branch keeps upstream's code and turns the edition on with one constant, `LO
   - Product analytics, webhook tasks and browser cookie import are off.
   - OpenCode is the only provider.
   - Desktop, server and provider updates are off.
-  - Locked settings turn off provider update checks (npm and the remote model manifest), linked environments, guest sharing and OTLP export.
+  - Locked settings turn off provider update checks (npm and the remote model manifest), linked environments and guest sharing. OTLP export is always off.
 - **An in-process egress guard.** Every `fetch` and undici request from the server and the desktop main process may reach only loopback and the hosts in `T3CODE_LOCKDOWN_ALLOWED_HOSTS`, over https.
 - **A loopback-only renderer CSP.** The renderer cannot load Clerk, the Cloudflare challenge script, remote images, theme search or remote environments.
 - **No cloud configuration in the web app.** It has no Clerk, relay or relay tracing, whatever the build environment sets.

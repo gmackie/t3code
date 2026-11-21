@@ -41,6 +41,7 @@ export const sshEnvironmentDisabled: DesktopSshEnvironment.DesktopSshEnvironment
   resolveHost: () => Effect.fail(new SshInvalidTargetError({ message: SSH_DISABLED })),
   ensureEnvironment: () => Effect.fail(new SshLaunchError({ message: SSH_DISABLED, stdout: "" })),
   disconnectEnvironment: () => Effect.void,
+  closeAllTunnels: Effect.void,
 };
 
 export const layerSshEnvironmentDisabled = Layer.succeed(

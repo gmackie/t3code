@@ -65,7 +65,6 @@ describe("T3 Code Locked server", () => {
           "enableProviderUpdateChecks",
           "linkedEnvironmentsEnabled",
           "guestSharingEnabled",
-          "observability.otlpTracesUrl",
         ],
       );
     }),

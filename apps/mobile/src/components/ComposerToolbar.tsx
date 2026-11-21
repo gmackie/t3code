@@ -1,6 +1,7 @@
 import type { ComponentProps, ReactNode } from "react";
 import { useCallback, useRef, useState } from "react";
 import {
+  Platform,
   Pressable,
   ScrollView,
   View,
@@ -32,7 +33,9 @@ export function ComposerInlineControl(props: {
   readonly icon?: ComponentProps<typeof SymbolView>["name"];
   readonly renderIcon?: (size: number) => ReactNode;
   readonly label: string;
+  readonly labelEllipsizeMode?: ComponentProps<typeof Text>["ellipsizeMode"];
   readonly suffix?: ReactNode;
+  readonly suffixWidth?: number;
   /** Show only the icon and chevron; the label still names the control for accessibility. */
   readonly iconOnly?: boolean;
   readonly maxWidth?: ViewStyle["maxWidth"];
@@ -94,13 +97,19 @@ export function ComposerInlineControl(props: {
                 props.emphasized || props.selected ? "text-foreground" : "text-foreground-muted",
               )}
               numberOfLines={1}
+              ellipsizeMode={props.labelEllipsizeMode}
             >
               {props.label}
             </Text>
           </Animated.View>
         )}
         {!props.iconOnly && props.suffix ? (
-          <View className="min-w-0 shrink">{props.suffix}</View>
+          <View
+            className={cn("min-w-0", props.suffixWidth === undefined ? "shrink" : "shrink-0")}
+            style={{ width: props.suffixWidth }}
+          >
+            {props.suffix}
+          </View>
         ) : null}
         {props.showChevron === false ? null : (
           <SymbolView
@@ -277,6 +286,7 @@ export function ComposerActionButton(props: {
 }) {
   const { scale, smallIconSize } = useAndroidControlSizing();
   const circleSize = Math.round((props.size === "large" ? 44 : 30) * scale);
+  const fadeIcon = props.disabled === true && props.variant !== "danger";
   return (
     <Pressable
       accessibilityLabel={props.accessibilityLabel}
@@ -300,19 +310,26 @@ export function ComposerActionButton(props: {
               : "bg-primary",
         )}
       >
-        <SymbolView
-          name={props.icon}
-          size={props.size === "large" ? Math.round(20 * scale) : smallIconSize}
-          weight="semibold"
-          tintColorClassName={
-            props.variant === "danger"
-              ? "accent-danger-foreground"
-              : props.disabled
-                ? "accent-foreground/38"
-                : "accent-primary-foreground"
-          }
-          type="monochrome"
-        />
+        {/* Fade the icon as one layer: a translucent tint, or opacity on a Tabler icon (which
+            copies it onto every path), stacks where the SVG strokes overlap. */}
+        <View
+          className={fadeIcon ? "opacity-38" : undefined}
+          needsOffscreenAlphaCompositing={fadeIcon}
+        >
+          <SymbolView
+            name={props.icon}
+            size={props.size === "large" ? Math.round(20 * scale) : smallIconSize}
+            weight="semibold"
+            tintColorClassName={
+              props.variant === "danger"
+                ? "accent-danger-foreground"
+                : props.disabled
+                  ? "accent-foreground"
+                  : "accent-primary-foreground"
+            }
+            type="monochrome"
+          />
+        </View>
       </View>
     </Pressable>
   );
@@ -352,9 +369,9 @@ export function ComposerToolbarButton(props: {
       disabled={props.disabled}
       onPress={props.onPress}
       className={cn(
-        "h-11 max-w-[172px] flex-row items-center justify-center rounded-full border active:opacity-70",
+        "h-[44px] max-w-[172px] flex-row items-center justify-center rounded-full border active:opacity-70 android:h-[48px]",
         variant === "primary" && "shadow-lg shadow-adaptive-black-a10-a25 disabled:shadow-none",
-        isCircle ? "w-11" : "gap-2 px-3.5",
+        isCircle ? "w-[44px] android:w-[48px]" : "gap-2 px-3.5 android:min-w-[48px]",
         variant === "primary"
           ? props.disabled
             ? "bg-subtle-strong"
@@ -362,11 +379,11 @@ export function ComposerToolbarButton(props: {
           : variant === "danger"
             ? "bg-danger"
             : props.active
-              ? "bg-subtle-strong"
+              ? "bg-primary"
               : "bg-subtle",
         variant === "default"
           ? props.active
-            ? "border-border"
+            ? "border-primary"
             : "border-border-subtle"
           : variant === "danger"
             ? "border-danger-border"
@@ -378,7 +395,10 @@ export function ComposerToolbarButton(props: {
       style={({ pressed }) => [
         {
           maxWidth: props.maxWidth,
-          minWidth: props.minWidth,
+          minWidth:
+            Platform.OS === "android" && props.minWidth !== undefined
+              ? Math.max(48, props.minWidth)
+              : props.minWidth,
           opacity: props.disabled ? 0.55 : pressed ? 0.72 : 1,
         },
         props.style,
@@ -402,7 +422,9 @@ export function ComposerToolbarButton(props: {
               ? props.disabled
                 ? "text-foreground-muted"
                 : "text-primary-foreground"
-              : "text-foreground",
+              : props.active
+                ? "text-primary-foreground"
+                : "text-foreground",
           )}
           ellipsizeMode="tail"
           numberOfLines={1}

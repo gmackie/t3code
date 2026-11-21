@@ -59,7 +59,6 @@ describe("lockdown edition", () => {
     expect(document.settings?.enableProviderUpdateChecks).toEqual({ value: false, locked: true });
     expect(document.settings?.linkedEnvironmentsEnabled).toEqual({ value: false, locked: true });
     expect(document.settings?.guestSharingEnabled).toEqual({ value: false, locked: true });
-    expect(document.settings?.["observability.otlpTracesUrl"]).toEqual({ value: "", locked: true });
   });
 
   it("lets an administrator's policy narrow the floor but never widen it", () => {
@@ -69,7 +68,6 @@ describe("lockdown edition", () => {
       supportUrl: "https://help.example.com",
       settings: {
         enableProviderUpdateChecks: { value: true, locked: true },
-        "observability.otlpTracesUrl": { value: "https://collector.example.com", locked: true },
         branchNamePrefix: { value: "corp", locked: true },
       },
       limits: {
@@ -88,7 +86,6 @@ describe("lockdown edition", () => {
     expect(document.supportUrl).toBe("https://help.example.com");
     expect(document.settings?.branchNamePrefix).toEqual({ value: "corp", locked: true });
     expect(document.settings?.enableProviderUpdateChecks).toEqual({ value: false, locked: true });
-    expect(document.settings?.["observability.otlpTracesUrl"]).toEqual({ value: "", locked: true });
     expect(document.limits).toEqual({
       maxRuntimeMode: "approval-required",
       clients: ["desktop"],
