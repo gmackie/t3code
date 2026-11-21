@@ -117,11 +117,20 @@ jobs:
             echo "GMACKO_GITHUB_TOKEN secret is required to read and publish the release lane." >&2
             exit 1
           fi
-          github_url="https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_FORK}.git"
-          forgejo_url="${FORGEJO_REPO_URL/https:\/\//https://x-access-token:${FORGEJO_TOKEN}@}"
+          # Credentials reach git through the environment only (T3CODE-125):
+          # argv is readable by every local user in `ps`, and a URL given to
+          # `git clone` is saved in .git/config. printf and export are shell
+          # builtins, so the token is never any process's argument.
+          git_auth() { # git_auth <repository URL> <token>
+            local i="${GIT_CONFIG_COUNT:-0}"
+            export "GIT_CONFIG_KEY_${i}=http.$1.extraheader"
+            export "GIT_CONFIG_VALUE_${i}=AUTHORIZATION: basic $(printf 'x-access-token:%s' "$2" | base64 | tr -d '\n')"
+            export GIT_CONFIG_COUNT=$((i + 1)) GIT_TERMINAL_PROMPT=0
+          }
+          git_auth "$FORGEJO_REPO_URL" "$FORGEJO_TOKEN"
           # Always sync the ForgeGraph lane. Cloning GitHub on schedule
           # overwrites Forgejo with a stale tip that never got promoted.
-          git clone --branch custom-local --tags "$forgejo_url" lane
+          git clone --branch custom-local --tags "$FORGEJO_REPO_URL" lane
           cd lane
           git config user.name "gmacko-nightly[bot]"
           git config user.email "gmacko-nightly@users.noreply.forgegraf.com"
@@ -142,7 +151,18 @@ jobs:
           CONFLICT_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_number }}
         run: |
           set -euo pipefail
-          github_url="https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_FORK}.git"
+          # Credentials reach git through the environment only (T3CODE-125):
+          # argv is readable by every local user in `ps`, and a URL given to
+          # `git clone` is saved in .git/config. printf and export are shell
+          # builtins, so the token is never any process's argument.
+          git_auth() { # git_auth <repository URL> <token>
+            local i="${GIT_CONFIG_COUNT:-0}"
+            export "GIT_CONFIG_KEY_${i}=http.$1.extraheader"
+            export "GIT_CONFIG_VALUE_${i}=AUTHORIZATION: basic $(printf 'x-access-token:%s' "$2" | base64 | tr -d '\n')"
+            export GIT_CONFIG_COUNT=$((i + 1)) GIT_TERMINAL_PROMPT=0
+          }
+          github_url="https://github.com/${GITHUB_FORK}.git"
+          git_auth "$github_url" "$GITHUB_TOKEN"
           START_SHA="$(git ls-remote "$github_url" refs/heads/custom-local | cut -f1)"
           lane_differs_from_github="$([[ "$START_SHA" == "$(git rev-parse HEAD)" ]] && echo false || echo true)"
           if [[ "${GITHUB_EVENT_NAME}" == "push" ]]; then
@@ -223,11 +243,21 @@ jobs:
           # mirrored here so downstream jobs can check it out, but the GitHub
           # lane is advanced by the promote job after preflight. The scheduled
           # workflow definition itself also lives on this branch here.
-          mirror_url="${FORGEJO_REPO_URL/https:\/\//https://x-access-token:${FORGEJO_TOKEN}@}"
+          # Credentials reach git through the environment only (T3CODE-125):
+          # argv is readable by every local user in `ps`, and a URL given to
+          # `git clone` is saved in .git/config. printf and export are shell
+          # builtins, so the token is never any process's argument.
+          git_auth() { # git_auth <repository URL> <token>
+            local i="${GIT_CONFIG_COUNT:-0}"
+            export "GIT_CONFIG_KEY_${i}=http.$1.extraheader"
+            export "GIT_CONFIG_VALUE_${i}=AUTHORIZATION: basic $(printf 'x-access-token:%s' "$2" | base64 | tr -d '\n')"
+            export GIT_CONFIG_COUNT=$((i + 1)) GIT_TERMINAL_PROMPT=0
+          }
+          git_auth "$FORGEJO_REPO_URL" "$FORGEJO_TOKEN"
           # Branch only: historical tags point at commits without
           # .forgejo/workflows, where Forgejo would fall back to the GitHub
           # workflow files and fire their tag-triggered release jobs.
-          git push "$mirror_url" "HEAD:refs/heads/custom-local"
+          git push "$FORGEJO_REPO_URL" "HEAD:refs/heads/custom-local"
           echo "head_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       - id: release_meta
@@ -432,6 +462,18 @@ jobs:
           # A broken upstream sync must never land on the GitHub lane: this only
           # runs after checks, focused runtime tests, and bundle validation passed on the
           # candidate, and the lease guarantees nobody moved the lane meanwhile.
+          # Credentials reach git through the environment only (T3CODE-125):
+          # argv is readable by every local user in `ps`, and a URL given to
+          # `git clone` is saved in .git/config. printf and export are shell
+          # builtins, so the token is never any process's argument.
+          git_auth() { # git_auth <repository URL> <token>
+            local i="${GIT_CONFIG_COUNT:-0}"
+            export "GIT_CONFIG_KEY_${i}=http.$1.extraheader"
+            export "GIT_CONFIG_VALUE_${i}=AUTHORIZATION: basic $(printf 'x-access-token:%s' "$2" | base64 | tr -d '\n')"
+            export GIT_CONFIG_COUNT=$((i + 1)) GIT_TERMINAL_PROMPT=0
+          }
+          git_auth "https://github.com/${GITHUB_FORK}.git" "$GITHUB_TOKEN"
+          git_auth "$FORGEJO_REPO_URL" "$FORGEJO_TOKEN"
           retry_transfer() {
             local attempt
             for attempt in 1 2 3; do
@@ -443,12 +485,11 @@ jobs:
           clone_lane() {
             rm -rf lane
             git -c http.version=HTTP/1.1 clone --single-branch --no-tags --branch custom-local \
-              "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_FORK}.git" lane
+              "https://github.com/${GITHUB_FORK}.git" lane
           }
           retry_transfer clone_lane
           cd lane
-          retry_transfer git -c http.version=HTTP/1.1 fetch \
-            "${FORGEJO_REPO_URL/https:\/\//https://x-access-token:${FORGEJO_TOKEN}@}" "$HEAD_SHA"
+          retry_transfer git -c http.version=HTTP/1.1 fetch "$FORGEJO_REPO_URL" "$HEAD_SHA"
           git push --force-with-lease="refs/heads/custom-local:${START_SHA}" origin "${HEAD_SHA}:refs/heads/custom-local"
           echo "Promoted ${HEAD_SHA} to GitHub custom-local."
 
