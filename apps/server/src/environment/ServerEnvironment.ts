@@ -23,6 +23,7 @@ import * as ServerConfig from "../config.ts";
 import { databaseMigrationHead } from "../persistence/databaseMigrationHead.ts";
 import * as ProcessRunner from "../processRunner.ts";
 import { isSpeechPlatformSupported } from "../speech/platform.ts";
+import { LOCKDOWN_EDITION } from "@t3tools/shared/lockdownEdition";
 import { resolveServerEnvironmentLabel } from "./ServerEnvironmentLabel.ts";
 import { detectServerEnvironmentMachineKind } from "./ServerEnvironmentMachine.ts";
 
@@ -284,8 +285,11 @@ export const make = Effect.gen(function* () {
       freshContext: true,
       scheduledTaskThreadModes: true,
       npmReleaseLookup: true,
-      voiceTranscription: isSpeechPlatformSupported(hostPlatform, hostArchitecture, hostLibc),
-      cloudVoiceTranscription: true,
+      // T3 Code Locked: cloud transcription uploads audio, and local models download from
+      // Hugging Face, so voice is off rather than shown and broken by the egress guard.
+      voiceTranscription:
+        !LOCKDOWN_EDITION && isSpeechPlatformSupported(hostPlatform, hostArchitecture, hostLibc),
+      cloudVoiceTranscription: !LOCKDOWN_EDITION,
       ...(serverSelfUpdate === null ? {} : { serverSelfUpdate }),
       ...(serverInstallation === null ? {} : { serverInstallation }),
       ...(serverSelfUpdate === "boot-service" || desktopAppUpdate

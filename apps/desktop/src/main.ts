@@ -160,7 +160,7 @@ const layerDesktopFoundation = Layer.mergeAll(
   DesktopPrimaryPaste.layer,
   DesktopObservability.layer,
   DesktopRendererHistory.layer,
-  AppleSpeech.layer,
+  LOCKDOWN_EDITION ? LockdownDesktop.layerAppleSpeechDisabled : AppleSpeech.layer,
 ).pipe(Layer.provideMerge(layerDesktopEnvironment));
 
 const layerDesktopSsh = layerDesktopSshEnvironment.pipe(

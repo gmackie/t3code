@@ -18,8 +18,13 @@ import {
   getDesktopScheme,
   makeDesktopContentSecurityPolicy,
 } from "../electron/ElectronProtocol.ts";
+import * as AppleSpeech from "../speech/AppleSpeech.ts";
 import * as DesktopSshEnvironment from "../ssh/DesktopSshEnvironment.ts";
-import { layerSshEnvironmentDisabled, lockdownContentSecurityPolicy } from "./lockdownDesktop.ts";
+import {
+  layerAppleSpeechDisabled,
+  layerSshEnvironmentDisabled,
+  lockdownContentSecurityPolicy,
+} from "./lockdownDesktop.ts";
 
 const directive = (policy: string, name: string) =>
   policy
@@ -76,6 +81,14 @@ describe("T3 Code Locked desktop", () => {
       });
       assert.strictEqual(userData, "/nonexistent-app-data/t3code-locked");
     }).pipe(Effect.provide(NodeServices.layer), Effect.runPromise));
+
+  it.effect("Apple Speech never runs its asset-downloading helper", () =>
+    Effect.gen(function* () {
+      const speech = yield* AppleSpeech.AppleSpeech;
+      assert.deepStrictEqual(yield* speech.supportedLocales, []);
+      assert.deepStrictEqual(yield* speech.prepare("en-US"), { ok: false, code: "unavailable" });
+    }).pipe(Effect.provide(layerAppleSpeechDisabled)),
+  );
 
   it.effect("SSH environments cannot reach another machine", () =>
     Effect.gen(function* () {

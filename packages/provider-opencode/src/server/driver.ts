@@ -1,4 +1,5 @@
 import { resolveProviderProbeTimeoutMs } from "@t3tools/provider-core/server/snapshotProbe";
+import { LOCKDOWN_EDITION } from "@t3tools/shared/lockdownEdition";
 import {
   ProviderDriverKind,
   settingsSecretLiteral,
@@ -466,8 +467,9 @@ export const OpenCodeDriver: ProviderDriver<
       ),
     );
 
+    // T3 Code Locked reports no usage: both readers reach opencode.ai with the user's account.
     const legacyUsageLimits = readOpenCodeGoUsageLimits({
-      enabled: effectiveConfig.enabled,
+      enabled: effectiveConfig.enabled && !LOCKDOWN_EDITION,
       serverUrl: effectiveConfig.serverUrl,
       environment: processEnv,
     }).pipe(
@@ -478,7 +480,7 @@ export const OpenCodeDriver: ProviderDriver<
     );
     let unsupportedUsageVersion: string | undefined;
     const checkUsageLimits = Effect.gen(function* () {
-      if (!effectiveConfig.enabled) return yield* legacyUsageLimits;
+      if (!effectiveConfig.enabled || LOCKDOWN_EDITION) return yield* legacyUsageLimits;
       const runtime = yield* runtimeProbe.get;
       if (runtime.generation === "v1" || runtime.version === unsupportedUsageVersion)
         return yield* legacyUsageLimits;

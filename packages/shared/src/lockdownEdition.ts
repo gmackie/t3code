@@ -222,6 +222,8 @@ export function lockdownPolicyDocument(
       webhookTasks: false,
       telemetry: false,
       browserCookieImport: false,
+      // Opening this machine's local servers to other devices.
+      previewTunnel: false,
       providers: {
         allowedDrivers: [LOCKDOWN_OPENCODE_DRIVER],
         ...(instances === undefined ? {} : { instances }),

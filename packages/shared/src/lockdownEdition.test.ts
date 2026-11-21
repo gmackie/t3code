@@ -53,6 +53,7 @@ describe("lockdown edition", () => {
       webhookTasks: false,
       telemetry: false,
       browserCookieImport: false,
+      previewTunnel: false,
       providers: { allowedDrivers: ["opencode"] },
       updates: { mode: "off" },
     });
@@ -93,6 +94,7 @@ describe("lockdown edition", () => {
       webhookTasks: false,
       telemetry: false,
       browserCookieImport: false,
+      previewTunnel: false,
       providers: { allowedDrivers: ["opencode"] },
       updates: { mode: "off" },
     });

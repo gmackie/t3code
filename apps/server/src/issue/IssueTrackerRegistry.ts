@@ -1,4 +1,5 @@
 import * as Context from "effect/Context";
+import { LOCKDOWN_EDITION } from "@t3tools/shared/lockdownEdition";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import type { IssueTrackerKind } from "@t3tools/contracts";
@@ -35,8 +36,11 @@ export function fromTrackers(
   };
 }
 
-/** Trackers that are not a git host's own. Each signs requests with a credential from Settings. */
-const STANDALONE_TRACKERS = [LinearDriver.make];
+/**
+ * Trackers that are not a git host's own. Each signs requests with a credential from Settings.
+ * T3 Code Locked has none: GitLab's own tracker is the only one it reaches.
+ */
+const STANDALONE_TRACKERS = LOCKDOWN_EDITION ? [] : [LinearDriver.make];
 
 const make = Effect.gen(function* () {
   const drivers = yield* BuiltInDrivers.SourceControlDrivers;
