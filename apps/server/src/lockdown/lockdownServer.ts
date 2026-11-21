@@ -29,7 +29,7 @@ import * as Effect from "effect/Effect";
 import type { ProviderMaintenanceRunnerShape } from "../provider/providerMaintenanceRunner.ts";
 
 /** GitLab is the only source-control host the locked edition talks to. */
-export const LOCKDOWN_SOURCE_CONTROL_KINDS: ReadonlySet<string> = new Set(["gitlab"]);
+const LOCKDOWN_SOURCE_CONTROL_KINDS: ReadonlySet<string> = new Set(["gitlab"]);
 
 export function lockdownSourceControlDrivers<Driver extends { readonly kind: string }>(
   drivers: ReadonlyArray<Driver>,
@@ -39,7 +39,7 @@ export function lockdownSourceControlDrivers<Driver extends { readonly kind: str
     : drivers;
 }
 
-export const LOCKDOWN_PROVIDER_UPDATE_REFUSAL =
+const LOCKDOWN_PROVIDER_UPDATE_REFUSAL =
   "T3 Code Locked does not install or update providers; your administrator manages OpenCode.";
 
 /** Updating a provider runs npm, brew or the provider's own updater; all of them reach out. */
@@ -56,7 +56,7 @@ export const lockdownProviderMaintenanceRunner: ProviderMaintenanceRunnerShape =
 const OUTSIDE_ALLOWLIST = "Model is outside the configured Workers AI allowlist";
 
 /** Every model-bearing adapter operation, including a model switch after the session opened. */
-export function restrictAdapterModels(
+function restrictAdapterModels(
   adapter: ProviderAdapterV2["Service"],
   allowed: ReadonlySet<string>,
 ): ProviderAdapterV2["Service"] {
@@ -108,7 +108,7 @@ export function restrictAdapterModels(
 }
 
 /** Commit messages, PR text, branch names, titles, review guides and dictation cleanup use approved models only. */
-export function restrictTextGenerationModels(
+function restrictTextGenerationModels(
   service: ProviderTextGeneration,
   allowed: ReadonlySet<string>,
 ): ProviderTextGeneration {

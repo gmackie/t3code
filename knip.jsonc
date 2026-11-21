@@ -41,6 +41,9 @@
         "prepare-server-compile-cache.cjs",
         "smoke-desktop-app.ts",
         "verify-windows-desktop-artifact.ts",
+        // T3 Code Locked: lockdown-build.yml runs these with node.
+        "lockdown-conflict-session.mjs",
+        "verify-locked-build.mjs",
       ],
       "ignoreDependencies": ["esbuild"],
       // The `t3` npm package's files: copied into the package, never imported.

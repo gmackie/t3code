@@ -21,6 +21,7 @@ import {
 import * as AppleSpeech from "../speech/AppleSpeech.ts";
 import * as DesktopSshEnvironment from "../ssh/DesktopSshEnvironment.ts";
 import {
+  installSessionEgressGuard,
   layerAppleSpeechDisabled,
   layerSshEnvironmentDisabled,
   lockdownContentSecurityPolicy,
@@ -33,6 +34,39 @@ const directive = (policy: string, name: string) =>
     .find((part) => part.startsWith(`${name} `)) ?? "";
 
 describe("T3 Code Locked desktop", () => {
+  it("cancels the default session's requests to anything but loopback and approved hosts", () => {
+    let filtered: Array<string> = [];
+    let listener:
+      | ((details: { url: string }, callback: (response: { cancel: boolean }) => void) => void)
+      | undefined;
+    installSessionEgressGuard(
+      {
+        webRequest: {
+          onBeforeRequest: (filter, next) => {
+            filtered = filter.urls;
+            listener = next;
+          },
+        },
+      },
+      { T3CODE_LOCKDOWN_ALLOWED_HOSTS: "gitlab.example.com" },
+    );
+    // Only network schemes reach the filter, so the app's own protocol is never cancelled.
+    assert.deepStrictEqual(filtered, ["http://*/*", "https://*/*", "ws://*/*", "wss://*/*"]);
+    const cancelled = (url: string) => {
+      let result: boolean | undefined;
+      listener!({ url }, ({ cancel }) => {
+        result = cancel;
+      });
+      return result;
+    };
+    assert.strictEqual(cancelled("https://us.i.posthog.com/batch/"), true);
+    assert.strictEqual(cancelled("https://clerk.t3.codes/v1/client"), true);
+    assert.strictEqual(cancelled("http://gitlab.example.com/api/v4/projects"), true);
+    assert.strictEqual(cancelled("http://127.0.0.1:3773/api"), false);
+    assert.strictEqual(cancelled("ws://localhost:3773/ws"), false);
+    assert.strictEqual(cancelled("https://gitlab.example.com/api/v4/projects"), false);
+  });
+
   it("the renderer CSP allows only the app and servers on this machine", () => {
     const policy = makeDesktopContentSecurityPolicy({
       scheme: getDesktopScheme(false),

@@ -6,6 +6,7 @@ for (const stream of [process.stdout, process.stderr]) {
 }
 
 import * as NodeHttpClient from "@effect/platform-node/NodeHttpClient";
+import * as FetchHttpClient from "effect/http/FetchHttpClient";
 import * as NodeRuntime from "@effect/platform-node/NodeRuntime";
 import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
@@ -246,7 +247,8 @@ const layerDesktopClerk = DesktopClerk.layer.pipe(
 
 const layerDesktopApplicationRuntime = layerDesktopApplication.pipe(
   Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
-  Layer.provideMerge(NodeHttpClient.layerUndici),
+  // The undici client brings its own Agent, which no global guard sees; fetch is guarded.
+  Layer.provideMerge(LOCKDOWN_EDITION ? FetchHttpClient.layer : NodeHttpClient.layerUndici),
   Layer.provideMerge(NetService.layer),
   Layer.provideMerge(layerElectron),
 );
@@ -261,4 +263,11 @@ const layerDesktopRuntime = layerDesktopClerk.pipe(
 
 // T3 Code Locked: in-process fetches reach only this machine and approved hosts.
 installLockdownFetchGuard(globalThis, process.env);
+if (LOCKDOWN_EDITION) {
+  void Electron.app
+    .whenReady()
+    .then(() =>
+      LockdownDesktop.installSessionEgressGuard(Electron.session.defaultSession, process.env),
+    );
+}
 DesktopApp.program.pipe(Effect.provide(layerDesktopRuntime), NodeRuntime.runMain);
