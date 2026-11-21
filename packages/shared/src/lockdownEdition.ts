@@ -17,7 +17,7 @@ export const LOCKDOWN_EDITION: boolean = true;
 type Env = Readonly<Record<string, string | undefined>>;
 
 /** Shown as "Managed by T3 Code Locked" when no administrator policy names an organization. */
-export const LOCKDOWN_ORGANIZATION = "T3 Code Locked";
+const LOCKDOWN_ORGANIZATION = "T3 Code Locked";
 
 /**
  * A separate application identity, so the locked app never shares a profile, data directory,
@@ -35,13 +35,13 @@ export const LOCKDOWN_IDENTITY = {
   devScheme: "t3code-locked-dev",
 } as const;
 
-export const LOCKDOWN_OPENCODE_DRIVER = ProviderDriverKind.make("opencode");
+const LOCKDOWN_OPENCODE_DRIVER = ProviderDriverKind.make("opencode");
 /** The only provider the locked OpenCode config enables. */
-export const LOCKDOWN_CLOUDFLARE_PROVIDER = "cloudflare-locked";
+const LOCKDOWN_CLOUDFLARE_PROVIDER = "cloudflare-locked";
 const DEFAULT_LOCKDOWN_MODEL = "workers-ai/@cf/meta/llama-3.3-70b-instruct-fp8-fast";
 
 /** Clients the locked server accepts: nothing off this machine. */
-export const LOCKDOWN_CLIENTS: ReadonlyArray<ManagedPolicyClient> = ["desktop", "local-browser"];
+const LOCKDOWN_CLIENTS: ReadonlyArray<ManagedPolicyClient> = ["desktop", "local-browser"];
 
 export class LockdownConfigurationError extends Schema.TaggedError<LockdownConfigurationError>()(
   "LockdownConfigurationError",
@@ -55,7 +55,7 @@ export class LockdownConfigurationError extends Schema.TaggedError<LockdownConfi
 const configurationError = (detail: string) => new LockdownConfigurationError({ detail });
 
 /** The Workers AI model ids the administrator approved; the first is OpenCode's default. */
-export function lockdownWorkersAiModels(env: Env): ReadonlyArray<string> {
+function lockdownWorkersAiModels(env: Env): ReadonlyArray<string> {
   const models = (env.T3CODE_CLOUDFLARE_MODELS ?? DEFAULT_LOCKDOWN_MODEL)
     .split(",")
     .map((model) => model.trim())
@@ -79,7 +79,7 @@ export function lockdownAllowedModelSlugs(env: Env): ReadonlySet<string> {
 }
 
 /** The approved Cloudflare AI Gateway OpenAI-compatible endpoint, or a configuration error. */
-export function lockdownGatewayUrl(env: Env): URL {
+function lockdownGatewayUrl(env: Env): URL {
   const gateway = env.T3CODE_CLOUDFLARE_GATEWAY_URL?.trim();
   if (!gateway) {
     throw configurationError(

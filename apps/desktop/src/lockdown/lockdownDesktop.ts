@@ -3,6 +3,7 @@
  *
  * @module lockdownDesktop
  */
+import { isLockdownEgressAllowed, lockdownAllowedHosts } from "@t3tools/shared/lockdownEdition";
 import { SshInvalidTargetError, SshLaunchError } from "@t3tools/ssh/errors";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -34,10 +35,39 @@ export function lockdownContentSecurityPolicy(scheme: string): string {
   ].join("; ");
 }
 
+const NETWORK_URLS = ["http://*/*", "https://*/*", "ws://*/*", "wss://*/*"];
+
+type RequestFilterSession = {
+  readonly webRequest: {
+    onBeforeRequest(
+      filter: { urls: Array<string> },
+      listener: (
+        details: { readonly url: string },
+        callback: (response: { cancel: boolean }) => void,
+      ) => void,
+    ): void;
+  };
+};
+
+/**
+ * Chromium's own requests from the default session (the app window, `net.fetch` and
+ * `session.fetch`) follow the in-process egress rule too; the fetch guard never sees them.
+ * Preview browser sessions use their own partitions: browser automation stays enabled.
+ */
+export function installSessionEgressGuard(
+  session: RequestFilterSession,
+  env: Readonly<Record<string, string | undefined>>,
+): void {
+  const allowedHosts = lockdownAllowedHosts(env);
+  session.webRequest.onBeforeRequest({ urls: NETWORK_URLS }, (details, callback) =>
+    callback({ cancel: !isLockdownEgressAllowed(details.url, allowedHosts) }),
+  );
+}
+
 const SSH_DISABLED = "Remote SSH environments are disabled in T3 Code Locked.";
 
 /** SSH environments start a T3 server on another machine; the locked app never does. */
-export const sshEnvironmentDisabled: DesktopSshEnvironment.DesktopSshEnvironment["Service"] = {
+const sshEnvironmentDisabled: DesktopSshEnvironment.DesktopSshEnvironment["Service"] = {
   discoverHosts: () => Effect.succeed([]),
   resolveHost: () => Effect.fail(new SshInvalidTargetError({ message: SSH_DISABLED })),
   ensureEnvironment: () => Effect.fail(new SshLaunchError({ message: SSH_DISABLED, stdout: "" })),
