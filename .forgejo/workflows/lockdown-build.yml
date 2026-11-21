@@ -1,10 +1,21 @@
 name: Lockdown daily merge and build
 
-# T3 Code Locked (T3CODE-15, rebuilt on main in T3CODE-110). lockdown-daily.yml on custom-local
-# dispatches this at 09:00 UTC with merge_main=true. The locked edition guards upstream code at a
-# few choke points (packages/shared/src/lockdownEdition.ts) instead of deleting it, so the merge
-# of main normally applies cleanly. Conflicts still fail the run: never resolve one by restoring
-# a path the lockdown guards.
+# T3 Code Locked (T3CODE-15, rebuilt on main in T3CODE-110, nightly releases in T3CODE-123).
+# lockdown-daily.yml on custom-local dispatches this at 09:00 UTC with merge_main=true. The run
+# merges upstream main (github.com/pingdotgg/t3code) into an unpublished candidate, verifies the
+# restrictions, builds Linux x64 and macOS arm64/x64 (signed and notarized), advances lockdown,
+# and publishes a GitHub prerelease vX.Y.Z-locked.<stamp> on gmackie/t3code. The GMACKO desktop
+# updater only follows "gmacko" prereleases, so these never reach GMACKO installs.
+#
+# The locked edition guards upstream code at a few choke points (packages/shared/src/
+# lockdownEdition.ts) instead of deleting it, so the merge normally applies cleanly. A conflict
+# starts an unattended T3 session on gmacko-mini that opens a PR to lockdown
+# (scripts/lockdown-conflict-session.mjs), and the run fails. Never resolve a conflict by
+# restoring a path the lockdown guards.
+#
+# Secrets: GMACKO_GITHUB_TOKEN (push release tags, create releases), CSC_LINK, CSC_KEY_PASSWORD,
+# APPLE_API_KEY, APPLE_API_KEY_ID, APPLE_API_ISSUER (Developer ID signing and notarization),
+# T3_CONFLICT_MCP_TOKEN. Variables: T3_CONFLICT_MCP_URL, T3_CONFLICT_PROJECT_ID.
 
 on:
   push:
@@ -13,9 +24,13 @@ on:
   workflow_dispatch:
     inputs:
       merge_main:
-        description: Merge repository main before building
+        description: Merge upstream main before building
         type: boolean
         default: true
+      skip_release:
+        description: Build and promote without publishing a GitHub prerelease
+        type: boolean
+        default: false
 
 concurrency:
   group: lockdown-daily
@@ -23,7 +38,8 @@ concurrency:
 
 env:
   PNPM_VERSION: 12.14.0
-  NODE_VERSION: 24.14.0
+  UPSTREAM_REPO: pingdotgg/t3code
+  GITHUB_FORK: gmackie/t3code
 
 jobs:
   candidate:
@@ -33,6 +49,11 @@ jobs:
       sha: ${{ steps.candidate.outputs.sha }}
       start_sha: ${{ steps.candidate.outputs.start_sha }}
       branch: ${{ steps.candidate.outputs.branch }}
+      conflict: ${{ steps.candidate.outputs.conflict }}
+      conflict_files: ${{ steps.candidate.outputs.conflict_files }}
+      upstream_sha: ${{ steps.candidate.outputs.upstream_sha }}
+      version: ${{ steps.candidate.outputs.version }}
+      tag: ${{ steps.candidate.outputs.tag }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -41,9 +62,9 @@ jobs:
           path: lockdown-${{ github.run_id }}
       - uses: actions/setup-node@v4
         with:
-          node-version: ${{ env.NODE_VERSION }}
+          node-version-file: lockdown-${{ github.run_id }}/package.json
       - id: candidate
-        name: Merge main into an unpublished candidate
+        name: Merge upstream main into an unpublished candidate
         shell: bash
         working-directory: lockdown-${{ github.run_id }}
         env:
@@ -54,19 +75,28 @@ jobs:
           set -euo pipefail
           git config user.name 'lockdown-daily[bot]'
           git config user.email 'lockdown-daily@users.noreply.forgegraf.com'
-          git fetch origin main lockdown
+          git fetch origin lockdown
+          git fetch "https://github.com/${UPSTREAM_REPO}.git" main
+          upstream_sha="$(git rev-parse FETCH_HEAD)"
           start_sha="$(git rev-parse origin/lockdown)"
+          echo "upstream_sha=$upstream_sha" >> "$GITHUB_OUTPUT"
           if [[ "$EVENT_NAME" == push && "$start_sha" != "$EVENT_SHA" ]]; then
             echo 'Lockdown advanced after this push; refusing to build a stale revision.' >&2
             exit 1
           fi
           git checkout -B lockdown-candidate "$start_sha"
-          if [[ "$EVENT_NAME" != push && "$MERGE_MAIN" != false ]]; then
-            # Conflicts fail the run: never resolve by restoring paths the lockdown guards.
-            if ! git merge --no-edit -m 'Merge main into lockdown [skip ci]' origin/main; then
-              echo 'Merging main conflicts with the lockdown guards:' >&2
-              git diff --name-only --diff-filter=U >&2
-              exit 1
+          if [[ "$EVENT_NAME" != push && "$MERGE_MAIN" != false ]] \
+            && ! git merge-base --is-ancestor "$upstream_sha" HEAD; then
+            if ! git merge --no-edit -m "Merge upstream main ${upstream_sha:0:10} into lockdown [skip ci]" "$upstream_sha"; then
+              echo "::error::Merging upstream main conflicts with lockdown; a T3 session will open a PR to lockdown."
+              git diff --name-only --diff-filter=U | sed 's/^/  conflict: /'
+              {
+                echo "conflict=true"
+                echo "conflict_files=$(git diff --name-only --diff-filter=U | node -e 'let r="";process.stdin.on("data",c=>r+=c).on("end",()=>process.stdout.write(JSON.stringify(r.split("\n").filter(Boolean))))')"
+                echo "start_sha=$start_sha"
+              } >> "$GITHUB_OUTPUT"
+              git merge --abort
+              exit 0
             fi
             corepack enable
             corepack prepare "pnpm@${PNPM_VERSION}" --activate
@@ -76,16 +106,54 @@ jobs:
               git commit -m 'chore(lockdown): refresh merged lockfile [skip ci]'
             fi
           fi
+          version="$(node -p 'require("./apps/desktop/package.json").version')-locked.$(date -u +%Y%m%d%H%M)"
           candidate_branch="lockdown-build-${GITHUB_RUN_ID}"
           git push origin "HEAD:refs/heads/$candidate_branch"
           {
+            echo "conflict=false"
             echo "sha=$(git rev-parse HEAD)"
             echo "start_sha=$start_sha"
             echo "branch=$candidate_branch"
+            echo "version=$version"
+            echo "tag=v$version"
           } >> "$GITHUB_OUTPUT"
+
+  conflict:
+    needs: candidate
+    if: ${{ needs.candidate.outputs.conflict == 'true' }}
+    # The T3 MCP endpoint lives on gmacko-mini; labnuc job containers cannot resolve MagicDNS.
+    runs-on: gmacko-mini
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.candidate.outputs.start_sha }}
+          path: lockdown-${{ github.run_id }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: lockdown-${{ github.run_id }}/package.json
+      - name: Hand the conflict to a T3 session
+        shell: bash
+        working-directory: lockdown-${{ github.run_id }}
+        env:
+          T3_CONFLICT_MCP_URL: ${{ vars.T3_CONFLICT_MCP_URL }}
+          T3_CONFLICT_PROJECT_ID: ${{ vars.T3_CONFLICT_PROJECT_ID }}
+          T3_CONFLICT_MCP_TOKEN: ${{ secrets.T3_CONFLICT_MCP_TOKEN }}
+          CONFLICT_LANE_SHA: ${{ needs.candidate.outputs.start_sha }}
+          CONFLICT_UPSTREAM_SHA: ${{ needs.candidate.outputs.upstream_sha }}
+          CONFLICT_FILES_JSON: ${{ needs.candidate.outputs.conflict_files }}
+          CONFLICT_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_number }}
+        run: |
+          set -euo pipefail
+          export CONFLICT_FILES_PATH="$(mktemp)"
+          node -e 'process.stdout.write(JSON.parse(process.env.CONFLICT_FILES_JSON).join("\0"))' > "$CONFLICT_FILES_PATH"
+          node scripts/lockdown-conflict-session.mjs
+          echo '::error::Lockdown was not advanced: resolve the upstream merge in the PR the session opens.'
+          exit 1
 
   verify:
     needs: candidate
+    if: ${{ needs.candidate.outputs.conflict != 'true' }}
     runs-on: forgegraph-ci
     timeout-minutes: 45
     steps:
@@ -95,7 +163,7 @@ jobs:
           path: lockdown-${{ github.run_id }}
       - uses: actions/setup-node@v4
         with:
-          node-version: ${{ env.NODE_VERSION }}
+          node-version-file: lockdown-${{ github.run_id }}/package.json
       - name: Install and check restrictions
         shell: bash
         working-directory: lockdown-${{ github.run_id }}
@@ -117,7 +185,7 @@ jobs:
           path: lockdown-${{ github.run_id }}
       - uses: actions/setup-node@v4
         with:
-          node-version: ${{ env.NODE_VERSION }}
+          node-version-file: lockdown-${{ github.run_id }}/package.json
       - name: Install Linux build dependencies
         shell: bash
         run: |
@@ -142,13 +210,13 @@ jobs:
           pnpm install --frozen-lockfile \
             --filter=@t3tools/desktop... --filter=t3... --filter=@t3tools/scripts...
           export PATH="$PWD/node_modules/.bin:$PATH"
-          bash scripts/build-lockdown-ci.sh linux x64 "$PWD/release-lockdown"
+          bash scripts/build-lockdown-ci.sh linux x64 "$PWD/release-lockdown" \
+            "${{ needs.candidate.outputs.version }}"
       - uses: https://code.forgejo.org/forgejo/upload-artifact@v5
         with:
           name: lockdown-linux-x64-${{ needs.candidate.outputs.sha }}
           path: |
             lockdown-${{ github.run_id }}/release-lockdown/*.AppImage
-            lockdown-${{ github.run_id }}/release-lockdown/*.deb
             lockdown-${{ github.run_id }}/release-lockdown/*.json
             lockdown-${{ github.run_id }}/release-lockdown/SHA256SUMS-*
           if-no-files-found: error
@@ -164,9 +232,18 @@ jobs:
         with:
           ref: ${{ needs.candidate.outputs.sha }}
           path: lockdown-${{ github.run_id }}
+      # Run 1673 died with ENOSPC mid-build; refuse to start on a full disk and keep temp files
+      # under the CI root instead of /var/folders.
+      - name: Require Mini build storage
+        timeout-minutes: 5
+        shell: bash
+        working-directory: lockdown-${{ github.run_id }}
+        env:
+          T3CODE_MINI_CI_ROOT: ${{ vars.MINI_CI_STORAGE_ROOT || '/Users/mackieg/t3-ci' }}
+        run: python3 scripts/mini-ci-storage.py --workspace "$PWD"
       - uses: actions/setup-node@v4
         with:
-          node-version: ${{ env.NODE_VERSION }}
+          node-version-file: lockdown-${{ github.run_id }}/package.json
       - name: Install macOS build dependencies
         shell: bash
         working-directory: lockdown-${{ github.run_id }}
@@ -181,14 +258,22 @@ jobs:
           fi
           echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
           "$HOME/.cargo/bin/rustup" target add aarch64-apple-darwin x86_64-apple-darwin
-      - name: Build macOS arm64 and x64 sequentially
+      - name: Build, sign and notarize macOS arm64 and x64 sequentially
         shell: bash
         working-directory: lockdown-${{ github.run_id }}
+        env:
+          LOCKDOWN_MAC_SIGNING: required
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
         run: |
           set -euo pipefail
           export PATH="$PWD/node_modules/.bin:$PATH"
-          bash scripts/build-lockdown-ci.sh mac arm64 "$PWD/release-arm64"
-          bash scripts/build-lockdown-ci.sh mac x64 "$PWD/release-x64"
+          version="${{ needs.candidate.outputs.version }}"
+          bash scripts/build-lockdown-ci.sh mac arm64 "$PWD/release-arm64" "$version"
+          bash scripts/build-lockdown-ci.sh mac x64 "$PWD/release-x64" "$version"
       - uses: https://code.forgejo.org/forgejo/upload-artifact@v5
         with:
           name: lockdown-macos-${{ needs.candidate.outputs.sha }}
@@ -228,3 +313,113 @@ jobs:
           fi
           git push origin --delete "$CANDIDATE_BRANCH"
           echo "Verified lockdown revision: $CANDIDATE_SHA"
+
+  release:
+    needs: [candidate, promote]
+    if: ${{ !cancelled() && needs.promote.result == 'success' && inputs.skip_release != true }}
+    runs-on: forgegraph-ci
+    timeout-minutes: 30
+    env:
+      GH_TOKEN: ${{ secrets.GMACKO_GITHUB_TOKEN }}
+      TAG: ${{ needs.candidate.outputs.tag }}
+      VERSION: ${{ needs.candidate.outputs.version }}
+      CANDIDATE_SHA: ${{ needs.candidate.outputs.sha }}
+      UPSTREAM_SHA: ${{ needs.candidate.outputs.upstream_sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.candidate.outputs.sha }}
+          fetch-depth: 0
+          path: lockdown-${{ github.run_id }}
+      - name: Skip a revision that already has a release
+        id: existing
+        shell: bash
+        working-directory: lockdown-${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${GH_TOKEN:-}" ]]; then
+            echo 'GMACKO_GITHUB_TOKEN is required to publish lockdown releases.' >&2
+            exit 1
+          fi
+          github_url="https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_FORK}.git"
+          existing="$(git ls-remote --tags "$github_url" 'refs/tags/v*-locked.*' \
+            | awk -v sha="$CANDIDATE_SHA" '$1 == sha { sub("refs/tags/", "", $2); print $2; exit }')"
+          if [[ -n "$existing" ]]; then
+            echo "Lockdown $CANDIDATE_SHA was already released as $existing."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Mirror the lockdown branch to GitHub
+        shell: bash
+        working-directory: lockdown-${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          # Forgejo's lockdown is the source of truth; the public fork follows it.
+          git push --force "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_FORK}.git" \
+            "$CANDIDATE_SHA:refs/heads/lockdown"
+      - name: Install GitHub CLI
+        if: ${{ steps.existing.outputs.skip != 'true' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if command -v gh >/dev/null 2>&1; then
+            gh --version
+            exit 0
+          fi
+          gh_version="$(curl -fsSL -H "Authorization: Bearer ${GH_TOKEN}" https://api.github.com/repos/cli/cli/releases/latest | node -e 'let r="";process.stdin.on("data",c=>r+=c).on("end",()=>process.stdout.write(JSON.parse(r).tag_name.replace(/^v/,"")))')"
+          curl -fsSL "https://github.com/cli/cli/releases/download/v${gh_version}/gh_${gh_version}_linux_amd64.tar.gz" -o /tmp/gh.tgz
+          tar -xzf /tmp/gh.tgz -C /tmp
+          sudo=""
+          if [[ "$(id -u)" != 0 ]]; then sudo=sudo; fi
+          $sudo install "/tmp/gh_${gh_version}_linux_amd64/bin/gh" /usr/local/bin/gh
+          gh --version
+      - if: ${{ steps.existing.outputs.skip != 'true' }}
+        uses: https://code.forgejo.org/forgejo/download-artifact@v4
+        with:
+          pattern: lockdown-*-${{ needs.candidate.outputs.sha }}
+          merge-multiple: true
+          path: release-assets
+      - name: Publish GitHub prerelease
+        if: ${{ steps.existing.outputs.skip != 'true' }}
+        shell: bash
+        working-directory: lockdown-${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          assets_dir="$GITHUB_WORKSPACE/release-assets"
+          find "$assets_dir" -type f | sort
+          # Artifacts keep their per-platform folders; publish the packages flat.
+          mkdir -p "$RUNNER_TEMP/publish"
+          find "$assets_dir" -type f \( -name '*.zip' -o -name '*.AppImage' \) \
+            -exec cp {} "$RUNNER_TEMP/publish/" \;
+          cd "$RUNNER_TEMP/publish"
+          zips=(*.zip)
+          appimages=(*.AppImage)
+          if (( ${#zips[@]} < 2 || ${#appimages[@]} < 1 )); then
+            echo 'Expected macOS arm64 and x64 zips and a Linux AppImage.' >&2
+            exit 1
+          fi
+          sha256sum *.zip *.AppImage > SHA256SUMS
+          cat SHA256SUMS
+          cat > notes.md <<NOTES
+          T3 Code Locked nightly ${VERSION}.
+
+          - lockdown: \`${CANDIDATE_SHA}\`
+          - upstream main (${UPSTREAM_REPO}): \`${UPSTREAM_SHA}\`
+
+          Local-only, OpenCode-only edition. See docs/user/locked-down.md on the lockdown branch.
+          macOS builds are signed and notarized. Verify downloads against SHA256SUMS.
+          NOTES
+          cd "$GITHUB_WORKSPACE/lockdown-${{ github.run_id }}"
+          git push "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_FORK}.git" \
+            "$CANDIDATE_SHA:refs/tags/$TAG"
+          gh release create "$TAG" "$RUNNER_TEMP"/publish/*.zip "$RUNNER_TEMP"/publish/*.AppImage \
+            "$RUNNER_TEMP/publish/SHA256SUMS" \
+            --repo "$GITHUB_FORK" \
+            --verify-tag \
+            --title "T3 Code Locked ${VERSION}" \
+            --prerelease \
+            --latest=false \
+            --notes-file "$RUNNER_TEMP/publish/notes.md"
+          echo "Published https://github.com/${GITHUB_FORK}/releases/tag/${TAG}"

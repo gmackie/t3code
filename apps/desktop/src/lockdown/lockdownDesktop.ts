@@ -7,6 +7,7 @@ import { SshInvalidTargetError, SshLaunchError } from "@t3tools/ssh/errors";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 
+import * as AppleSpeech from "../speech/AppleSpeech.ts";
 import * as DesktopSshEnvironment from "../ssh/DesktopSshEnvironment.ts";
 
 const LOOPBACK_HTTP = "http://127.0.0.1:* http://localhost:* http://[::1]:*";
@@ -41,9 +42,23 @@ export const sshEnvironmentDisabled: DesktopSshEnvironment.DesktopSshEnvironment
   resolveHost: () => Effect.fail(new SshInvalidTargetError({ message: SSH_DISABLED })),
   ensureEnvironment: () => Effect.fail(new SshLaunchError({ message: SSH_DISABLED, stdout: "" })),
   disconnectEnvironment: () => Effect.void,
+  closeAllTunnels: Effect.void,
 };
 
 export const layerSshEnvironmentDisabled = Layer.succeed(
   DesktopSshEnvironment.DesktopSshEnvironment,
   sshEnvironmentDisabled,
 );
+
+/** The Apple Speech helper downloads on-device speech assets from Apple; the locked app has no voice. */
+const speechUnavailable = { ok: false, code: "unavailable" } as const;
+
+export const layerAppleSpeechDisabled = Layer.succeed(AppleSpeech.AppleSpeech, {
+  supportedLocales: Effect.succeed([]),
+  prepare: Effect.fn("AppleSpeech.AppleSpeech.prepare")(function* () {
+    return speechUnavailable;
+  }),
+  transcribe: Effect.fn("AppleSpeech.AppleSpeech.transcribe")(function* () {
+    return speechUnavailable;
+  }),
+});

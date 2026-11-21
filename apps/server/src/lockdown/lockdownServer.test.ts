@@ -46,6 +46,7 @@ describe("T3 Code Locked server", () => {
       assert.strictEqual(ManagedPolicy.deniedBy(policy, "webhookTasks"), "T3 Code Locked");
       assert.isFalse(ManagedLimits.allowsConnect(policy));
       assert.isFalse(ManagedLimits.allowsRemoteClients(policy));
+      assert.strictEqual(ManagedPolicy.deniedBy(policy, "previewTunnel"), "T3 Code Locked");
       assert.isTrue(policy.providers.isDriverAllowed(opencode));
       for (const driver of [
         "codex",
@@ -61,12 +62,7 @@ describe("T3 Code Locked server", () => {
       assert.isDefined(managedUpdateRefusal(policy.document));
       assert.includeMembers(
         [...(policy.summary?.lockedSettings ?? [])],
-        [
-          "enableProviderUpdateChecks",
-          "linkedEnvironmentsEnabled",
-          "guestSharingEnabled",
-          "observability.otlpTracesUrl",
-        ],
+        ["enableProviderUpdateChecks", "linkedEnvironmentsEnabled", "guestSharingEnabled"],
       );
     }),
   );

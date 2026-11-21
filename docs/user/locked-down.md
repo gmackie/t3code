@@ -11,12 +11,13 @@ The branch keeps upstream's code and turns the edition on with one constant, `LO
   - Product analytics, webhook tasks and browser cookie import are off.
   - OpenCode is the only provider.
   - Desktop, server and provider updates are off.
-  - Locked settings turn off provider update checks (npm and the remote model manifest), linked environments, guest sharing and OTLP export.
+  - Locked settings turn off provider update checks (npm and the remote model manifest), linked environments and guest sharing. OTLP export is always off.
 - **An in-process egress guard.** Every `fetch` and undici request from the server and the desktop main process may reach only loopback and the hosts in `T3CODE_LOCKDOWN_ALLOWED_HOSTS`, over https.
 - **A loopback-only renderer CSP.** The renderer cannot load Clerk, the Cloudflare challenge script, remote images, theme search or remote environments.
 - **No cloud configuration in the web app.** It has no Clerk, relay or relay tracing, whatever the build environment sets.
 - **GitLab only.** It is the only source-control driver the server constructs.
 - **No remote environments.** SSH environments are disabled in the desktop app.
+- **No voice, usage meters or standalone trackers.** Dictation (cloud transcription, downloaded speech models and Apple Speech), OpenCode usage limits (which read your opencode.ai account) and Linear are off. Preview tunnels to other devices are off.
 - **A locked OpenCode.** It always runs as its own local process, never at a server URL. It runs without auto-update, models.dev fetches or sharing, and with your gateway as its only enabled provider. Session, turn, fork, compaction and text-generation requests for other models are rejected.
 - **A separate identity.** The app ID is `com.t3tools.t3code.locked`, the protocol is `t3code-locked://`, data lives under `~/.t3-locked`, the Electron profile is `t3code-locked`, and there is no update feed.
 
@@ -29,6 +30,7 @@ Before launching, set these through your deployment's secret mechanism, never in
 - `CLOUDFLARE_API_TOKEN`: the Workers AI token.
 - `CF_AIG_TOKEN`: the token for an authenticated AI Gateway.
 - `T3CODE_LOCKDOWN_ALLOWED_HOSTS`: comma-separated host names that in-process requests may reach, such as your GitLab host. `glab` runs as its own process and is not limited by this list.
+- `GITLAB_HOST`: your GitLab host. Without it, `glab` defaults to gitlab.com.
 
 OpenCode stays unavailable until the gateway configuration is valid. Install an approved `opencode` and `glab`, configure `glab` for your GitLab host, enable OpenCode under Settings → Providers, then add a local project.
 

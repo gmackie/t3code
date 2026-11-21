@@ -170,10 +170,8 @@ function lockdownSettings(env: Env): Record<string, ManagedPolicySetting> {
     // Remote T3 servers and guest links reach other machines.
     linkedEnvironmentsEnabled: locked(false),
     guestSharingEnabled: locked(false),
-    // OTLP export to a collector a user names.
-    "observability.otlpTracesUrl": locked(""),
-    "observability.otlpMetricsUrl": locked(""),
-    "observability.otlpLogsUrl": locked(""),
+    // No observability.* entries: a policy cannot set them (each user's environment resolves them
+    // at startup), so OTLP export is switched off in otelEnvironment.ts instead.
     // Text generation defaults to the gateway; the OpenCode guard rejects other models anyway.
     textGenerationModelSelection: {
       value: {
@@ -224,6 +222,8 @@ export function lockdownPolicyDocument(
       webhookTasks: false,
       telemetry: false,
       browserCookieImport: false,
+      // Opening this machine's local servers to other devices.
+      previewTunnel: false,
       providers: {
         allowedDrivers: [LOCKDOWN_OPENCODE_DRIVER],
         ...(instances === undefined ? {} : { instances }),

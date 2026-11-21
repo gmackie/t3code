@@ -107,7 +107,7 @@ export function restrictAdapterModels(
   };
 }
 
-/** Commit messages, PR text, branch names, titles and review guides use approved models only. */
+/** Commit messages, PR text, branch names, titles, review guides and dictation cleanup use approved models only. */
 export function restrictTextGenerationModels(
   service: ProviderTextGeneration,
   allowed: ReadonlySet<string>,
@@ -128,6 +128,7 @@ export function restrictTextGenerationModels(
     generateBranchName: guard(service.generateBranchName),
     generateThreadTitle: guard(service.generateThreadTitle),
     generateReviewGuide: guard(service.generateReviewGuide),
+    generateTranscriptionPostProcessing: guard(service.generateTranscriptionPostProcessing),
   };
 }
 
