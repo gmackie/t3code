@@ -269,7 +269,12 @@ export const executeInShell =
         setTimeout(() => signalGroup("SIGKILL"), 15_000).unref();
       }, commandTimeoutSeconds() * 1000);
       child.on("error", (error) => chunks.push(Buffer.from(`\n${error.message}\n`)));
-      child.on("close", (code) => {
+      child.on("close", (code, signal) => {
+        if (code !== 0) {
+          chunks.push(
+            Buffer.from(`\nCommand exited with ${signal ?? code ?? "unknown status"}.\n`),
+          );
+        }
         clearTimeout(timer);
         resolve({
           outcome: timedOut ? "TIMEOUT" : code === 0 ? "pass" : "FAIL",
@@ -374,10 +379,14 @@ const main = async () => {
   for (const lane of selection.lanes) console.log(`  ${lane.id}`);
   if (process.argv.includes("--list") || selection.lanes.length === 0) return;
 
+  const failedCommands: Array<{ command: LaneCommand; result: CommandResult }> = [];
   const results = await runLanes(selection.lanes, {
     concurrency,
     execute: executeInShell(root),
-    onResult: printResult,
+    onResult: (command, result, lanes) => {
+      printResult(command, result, lanes);
+      if (result.outcome !== "pass") failedCommands.push({ command, result });
+    },
   });
 
   console.log("\nLane results:");
@@ -390,6 +399,14 @@ const main = async () => {
     console.log(
       `::error::${failures.length} lane(s) failed: ${failures.map((r) => r.lane.id).join(", ")}`,
     );
+    for (const { command, result } of failedCommands) {
+      const output = result.output.replace(/\u001b\[[0-9;]*m/g, "");
+      const diagnostics = output
+        .split("\n")
+        .filter((line) => /error (?:TS\d+|\[)|error:|fatal|killed|command exited/i.test(line));
+      console.log(commandLabel(command));
+      console.log(diagnostics.length > 0 ? diagnostics.slice(-20).join("\n") : output.slice(-1600));
+    }
     process.exitCode = 1;
   }
 };
