@@ -188,6 +188,7 @@ describe("executeInShell", () => {
     const failed = await execute({ run: "false\necho unreachable" });
     expect(failed.outcome).toBe("FAIL");
     expect(failed.output).not.toContain("unreachable");
+    expect(failed.output).toContain("Command exited with 1.");
   });
 });
 

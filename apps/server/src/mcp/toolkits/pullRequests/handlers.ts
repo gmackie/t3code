@@ -69,6 +69,7 @@ import {
   PullRequestsToolkit,
   type ThreadPullRequestEntry,
   alreadyEndedWatchNext,
+  CHECKS_ALREADY_PASSED_WATCH_NEXT,
   CHILD_PULL_REQUEST_REPORT_NEXT,
 } from "./tools.ts";
 
@@ -376,9 +377,11 @@ const make = Effect.gen(function* () {
       .setWatching({ threadId, target: input, watching, until: input.until })
       .pipe(
         Effect.map((result) =>
-          result.state === undefined
-            ? result
-            : { ...result, next: alreadyEndedWatchNext(result.state) },
+          result.state !== undefined
+            ? { ...result, next: alreadyEndedWatchNext(result.state) }
+            : result.checksState === "passing"
+              ? { ...result, next: CHECKS_ALREADY_PASSED_WATCH_NEXT }
+              : result,
         ),
         Effect.catchTags({
           PullRequestWatchThreadNotFoundError: (error) =>
@@ -721,6 +724,7 @@ const make = Effect.gen(function* () {
       title: detail.title,
       state: detail.state,
       isDraft: detail.isDraft,
+      ...(detail.visibility === undefined ? {} : { visibility: detail.visibility }),
       author: detail.author?.login ?? null,
       headBranch: detail.headBranch,
       baseBranch: detail.baseBranch,
@@ -1204,6 +1208,7 @@ const make = Effect.gen(function* () {
             body: input.body,
             baseBranch: input.base,
             draft: input.draft,
+            private: input.private,
           })
           .pipe(Effect.mapError(forgeFailure));
         if (created.url === undefined) {

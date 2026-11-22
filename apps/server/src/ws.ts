@@ -2705,10 +2705,12 @@ export const layerWsRpc = (
         [WS_METHODS.mcpAppsOpenPanel]: (input) => mcpAppRequests.openPanel(input),
         [WS_METHODS.mcpAppsPanelContext]: (input) => mcpAppRequests.panelContext(input),
         [WS_METHODS.mcpPluginsList]: (_input) => mcpPlugins.list,
-        [WS_METHODS.mcpPluginsInstall]: (input) => mcpPlugins.installFromDirectory(input),
-        [WS_METHODS.mcpPluginsUninstall]: (input) => mcpPlugins.uninstall(input.pluginId),
+        [WS_METHODS.mcpPluginsInstall]: (input) =>
+          mcpPlugins.installFromDirectory(input, Effect.void),
+        [WS_METHODS.mcpPluginsUninstall]: (input) =>
+          mcpPlugins.uninstall(input.pluginId, Effect.void),
         [WS_METHODS.mcpPluginsSetEnabled]: (input) =>
-          mcpPlugins.setEnabled(input.pluginId, input.enabled),
+          mcpPlugins.setEnabled(input.pluginId, input.enabled, Effect.void),
         [WS_METHODS.providerMcpSignInStart]: (input) => mcpSignIn.start(input),
         [WS_METHODS.providerMcpSignInComplete]: (input) => mcpSignIn.complete(input),
         [WS_METHODS.providerUploadFeedback]:

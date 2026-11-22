@@ -68,6 +68,7 @@ import {
   CHILD_PULL_REQUEST_REPORT_NEXT,
   PullRequestsToolkit,
 } from "../../apps/server/src/mcp/toolkits/pullRequests/tools.ts";
+import { PluginToolkit } from "../../apps/server/src/mcp/toolkits/plugins/tools.ts";
 import { ThemeToolkit } from "../../apps/server/src/mcp/toolkits/theme/tools.ts";
 import { ThreadToolkit } from "../../apps/server/src/mcp/toolkits/thread/tools.ts";
 import { WorktreeToolkit } from "../../apps/server/src/mcp/toolkits/worktree/tools.ts";
@@ -491,6 +492,7 @@ const t3SourceTools: ReadonlyArray<Tool.Any> = [
   ProjectToolkit,
   EnvironmentToolkit,
   ThemeToolkit,
+  PluginToolkit,
   PreviewControlsToolkit,
   WorktreeToolkit,
   PullRequestsToolkit,

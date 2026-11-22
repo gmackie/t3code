@@ -62,6 +62,15 @@ from a folder on the environment that contains a `t3-plugin.json`. Its server th
 off there, or for one project, but its settings live with the plugin: use **Configure** on the
 plugin to set its variables, such as an API token. Installing needs permission to manage providers.
 
+Agents can list installed plugins with `t3_plugin_list`. A full-access agent can install a
+plugin from a prepared folder on the environment with `t3_plugin_install`, switch it on or
+off with `t3_plugin_set_enabled`, or remove it with `t3_plugin_uninstall`. Uninstalling leaves
+the source folder in place. Set plugin variables in **Settings → Plugins**.
+
+To apply updated files, ask the agent to call `t3_plugin_update` with the plugin's manifest ID.
+Give the new folder's path if the replacement files are elsewhere on the environment. The
+refresh keeps saved variables and the plugin's enabled state.
+
 A plugin's panels open in the right panel beside a thread, from the command palette. A thread panel
 follows you as you switch threads; a project panel shows the project as a whole. A panel can call
 its own plugin's tools without asking, because installing the plugin allowed that; disable or
