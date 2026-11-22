@@ -135,8 +135,8 @@ import Migration0105 from "./Migrations/105_ThreadItemCounts.ts";
 import Migration0106 from "./Migrations/106_IssueTrackerAdditionalScopes.ts";
 import Migration0107 from "./Migrations/107_ProjectionProjectsTrackedFolders.ts";
 import Migration0108 from "./Migrations/108_TaskFolders.ts";
-import Migration0109 from "./Migrations/106_WorktreePathKeyIndex.ts";
-import Migration0110 from "./Migrations/107_DeferredSlashCommandIndex.ts";
+import Migration0109 from "./Migrations/109_WorktreePathKeyIndex.ts";
+import Migration0110 from "./Migrations/110_DeferredSlashCommandIndex.ts";
 
 const migrationEntries = [
   [1, "OrchestrationEvents", Migration0001],
