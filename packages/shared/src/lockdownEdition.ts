@@ -1,6 +1,6 @@
 /**
- * T3 Code Locked (T3CODE-15, T3CODE-110): local OpenCode through the administrator's Cloudflare AI
- * Gateway plus GitLab, nothing else. Upstream files stay; `LOCKDOWN_EDITION` guards a few choke
+ * T3 Code Locked (T3CODE-15, T3CODE-110): local OpenCode with the providers signed in to through
+ * OpenCode's auth file, plus GitLab, nothing else. Upstream files stay; `LOCKDOWN_EDITION` guards a few choke
  * points so daily merges of main stay small. Nothing a user can change at runtime turns it off.
  */
 import {
@@ -36,9 +36,6 @@ export const LOCKDOWN_IDENTITY = {
 } as const;
 
 const LOCKDOWN_OPENCODE_DRIVER = ProviderDriverKind.make("opencode");
-/** The only provider the locked OpenCode config enables. */
-const LOCKDOWN_CLOUDFLARE_PROVIDER = "cloudflare-locked";
-const DEFAULT_LOCKDOWN_MODEL = "workers-ai/@cf/meta/llama-3.3-70b-instruct-fp8-fast";
 
 /** Clients the locked server accepts: nothing off this machine. */
 const LOCKDOWN_CLIENTS: ReadonlyArray<ManagedPolicyClient> = ["desktop", "local-browser"];
@@ -54,69 +51,40 @@ export class LockdownConfigurationError extends Schema.TaggedError<LockdownConfi
 
 const configurationError = (detail: string) => new LockdownConfigurationError({ detail });
 
-/** The Workers AI model ids the administrator approved; the first is OpenCode's default. */
-function lockdownWorkersAiModels(env: Env): ReadonlyArray<string> {
-  const models = (env.T3CODE_CLOUDFLARE_MODELS ?? DEFAULT_LOCKDOWN_MODEL)
-    .split(",")
-    .map((model) => model.trim())
-    .filter((model) => model.length > 0);
-  if (
-    models.length === 0 ||
-    models.some((model) => !/^workers-ai\/@cf\/[a-zA-Z0-9_./-]+$/.test(model))
-  ) {
-    throw configurationError(
-      "T3CODE_CLOUDFLARE_MODELS must contain Workers AI model IDs prefixed with workers-ai/@cf/.",
-    );
-  }
-  return models;
-}
-
-/** T3 model slugs (`cloudflare-locked/<Workers AI id>`) every model operation is checked against. */
-export function lockdownAllowedModelSlugs(env: Env): ReadonlySet<string> {
-  return new Set(
-    lockdownWorkersAiModels(env).map((model) => `${LOCKDOWN_CLOUDFLARE_PROVIDER}/${model}`),
-  );
-}
-
-/** The approved Cloudflare AI Gateway OpenAI-compatible endpoint, or a configuration error. */
-function lockdownGatewayUrl(env: Env): URL {
-  const gateway = env.T3CODE_CLOUDFLARE_GATEWAY_URL?.trim();
-  if (!gateway) {
-    throw configurationError(
-      "Set T3CODE_CLOUDFLARE_GATEWAY_URL to your approved Cloudflare AI Gateway compat endpoint.",
-    );
-  }
-  let url: URL;
+/**
+ * The providers signed in to with `opencode auth login`: the keys of OpenCode's auth file. They
+ * are the only providers the locked OpenCode enables, so environment keys and config-defined
+ * providers stay off. Throws when there are none, which keeps OpenCode unavailable.
+ */
+export function lockdownOpenCodeProviders(authFile: string): ReadonlyArray<string> {
+  let auth: unknown;
   try {
-    url = new URL(gateway);
+    auth = JSON.parse(authFile);
   } catch {
-    throw configurationError("T3CODE_CLOUDFLARE_GATEWAY_URL is not a URL.");
+    throw configurationError("OpenCode's auth file is not valid JSON.");
   }
-  if (
-    url.protocol !== "https:" ||
-    url.hostname !== "gateway.ai.cloudflare.com" ||
-    url.port ||
-    url.username ||
-    url.password ||
-    url.search ||
-    url.hash ||
-    !/^\/v1\/[a-f0-9]{32}\/[a-zA-Z0-9_-]+\/compat\/?$/.test(url.pathname)
-  ) {
-    throw configurationError(
-      "Cloudflare gateway must use https://gateway.ai.cloudflare.com/v1/<account-id>/<gateway-id>/compat.",
-    );
+  const providers =
+    typeof auth === "object" && auth !== null && !Array.isArray(auth) ? Object.keys(auth) : [];
+  if (providers.length === 0) {
+    throw configurationError("Sign in to a provider with `opencode auth login` to use OpenCode.");
   }
-  return url;
+  return providers;
+}
+
+/** Whether a T3 OpenCode model slug (`<provider>/<model>`) belongs to a signed-in provider. */
+export function isLockdownModelAllowed(model: string, providers: ReadonlyArray<string>): boolean {
+  const slash = model.indexOf("/");
+  return slash > 0 && providers.includes(model.slice(0, slash));
 }
 
 /**
- * The environment OpenCode runs with: no auto-update, no models.dev fetch, no sharing, and one
- * enabled provider, the administrator's gateway. Throws when the gateway is not configured, so
- * OpenCode stays unavailable rather than falling back to providers the user configured.
+ * The environment OpenCode runs with: no auto-update, no models.dev fetch, no sharing, and only
+ * the signed-in providers enabled, using OpenCode's own definitions for them.
  */
-export function lockdownOpenCodeEnvironment(env: Env): Record<string, string> {
-  const url = lockdownGatewayUrl(env);
-  const models = lockdownWorkersAiModels(env);
+export function lockdownOpenCodeEnvironment(
+  env: Env,
+  providers: ReadonlyArray<string>,
+): Record<string, string> {
   let existing: unknown;
   try {
     existing = JSON.parse(env.OPENCODE_CONFIG_CONTENT ?? "{}");
@@ -126,44 +94,29 @@ export function lockdownOpenCodeEnvironment(env: Env): Record<string, string> {
   if (typeof existing !== "object" || existing === null || Array.isArray(existing)) {
     throw configurationError("OPENCODE_CONFIG_CONTENT must contain an object.");
   }
-  const selection = `${LOCKDOWN_CLOUDFLARE_PROVIDER}/${models[0]}`;
+  // Custom provider entries could point a signed-in provider at another endpoint.
+  const { provider: _provider, model, small_model, ...rest } = existing as Record<string, unknown>;
+  const keep = (value: unknown) =>
+    typeof value === "string" && isLockdownModelAllowed(value, providers) ? value : undefined;
   return {
     OPENCODE_DISABLE_AUTOUPDATE: "true",
     OPENCODE_DISABLE_MODELS_FETCH: "true",
     OPENCODE_DISABLE_SHARE: "true",
     OPENCODE_CONFIG_CONTENT: JSON.stringify({
-      ...existing,
+      ...rest,
+      ...(keep(model) === undefined ? {} : { model }),
+      ...(keep(small_model) === undefined ? {} : { small_model }),
       autoupdate: false,
       share: "disabled",
-      enabled_providers: [LOCKDOWN_CLOUDFLARE_PROVIDER],
+      enabled_providers: [...providers],
       disabled_providers: [],
-      model: selection,
-      small_model: selection,
-      provider: {
-        [LOCKDOWN_CLOUDFLARE_PROVIDER]: {
-          npm: "@ai-sdk/openai-compatible",
-          name: "Cloudflare Workers AI",
-          options: {
-            baseURL: url.toString().replace(/\/$/, ""),
-            apiKey: "{env.CLOUDFLARE_API_TOKEN}",
-            headers: { "cf-aig-authorization": "Bearer {env.CF_AIG_TOKEN}" },
-          },
-          models: Object.fromEntries(models.map((model) => [model, { name: model }])),
-        },
-      },
     }),
   };
 }
 
 /** Settings the locked edition sets and locks. Keys are dot paths into `ServerSettings`. */
-function lockdownSettings(env: Env): Record<string, ManagedPolicySetting> {
+function lockdownSettings(): Record<string, ManagedPolicySetting> {
   const locked = (value: unknown): ManagedPolicySetting => ({ value, locked: true });
-  let firstModel = DEFAULT_LOCKDOWN_MODEL;
-  try {
-    firstModel = lockdownWorkersAiModels(env)[0] ?? DEFAULT_LOCKDOWN_MODEL;
-  } catch {
-    // An invalid list makes OpenCode unavailable; the default selection then refers to nothing.
-  }
   return {
     // npm "latest version" lookups and the remote model manifest.
     enableProviderUpdateChecks: locked(false),
@@ -172,15 +125,6 @@ function lockdownSettings(env: Env): Record<string, ManagedPolicySetting> {
     guestSharingEnabled: locked(false),
     // No observability.* entries: a policy cannot set them (each user's environment resolves them
     // at startup), so OTLP export is switched off in otelEnvironment.ts instead.
-    // Text generation defaults to the gateway; the OpenCode guard rejects other models anyway.
-    textGenerationModelSelection: {
-      value: {
-        instanceId: LOCKDOWN_OPENCODE_DRIVER,
-        model: `${LOCKDOWN_CLOUDFLARE_PROVIDER}/${firstModel}`,
-        options: [],
-      },
-      locked: false,
-    },
   };
 }
 
@@ -195,9 +139,8 @@ const overlaps = (a: string, b: string) =>
  */
 export function lockdownPolicyDocument(
   admin: ManagedPolicyDocument | undefined,
-  env: Env,
 ): ManagedPolicyDocument {
-  const settings = lockdownSettings(env);
+  const settings = lockdownSettings();
   const adminSettings = Object.fromEntries(
     Object.entries(admin?.settings ?? {}).filter(
       ([path]) => !Object.keys(settings).some((lockedPath) => overlaps(path, lockedPath)),
@@ -243,11 +186,10 @@ export interface FoundManagedPolicy {
 export function withLockdownPolicy(
   found: FoundManagedPolicy | undefined,
   fallbackSource: string,
-  env: Env,
 ): FoundManagedPolicy {
   return {
     source: found?.source ?? fallbackSource,
-    document: lockdownPolicyDocument(found?.document, env),
+    document: lockdownPolicyDocument(found?.document),
   };
 }
 

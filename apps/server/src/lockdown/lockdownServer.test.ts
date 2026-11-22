@@ -8,6 +8,7 @@ import * as HostProcess from "@t3tools/shared/HostProcess";
 import { lockdownPolicyDocument } from "@t3tools/shared/lockdownEdition";
 import * as ConfigProvider from "effect/ConfigProvider";
 import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as HttpClient from "effect/http/HttpClient";
 import * as HttpClientResponse from "effect/http/HttpClientResponse";
@@ -27,15 +28,13 @@ import * as AnalyticsService from "../telemetry/AnalyticsService.ts";
 import { installLockdownEgressGuard } from "./lockdownEgress.ts";
 import { lockdownOpenCodeDriver, lockdownSourceControlDrivers } from "./lockdownServer.ts";
 
-const GATEWAY =
-  "https://gateway.ai.cloudflare.com/v1/0123456789abcdef0123456789abcdef/approved/compat";
-const ALLOWED_MODEL = "cloudflare-locked/workers-ai/@cf/meta/llama-3.3-70b-instruct-fp8-fast";
+const ALLOWED_MODEL = "openai/gpt-5";
 const codex = ProviderDriverKind.make("codex");
 const opencode = ProviderDriverKind.make("opencode");
 
 const lockedPolicy = ManagedPolicy.fromDocument(
   "/etc/t3code/policy.json",
-  lockdownPolicyDocument(undefined, {}),
+  lockdownPolicyDocument(undefined),
 );
 
 describe("T3 Code Locked server", () => {
@@ -288,9 +287,14 @@ const createInput = (
   }) as never;
 
 describe("T3 Code Locked OpenCode", () => {
-  const withGateway = Effect.provideService(HostProcess.Environment, {
-    T3CODE_CLOUDFLARE_GATEWAY_URL: GATEWAY,
-  });
+  const withSignIn =
+    (auth: string) =>
+    <A, E, R>(effect: Effect.Effect<A, E, R>) =>
+      effect.pipe(
+        Effect.provideService(HostProcess.Environment, { OPENCODE_AUTH_CONTENT: auth }),
+        Effect.provide(NodeServices.layer),
+      );
+  const withOpenAiSignIn = withSignIn('{"openai":{"type":"oauth"}}');
 
   it.effect("the built-in OpenCode driver is the locked one", () =>
     Effect.gen(function* () {
@@ -306,16 +310,36 @@ describe("T3 Code Locked OpenCode", () => {
       >;
       const error = yield* create.pipe(Effect.scoped, Effect.flip);
       assert.match(error.detail, /Remote OpenCode servers are disabled/);
-    }).pipe(withGateway),
+    }).pipe(withOpenAiSignIn),
   );
 
-  it.effect("is unavailable without an approved gateway", () =>
+  it.effect("is unavailable until a provider is signed in to OpenCode", () =>
     Effect.gen(function* () {
       const { driver, environments } = makeFakeDriver();
       const error = yield* driver.create(createInput()).pipe(Effect.scoped, Effect.flip);
-      assert.match(error.detail, /T3CODE_CLOUDFLARE_GATEWAY_URL/);
+      assert.match(error.detail, /opencode auth login/);
       assert.deepStrictEqual(environments, []);
-    }).pipe(Effect.provideService(HostProcess.Environment, {})),
+    }).pipe(withSignIn("{}")),
+  );
+
+  it.effect("reads the providers from OpenCode's auth file under XDG_DATA_HOME", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const dataHome = yield* fs.makeTempDirectoryScoped();
+      yield* fs.makeDirectory(`${dataHome}/opencode`);
+      yield* fs.writeFileString(
+        `${dataHome}/opencode/auth.json`,
+        '{"anthropic":{"type":"api","key":"k"}}',
+      );
+      const { driver, environments } = makeFakeDriver();
+      yield* driver
+        .create(createInput("", [{ name: "XDG_DATA_HOME", value: dataHome, sensitive: false }]))
+        .pipe(Effect.provideService(HostProcess.Environment, {}));
+      const env = Object.fromEntries(environments[0]!.map(({ name, value }) => [name, value]));
+      assert.deepStrictEqual(JSON.parse(env.OPENCODE_CONFIG_CONTENT!).enabled_providers, [
+        "anthropic",
+      ]);
+    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
   );
 
   it.effect("never connects to an OpenCode server URL, even on loopback", () =>
@@ -326,7 +350,7 @@ describe("T3 Code Locked OpenCode", () => {
         .pipe(Effect.scoped, Effect.flip);
       assert.match(error.detail, /Remote OpenCode servers are disabled/);
       assert.deepStrictEqual(environments, []);
-    }).pipe(withGateway),
+    }).pipe(withOpenAiSignIn),
   );
 
   it.effect("launches OpenCode with the locked configuration over the instance's own", () =>
@@ -351,13 +375,13 @@ describe("T3 Code Locked OpenCode", () => {
       assert.strictEqual(env.OPENCODE_DISABLE_MODELS_FETCH, "true");
       assert.strictEqual(env.OPENCODE_DISABLE_SHARE, "true");
       assert.deepStrictEqual(JSON.parse(env.OPENCODE_CONFIG_CONTENT!).enabled_providers, [
-        "cloudflare-locked",
+        "openai",
       ]);
       assert.strictEqual(
         environments[0]!.filter(({ name }) => name === "OPENCODE_CONFIG_CONTENT").length,
         1,
       );
-    }).pipe(withGateway),
+    }).pipe(withOpenAiSignIn),
   );
 
   it.effect("rejects models outside the allowlist on every operation", () =>
@@ -368,7 +392,7 @@ describe("T3 Code Locked OpenCode", () => {
       const denied = yield* adapter
         .openSession({ modelSelection: selection("anthropic/claude-sonnet-4") } as never)
         .pipe(Effect.scoped, Effect.flip);
-      assert.match(denied.message, /outside the configured Workers AI allowlist/);
+      assert.match(denied.message, /not from a provider signed in to OpenCode/);
       assert.deepStrictEqual(calls, []);
 
       const runtime = yield* adapter
@@ -383,8 +407,8 @@ describe("T3 Code Locked OpenCode", () => {
       ] as const) {
         const result = yield* (
           runtime[operation] as (input: unknown) => Effect.Effect<void, { message: string }>
-        )({ modelSelection: selection("openai/gpt-5") }).pipe(Effect.flip);
-        assert.match(result.message, /allowlist/, operation);
+        )({ modelSelection: selection("google/gemini-2.5-pro") }).pipe(Effect.flip);
+        assert.match(result.message, /signed in to OpenCode/, operation);
       }
       yield* runtime.startTurn({ modelSelection: selection(ALLOWED_MODEL) } as never);
 
@@ -399,13 +423,13 @@ describe("T3 Code Locked OpenCode", () => {
           instance.textGeneration[operation] as (
             input: unknown,
           ) => Effect.Effect<void, { message: string }>
-        )({ modelSelection: selection("openai/gpt-5") }).pipe(Effect.flip);
-        assert.match(result.message, /allowlist/, operation);
+        )({ modelSelection: selection("google/gemini-2.5-pro") }).pipe(Effect.flip);
+        assert.match(result.message, /signed in to OpenCode/, operation);
       }
       yield* instance.textGeneration.generateThreadTitle({
         modelSelection: selection(ALLOWED_MODEL),
       } as never);
       assert.deepStrictEqual(calls, ["openSession", "startTurn", "generateThreadTitle"]);
-    }).pipe(withGateway),
+    }).pipe(withOpenAiSignIn),
   );
 });

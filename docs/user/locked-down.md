@@ -1,6 +1,6 @@
 # T3 Code Locked
 
-The `lockdown` branch builds T3 Code Locked, a macOS and Linux desktop app for environments that must not leak data. Its agent runtime is a local OpenCode whose models go through your Cloudflare AI Gateway, and its source control is your GitLab.
+The `lockdown` branch builds T3 Code Locked, a macOS and Linux desktop app for environments that must not leak data. Its agent runtime is a local OpenCode limited to the providers you sign in to with `opencode auth login`, and its source control is your GitLab.
 
 The branch keeps upstream's code and turns the edition on with one constant, `LOCKDOWN_EDITION` in `packages/shared/src/lockdownEdition.ts`. Guards at a few choke points read it, so the daily merge of `main` stays small.
 
@@ -18,21 +18,17 @@ The branch keeps upstream's code and turns the edition on with one constant, `LO
 - **GitLab only.** It is the only source-control driver the server constructs.
 - **No remote environments.** SSH environments are disabled in the desktop app.
 - **No voice, usage meters or standalone trackers.** Dictation (cloud transcription, downloaded speech models and Apple Speech), OpenCode usage limits (which read your opencode.ai account) and Linear are off. Preview tunnels to other devices are off.
-- **A locked OpenCode.** It always runs as its own local process, never at a server URL. It runs without auto-update, models.dev fetches or sharing, and with your gateway as its only enabled provider. Session, turn, fork, compaction and text-generation requests for other models are rejected.
+- **A locked OpenCode.** It always runs as its own local process, never at a server URL. It runs without auto-update, models.dev fetches or sharing, and enables only the providers in OpenCode's auth file, with OpenCode's own definitions for them. Providers configured only through environment keys or custom config stay off. Session, turn, fork, compaction and text-generation requests for other providers' models are rejected.
 - **A separate identity.** The app ID is `com.t3tools.t3code.locked`, the protocol is `t3code-locked://`, data lives under `~/.t3-locked`, the Electron profile is `t3code-locked`, and there is no update feed.
 
 ## Deployment configuration
 
 Before launching, set these through your deployment's secret mechanism, never in source control:
 
-- `T3CODE_CLOUDFLARE_GATEWAY_URL`: `https://gateway.ai.cloudflare.com/v1/<32-character-account-id>/<gateway-id>/compat`.
-- `T3CODE_CLOUDFLARE_MODELS`: comma-separated Workers AI IDs, such as `workers-ai/@cf/meta/llama-3.3-70b-instruct-fp8-fast`. The first is OpenCode's default. T3 shows them as `cloudflare-locked/<Workers AI ID>`.
-- `CLOUDFLARE_API_TOKEN`: the Workers AI token.
-- `CF_AIG_TOKEN`: the token for an authenticated AI Gateway.
 - `T3CODE_LOCKDOWN_ALLOWED_HOSTS`: comma-separated host names that in-process requests may reach, such as your GitLab host. `glab` runs as its own process and is not limited by this list.
 - `GITLAB_HOST`: your GitLab host. Without it, `glab` defaults to gitlab.com.
 
-OpenCode stays unavailable until the gateway configuration is valid. Install an approved `opencode` and `glab`, configure `glab` for your GitLab host, enable OpenCode under Settings → Providers, then add a local project.
+Install an approved `opencode` and `glab`, then sign in to your approved providers with `opencode auth login`. OpenCode reads them from `$XDG_DATA_HOME/opencode/auth.json` (by default `~/.local/share/opencode/auth.json`), or from `OPENCODE_AUTH_CONTENT` when set, and stays unavailable until at least one is signed in. Restart the app after signing in to another provider. Configure `glab` for your GitLab host, enable OpenCode under Settings → Providers, then add a local project.
 
 ## What it does not control
 
