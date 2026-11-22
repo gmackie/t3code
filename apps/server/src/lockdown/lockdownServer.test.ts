@@ -140,6 +140,7 @@ describe("T3 Code Locked server", () => {
   );
 
   it("constructs GitLab and no other source-control host", () => {
+    assert.ok(BUILT_IN_SOURCE_CONTROL_DRIVER_LIST.some(({ kind }) => kind === "tanstack-source"));
     assert.deepStrictEqual(
       lockdownSourceControlDrivers(BUILT_IN_SOURCE_CONTROL_DRIVER_LIST).map(({ kind }) => kind),
       ["gitlab"],
