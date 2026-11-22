@@ -2145,6 +2145,7 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
 
   it("stages the resource monitor as an external executable resource", () => {
     assert.deepStrictEqual(DESKTOP_EXTRA_RESOURCES, [
+      { from: "apps/desktop/prod-resources/cua-driver", to: "cua-driver" },
       {
         from: "apps/desktop/prod-resources/cursor-sdk",
         to: "node_modules/@cursor",

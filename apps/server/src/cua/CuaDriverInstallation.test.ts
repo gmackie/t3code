@@ -1,12 +1,14 @@
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { expect, it } from "@effect/vitest";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
+import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
 import * as Stream from "effect/Stream";
 import { HttpClient, HttpClientResponse } from "effect/http";
-import * as Crypto from "effect/Crypto";
+import * as Digest from "effect/crypto/Digest";
 import * as Hex from "effect/encoding/Hex";
 import * as NodeZlib from "node:zlib";
 
@@ -59,7 +61,7 @@ const makeHarness = Effect.fn("test.makeCuaDriverInstallation")(function* (
 ) {
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
-  const crypto = yield* Crypto.Crypto;
+  const digester = yield* Digest.Digest;
   const baseDir = yield* fs.makeTempDirectoryScoped({ prefix: "t3-cua-install-test-" });
   const body = options.archive ?? archive;
   const requests: Array<string> = [];
@@ -71,7 +73,7 @@ const makeHarness = Effect.fn("test.makeCuaDriverInstallation")(function* (
       format: "zip",
       url: "https://github.com/trycua/cua/releases/download/fixture.zip",
       bytes: body.byteLength,
-      sha256: options.sha256 ?? Hex.encode(yield* crypto.digest("SHA-256", body)),
+      sha256: options.sha256 ?? Hex.encode(yield* digester.digest(Digest.sha256, body)),
       executable: "cua-driver.exe",
       requiredFiles: FILES,
     },
@@ -98,48 +100,51 @@ const makeHarness = Effect.fn("test.makeCuaDriverInstallation")(function* (
   };
 });
 
-it.layer(NodeServices.layer)("CuaDriverInstallation", (it) => {
-  it.effect("installs the verified release once and replaces older versions", () =>
-    Effect.gen(function* () {
-      const { installation, fs, path, installRoot, requests } = yield* makeHarness();
-      yield* fs.makeDirectory(path.join(installRoot, "0.1.0"), { recursive: true });
+it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layerDigest))(
+  "CuaDriverInstallation",
+  (it) => {
+    it.effect("installs the verified release once and replaces older versions", () =>
+      Effect.gen(function* () {
+        const { installation, fs, path, installRoot, requests } = yield* makeHarness();
+        yield* fs.makeDirectory(path.join(installRoot, "0.1.0"), { recursive: true });
 
-      const executable = yield* installation.executable;
+        const executable = yield* installation.executable;
 
-      expect(executable).toBe(path.join(installRoot, "9.9.9", "cua-driver.exe"));
-      expect(yield* fs.readFileString(path.join(installRoot, "9.9.9", "cua-driver-uia.exe"))).toBe(
-        "cua-driver-uia.exe",
-      );
-      expect(yield* fs.readDirectory(installRoot)).toEqual(["9.9.9"]);
-      expect(yield* installation.executable).toBe(executable);
-      expect(requests).toHaveLength(1);
-    }).pipe(Effect.scoped),
-  );
+        expect(executable).toBe(path.join(installRoot, "9.9.9", "cua-driver.exe"));
+        expect(
+          yield* fs.readFileString(path.join(installRoot, "9.9.9", "cua-driver-uia.exe")),
+        ).toBe("cua-driver-uia.exe");
+        expect(yield* fs.readDirectory(installRoot)).toEqual(["9.9.9"]);
+        expect(yield* installation.executable).toBe(executable);
+        expect(requests).toHaveLength(1);
+      }).pipe(Effect.scoped),
+    );
 
-  it.effect("installs nothing from a download that fails its checksum", () =>
-    Effect.gen(function* () {
-      const { installation, fs, installRoot } = yield* makeHarness({ sha256: "0".repeat(64) });
+    it.effect("installs nothing from a download that fails its checksum", () =>
+      Effect.gen(function* () {
+        const { installation, fs, installRoot } = yield* makeHarness({ sha256: "0".repeat(64) });
 
-      const error = yield* Effect.flip(installation.executable);
+        const error = yield* Effect.flip(installation.executable);
 
-      expect(error.message).toContain("SHA-256");
-      expect(yield* fs.readDirectory(installRoot)).toEqual([]);
-    }).pipe(Effect.scoped),
-  );
+        expect(error.message).toContain("SHA-256");
+        expect(yield* fs.readDirectory(installRoot)).toEqual([]);
+      }).pipe(Effect.scoped),
+    );
 
-  it.effect("rejects an archive entry that escapes the install directory", () =>
-    Effect.gen(function* () {
-      const unsafe = makeZip([
-        ...FILES.map((name) => ({ name, data: name })),
-        { name: "../escape.exe", data: "x" },
-      ]);
-      const { installation, fs, path, installRoot } = yield* makeHarness({ archive: unsafe });
+    it.effect("rejects an archive entry that escapes the install directory", () =>
+      Effect.gen(function* () {
+        const unsafe = makeZip([
+          ...FILES.map((name) => ({ name, data: name })),
+          { name: "../escape.exe", data: "x" },
+        ]);
+        const { installation, fs, path, installRoot } = yield* makeHarness({ archive: unsafe });
 
-      // yauzl's strict file names or the install's own check refuses it.
-      yield* Effect.flip(installation.executable);
+        // yauzl's strict file names or the install's own check refuses it.
+        yield* Effect.flip(installation.executable);
 
-      expect(yield* fs.exists(path.join(path.dirname(installRoot), "escape.exe"))).toBe(false);
-      expect(yield* fs.readDirectory(installRoot)).toEqual([]);
-    }).pipe(Effect.scoped),
-  );
-});
+        expect(yield* fs.exists(path.join(path.dirname(installRoot), "escape.exe"))).toBe(false);
+        expect(yield* fs.readDirectory(installRoot)).toEqual([]);
+      }).pipe(Effect.scoped),
+    );
+  },
+);

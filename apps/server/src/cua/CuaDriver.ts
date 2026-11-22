@@ -3,7 +3,7 @@ import * as NodeModule from "node:module";
 import type { CuaDriverMcpConfiguration, DesktopCuaDriverReport } from "@t3tools/contracts";
 import type { EmbeddedCuaDriverHost, EmbeddedDriverConnection } from "@trycua/cua-driver/embedded";
 import * as Context from "effect/Context";
-import * as Crypto from "effect/Crypto";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
@@ -419,7 +419,7 @@ export const makeStandaloneHostFactory = Effect.fn("CuaDriver.standaloneHostFact
 
 export const makeDesktopHostFactory = Effect.fn("CuaDriver.desktopHostFactory")(function* () {
   const receiver = yield* DesktopTelemetryReceiver.DesktopTelemetryReceiver;
-  const crypto = yield* Crypto.Crypto;
+  const random = yield* SecureRandom.SecureRandom;
   const pending = new Map<string, Deferred.Deferred<DesktopCuaDriverReport>>();
   const exits = new Map<string, Deferred.Deferred<void>>();
   yield* receiver.cuaReports.pipe(
@@ -438,7 +438,7 @@ export const makeDesktopHostFactory = Effect.fn("CuaDriver.desktopHostFactory")(
 
   // Subscribe once for the service, then allocate a fresh request for each lazy start.
   return Effect.gen(function* () {
-    const requestId = yield* crypto.randomUUIDv4().pipe(Effect.orDie);
+    const requestId = yield* random.uuidV4();
     const ready = yield* Deferred.make<DesktopCuaDriverReport>();
     const exit = yield* Deferred.make<void>();
     let requested = false;
@@ -467,7 +467,7 @@ export const makeDesktopHostFactory = Effect.fn("CuaDriver.desktopHostFactory")(
           exits.delete(requestId);
           return;
         }
-        const stopId = yield* crypto.randomUUIDv4().pipe(Effect.orDie);
+        const stopId = yield* random.uuidV4();
         const stopped = yield* Deferred.make<DesktopCuaDriverReport>();
         pending.set(stopId, stopped);
         yield* receiver.requestCuaDriver(stopId, false).pipe(
