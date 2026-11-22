@@ -1,7 +1,7 @@
 import IconActivityHeartbeat from "@tabler/icons-react-native/IconActivityHeartbeat";
 import IconDeviceGamepad2 from "@tabler/icons-react-native/IconDeviceGamepad2";
 import IconCpu from "@tabler/icons-react-native/IconCpu";
-import type { Icon } from "@tabler/icons-react-native/types";
+import type { Icon } from "@tabler/icons-react-native";
 /* Package-root imports eagerly register the entire Tabler icon set in Metro. */
 import IconAdjustmentsHorizontal from "@tabler/icons-react-native/IconAdjustmentsHorizontal";
 import IconAlarm from "@tabler/icons-react-native/IconAlarm";
