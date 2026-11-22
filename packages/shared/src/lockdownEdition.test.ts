@@ -4,18 +4,16 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   guardFetch,
   isLockdownEgressAllowed,
+  isLockdownModelAllowed,
   LOCKDOWN_EDITION,
   lockdownAllowedHosts,
-  lockdownAllowedModelSlugs,
   lockdownDispatchInterceptor,
   lockdownOpenCodeEnvironment,
+  lockdownOpenCodeProviders,
   lockdownPolicyDocument,
   withLockdownPolicy,
 } from "./lockdownEdition.ts";
 import * as OtelEnvironment from "./otelEnvironment.ts";
-
-const GATEWAY =
-  "https://gateway.ai.cloudflare.com/v1/0123456789abcdef0123456789abcdef/approved/compat";
 
 // Hosts T3 Code reaches upstream: analytics, model manifests, npm, release feeds, Clerk, relay,
 // vendor APIs, theme search, OTLP collectors.
@@ -45,7 +43,7 @@ describe("lockdown edition", () => {
   });
 
   it("floors an unmanaged machine to local-only, OpenCode-only, no telemetry, Connect or updates", () => {
-    const document = lockdownPolicyDocument(undefined, {});
+    const document = lockdownPolicyDocument(undefined);
     expect(document.organization).toBe("T3 Code Locked");
     expect(document.limits).toEqual({
       clients: ["desktop", "local-browser"],
@@ -82,7 +80,7 @@ describe("lockdown edition", () => {
         updates: { mode: "auto", feedUrl: "https://updates.example.com" },
       },
     };
-    const document = lockdownPolicyDocument(admin, {});
+    const document = lockdownPolicyDocument(admin);
     expect(document.organization).toBe("Example Corp");
     expect(document.supportUrl).toBe("https://help.example.com");
     expect(document.settings?.branchNamePrefix).toEqual({ value: "corp", locked: true });
@@ -98,43 +96,48 @@ describe("lockdown edition", () => {
       providers: { allowedDrivers: ["opencode"] },
       updates: { mode: "off" },
     });
-    expect(withLockdownPolicy(undefined, "/etc/t3code/policy.json", {}).source).toBe(
+    expect(withLockdownPolicy(undefined, "/etc/t3code/policy.json").source).toBe(
       "/etc/t3code/policy.json",
     );
   });
 
-  it("runs OpenCode through the gateway only, with no updater, model fetch or sharing", () => {
-    const env = lockdownOpenCodeEnvironment({
-      T3CODE_CLOUDFLARE_GATEWAY_URL: GATEWAY,
-      T3CODE_CLOUDFLARE_MODELS: "workers-ai/@cf/a/b, workers-ai/@cf/c/d",
-      OPENCODE_CONFIG_CONTENT: JSON.stringify({ enabled_providers: ["anthropic"], keep: 1 }),
-    });
+  it("runs OpenCode with only its signed-in providers, and no updater, model fetch or sharing", () => {
+    const providers = lockdownOpenCodeProviders(
+      JSON.stringify({ openai: { type: "oauth" }, anthropic: { type: "api", key: "k" } }),
+    );
+    expect(providers).toEqual(["openai", "anthropic"]);
+    const env = lockdownOpenCodeEnvironment(
+      {
+        OPENCODE_CONFIG_CONTENT: JSON.stringify({
+          enabled_providers: ["google"],
+          provider: { openai: { options: { baseURL: "https://elsewhere.example" } } },
+          model: "openai/gpt-5",
+          small_model: "google/gemini-flash",
+          keep: 1,
+        }),
+      },
+      providers,
+    );
     expect(env.OPENCODE_DISABLE_AUTOUPDATE).toBe("true");
     expect(env.OPENCODE_DISABLE_MODELS_FETCH).toBe("true");
     expect(env.OPENCODE_DISABLE_SHARE).toBe("true");
     const config = JSON.parse(env.OPENCODE_CONFIG_CONTENT!);
-    expect(config.enabled_providers).toEqual(["cloudflare-locked"]);
+    expect(config.enabled_providers).toEqual(["openai", "anthropic"]);
     expect(config.share).toBe("disabled");
     expect(config.autoupdate).toBe(false);
     expect(config.keep).toBe(1);
-    expect(config.model).toBe("cloudflare-locked/workers-ai/@cf/a/b");
-    expect(config.provider["cloudflare-locked"].options.baseURL).toBe(GATEWAY);
-    expect(lockdownAllowedModelSlugs({ T3CODE_CLOUDFLARE_MODELS: "workers-ai/@cf/a/b" })).toEqual(
-      new Set(["cloudflare-locked/workers-ai/@cf/a/b"]),
-    );
+    expect(config.provider).toBeUndefined();
+    expect(config.model).toBe("openai/gpt-5");
+    expect(config.small_model).toBeUndefined();
+    expect(isLockdownModelAllowed("openai/gpt-5", providers)).toBe(true);
+    expect(isLockdownModelAllowed("google/gemini-flash", providers)).toBe(false);
+    expect(isLockdownModelAllowed("openai", providers)).toBe(false);
   });
 
-  it("refuses to configure OpenCode without an approved gateway or with foreign models", () => {
-    expect(() => lockdownOpenCodeEnvironment({})).toThrow(/T3CODE_CLOUDFLARE_GATEWAY_URL/);
-    expect(() =>
-      lockdownOpenCodeEnvironment({ T3CODE_CLOUDFLARE_GATEWAY_URL: "https://api.openai.com/v1" }),
-    ).toThrow(/gateway\.ai\.cloudflare\.com/);
-    expect(() =>
-      lockdownOpenCodeEnvironment({
-        T3CODE_CLOUDFLARE_GATEWAY_URL: GATEWAY,
-        T3CODE_CLOUDFLARE_MODELS: "anthropic/claude-sonnet",
-      }),
-    ).toThrow(/workers-ai\/@cf\//);
+  it("keeps OpenCode unavailable until a provider is signed in", () => {
+    expect(() => lockdownOpenCodeProviders("{}")).toThrow(/opencode auth login/);
+    expect(() => lockdownOpenCodeProviders("[]")).toThrow(/opencode auth login/);
+    expect(() => lockdownOpenCodeProviders("not json")).toThrow(/not valid JSON/);
   });
 
   it("allows only loopback and approved https hosts", () => {

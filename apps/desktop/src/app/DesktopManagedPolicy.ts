@@ -41,9 +41,7 @@ export const layer = Layer.effect(
       readManagedPolicy(platform).pipe(
         // T3 Code Locked: the locked floor applies with or without an administrator's policy.
         Effect.map((found) =>
-          LOCKDOWN_EDITION
-            ? withLockdownPolicy(found, managedPolicyPath(platform), process.env)
-            : found,
+          LOCKDOWN_EDITION ? withLockdownPolicy(found, managedPolicyPath(platform)) : found,
         ),
         Effect.provideService(FileSystem.FileSystem, yield* FileSystem.FileSystem),
         Effect.provideService(

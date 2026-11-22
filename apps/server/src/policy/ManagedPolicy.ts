@@ -186,7 +186,6 @@ const make = Effect.gen(function* () {
         )
       : Option.none<string>();
   const platform = yield* HostProcess.Platform;
-  const environment = yield* HostProcess.Environment;
   const policy = yield* Option.match(devPath, {
     onSome: (path) =>
       readManagedPolicyFile(path).pipe(
@@ -200,9 +199,7 @@ const make = Effect.gen(function* () {
   }).pipe(
     // T3 Code Locked: the locked floor applies with or without an administrator's policy.
     Effect.map((found) =>
-      LOCKDOWN_EDITION
-        ? withLockdownPolicy(found, managedPolicyPath(platform), environment)
-        : found,
+      LOCKDOWN_EDITION ? withLockdownPolicy(found, managedPolicyPath(platform)) : found,
     ),
     Effect.flatMap((found) =>
       fromDocument(found?.source ?? managedPolicyPath(platform), found?.document),

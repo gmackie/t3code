@@ -20,11 +20,14 @@ import {
 import type { ProviderTextGeneration } from "@t3tools/provider-core/server/textGeneration";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import {
+  isLockdownModelAllowed,
   LOCKDOWN_EDITION,
-  lockdownAllowedModelSlugs,
   lockdownOpenCodeEnvironment,
+  lockdownOpenCodeProviders,
 } from "@t3tools/shared/lockdownEdition";
 import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
+import * as Path from "effect/Path";
 
 import type { ProviderMaintenanceRunnerShape } from "../provider/providerMaintenanceRunner.ts";
 
@@ -53,21 +56,21 @@ export const lockdownProviderMaintenanceRunner: ProviderMaintenanceRunnerShape =
     ),
 };
 
-const OUTSIDE_ALLOWLIST = "Model is outside the configured Workers AI allowlist";
+const OUTSIDE_ALLOWLIST = "Model is not from a provider signed in to OpenCode";
 
 /** Every model-bearing adapter operation, including a model switch after the session opened. */
 function restrictAdapterModels(
   adapter: ProviderAdapterV2["Service"],
-  allowed: ReadonlySet<string>,
+  providers: ReadonlyArray<string>,
 ): ProviderAdapterV2["Service"] {
   const check = (selection: ModelSelection | undefined) =>
-    selection === undefined || allowed.has(selection.model)
+    selection === undefined || isLockdownModelAllowed(selection.model, providers)
       ? Effect.void
       : Effect.fail(
           new ProviderAdapterProtocolError({ driver: adapter.driver, detail: OUTSIDE_ALLOWLIST }),
         );
   const restrictRuntime = ({
-    // Feedback uploads go to the provider's vendor, not the gateway.
+    // Feedback uploads go to OpenCode's own service.
     uploadFeedback: _uploadFeedback,
     ...runtime
   }: ProviderAdapterV2SessionRuntime): ProviderAdapterV2SessionRuntime => ({
@@ -110,14 +113,14 @@ function restrictAdapterModels(
 /** Commit messages, PR text, branch names, titles, review guides and dictation cleanup use approved models only. */
 function restrictTextGenerationModels(
   service: ProviderTextGeneration,
-  allowed: ReadonlySet<string>,
+  providers: ReadonlyArray<string>,
 ): ProviderTextGeneration {
   const guard =
     <Input extends { readonly modelSelection: ModelSelection }, A>(
       run: (input: Input) => Effect.Effect<A, TextGenerationError>,
     ) =>
     (input: Input) =>
-      allowed.has(input.modelSelection.model)
+      isLockdownModelAllowed(input.modelSelection.model, providers)
         ? Effect.suspend(() => run(input))
         : Effect.fail(
             new TextGenerationError({ operation: "selectModel", detail: `${OUTSIDE_ALLOWLIST}.` }),
@@ -133,13 +136,38 @@ function restrictTextGenerationModels(
 }
 
 /**
+ * OpenCode's auth file as OpenCode itself finds it: `OPENCODE_AUTH_CONTENT`, else
+ * `$XDG_DATA_HOME/opencode/auth.json` (default `~/.local/share`). A missing file reads as empty.
+ */
+const readOpenCodeAuthFile = Effect.fn("readOpenCodeAuthFile")(function* (
+  environment: Readonly<Record<string, string | undefined>>,
+) {
+  if (environment.OPENCODE_AUTH_CONTENT) return environment.OPENCODE_AUTH_CONTENT;
+  const fs = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
+  const dataHome =
+    environment.XDG_DATA_HOME ||
+    path.join(
+      environment.HOME || environment.USERPROFILE || (yield* HostProcess.HomeDirectory),
+      ".local",
+      "share",
+    );
+  return yield* fs.readFileString(path.join(dataHome, "opencode", "auth.json")).pipe(
+    Effect.catchTags({
+      PlatformError: (error) =>
+        error.reason._tag === "NotFound" ? Effect.succeed("{}") : Effect.fail(error),
+    }),
+  );
+});
+
+/**
  * OpenCode as the locked edition runs it: always its own local child process (never a server
- * URL), launched with the gateway-only configuration, and checked against the model allowlist on
- * every operation. Without a valid gateway configuration the instance is unavailable.
+ * URL), with only the providers signed in to through its auth file enabled, and every operation
+ * checked against them. With no signed-in provider the instance is unavailable.
  */
 export function lockdownOpenCodeDriver<Config extends { readonly serverUrl: string }, R, UsageR>(
   driver: ProviderDriver<Config, R, UsageR>,
-): ProviderDriver<Config, R | never, UsageR> {
+): ProviderDriver<Config, R | FileSystem.FileSystem | Path.Path, UsageR> {
   if (!LOCKDOWN_EDITION) return driver;
   return {
     ...driver,
@@ -157,13 +185,16 @@ export function lockdownOpenCodeDriver<Config extends { readonly serverUrl: stri
       const hostEnvironment = yield* HostProcess.Environment;
       const environment: Record<string, string | undefined> = { ...hostEnvironment };
       for (const variable of input.environment) environment[variable.name] = variable.value;
+      const authFile = yield* readOpenCodeAuthFile(environment).pipe(
+        Effect.mapError((cause) => fail("Could not read OpenCode's auth file.", cause)),
+      );
       const locked = yield* Effect.try({
-        try: () => ({
-          env: lockdownOpenCodeEnvironment(environment),
-          models: lockdownAllowedModelSlugs(environment),
-        }),
+        try: () => {
+          const providers = lockdownOpenCodeProviders(authFile);
+          return { providers, env: lockdownOpenCodeEnvironment(environment, providers) };
+        },
         catch: (cause) =>
-          fail(cause instanceof Error ? cause.message : "Invalid Cloudflare configuration.", cause),
+          fail(cause instanceof Error ? cause.message : "Invalid OpenCode configuration.", cause),
       });
       const instance: ProviderInstance = yield* driver.create({
         ...input,
@@ -175,8 +206,11 @@ export function lockdownOpenCodeDriver<Config extends { readonly serverUrl: stri
       });
       return {
         ...instance,
-        orchestrationAdapter: restrictAdapterModels(instance.orchestrationAdapter, locked.models),
-        textGeneration: restrictTextGenerationModels(instance.textGeneration, locked.models),
+        orchestrationAdapter: restrictAdapterModels(
+          instance.orchestrationAdapter,
+          locked.providers,
+        ),
+        textGeneration: restrictTextGenerationModels(instance.textGeneration, locked.providers),
       } satisfies ProviderInstance;
     }),
   };
