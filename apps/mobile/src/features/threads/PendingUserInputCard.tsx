@@ -10,7 +10,14 @@ import {
 } from "@t3tools/shared/textDirection";
 import { AsyncResult } from "effect/reactivity";
 import { useState } from "react";
-import { Keyboard, Platform, Pressable, ScrollView, View } from "react-native";
+import {
+  Keyboard,
+  Platform,
+  Pressable,
+  ScrollView,
+  View,
+  type LayoutChangeEvent,
+} from "react-native";
 import { useReanimatedKeyboardAnimation } from "react-native-keyboard-controller";
 import { useNavigation } from "@react-navigation/native";
 import { Plural, T, useGT, Var } from "gt-react-native";
@@ -62,6 +69,7 @@ export interface PendingUserInputCardProps {
   readonly cardProgress: SharedValue<number>;
   /** How far the expanded card extends above the bar; the host adds it to the feed's end inset. */
   readonly cardCoverage: SharedValue<number>;
+  readonly onLayout?: (event: LayoutChangeEvent) => void;
   /** Fires on custom-answer focus/blur; hosts use it to vet stale keyboard state. */
   readonly onInputFocusChange?: (focused: boolean) => void;
   readonly drafts: Record<string, PendingUserInputDraftAnswer>;
@@ -516,6 +524,7 @@ export function PendingUserInputCard(props: PendingUserInputCardProps) {
     <Animated.View
       className="relative"
       style={Platform.OS === "android" ? androidBoundsStyle : undefined}
+      onLayout={props.onLayout}
     >
       {bar}
       {/* Clipping window for the collapse slide, bottom edge on the bar's: the card exits

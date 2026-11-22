@@ -2350,6 +2350,31 @@ export const stageBrowserSecret = Effect.fn("stageBrowserSecret")(function* (inp
   );
 });
 
+export const stageAppleSpeech = Effect.fn("stageAppleSpeech")(function* (input: {
+  readonly repoRoot: string;
+  readonly stageResourcesDir: string;
+  readonly platform: typeof BuildPlatform.Type;
+  readonly arch: typeof BuildArch.Type;
+  readonly verbose: boolean;
+}) {
+  if (input.platform !== "mac") return;
+  const path = yield* Path.Path;
+  yield* runCommand(
+    ChildProcess.make(
+      "node",
+      [
+        path.join(input.repoRoot, "apps/desktop/scripts/build-apple-speech.mjs"),
+        "--arch",
+        input.arch,
+        "--output",
+        path.join(input.stageResourcesDir, "apple-speech", "t3-apple-speech"),
+      ],
+      { cwd: input.repoRoot },
+    ),
+    { label: "build macOS Apple Speech helper", verbose: input.verbose },
+  );
+});
+
 const generateMacIconSet = Effect.fn("build-desktop-artifact.generateMacIconSet")(function* (
   sourcePng: string,
   targetIcns: string,
@@ -3564,6 +3589,13 @@ const buildDesktopArtifactUnlocked = Effect.fn("buildDesktopArtifactUnlocked")(f
       });
   }
   yield* stageBrowserSecret({
+    repoRoot,
+    stageResourcesDir,
+    platform: options.platform,
+    arch: options.arch,
+    verbose: options.verbose,
+  });
+  yield* stageAppleSpeech({
     repoRoot,
     stageResourcesDir,
     platform: options.platform,

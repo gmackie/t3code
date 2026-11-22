@@ -55,6 +55,7 @@ import {
 import { ProjectActionsSettings } from "./ProjectActionsSettings";
 import { ProjectKnowledgeSection } from "./ProjectKnowledgeSection";
 import { ProjectDefaultsSettings } from "./ProjectDefaultsSettings";
+import { ProjectRepositoriesSettings } from "./ProjectRepositoriesSettings";
 import {
   defaultProjectIcon,
   hasDefaultProjectIcon,
@@ -696,6 +697,7 @@ function ProjectDetail({
         {group.memberProjects.map((member) => (
           <ProjectKnowledgeSection key={`${member.environmentId}:${member.id}`} project={member} />
         ))}
+        <ProjectRepositoriesSettings members={group.memberProjects} />
         {checkoutChoices}
         <SettingsSection title={gt("Danger")}>
           <SettingsRow

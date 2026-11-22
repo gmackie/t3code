@@ -31,6 +31,8 @@ export const DESKTOP_FILE_EXCLUSIONS = [
   "!apps/desktop/resources/browser-secret/**/*",
   "!apps/desktop/prod-resources/browser-secret",
   "!apps/desktop/prod-resources/browser-secret/**/*",
+  "!apps/desktop/prod-resources/apple-speech",
+  "!apps/desktop/prod-resources/apple-speech/**/*",
   "!apps/desktop/prod-resources/windows-server",
   "!apps/desktop/prod-resources/windows-server/**/*",
   "!apps/desktop/prod-resources/wsl-runtime.tar.gz",
@@ -153,6 +155,9 @@ export const LINUX_CAPTURE_EXTRA_RESOURCES = [
     filter: gnomeCaptureBundle.files,
   },
 ] as const;
+export const MAC_APPLE_SPEECH_EXTRA_RESOURCES = [
+  { from: "apps/desktop/prod-resources/apple-speech", to: "apple-speech" },
+] as const;
 export const LINUX_BROWSER_SECRET_EXTRA_RESOURCES = [
   { from: "apps/desktop/prod-resources/browser-secret", to: "browser-secret" },
 ] as const;
@@ -216,6 +221,7 @@ export function createDesktopElectronBuilderConfig(
       ...DESKTOP_EXTRA_RESOURCES,
       ...(platform === "linux" ? LINUX_CAPTURE_EXTRA_RESOURCES : []),
       ...(platform === "linux" ? LINUX_BROWSER_SECRET_EXTRA_RESOURCES : []),
+      ...(platform === "mac" ? MAC_APPLE_SPEECH_EXTRA_RESOURCES : []),
       ...(platform === "win" ? WINDOWS_SERVER_EXTRA_RESOURCES : []),
       ...(platform === "win" && input.wslRuntimeBundled ? WSL_RUNTIME_EXTRA_RESOURCES : []),
     ],
@@ -265,6 +271,8 @@ export function createDesktopElectronBuilderConfig(
           "T3 Code lets commands run by terminals and coding agents use the camera.",
         NSMicrophoneUsageDescription:
           "T3 Code lets commands run by terminals and coding agents use the microphone.",
+        NSSpeechRecognitionUsageDescription:
+          "T3 Code transcribes your dictation on this Mac when you choose Apple Speech.",
         // macOS lists an app under Default web browser only when it opens web
         // pages as documents as well as http and https links (see protocols).
         CFBundleDocumentTypes: [

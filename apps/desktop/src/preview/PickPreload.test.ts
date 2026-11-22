@@ -59,11 +59,17 @@ it("switches tools from the keyboard after a toolbar button is clicked", () => {
 });
 
 it("keeps the tool while typing a tool key in the comment", () => {
+  const card = document.body.appendChild(document.createElement("div"));
+  document.elementsFromPoint = () => [card];
   const shadowRoot = startAnnotation();
+  card.dispatchEvent(
+    new PointerEvent("pointerdown", { button: 0, clientX: 100, clientY: 100, bubbles: true }),
+  );
   const comment = shadowRoot.querySelector("textarea");
   if (!comment) throw new Error("comment textarea not found");
 
   comment.focus();
+  expect(shadowRoot.activeElement).toBe(comment);
   comment.dispatchEvent(new KeyboardEvent("keydown", { key: "r", bubbles: true, composed: true }));
 
   expect(document.documentElement.getAttribute("data-t3code-annotation-tool")).toBe("select");
