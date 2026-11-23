@@ -271,6 +271,8 @@ export function createDesktopElectronBuilderConfig(
           "T3 Code lets commands run by terminals and coding agents use the camera.",
         NSMicrophoneUsageDescription:
           "T3 Code lets commands run by terminals and coding agents use the microphone.",
+        NSAppleEventsUsageDescription:
+          "T3 Code lets commands run by terminals and coding agents control other apps.",
         NSSpeechRecognitionUsageDescription:
           "T3 Code transcribes your dictation on this Mac when you choose Apple Speech.",
         // macOS lists an app under Default web browser only when it opens web
