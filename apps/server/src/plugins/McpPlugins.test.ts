@@ -91,8 +91,26 @@ it.effect("installs from a directory, resolving ${pluginRoot} and filling variab
     );
 
     // An upgrade keeps stored values it isn't given.
-    yield* plugins.installFromDirectory({ directory });
-    const upgraded = (yield* settings.getSettings).mcpServers.board;
+    const pluginId = McpPluginId.make("com.example.board");
+    const wrongDirectory = yield* writePluginDir({ ...manifestJson, id: "com.example.other" });
+    const mismatch = yield* Effect.flip(plugins.update({ pluginId, directory: wrongDirectory }));
+    assert.equal(mismatch.reason, "plugin-id-mismatch");
+    assert.deepEqual(yield* plugins.list, [record]);
+
+    yield* plugins.setEnabled(pluginId, false);
+    const nextDirectory = yield* writePluginDir({
+      ...manifestJson,
+      version: "0.2.0",
+      mcpServer: { ...manifestJson.mcpServer, name: "new-board" },
+    });
+    const updated = yield* plugins.update({ pluginId, directory: nextDirectory });
+    assert.equal(updated.manifest.version, "0.2.0");
+    assert.equal(updated.directory, nextDirectory);
+    assert.isFalse(updated.enabled);
+    assert.equal((yield* plugins.update({ pluginId })).manifest.version, "0.2.0");
+    const servers = (yield* settings.getSettings).mcpServers;
+    assert.isUndefined(servers.board);
+    const upgraded = servers["new-board"];
     assert.isTrue(
       upgraded?.transport.type === "stdio" &&
         upgraded.transport.env.some((v) => v.name === "BOARD_TOKEN" && v.value === "secret-1"),

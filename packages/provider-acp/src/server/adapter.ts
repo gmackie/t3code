@@ -1015,29 +1015,31 @@ interface AcpMcpContext {
  * command, so bare names resolve on the agent's PATH (unresolved ones are sent as
  * typed); http entries are dropped later for agents without http support.
  */
-function acpUserMcpServers(
+async function acpUserMcpServers(
   servers: ReadonlyArray<ResolvedMcpServer>,
-  resolveCommand: (command: string) => string,
-): ReadonlyArray<EffectAcpSchema.McpServer> {
-  return servers.map((server) =>
-    server.transport.type === "stdio"
-      ? {
-          // Untyped like T3's own entry: the shape every ACP version accepts.
-          name: server.name,
-          command: resolveCommand(server.transport.command),
-          args: [...server.transport.args],
-          env: Object.entries(mcpServerVariableRecord(server.transport.env)).map(
-            ([name, value]) => ({ name, value }),
-          ),
-        }
-      : {
-          type: "http" as const,
-          name: server.name,
-          url: server.transport.url,
-          headers: Object.entries(mcpServerVariableRecord(server.transport.headers)).map(
-            ([name, value]) => ({ name, value }),
-          ),
-        },
+  resolveCommand: (command: string) => Promise<string>,
+): Promise<ReadonlyArray<EffectAcpSchema.McpServer>> {
+  return Promise.all(
+    servers.map(async (server) =>
+      server.transport.type === "stdio"
+        ? {
+            // Untyped like T3's own entry: the shape every ACP version accepts.
+            name: server.name,
+            command: await resolveCommand(server.transport.command),
+            args: [...server.transport.args],
+            env: Object.entries(mcpServerVariableRecord(server.transport.env)).map(
+              ([name, value]) => ({ name, value }),
+            ),
+          }
+        : {
+            type: "http" as const,
+            name: server.name,
+            url: server.transport.url,
+            headers: Object.entries(mcpServerVariableRecord(server.transport.headers)).map(
+              ([name, value]) => ({ name, value }),
+            ),
+          },
+    ),
   );
 }
 
@@ -1074,20 +1076,20 @@ const writeAcpMcpCallLauncher = Effect.fn("AcpAdapterV2.writeAcpMcpCallLauncher"
   );
 });
 
-function acpMcpContext(
+async function acpMcpContext(
   session: McpProviderSession.McpProviderSessionConfig | undefined,
   self: SelfInvocation,
   mcpOverHttp: boolean | undefined,
   deferMcpTools: boolean | undefined,
   callLauncher: string | undefined,
-  resolveCommand: (command: string) => string = (command) => command,
-): AcpMcpContext {
+  resolveCommand: (command: string) => Promise<string>,
+): Promise<AcpMcpContext> {
   if (session === undefined) {
     return { servers: [], acpServers: [], httpServers: [] };
   }
   // An agent that takes T3's server over ACP or HTTP gets only that list, so every list carries the
   // user's servers.
-  const userServers = acpUserMcpServers(session.tools?.servers ?? [], resolveCommand);
+  const userServers = await acpUserMcpServers(session.tools?.servers ?? [], resolveCommand);
   // codex-acp 1.2.0 and pi-acp drop injected HTTP servers, so HTTP is opt-in per flavor.
   return {
     servers: [
@@ -2070,29 +2072,27 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
   const resolveExecutable = yield* SpawnExecutableResolution;
   const hostPlatform = yield* HostProcess.Platform;
   const hostEnvironment = yield* HostProcess.Environment;
-  const resolveCommand = (command: string) =>
-    resolveExecutable(command, hostPlatform, { ...hostEnvironment, ...options.environment }) ??
-    command;
+  const resolveCommand = async (command: string) =>
+    (await resolveExecutable(command, hostPlatform, {
+      ...hostEnvironment,
+      ...options.environment,
+    })) ?? command;
   const callLauncher = yield* writeAcpMcpCallLauncher(host.paths.stateDir);
-  const readMcpContext = (threadId: ThreadId | null) =>
-    threadId === null
-      ? Effect.succeed(
-          acpMcpContext(undefined, self, flavor.mcpOverHttp, flavor.deferMcpTools, callLauncher),
-        )
-      : mcpSessions
-          .read(threadId)
-          .pipe(
-            Effect.map((session) =>
-              acpMcpContext(
-                session,
-                self,
-                flavor.mcpOverHttp,
-                flavor.deferMcpTools,
-                callLauncher,
-                resolveCommand,
-              ),
-            ),
-          );
+  const readMcpContext = Effect.fn("AcpAdapterV2.readMcpContext")(function* (
+    threadId: ThreadId | null,
+  ) {
+    const session = threadId === null ? undefined : yield* mcpSessions.read(threadId);
+    return yield* Effect.promise(() =>
+      acpMcpContext(
+        session,
+        self,
+        flavor.mcpOverHttp,
+        flavor.deferMcpTools,
+        callLauncher,
+        resolveCommand,
+      ),
+    );
+  });
   const driver = flavor.driver;
   const continuationRequests = options.continuationRequests;
 
@@ -2359,6 +2359,24 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
         });
         const activeSelection = yield* Ref.make<ModelSelection | null>(null);
         const activeInteractionMode = yield* Ref.make<ProviderInteractionMode | null>(null);
+        // Mode values configureSession left the agent in; a later difference is the agent's own change.
+        const configuredModes = yield* Ref.make<ReadonlyMap<string, string>>(new Map());
+        const readModes = Effect.gen(function* () {
+          const modes = new Map<string, string>();
+          for (const option of yield* runtime.getConfigOptions) {
+            if (
+              option.type === "select" &&
+              (option.category === "mode" || option.category === "collaboration_mode")
+            ) {
+              modes.set(option.id, option.currentValue);
+            }
+          }
+          const modeId = (yield* runtime.getModeState)?.currentModeId;
+          if (modeId !== undefined && !modes.has(ACP_SESSION_MODE_OPTION_ID)) {
+            modes.set(ACP_SESSION_MODE_OPTION_ID, modeId);
+          }
+          return modes;
+        });
         const configuredRuntimeMode = yield* Ref.make<
           ProviderAdapter.ProviderAdapterV2RuntimePolicy["runtimeMode"] | null
         >(null);
@@ -8411,6 +8429,7 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
             }
           }
           yield* validateModelSelection(modelSelection);
+          yield* Ref.set(configuredModes, yield* readModes);
           yield* Ref.set(configuredRuntimeMode, runtimePolicy.runtimeMode);
           yield* (
             flavor.onSessionConfigurationUpdate?.(
@@ -8599,6 +8618,39 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
           );
         });
 
+        // Re-applying the thread's mode would undo a deliberate exit, such as leaving plan mode once
+        // the plan was approved. Report it instead, so picking the old mode again is a real change.
+        const reportAgentModeChanges = Effect.fnUntraced(function* (threadId: ThreadId) {
+          const selection = yield* Ref.get(activeSelection);
+          if (selection === null || selection.options === undefined) return;
+          const configured = yield* Ref.get(configuredModes);
+          const live = yield* readModes;
+          const changes: Array<{ id: string; from: string; to: string }> = [];
+          const options = selection.options.map((option) => {
+            const value = live.get(option.id);
+            if (
+              value === undefined ||
+              typeof option.value !== "string" ||
+              value === configured.get(option.id) ||
+              value === option.value
+            ) {
+              return option;
+            }
+            changes.push({ id: option.id, from: option.value, to: value });
+            return { ...option, value };
+          });
+          if (changes.length === 0) return;
+          yield* Ref.set(activeSelection, { ...selection, options });
+          yield* Ref.set(configuredModes, live);
+          yield* emitProviderEvent({
+            type: "thread_model_selection.updated",
+            driver,
+            threadId,
+            instanceId: selection.instanceId,
+            changes,
+          });
+        });
+
         const finalizeTurn = Effect.fnUntraced(function* (
           context: ActiveAcpTurn,
           status: "completed" | "interrupted" | "failed" | "cancelled",
@@ -8694,6 +8746,7 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
               },
             });
           }
+          yield* reportAgentModeChanges(context.input.threadId);
           const turn = providerTurnPayload(context, settledStatus, now);
           yield* Ref.update(providerTurns, (current) => {
             const updated = new Map(current);
