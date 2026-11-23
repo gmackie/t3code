@@ -92,6 +92,21 @@ function makeProject(
   };
 }
 
+const FORGEGRAPH_CHANGESET_URL =
+  "https://forgegraf.com/changesets/00000000-0000-4000-8000-000000001282";
+const forgeGraphProject = makeProject({
+  canonicalKey: "git.forgegraf.com/gmackie/forgegraph",
+  locator: {
+    source: "git-remote",
+    remoteName: "origin",
+    remoteUrl: "git@git.forgegraf.com:gmackie/forgegraph.git",
+  },
+  provider: SourceControlProviderKind.make("forgegraph"),
+  displayName: "gmackie/forgegraph",
+  owner: "gmackie",
+  name: "forgegraph",
+});
+
 function makeThread(pullRequests: ReadonlyArray<ThreadPullRequestLink>): PullRequestTestThread {
   return {
     id: THREAD_ID,
@@ -1150,12 +1165,49 @@ describe("source control tools", () => {
           ...makeThread([makeLink(43, { source: "created", headBranch: "old" })]),
           branch: "new",
         },
+        git: { branchPullRequest: () => Effect.succeed(null) },
       });
       const error = yield* switched
         .call("pull_request_update", { title: "New title" })
         .pipe(Effect.flip);
       expect(error._tag).toBe("PullRequestBranchHasNoneError");
     }),
+  );
+
+  it.effect(
+    "asks the host for the branch's PR before status sync, keyed by ForgeGraph's checkout",
+    () =>
+      Effect.gen(function* () {
+        const asked: Array<PullRequestRef> = [];
+        const looked: Array<{ readonly cwd: string; readonly branch: string }> = [];
+        const harness = yield* makeHarness({
+          project: forgeGraphProject,
+          thread: { ...makeThread([]), branch: "pr-preview", worktreePath: "/workspace/worktree" },
+          git: {
+            branchPullRequest: (input) =>
+              Effect.sync(() => looked.push(input)).pipe(
+                Effect.as({
+                  number: 1282,
+                  title: "Preview",
+                  url: FORGEGRAPH_CHANGESET_URL,
+                  baseRef: "main",
+                  headRef: "pr-preview",
+                  state: "open" as const,
+                  repositoryKey: "git.forgegraf.com/gmackie/forgegraph",
+                  updatedAt: null,
+                }),
+              ),
+          },
+          pullRequests: {
+            detail: (ref) => Effect.sync(() => asked.push(ref)).pipe(Effect.as(detail)),
+            activity: () => Effect.succeed(activity),
+          },
+        });
+        const result = yield* harness.call("pull_request_read", {});
+        expect(looked).toEqual([{ cwd: "/workspace/worktree", branch: "pr-preview" }]);
+        expect(asked).toMatchObject([{ repository: "gmackie/forgegraph", number: 1282 }]);
+        expect(result).toMatchObject({ number: 1282, url: FORGEGRAPH_CHANGESET_URL });
+      }),
   );
 
   it.effect("merges pinned to the head the agent checked", () =>
@@ -1324,6 +1376,43 @@ describe("source control tools", () => {
       expect(opened).toEqual([{ cwd: "/workspace/worktree", draft: true, private: true }]);
       expect(yield* Ref.get(harness.commands)).toMatchObject([
         { type: "thread.pull-request.link", number: 43, source: "created" },
+      ]);
+    }),
+  );
+
+  it.effect("links a created ForgeGraph PR whose URL is its changeset page", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness({
+        project: forgeGraphProject,
+        git: {
+          createPullRequest: (input) =>
+            Effect.succeed({
+              status: "created" as const,
+              url: FORGEGRAPH_CHANGESET_URL,
+              number: 1282,
+              baseBranch: "main",
+              headBranch: "pr-preview",
+              title: input.title,
+            }),
+        },
+      });
+      const result = yield* harness.call("pull_request_create", {
+        title: "Preview",
+        body: "Previews.",
+      });
+      expect(result).toMatchObject({
+        repository: "gmackie/forgegraph",
+        number: 1282,
+        url: FORGEGRAPH_CHANGESET_URL,
+        created: true,
+      });
+      expect(yield* Ref.get(harness.commands)).toMatchObject([
+        {
+          type: "thread.pull-request.link",
+          repository: "gmackie/forgegraph",
+          number: 1282,
+          url: FORGEGRAPH_CHANGESET_URL,
+        },
       ]);
     }),
   );

@@ -29,9 +29,20 @@ export function createdPullRequestKey(
   if ((status !== "created" && status !== "opened_existing") || number === undefined || !url) {
     return null;
   }
-  const parsed = sourceControlDefinitions.parseChangeRequestUrl(url)?.link;
+  return pullRequestKey({ number, url }, identity);
+}
+
+/**
+ * A pull request the host reported for `identity`'s repository. Some hosts' URLs name no number,
+ * such as ForgeGraph's changeset pages, so those are keyed by that repository instead.
+ */
+export function pullRequestKey(
+  pr: { readonly number: number; readonly url: string },
+  identity: RepositoryIdentity | null | undefined,
+): CreatedPullRequestKey | null {
+  const parsed = sourceControlDefinitions.parseChangeRequestUrl(pr.url)?.link;
   if (parsed !== undefined) {
-    return { host: parsed.host, repository: parsed.repository, number: parsed.number, url };
+    return { host: parsed.host, repository: parsed.repository, number: parsed.number, url: pr.url };
   }
   const kind = identity?.provider;
   const repository = sourceControlDefinitions.repositorySelector(identity);
@@ -39,8 +50,8 @@ export function createdPullRequestKey(
   return {
     host: sourceControlDefinitions.changeRequestHost(identity, kind),
     repository: repository.toLowerCase(),
-    number,
-    url,
+    number: pr.number,
+    url: pr.url,
   };
 }
 
