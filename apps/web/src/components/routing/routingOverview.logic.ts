@@ -1,3 +1,5 @@
+import { m } from "~/i18n/messages";
+import { msg } from "gt-react";
 import type { RoutingMetricRow, RoutingWindow } from "@t3tools/contracts";
 
 export type RoutingRange = "24h" | "7d";
@@ -6,8 +8,8 @@ export const RANGE_OPTIONS: ReadonlyArray<{
   readonly value: RoutingRange;
   readonly label: string;
 }> = [
-  { value: "24h", label: "24 hours" },
-  { value: "7d", label: "7 days" },
+  { value: "24h", label: m(msg("24 hours")) },
+  { value: "7d", label: m(msg("7 days")) },
 ];
 
 const HOUR = 3600;
@@ -164,7 +166,7 @@ export function formatHoursToReset(hours: number): string {
 }
 
 /** Validated categorical slots; identity colors assigned in label order, never cycled. */
-export const CATEGORICAL_COLORS: readonly string[] = [
+const CATEGORICAL_COLORS: readonly string[] = [
   "#2a78d6",
   "#eb6834",
   "#1baf7a",
@@ -176,7 +178,7 @@ export const CATEGORICAL_COLORS: readonly string[] = [
 ];
 
 /** Tiers are ordinal: one hue, darker as the tier gets stronger. */
-export const TIER_COLORS: Readonly<Record<string, string>> = {
+const TIER_COLORS: Readonly<Record<string, string>> = {
   "1": "#86b6ef",
   "2": "#3987e5",
   "3": "#1c5cab",

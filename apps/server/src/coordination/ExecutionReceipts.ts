@@ -1,7 +1,11 @@
-import { bobOperationSchemas, BobExecutionAdmission } from "@t3tools/contracts/bobContract";
+import {
+  bobOperationSchemas,
+  BobExecutionAdmission,
+  BobExecutionRequest,
+} from "@t3tools/contracts/bobContract";
 // @effect-diagnostics-next-line nodeBuiltinImport:off -- receipt ids are synchronous sha256 digests of request ids.
 import * as NodeCrypto from "node:crypto";
-import { ThreadId } from "@t3tools/contracts";
+import { type OrchestrationV2RuntimeRequest, ProjectId, ThreadId } from "@t3tools/contracts";
 import {
   BobCoordinationError,
   type RecordExecutionReceiptInput,
@@ -18,6 +22,8 @@ import * as Stream from "effect/Stream";
 import * as SqlClient from "effect/sql/SqlClient";
 import { HttpClient, HttpClientRequest } from "effect/http";
 import * as Bob from "./BobCoordination.ts";
+import * as ExecutionPublish from "./ExecutionPublish.ts";
+import * as ProjectService from "../project/ProjectService.ts";
 import * as ThreadManagement from "../orchestration-v2/ThreadManagementService.ts";
 import * as ProcessRunner from "../processRunner.ts";
 import * as ServerConfig from "../config.ts";
@@ -28,10 +34,25 @@ const decodeAdmissionJson = Schema.decodeEffect(Schema.fromJsonString(BobExecuti
 const encodeReceiptPayloadJson = Schema.encodeUnknownEffect(ReceiptPayloadJson);
 const decodeReceiptPayloadJson = Schema.decodeEffect(ReceiptPayloadJson);
 const decodeReceiptAck = Schema.decodeEffect(receiptSchema.output);
+const decodeRequestJson = Schema.decodeEffect(Schema.fromJsonString(BobExecutionRequest));
+const PublishResultJson = Schema.fromJsonString(ExecutionPublish.PublishResult);
+const decodePublishResultJson = Schema.decodeEffect(PublishResultJson);
+const encodePublishResultJson = Schema.encodeEffect(PublishResultJson);
+
+/**
+ * A question the agent is still waiting on. Runtime requests are never userOnly
+ * (secret and link cards are turn items), so Bob's coordinator can answer any of
+ * these unless the provider can no longer take the answer.
+ */
+const awaitsAnswer = (request: OrchestrationV2RuntimeRequest) =>
+  request.status === "pending" &&
+  request.kind === "user_input" &&
+  request.responseCapability.type !== "not_resumable";
 
 interface Row {
   readonly request_id: string;
   readonly admission_json: string;
+  readonly request_json: string;
   readonly run_id: string;
 }
 interface Outbox {
@@ -45,11 +66,13 @@ export class ExecutionReceipts extends Context.Service<
 export const make = Effect.fn("ExecutionReceipts.make")(function* (startWorkers = true) {
   const sql = yield* SqlClient.SqlClient;
   const threads = yield* ThreadManagement.ThreadManagementService;
+  const projects = yield* ProjectService.ProjectService;
   const process = yield* ProcessRunner.ProcessRunner;
   const fs = yield* FileSystem.FileSystem;
   const server = yield* ServerConfig.ServerConfig;
   const config = yield* Bob.BobConfiguration;
   const http = yield* HttpClient.HttpClient;
+  const publishPort = yield* ExecutionPublish.ExecutionPublishPort;
   const mutex = yield* Semaphore.make(1);
   const unavailable = () =>
     new BobCoordinationError({
@@ -73,16 +96,52 @@ export const make = Effect.fn("ExecutionReceipts.make")(function* (startWorkers 
             : Effect.fail(unavailable()),
         ),
       );
+  // Published once per request: receipt rebuilds reuse the stored result, so a
+  // retry never pushes again or opens a second pull request.
+  const publication = Effect.fn("ExecutionReceipts.publication")(function* (row: Row, cwd: string) {
+    const stored = yield* sql<{
+      readonly result_json: string;
+    }>`SELECT result_json FROM bob_execution_publications WHERE request_id=${row.request_id}`;
+    if (stored[0]) return yield* decodePublishResultJson(stored[0].result_json);
+    const result = yield* decodeRequestJson(row.request_json).pipe(
+      Effect.flatMap((request) =>
+        ExecutionPublish.publish({
+          cwd,
+          branch: request.workspace.branch,
+          baseRevision: request.workspace.baseRevision,
+          title: request.work.title,
+          acceptanceCriteria: request.work.acceptanceCriteria,
+          itemId: request.itemId,
+          repository: request.target.repository,
+        }),
+      ),
+      Effect.orElseSucceed((): ExecutionPublish.PublishResult => ({
+        publishSkippedReason: "execution request unavailable",
+      })),
+      Effect.provideService(ExecutionPublish.ExecutionPublishPort, publishPort),
+    );
+    yield* sql`INSERT OR IGNORE INTO bob_execution_publications (request_id,result_json) VALUES (${row.request_id},${yield* encodePublishResultJson(result)})`;
+    return result;
+  });
   const capture = Effect.fn("ExecutionReceipts.capture")(function* (row: Row) {
     const admission = yield* decodeAdmissionJson(row.admission_json);
     const projection = yield* threads.getThreadRecords(ThreadId.make(admission.thread.threadId), [
       "runs",
       "checkpoints",
       "checkpointScopes",
+      "runtimeRequests",
     ]);
-    const run = projection.runs.find((run) => run.id === row.run_id);
-    if (!run || !run.completedAt || !["completed", "failed", "cancelled"].includes(run.status))
-      return;
+    // An agent can ask a question and end its run (Codex asks asynchronously). The
+    // execution is still open while that question can be answered: the answer starts
+    // a follow-up run in this thread, which then carries the outcome.
+    if (projection.runtimeRequests.some(awaitsAnswer)) return;
+    const admitted = projection.runs.find((run) => run.id === row.run_id);
+    if (!admitted) return;
+    const run = projection.runs.reduce(
+      (latest, run) => (run.ordinal > latest.ordinal ? run : latest),
+      admitted,
+    );
+    if (!run.completedAt || !["completed", "failed", "cancelled"].includes(run.status)) return;
     const checkpoint = projection.checkpoints.find(
       (checkpoint) =>
         checkpoint.runId === run.id &&
@@ -91,19 +150,31 @@ export const make = Effect.fn("ExecutionReceipts.make")(function* (startWorkers 
           (scope) => scope.id === checkpoint.scopeId && scope.kind === "root_run",
         ),
     );
-    // Never substitute the current working tree for the immutable terminal checkpoint.
-    if (!checkpoint) return;
-    const scope = projection.checkpointScopes.find((scope) => scope.id === checkpoint.scopeId)!;
-    const commitSha = yield* git(scope.cwd, [
-      "rev-parse",
-      "--verify",
-      `${checkpoint.ref}^{commit}`,
-    ]);
-    const treeOid = yield* git(scope.cwd, ["rev-parse", "--verify", `${commitSha}^{tree}`]);
+    const outcome =
+      run.status === "completed" ? "succeeded" : run.status === "failed" ? "failed" : "cancelled";
+    // Never substitute the current working tree for the immutable terminal checkpoint,
+    // and never claim success without one. A run that failed or was cancelled before
+    // any checkpoint existed (e.g. workspace preparation failed) reports the request's
+    // base revision, resolved in the project's repository where the worktree would start.
+    if (!checkpoint && outcome === "succeeded") return;
+    const scope = checkpoint
+      ? projection.checkpointScopes.find((scope) => scope.id === checkpoint.scopeId)!
+      : undefined;
+    const cwd =
+      scope?.cwd ??
+      (yield* projects
+        .getById(ProjectId.make(admission.target.projectId))
+        .pipe(Effect.flatMap(Effect.fromOption), Effect.mapError(unavailable))).workspaceRoot;
+    const revision =
+      checkpoint?.ref ?? (yield* decodeRequestJson(row.request_json)).workspace.baseRevision;
+    const commitSha = yield* git(cwd, ["rev-parse", "--verify", `${revision}^{commit}`]);
+    const treeOid = yield* git(cwd, ["rev-parse", "--verify", `${commitSha}^{tree}`]);
     if (!/^[a-f0-9]{40}$/.test(commitSha) || !/^[a-f0-9]{40}$/.test(treeOid))
       return yield* unavailable();
     const treeDigest = NodeCrypto.createHash("sha256").update(`git-tree:${treeOid}`).digest("hex");
     const evidenceId = NodeCrypto.createHash("sha256").update(row.request_id).digest("hex");
+    // Publishing never fails the receipt; its outcome stays the run's outcome.
+    const published = outcome === "succeeded" ? yield* publication(row, cwd) : {};
     const receipt: RecordExecutionReceiptInput = {
       contractVersion: "1",
       eventId: `bob-terminal-${NodeCrypto.createHash("sha256").update(row.request_id).digest("hex")}`,
@@ -112,8 +183,7 @@ export const make = Effect.fn("ExecutionReceipts.make")(function* (startWorkers 
       attemptId: admission.attemptId,
       sequence: 1,
       occurredAt: DateTime.formatIso(run.completedAt),
-      outcome:
-        run.status === "completed" ? "succeeded" : run.status === "failed" ? "failed" : "cancelled",
+      outcome,
       thread: admission.thread,
       sourceSnapshot: {
         repository: admission.target.repository,
@@ -121,9 +191,17 @@ export const make = Effect.fn("ExecutionReceipts.make")(function* (startWorkers 
         treeDigest,
         dirty: false,
       },
-      evidenceRefs: [`t3-checkpoint:${evidenceId}`],
+      evidenceRefs: checkpoint ? [`t3-checkpoint:${evidenceId}`] : [],
+      ...(checkpoint
+        ? published
+        : { publishSkippedReason: "run ended before a checkpoint existed" }),
     };
     const payloadJson = yield* encodeReceiptPayloadJson(receipt);
+    // Without a checkpoint there is no run output to preserve.
+    if (!checkpoint) {
+      yield* sql`INSERT OR IGNORE INTO bob_execution_receipts (request_id,payload_json) VALUES (${row.request_id},${payloadJson})`;
+      return;
+    }
     // The checkpoint is a Git commit, including any captured worktree changes.
     // Preserve it locally before recording a receipt; it is not PR-head evidence.
     const directory = `${server.stateDir}/bob-evidence`;
@@ -135,28 +213,29 @@ export const make = Effect.fn("ExecutionReceipts.make")(function* (startWorkers 
       const result = yield* process.run({
         command: "git",
         args: ["bundle", "create", temporaryPath, checkpoint.ref],
-        cwd: scope.cwd,
+        cwd,
         timeout: "30 seconds",
         maxOutputBytes: 4096,
       });
       if (result.code !== 0) return yield* unavailable();
-      const heads = yield* git(scope.cwd, ["bundle", "list-heads", temporaryPath]);
+      const heads = yield* git(cwd, ["bundle", "list-heads", temporaryPath]);
       if (!heads.startsWith(`${commitSha} `)) return yield* unavailable();
       yield* fs.rename(temporaryPath, bundlePath);
     }
     // A crash may leave a bundle before its outbox row. Verify that existing
     // evidence still matches the checkpoint before recording the receipt.
-    const preservedHeads = yield* git(scope.cwd, ["bundle", "list-heads", bundlePath]);
+    const preservedHeads = yield* git(cwd, ["bundle", "list-heads", bundlePath]);
     if (!preservedHeads.split("\n").some((head) => head.startsWith(`${commitSha} `)))
       return yield* unavailable();
     yield* sql`INSERT OR IGNORE INTO bob_execution_receipts (request_id,payload_json) VALUES (${row.request_id},${payloadJson})`;
   });
   const reconcile = Effect.fn("ExecutionReceipts.reconcile")(
-    function* (runId: string | null = null) {
+    function* (threadId: string | null = null) {
       const settings = yield* config.read;
       if (!settings.receiptCoordinator) return;
+      // Match by thread: a follow-up run or an answered question also settles the execution.
       const rows =
-        yield* sql<Row>`SELECT a.request_id,a.admission_json,a.run_id FROM bob_execution_admissions a LEFT JOIN bob_execution_receipts r ON a.request_id=r.request_id WHERE a.launched=1 AND a.run_id IS NOT NULL AND r.request_id IS NULL AND (${runId} IS NULL OR a.run_id=${runId})`;
+        yield* sql<Row>`SELECT a.request_id,a.admission_json,a.request_json,a.run_id FROM bob_execution_admissions a LEFT JOIN bob_execution_receipts r ON a.request_id=r.request_id WHERE a.launched=1 AND a.run_id IS NOT NULL AND r.request_id IS NULL AND (${threadId} IS NULL OR json_extract(a.admission_json,'$.thread.threadId')=${threadId})`;
       yield* Effect.forEach(
         rows,
         (row) =>
@@ -174,7 +253,10 @@ export const make = Effect.fn("ExecutionReceipts.make")(function* (startWorkers 
         (row) =>
           Effect.gen(function* () {
             const payload = yield* decodeReceiptPayloadJson(row.payload_json);
-            const base = yield* Effect.try(() => new URL(settings.receiptCoordinator!.baseUrl));
+            const base = yield* Effect.try({
+              try: () => new URL(settings.receiptCoordinator!.baseUrl),
+              catch: () => unavailable(),
+            });
             if (base.username || base.password || !["http:", "https:"].includes(base.protocol))
               return yield* unavailable();
             const response = yield* HttpClientRequest.post(
@@ -205,22 +287,23 @@ export const make = Effect.fn("ExecutionReceipts.make")(function* (startWorkers 
         { discard: true },
       );
     },
-    (effect, _runId?: string | null) => effect.pipe(Effect.mapError(unavailable)),
+    (effect, _threadId?: string | null) => effect.pipe(Effect.mapError(unavailable)),
   );
-  const safeFlush = (runId: string | null = null) =>
+  const safeFlush = (threadId: string | null = null) =>
     mutex
-      .withPermits(1)(reconcile(runId))
+      .withPermits(1)(reconcile(threadId))
       .pipe(Effect.catch(() => Effect.logWarning("Bob receipt reconciliation is pending.")));
   // Subscribe before the initial sweep so terminal/checkpoint events cannot be lost.
   if (startWorkers) {
     yield* Effect.forkScoped(
       threads.streamDomainEvents.pipe(
         Stream.filter(
-          (event) => event.type === "run.updated" || event.type === "checkpoint.captured",
+          (event) =>
+            event.type === "run.updated" ||
+            event.type === "checkpoint.captured" ||
+            event.type === "runtime-request.updated",
         ),
-        Stream.runForEach((event) =>
-          safeFlush(event.type === "run.updated" ? event.payload.id : event.payload.runId),
-        ),
+        Stream.runForEach((event) => safeFlush(event.threadId)),
         Effect.catch(() =>
           Effect.logWarning(
             "Bob receipt event subscription stopped; outbox retries remain active.",

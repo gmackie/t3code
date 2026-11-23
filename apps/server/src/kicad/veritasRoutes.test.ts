@@ -2,6 +2,7 @@
 import * as NodeFSP from "node:fs/promises";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import * as NodeHttpPlatform from "@effect/platform-node/NodeHttpPlatform";
 import {
@@ -42,6 +43,7 @@ describe("Veritas CAD HTTP authorization", () => {
         Layer.provide(ConfigProvider.layer(ConfigProvider.fromEnv({ env: {} }))),
         Layer.provideMerge(NodeHttpPlatform.layer),
         Layer.provideMerge(NodeServices.layer),
+        Layer.provideMerge(NodeCrypto.layer),
       );
       const { handler, dispose } = HttpRouter.toWebHandler(routes, { disableLogger: true });
       try {

@@ -1,5 +1,10 @@
+import * as SchemaForRoute from "effect/Schema";
+
+class KiCadRouteError extends SchemaForRoute.TaggedError<KiCadRouteError>()("KiCadRouteError", {
+  cause: SchemaForRoute.Defect(),
+}) {}
 // @effect-diagnostics globalDate:off globalDateInEffect:off globalErrorInEffectCatch:off globalErrorInEffectFailure:off
-import * as Crypto from "effect/Crypto";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import { kiCadLibraryCache } from "./KiCadLibrary.ts";
 import { kiCadBomCache } from "./KiCadBom.ts";
 import { kiCadModelCache } from "./KiCadModel.ts";
@@ -50,10 +55,8 @@ export const kicadViewerSessionRouteLayer = HttpRouter.add(
     if (!cwd) return HttpServerResponse.text("Missing cwd", { status: 400 });
     const fileSystem = yield* FileSystem.FileSystem;
     const canonical = yield* fileSystem.realPath(cwd);
-    const crypto = yield* Crypto.Crypto;
-    const token = Buffer.from(yield* crypto.randomBytes(32).pipe(Effect.orDie)).toString(
-      "base64url",
-    );
+    const random = yield* SecureRandom.SecureRandom;
+    const token = Buffer.from(yield* random.randomBytes(32)).toString("base64url");
     const expiresAt = Date.now() + 60 * 60_000;
     for (const [oldToken, session] of kicadViewerSessions) {
       if (session.expiresAt <= Date.now()) kicadViewerSessions.delete(oldToken);
@@ -89,8 +92,14 @@ export const kicadModelRouteLayer = HttpRouter.add(
     const requestedPath = url.value.searchParams.get("path");
     if (!cwd || !requestedPath)
       return HttpServerResponse.text("Missing cwd or path", { status: 400 });
-    const manifest = yield* Effect.tryPromise(() => discoverKiCadProject(cwd));
-    const asset = yield* Effect.tryPromise(() => resolveKiCadProjectFile(cwd, requestedPath));
+    const manifest = yield* Effect.tryPromise({
+      try: () => discoverKiCadProject(cwd),
+      catch: (cause) => new KiCadRouteError({ cause }),
+    });
+    const asset = yield* Effect.tryPromise({
+      try: () => resolveKiCadProjectFile(cwd, requestedPath),
+      catch: (cause) => new KiCadRouteError({ cause }),
+    });
     if (!asset || asset.file.kind !== "pcb")
       return HttpServerResponse.text("PCB file not found", { status: 404 });
     const outputPath = yield* Effect.tryPromise({
@@ -139,9 +148,10 @@ export const kicadGerberRouteLayer = HttpRouter.add(
       return HttpServerResponse.text("Missing cwd or path", { status: 400 });
     if (requestedPaths.length > 32)
       return HttpServerResponse.text("Too many Gerber layers selected", { status: 400 });
-    const assets = yield* Effect.tryPromise(() =>
-      Promise.all(requestedPaths.map((path) => resolveKiCadProjectFile(cwd, path))),
-    );
+    const assets = yield* Effect.tryPromise({
+      try: () => Promise.all(requestedPaths.map((path) => resolveKiCadProjectFile(cwd, path))),
+      catch: (cause) => new KiCadRouteError({ cause }),
+    });
     if (
       assets.some(
         (asset, index) =>
@@ -216,20 +226,30 @@ export const kicadProjectRouteLayer = HttpRouter.add(
     const suffix = url.value.pathname.slice(`${KICAD_ROUTE_PREFIX}/`.length);
     if (suffix === "manifest") {
       return yield* HttpServerResponse.json(
-        yield* Effect.tryPromise(() => discoverKiCadProject(cwd)),
+        yield* Effect.tryPromise({
+          try: () => discoverKiCadProject(cwd),
+          catch: (cause) => new KiCadRouteError({ cause }),
+        }),
       );
     }
     if (suffix === "library") {
       const path = url.value.searchParams.get("path");
       if (!path) return HttpServerResponse.text("Missing path", { status: 400 });
-      const asset = yield* Effect.tryPromise(() => resolveKiCadProjectFile(cwd, path));
+      const asset = yield* Effect.tryPromise({
+        try: () => resolveKiCadProjectFile(cwd, path),
+        catch: (cause) => new KiCadRouteError({ cause }),
+      });
       if (!asset || (asset.file.kind !== "footprint" && asset.file.kind !== "symbol"))
         return HttpServerResponse.text("Library not found", { status: 404 });
       const kind = asset.file.kind;
-      const manifest = yield* Effect.tryPromise(() => discoverKiCadProject(cwd));
-      return yield* Effect.tryPromise(() =>
-        kiCadLibraryCache.get(kind, asset.absolutePath, manifest.revision),
-      ).pipe(
+      const manifest = yield* Effect.tryPromise({
+        try: () => discoverKiCadProject(cwd),
+        catch: (cause) => new KiCadRouteError({ cause }),
+      });
+      return yield* Effect.tryPromise({
+        try: () => kiCadLibraryCache.get(kind, asset.absolutePath, manifest.revision),
+        catch: (cause) => new KiCadRouteError({ cause }),
+      }).pipe(
         Effect.flatMap((members) => HttpServerResponse.json(members)),
         Effect.catch((cause) =>
           Effect.succeed(
@@ -244,13 +264,20 @@ export const kicadProjectRouteLayer = HttpRouter.add(
     if (suffix === "bom") {
       const path = url.value.searchParams.get("path");
       if (!path) return HttpServerResponse.text("Missing path", { status: 400 });
-      const asset = yield* Effect.tryPromise(() => resolveKiCadProjectFile(cwd, path));
+      const asset = yield* Effect.tryPromise({
+        try: () => resolveKiCadProjectFile(cwd, path),
+        catch: (cause) => new KiCadRouteError({ cause }),
+      });
       if (asset?.file.kind !== "schematic")
         return HttpServerResponse.text("Schematic not found", { status: 404 });
-      const manifest = yield* Effect.tryPromise(() => discoverKiCadProject(cwd));
-      return yield* Effect.tryPromise(() =>
-        kiCadBomCache.get(cwd, asset.file.path, manifest.revision),
-      ).pipe(
+      const manifest = yield* Effect.tryPromise({
+        try: () => discoverKiCadProject(cwd),
+        catch: (cause) => new KiCadRouteError({ cause }),
+      });
+      return yield* Effect.tryPromise({
+        try: () => kiCadBomCache.get(cwd, asset.file.path, manifest.revision),
+        catch: (cause) => new KiCadRouteError({ cause }),
+      }).pipe(
         Effect.flatMap((bom) => HttpServerResponse.json(bom)),
         Effect.catch((cause) =>
           Effect.succeed(
@@ -265,7 +292,10 @@ export const kicadProjectRouteLayer = HttpRouter.add(
     if (suffix === "assets") {
       const path = url.value.searchParams.get("path");
       if (!path) return HttpServerResponse.text("Missing path", { status: 400 });
-      const asset = yield* Effect.tryPromise(() => resolveKiCadProjectFile(cwd, path));
+      const asset = yield* Effect.tryPromise({
+        try: () => resolveKiCadProjectFile(cwd, path),
+        catch: (cause) => new KiCadRouteError({ cause }),
+      });
       if (!asset) return HttpServerResponse.text("Not Found", { status: 404 });
       return yield* HttpServerResponse.file(asset.absolutePath, {
         headers: {

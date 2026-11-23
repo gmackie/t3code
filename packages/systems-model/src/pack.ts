@@ -1,4 +1,4 @@
-import * as Crypto from "effect/Crypto";
+import * as Digest from "effect/crypto/Digest";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
@@ -181,10 +181,10 @@ const hex = (bytes: Uint8Array) =>
 
 /** Validate a pack. Only library hashing is effectful; everything else is pure. */
 export const validatePack = Effect.fn("systemsModel.validatePack")(function* (input: PackFiles) {
-  const crypto = yield* Crypto.Crypto;
+  const crypto = yield* Digest.Digest;
   const digests = new Map<string, string>();
   for (const [file, bytes] of input.files)
-    digests.set(file, hex(yield* crypto.digest("SHA-256", bytes)));
+    digests.set(file, hex(yield* crypto.digest(Digest.sha256, bytes)));
   return checkPack(input, (file) => digests.get(file));
 });
 

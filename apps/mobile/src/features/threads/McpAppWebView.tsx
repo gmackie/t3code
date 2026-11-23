@@ -1,7 +1,7 @@
 import { Button } from "../../components/ui/Button";
 import { AppActivityIndicator } from "../../components/ui/AppActivityIndicator";
 import * as Dialog from "../../components/ui/Dialog";
-import type { EnvironmentId, ThreadId, TurnItemId } from "@t3tools/contracts";
+import type { EnvironmentId, McpAppPanelContext, ThreadId, TurnItemId } from "@t3tools/contracts";
 import {
   makeMcpAppHost,
   McpAppHostRefusal,
@@ -13,7 +13,7 @@ import {
 } from "@t3tools/client-runtime/mcp-apps";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
-import { CommandId, MessageId } from "@t3tools/contracts";
+import { CommandId, McpAppRequestError, MessageId } from "@t3tools/contracts";
 import {
   mcpAppAllowAttribute,
   mcpAppFileName,
@@ -21,8 +21,10 @@ import {
   type McpAppReference,
 } from "@t3tools/shared/mcpApp";
 import * as Predicate from "effect/Predicate";
+import * as Schema from "effect/Schema";
 import { AsyncResult } from "effect/reactivity";
 import Constants from "expo-constants";
+import { msg, T, useGT, Var } from "gt-react-native";
 import { useNavigation } from "@react-navigation/native";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { Platform, View } from "react-native";
@@ -30,10 +32,12 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { WebView, type WebViewMessageEvent } from "react-native-webview";
 
 import { AppText as Text } from "../../components/ui/AppText";
+import { m } from "../../i18n/messages";
 import { shareGeneratedAttachment } from "../../lib/attachmentDownload";
 import { mobileHtmlRenderTheme } from "../../lib/htmlRenderTheme";
 import { tryOpenExternalUrl } from "../../lib/openExternalUrl";
 import { uuidv4 } from "../../lib/uuid";
+import { webViewDecelerationRate } from "../../lib/webViewDecelerationRate";
 import { useAssetUrlState } from "../../state/assets";
 import { appAtomRegistry } from "../../state/atom-registry";
 import { useThreadShell } from "../../state/entities";
@@ -44,8 +48,10 @@ import { enqueueThreadOutboxMessage } from "../../state/thread-outbox";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { useAppearancePreferences } from "../settings/appearance/AppearancePreferencesProvider";
 import { MCP_APP_INLINE_MAX_HEIGHT, mcpAppInlineHeight } from "./mcpAppSizing";
+import { mcpAppSourceInput, mcpAppT3Context, type McpAppViewSource } from "./mcpAppSource";
 
 const ROW_BOTTOM_MARGIN = 8;
+const isMcpAppRequestError = Schema.is(McpAppRequestError);
 
 // Android exposes `ReactNativeWebView` to every frame, so a frame nested in the
 // app could post to React Native directly. The outer page therefore wraps what
@@ -65,13 +71,18 @@ window.__t3McpAppReceive=function(m){live&&frame.contentWindow&&frame.contentWin
 frame.src=${JSON.stringify(src).replace(/</g, "\\u003c")};})();</script></body></html>`;
 }
 
-const commandFailure = (result: {
-  readonly cause: Parameters<typeof squashAtomCommandFailure>[0]["cause"];
-}) => {
+const commandFailure = (
+  result: {
+    readonly cause: Parameters<typeof squashAtomCommandFailure>[0]["cause"];
+  },
+  onNeedsAuth?: () => void,
+) => {
   const error = squashAtomCommandFailure(result);
-  return new McpAppHostRefusal(
-    error instanceof Error && error.message.trim() !== "" ? error.message : "Request failed.",
-  );
+  if (isMcpAppRequestError(error) && error.reason === "needs-auth") onNeedsAuth?.();
+  return new McpAppHostRefusal({
+    message:
+      error instanceof Error && error.message.trim() !== "" ? error.message : "Request failed.",
+  });
 };
 
 const confirm = (title: string, message: string, action: string) =>
@@ -80,7 +91,7 @@ const confirm = (title: string, message: string, action: string) =>
       title,
       message,
       [
-        { text: "Cancel", style: "cancel", onPress: () => resolve(false) },
+        { text: m(msg("Cancel")), style: "cancel", onPress: () => resolve(false) },
         { text: action, onPress: () => resolve(true) },
       ],
       // Android dismisses earlier alerts when showing another; decline dismissed requests to release their slots.
@@ -115,6 +126,36 @@ export function ThreadMcpApp(props: {
   readonly onExitFullscreen?: () => void;
   readonly height?: number;
 }) {
+  const { threadId, conversationThreadId, itemId, revision, ...rest } = props;
+  return (
+    <McpAppView
+      {...rest}
+      source={{ kind: "thread-item", threadId, conversationThreadId, itemId, revision }}
+    />
+  );
+}
+
+/**
+ * A plugin panel fills its screen at `height`, refuses to message or add
+ * context to a conversation, and calls `onClose` when the app asks to close.
+ */
+export function McpAppView(props: {
+  readonly environmentId: EnvironmentId;
+  readonly source: McpAppViewSource;
+  readonly app: McpAppReference;
+  readonly width: number;
+  readonly displayMode?: "inline" | "fullscreen";
+  readonly onExitFullscreen?: () => void;
+  readonly onClose?: () => void;
+  /** Replace an open plugin panel with sign-in when its server loses authorization. */
+  readonly onNeedsAuth?: () => void;
+  readonly height?: number;
+  /** A plugin panel's directory and git state, refreshed as the active thread changes. */
+  readonly panelContext?: McpAppPanelContext;
+}) {
+  const { source } = props;
+  const panel = source.kind === "plugin-panel";
+  const gt = useGT();
   const [height, setHeight] = useState(MCP_APP_INLINE_MAX_HEIGHT);
   const [documentKey, setDocumentKeyState] = useState(0);
   // The view keeps its first URL: a re-minted one would reload the app.
@@ -134,6 +175,7 @@ export function ThreadMcpApp(props: {
     setDocumentKeyState((value) => value + 1);
   }
   const fullscreen = props.displayMode === "fullscreen";
+  const fills = fullscreen || panel;
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
   const [closed, setClosed] = useState(false);
@@ -189,15 +231,23 @@ export function ThreadMcpApp(props: {
     return navigation.addListener("focus", () => returnedFromFullscreen());
   }, [navigation, presentedFullscreen]);
 
-  const detailAtom = orchestrationEnvironment.turnItem({
-    environmentId: props.environmentId,
-    input: { threadId: props.threadId, itemId: props.itemId, revision: props.revision },
-  });
+  const detailAtom =
+    source.kind === "thread-item"
+      ? orchestrationEnvironment.turnItem({
+          environmentId: props.environmentId,
+          input: { threadId: source.threadId, itemId: source.itemId, revision: source.revision },
+        })
+      : null;
+  const panelToolCall = source.kind === "plugin-panel" ? source.toolCall : undefined;
+  // A panel without an opening tool has no tool definition to show.
+  const toolName = source.kind === "plugin-panel" ? source.toolCall?.name : app.tool;
   const toolInfo = useEnvironmentQuery(
-    mcpAppEnvironment.toolInfoQuery({
-      environmentId: props.environmentId,
-      input: { threadId: props.threadId, itemId: props.itemId, name: app.tool },
-    }),
+    toolName === undefined
+      ? null
+      : mcpAppEnvironment.toolInfoQuery({
+          environmentId: props.environmentId,
+          input: { ...mcpAppSourceInput(source), name: toolName },
+        }),
   );
   const toolDefinition = toolInfo.data?.tool;
 
@@ -209,7 +259,9 @@ export function ThreadMcpApp(props: {
   });
   // Read current context per message without rebuilding the host and losing its session.
   const conversation = useThreadShell(
-    scopeThreadRef(props.environmentId, props.conversationThreadId),
+    source.kind === "thread-item"
+      ? scopeThreadRef(props.environmentId, source.conversationThreadId)
+      : null,
   );
   const awaitingUser =
     conversation?.hasPendingApprovals === true || conversation?.hasPendingUserInput === true;
@@ -241,7 +293,9 @@ export function ThreadMcpApp(props: {
       previous.toolDefinition !== live.toolDefinition ||
       previous.props.width !== live.props.width ||
       previous.props.height !== live.props.height ||
-      previous.props.displayMode !== live.props.displayMode
+      previous.props.displayMode !== live.props.displayMode ||
+      previous.props.source.threadId !== live.props.source.threadId ||
+      previous.props.panelContext !== live.props.panelContext
     ) {
       host?.updateHostContext();
     }
@@ -252,6 +306,11 @@ export function ThreadMcpApp(props: {
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- subscribes the MCP host to the current tool call
   useEffect(() => {
     if (host === null) return;
+    if (panelToolCall !== undefined) {
+      host.setToolCall(panelToolCall);
+      return;
+    }
+    if (detailAtom === null) return;
     return appAtomRegistry.subscribe(
       detailAtom,
       (result) => {
@@ -260,8 +319,10 @@ export function ThreadMcpApp(props: {
       },
       { immediate: true },
     );
-  }, [host, detailAtom]);
+  }, [host, detailAtom, panelToolCall]);
   const userActive = useRef(false);
+  // Teardown completions check this so a replaced document's late callback is ignored.
+  const currentHost = useRef<McpAppHost | null>(null);
 
   // Each WebView document gets its own host: the view is keyed by document,
   // restart generation and URL, and a changed app re-attaches this callback.
@@ -278,34 +339,40 @@ export function ThreadMcpApp(props: {
       setDocumentKeyState((value) => value + 1);
     };
     const scope = () => {
-      const { environmentId, threadId, itemId } = latest.current.props;
-      return { environmentId, input: { threadId, itemId } };
+      const { environmentId, source: current } = latest.current.props;
+      return { environmentId, input: mcpAppSourceInput(current) };
     };
     const hostContext = (): McpAppHostContext => {
       const current = latest.current;
+      const isPanel = current.props.source.kind === "plugin-panel";
       const isFullscreen = current.props.displayMode === "fullscreen";
+      const t3 = mcpAppT3Context(current.props.source, current.props.panelContext);
       return {
         theme: current.theme.appearance,
         styles: { variables: mcpAppStyleVariables(current.theme.variables) },
         displayMode: isFullscreen ? "fullscreen" : "inline",
-        availableDisplayModes: ["inline", "fullscreen"],
-        containerDimensions: isFullscreen
-          ? {
-              width: current.props.width,
-              height: current.props.height ?? MCP_APP_INLINE_MAX_HEIGHT,
-            }
-          : { width: current.props.width, maxHeight: MCP_APP_INLINE_MAX_HEIGHT },
+        // A panel already fills its screen; it has no other mode to switch to.
+        availableDisplayModes: isPanel ? ["inline"] : ["inline", "fullscreen"],
+        containerDimensions:
+          isFullscreen || isPanel
+            ? {
+                width: current.props.width,
+                height: current.props.height ?? MCP_APP_INLINE_MAX_HEIGHT,
+              }
+            : { width: current.props.width, maxHeight: MCP_APP_INLINE_MAX_HEIGHT },
         platform: "mobile",
         locale: Intl.DateTimeFormat().resolvedOptions().locale,
         timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
         userAgent: `t3-code/${Constants.expoConfig?.version ?? "0.0.0"}`,
         deviceCapabilities: { touch: true, hover: false },
-        safeAreaInsets: isFullscreen
-          ? { top: 0, right: current.insets.right, bottom: 0, left: current.insets.left }
-          : { top: 0, right: 0, bottom: 0, left: 0 },
+        safeAreaInsets:
+          isFullscreen || isPanel
+            ? { top: 0, right: current.insets.right, bottom: 0, left: current.insets.left }
+            : { top: 0, right: 0, bottom: 0, left: 0 },
         ...(current.toolDefinition === undefined
           ? {}
           : { toolInfo: { tool: current.toolDefinition } }),
+        ...(t3 === undefined ? {} : { t3 }),
       };
     };
     const documentHost: McpAppHost = makeMcpAppHost({
@@ -319,23 +386,31 @@ export function ThreadMcpApp(props: {
       callTool: async ({ name, arguments: args }) => {
         const { environmentId, input } = scope();
         const info = await latest.current.toolInfo({ environmentId, input: { ...input, name } });
-        if (info._tag !== "Success") throw commandFailure(info);
-        if (!info.value.callable) throw new McpAppHostRefusal("This app cannot call that tool.");
+        if (info._tag !== "Success") throw commandFailure(info, latest.current.props.onNeedsAuth);
+        if (!info.value.callable)
+          throw new McpAppHostRefusal({ message: "This app cannot call that tool." });
         if (
           !info.value.readOnly &&
+          latest.current.props.source.kind === "thread-item" &&
           !(await confirm(
-            `Allow ${app.server} to run ${info.value.title ?? name}?`,
+            m(
+              msg("Allow {server} to run {tool}?", {
+                server: app.server,
+                tool: info.value.title ?? name,
+              }),
+            ),
             JSON.stringify(args, null, 2),
-            "Allow",
+            m(msg("Allow", { $context: "verb, confirm button" })),
           ))
         ) {
-          throw new McpAppHostRefusal("Declined by the user.");
+          throw new McpAppHostRefusal({ message: "Declined by the user." });
         }
         const result = await latest.current.callTool({
           environmentId,
           input: { ...input, name, arguments: args },
         });
-        if (result._tag !== "Success") throw commandFailure(result);
+        if (result._tag !== "Success")
+          throw commandFailure(result, latest.current.props.onNeedsAuth);
         return result.value;
       },
       readResource: async ({ uri: resourceUri }) => {
@@ -344,25 +419,44 @@ export function ThreadMcpApp(props: {
           environmentId,
           input: { ...input, uri: resourceUri },
         });
-        if (result._tag !== "Success") throw commandFailure(result);
+        if (result._tag !== "Success")
+          throw commandFailure(result, latest.current.props.onNeedsAuth);
         return result.value;
       },
       openLink: async (url) => {
         // WebViews cannot prove user activation; confirm links to prevent timer-driven navigation out of T3.
-        if (!(await confirm(`Open a link from ${app.server}?`, url, "Open"))) {
-          throw new McpAppHostRefusal("Declined by the user.");
+        if (
+          !(await confirm(
+            m(msg("Open a link from {server}?", { server: app.server })),
+            url,
+            m(msg("Open", { $context: "verb, opens a link" })),
+          ))
+        ) {
+          throw new McpAppHostRefusal({ message: "Declined by the user." });
         }
         if (!(await tryOpenExternalUrl(url, "mcp-app"))) {
-          throw new McpAppHostRefusal("The link could not be opened.");
+          throw new McpAppHostRefusal({ message: "The link could not be opened." });
         }
       },
       sendMessage: async (text) => {
-        if (!(await confirm(`Send this message from ${app.server}?`, text, "Send"))) {
-          throw new McpAppHostRefusal("Declined by the user.");
+        const current = latest.current.props.source;
+        if (current.kind !== "thread-item") {
+          throw new McpAppHostRefusal({
+            message: "Plugin panels can't send messages to a conversation.",
+          });
+        }
+        if (
+          !(await confirm(
+            m(msg("Send this message from {server}?", { server: app.server })),
+            text,
+            m(msg("Send", { $context: "verb, sends the message" })),
+          ))
+        ) {
+          throw new McpAppHostRefusal({ message: "Declined by the user." });
         }
         await enqueueThreadOutboxMessage({
           environmentId: latest.current.props.environmentId,
-          threadId: latest.current.props.conversationThreadId,
+          threadId: current.conversationThreadId,
           messageId: MessageId.make(uuidv4()),
           commandId: CommandId.make(uuidv4()),
           text,
@@ -372,19 +466,23 @@ export function ThreadMcpApp(props: {
         });
       },
       updateModelContext: async (context) => {
-        const { environmentId, input } = scope();
+        const current = latest.current.props.source;
+        if (current.kind !== "thread-item") {
+          throw new McpAppHostRefusal({
+            message: "Plugin panels can't add context to a conversation.",
+          });
+        }
+        const { threadId, itemId, conversationThreadId } = current;
         const result = await latest.current.updateModelContext({
-          environmentId,
-          input: {
-            ...input,
-            ...context,
-            conversationThreadId: latest.current.props.conversationThreadId,
-          },
+          environmentId: latest.current.props.environmentId,
+          input: { threadId, itemId, ...context, conversationThreadId },
         });
         if (result._tag !== "Success") throw commandFailure(result);
       },
       requestDisplayMode: async (mode) => {
         const current = latest.current.props;
+        const currentSource = current.source;
+        if (currentSource.kind !== "thread-item") return "inline";
         // receive dispatches synchronously; read activation before awaiting teardown.
         if (
           mode === "fullscreen" &&
@@ -396,6 +494,8 @@ export function ThreadMcpApp(props: {
         }
         if (mode === "fullscreen" && current.displayMode !== "fullscreen") {
           await documentHost.teardown();
+          // A crash restart or reload during the wait already replaced this document.
+          if (currentHost.current !== documentHost) return "inline";
           // Approval arrival or navigation during the wait requires reloading inline.
           const navigation = latest.current.navigation;
           if (latest.current.awaitingUser || !navigation.isFocused()) {
@@ -405,24 +505,30 @@ export function ThreadMcpApp(props: {
           setPresentedFullscreen(true);
           navigation.navigate("ThreadMcpApp", {
             environmentId: String(current.environmentId),
-            threadId: String(current.threadId),
-            conversationThreadId: String(current.conversationThreadId),
-            itemId: String(current.itemId),
-            revision: current.revision,
+            threadId: String(currentSource.threadId),
+            conversationThreadId: String(currentSource.conversationThreadId),
+            itemId: String(currentSource.itemId),
+            revision: currentSource.revision,
           });
           return "fullscreen";
         }
         if (mode === "inline" && current.displayMode === "fullscreen") {
           await documentHost.teardown();
-          current.onExitFullscreen?.();
+          if (currentHost.current === documentHost) current.onExitFullscreen?.();
           return "inline";
         }
         return current.displayMode ?? "inline";
       },
       downloadFile: async (files) => {
         const names = files.map((file) => file.name).join(", ");
-        if (!(await confirm(`Save a file from ${app.server}?`, names, "Save"))) {
-          throw new McpAppHostRefusal("Declined by the user.");
+        if (
+          !(await confirm(
+            m(msg("Save a file from {server}?", { server: app.server })),
+            names,
+            m(msg("Save", { $context: "verb, confirm button" })),
+          ))
+        ) {
+          throw new McpAppHostRefusal({ message: "Declined by the user." });
         }
         for (const file of files) {
           let bytes: Uint8Array | undefined;
@@ -435,47 +541,58 @@ export function ThreadMcpApp(props: {
               environmentId,
               input: { ...input, uri: file.uri },
             });
-            if (read._tag !== "Success") throw commandFailure(read);
+            if (read._tag !== "Success")
+              throw commandFailure(read, latest.current.props.onNeedsAuth);
             const content = read.value.contents[0];
             bytes = mcpResourceBytes(content);
             const declared = (content as { readonly mimeType?: unknown } | undefined)?.mimeType;
             if (typeof declared === "string") mimeType = declared;
           }
-          if (bytes === undefined) throw new McpAppHostRefusal(`${file.name} has no contents.`);
+          if (bytes === undefined)
+            throw new McpAppHostRefusal({ message: `${file.name} has no contents.` });
           if (bytes.byteLength > MAX_DOWNLOAD_BYTES) {
-            throw new McpAppHostRefusal(`${file.name} is too large to save.`);
+            throw new McpAppHostRefusal({ message: `${file.name} is too large to save.` });
           }
           const shared = await shareGeneratedAttachment({
             bytes,
             attachment: { name: file.name, mimeType },
             signal: new AbortController().signal,
           });
-          if (!shared) throw new McpAppHostRefusal("Sharing is not available on this device.");
+          if (!shared)
+            throw new McpAppHostRefusal({ message: "Sharing is not available on this device." });
         }
       },
       onRequestTeardown: () => {
         const current = latest.current.props;
-        if (current.displayMode === "fullscreen") {
-          void documentHost.teardown().then(() => current.onExitFullscreen?.());
-        } else {
-          void documentHost.teardown().then(() => setClosed(true));
-        }
+        void documentHost.teardown().then(() => {
+          if (currentHost.current !== documentHost) return;
+          if (current.source.kind === "plugin-panel") current.onClose?.();
+          else if (current.displayMode === "fullscreen") current.onExitFullscreen?.();
+          else setClosed(true);
+        });
       },
       onSizeChanged: (size) => {
-        if (latest.current.props.displayMode === "fullscreen") return;
+        if (
+          latest.current.props.displayMode === "fullscreen" ||
+          latest.current.props.source.kind === "plugin-panel"
+        ) {
+          return;
+        }
         const nextHeight = mcpAppInlineHeight(size.height);
         if (nextHeight !== undefined) setHeight(nextHeight);
       },
     });
     setHost(documentHost);
+    currentHost.current = documentHost;
     return () => {
+      if (currentHost.current === documentHost) currentHost.current = null;
       // An unmount cannot wait: the request goes out before the view does.
       void documentHost.teardown();
       setHost((current) => (current === documentHost ? null : current));
     };
   };
 
-  const source =
+  const webViewSource =
     uri === null
       ? null
       : { html: outerDocument(uri, mcpAppAllowAttribute(app.permissions), secret) };
@@ -487,7 +604,9 @@ export function ThreadMcpApp(props: {
         className="items-center justify-center rounded-lg border border-border"
       >
         <Text className="text-sm text-foreground-muted">
-          The {app.server} app is open full screen
+          <T>
+            The <Var>{app.server}</Var> app is open full screen
+          </T>
         </Text>
       </View>
     );
@@ -499,10 +618,14 @@ export function ThreadMcpApp(props: {
         style={{ height, marginBottom: ROW_BOTTOM_MARGIN }}
         className="items-center justify-center gap-2 rounded-lg border border-border"
       >
-        <Text className="text-sm text-foreground-muted">The {app.server} app was closed</Text>
+        <Text className="text-sm text-foreground-muted">
+          <T>
+            The <Var>{app.server}</Var> app was closed
+          </T>
+        </Text>
         <View className="items-center">
           <Button
-            label="Show app"
+            label={gt("Show app")}
             tone="secondary"
             onPress={() => {
               reopenDocument();
@@ -515,11 +638,13 @@ export function ThreadMcpApp(props: {
   }
 
   return (
-    <View style={fullscreen ? { flex: 1 } : { height, marginBottom: ROW_BOTTOM_MARGIN }}>
+    <View style={fills ? { flex: 1 } : { height, marginBottom: ROW_BOTTOM_MARGIN }}>
       {navigatedAway ? (
         <View className="flex-1 items-center justify-center">
           <Text className="text-sm text-foreground-muted">
-            The {app.server} app left its page and was stopped
+            <T>
+              The <Var>{app.server}</Var> app left its page and was stopped
+            </T>
           </Text>
         </View>
       ) : uri !== null && !crashed ? (
@@ -528,10 +653,11 @@ export function ThreadMcpApp(props: {
           ref={attachWebView}
           onContentProcessDidTerminate={restart}
           onRenderProcessGone={restart}
-          source={source!}
-          accessibilityLabel={`${app.server} app`}
+          source={webViewSource!}
+          accessibilityLabel={gt("{server} app", { server: app.server })}
           style={{ flex: 1, backgroundColor: "transparent" }}
           nestedScrollEnabled
+          decelerationRate={webViewDecelerationRate}
           originWhitelist={["*"]}
           // Android misreports nested frames as top-level; rely on iframe sandboxing there and gate navigation elsewhere.
           onShouldStartLoadWithRequest={(request) =>
@@ -564,7 +690,11 @@ export function ThreadMcpApp(props: {
         />
       ) : asset._tag === "Failure" || crashed ? (
         <View className="flex-1 items-center justify-center">
-          <Text className="text-sm text-foreground-muted">Unable to load the {app.server} app</Text>
+          <Text className="text-sm text-foreground-muted">
+            <T>
+              Unable to load the <Var>{app.server}</Var> app
+            </T>
+          </Text>
         </View>
       ) : null}
       {uri !== null && !loaded && !crashed && !navigatedAway ? (

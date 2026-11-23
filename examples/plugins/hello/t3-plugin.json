@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 2,
+  "id": "com.t3code.hello",
+  "displayName": "Hello",
+  "version": "0.1.0",
+  "description": "An example plugin: one tool and one panel.",
+  "mcpServer": {
+    "name": "hello",
+    "transport": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["${pluginRoot}/server.mjs"],
+      "env": [{ "name": "HELLO_NAME", "value": "T3 Code", "title": "Who to greet" }]
+    }
+  },
+  "contributes": {
+    "panels": [
+      {
+        "id": "status",
+        "title": "Hello",
+        "scope": "project",
+        "resourceUri": "ui://hello/status",
+        "tool": { "name": "hello_status" }
+      },
+      {
+        "id": "thread",
+        "title": "Hello (thread)",
+        "scope": "thread",
+        "resourceUri": "ui://hello/status"
+      }
+    ],
+    "commands": [{ "id": "open-status", "title": "Hello: Open status", "panel": "status" }]
+  },
+  "t3Tools": []
+}

@@ -1,3 +1,4 @@
+import { msg, useMessages } from "gt-react";
 /* eslint-disable react/iframe-missing-sandbox -- The bundled CAD runtime needs same-origin module and worker access. */
 import { WorkspaceModeSwitcher } from "../chat/WorkspaceModeSwitcher";
 import type { ScopedThreadRef } from "@t3tools/contracts";
@@ -21,6 +22,8 @@ export interface KiCadProjectPanelProps {
 }
 
 export function KiCadProjectPanel({ mode, threadRef, projectPath }: KiCadProjectPanelProps) {
+  const m = useMessages();
+
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const connection = usePreparedConnection(threadRef.environmentId);
   const sessionQuery = useEnvironmentQuery(
@@ -109,7 +112,7 @@ export function KiCadProjectPanel({ mode, threadRef, projectPath }: KiCadProject
         <div className="flex min-h-[var(--workspace-topbar-height)] shrink-0 items-center gap-2 border-b border-border px-3 text-xs">
           <WorkspaceModeSwitcher threadRef={threadRef} />
           <span className="min-w-0 flex-1 truncate text-muted-foreground">
-            {projectPath?.split(/[\\/]/).findLast(Boolean) ?? "Current project"}
+            {projectPath?.split(/[\\/]/).findLast(Boolean) ?? m(msg("Current project"))}
           </span>
           <span className="rounded border border-border px-1 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">
             read-only
@@ -119,7 +122,7 @@ export function KiCadProjectPanel({ mode, threadRef, projectPath }: KiCadProject
             disabled={!viewerUrl}
             className="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-40"
             onClick={openInBrowser}
-            aria-label="Open KiCad viewer in browser"
+            aria-label={m(msg("Open KiCad viewer in browser"))}
           >
             <ExternalLink className="size-3.5" />
           </button>
@@ -130,7 +133,7 @@ export function KiCadProjectPanel({ mode, threadRef, projectPath }: KiCadProject
               sandbox="allow-scripts allow-same-origin allow-downloads allow-popups allow-forms"
               ref={iframeRef}
               onLoad={sendTheme}
-              title="KiCad project viewer"
+              title={m(msg("KiCad project viewer"))}
               src={viewerUrl}
               className="block h-full w-full border-0"
             />
@@ -144,11 +147,11 @@ export function KiCadProjectPanel({ mode, threadRef, projectPath }: KiCadProject
                     className="rounded-md bg-accent px-2 py-1 text-foreground hover:bg-accent/80"
                     onClick={refreshSession}
                   >
-                    Retry
+                    {m(msg("Retry"))}
                   </button>
                 </>
               ) : (
-                <>Opening viewer…</>
+                <>{m(msg("Opening viewer…"))}</>
               )}
             </div>
           )}

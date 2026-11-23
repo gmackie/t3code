@@ -33,7 +33,9 @@ export function resolveEnvironmentIdentificationPillLabel(
   }
 
   const normalized = stageLabel.trim().toLowerCase();
+  // oxlint-disable-next-line t3code/no-untranslated-copy -- release channel names
   if (normalized === "dev") return "Dev";
+  // oxlint-disable-next-line t3code/no-untranslated-copy -- release channel names
   if (normalized === "nightly") return "Nightly";
   if (normalized === "gmacko") return "GMACKO";
   return null;

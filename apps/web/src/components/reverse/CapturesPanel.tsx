@@ -1,3 +1,4 @@
+import { msg, useMessages } from "gt-react";
 import { useEffect, useRef, useState } from "react";
 import type {
   ReverseCapture,
@@ -27,7 +28,7 @@ const MAX_VISIBLE_CHANNELS = 24;
 const LABEL_WIDTH = 96;
 
 /** Formats nanoseconds at a precision that suits the value. */
-export function formatNs(ns: number): string {
+function formatNs(ns: number): string {
   const abs = Math.abs(ns);
   if (abs >= 1e9) return `${(ns / 1e9).toFixed(3)} s`;
   if (abs >= 1e6) return `${(ns / 1e6).toFixed(3)} ms`;
@@ -120,6 +121,8 @@ export function CapturesPanel({
   onChanged: () => void;
   onCite: (citation: CaptureCitation) => void;
 }) {
+  const m = useMessages();
+
   const importCapture = useAtomCommand(reverseEnvironment.importCapture, { reportFailure: false });
   const decodeCapture = useAtomCommand(reverseEnvironment.decodeCapture, { reportFailure: false });
   const removeCapture = useAtomCommand(reverseEnvironment.removeCapture, { reportFailure: false });
@@ -263,8 +266,8 @@ export function CapturesPanel({
   };
 
   return (
-    <section aria-label="Captures" className="space-y-2 border-t border-border p-3">
-      <h3 className="text-xs font-medium">Captures</h3>
+    <section aria-label={m(msg("Captures"))} className="space-y-2 border-t border-border p-3">
+      <h3 className="text-xs font-medium">{m(msg("Captures"))}</h3>
       <form
         className="flex gap-2"
         onSubmit={(event) => {
@@ -283,13 +286,13 @@ export function CapturesPanel({
         }}
       >
         <Input
-          aria-label="Capture path relative to the project"
-          placeholder="capture.vcd, session.sr, digital.csv…"
+          aria-label={m(msg("Capture path relative to the project"))}
+          placeholder={m(msg("capture.vcd, session.sr, digital.csv…"))}
           value={path}
           onChange={(event) => setPath(event.target.value)}
         />
         <Button type="submit" size="sm" variant="outline" disabled={busy || !path.trim()}>
-          Import capture
+          {m(msg("Import capture"))}
         </Button>
       </form>
       {captures.length > 0 && (
@@ -314,21 +317,30 @@ export function CapturesPanel({
       {selected && shown && (
         <div className="space-y-2 text-xs">
           <p className="text-muted-foreground">
-            {selected.format} · {selected.channels.length} channels ·{" "}
+            {m(
+              msg("{format} · {channels} channels · ", {
+                format: selected.format,
+                channels: selected.channels.length,
+              }),
+            )}
             {formatNs(selected.durationNs)}
-            {selected.sampleRateHz ? ` · ${selected.sampleRateHz / 1e6} MS/s` : ""}
-            {selected.truncated ? " · only the start was kept" : ""}
-            {selected.skipped.length ? ` · skipped ${selected.skipped.join(", ")}` : ""}
+            {selected.sampleRateHz
+              ? m(msg(" · {value0} MS/s", { value0: selected.sampleRateHz / 1e6 }))
+              : ""}
+            {selected.truncated ? m(msg(" · only the start was kept")) : ""}
+            {selected.skipped.length
+              ? m(msg(" · skipped {value0}", { value0: selected.skipped.join(", ") }))
+              : ""}
           </p>
           <div className="flex flex-wrap items-center gap-1">
             <Button size="xs" variant="outline" onClick={() => zoom(0.5, cursorNs ?? undefined)}>
-              Zoom in
+              {m(msg("Zoom in"))}
             </Button>
             <Button size="xs" variant="outline" onClick={() => zoom(2, cursorNs ?? undefined)}>
-              Zoom out
+              {m(msg("Zoom out"))}
             </Button>
             <Button size="xs" variant="outline" onClick={() => setRange(null)}>
-              Fit
+              {m(msg("Fit"))}
             </Button>
             <Button size="xs" variant="outline" onClick={() => pan(-0.5)}>
               ←
@@ -338,20 +350,27 @@ export function CapturesPanel({
             </Button>
             <span className="text-muted-foreground">
               {formatNs(shown.startNs)} – {formatNs(shown.endNs)}
-              {cursorNs !== null ? ` · cursor ${formatNs(cursorNs)}` : ""}
+              {cursorNs !== null
+                ? m(msg(" · cursor {value0}", { value0: formatNs(cursorNs) }))
+                : ""}
             </span>
           </div>
           {selected.channels.length > MAX_VISIBLE_CHANNELS && (
             <Input
-              aria-label="Filter channels"
-              placeholder={`Filter ${selected.channels.length} channels (showing ${visibleChannels.length})`}
+              aria-label={m(msg("Filter channels"))}
+              placeholder={m(
+                msg("Filter {value0} channels (showing {value1})", {
+                  value0: selected.channels.length,
+                  value1: visibleChannels.length,
+                }),
+              )}
               value={channelFilter}
               onChange={(event) => setChannelFilter(event.target.value)}
             />
           )}
           <canvas
             ref={setCanvasElement}
-            aria-label={`Waveform of ${selected.filename}`}
+            aria-label={m(msg("Waveform of {value0}", { value0: selected.filename }))}
             className="w-full cursor-crosshair border border-border"
             onClick={(event) => setCursorNs(timeAt(event.clientX))}
           />
@@ -365,7 +384,7 @@ export function CapturesPanel({
                 }
               }}
             >
-              <SelectTrigger size="xs" className="w-24" aria-label="Decoder">
+              <SelectTrigger size="xs" className="w-24" aria-label={m(msg("Decoder"))}>
                 <SelectValue>{protocol.toUpperCase()}</SelectValue>
               </SelectTrigger>
               <SelectPopup>
@@ -396,7 +415,7 @@ export function CapturesPanel({
             ))}
             {protocol === "uart" && (
               <Input
-                aria-label="Baud rate"
+                aria-label={m(msg("Baud rate"))}
                 className="w-24"
                 value={baud}
                 onChange={(event) => setBaud(event.target.value)}
@@ -426,7 +445,7 @@ export function CapturesPanel({
                 })
               }
             >
-              Decode window
+              {m(msg("Decode window"))}
             </Button>
             {canCite && (
               <Button
@@ -442,14 +461,16 @@ export function CapturesPanel({
                   })
                 }
               >
-                Cite window in a finding
+                {m(msg("Cite window in a finding"))}
               </Button>
             )}
           </div>
           {decoded && (
             <div className="max-h-48 overflow-auto border border-border font-mono">
               {decoded.events.length === 0 && (
-                <p className="p-2 text-muted-foreground">Nothing decoded in this window.</p>
+                <p className="p-2 text-muted-foreground">
+                  {m(msg("Nothing decoded in this window."))}
+                </p>
               )}
               {decoded.events.map((event) => (
                 <button
@@ -473,7 +494,7 @@ export function CapturesPanel({
               ))}
               {decoded.truncated && (
                 <p className="p-2 text-muted-foreground">
-                  More events follow; zoom in to see them.
+                  {m(msg("More events follow; zoom in to see them."))}
                 </p>
               )}
             </div>
@@ -501,12 +522,12 @@ export function CapturesPanel({
                 Delete
               </Button>
               <Button size="xs" variant="ghost" onClick={() => setConfirmDelete(false)}>
-                Keep
+                {m(msg("Keep"))}
               </Button>
             </div>
           ) : (
             <Button size="xs" variant="ghost-destructive" onClick={() => setConfirmDelete(true)}>
-              Delete capture
+              {m(msg("Delete capture"))}
             </Button>
           )}
         </div>

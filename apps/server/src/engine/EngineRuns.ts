@@ -22,7 +22,6 @@ import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
-import * as Result from "effect/Result";
 import * as Schema from "effect/Schema";
 // @effect-diagnostics-next-line nodeBuiltinImport:off -- run ids are synchronous sha256 digests of (tenant, idempotency key).
 import * as NodeCrypto from "node:crypto";
@@ -138,10 +137,7 @@ const make = Effect.gen(function* () {
       return yield* get(input.caller, input.runId);
     }
     const { view, version } = yield* load(input.caller, input.runId);
-    const events = yield* Result.match(decideRun(view, input.command), {
-      onSuccess: Effect.succeed,
-      onFailure: Effect.fail,
-    });
+    const events = yield* Effect.fromResult(decideRun(view, input.command));
     const occurredAt = DateTime.formatIso(yield* DateTime.now);
     yield* journal.commit({
       tenantId: input.caller.tenantId,

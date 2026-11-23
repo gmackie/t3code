@@ -53,8 +53,13 @@ Bob capability negotiation requires durable SubmitExecution and FindExecution.
 The terminal receipt worker records the original run's immutable root checkpoint,
 preserves a Git bundle in `bob-evidence/<SHA256(requestId)>.bundle`, and sends the
 same durable outbox payload until Bob acknowledges its event and sequence. The
-receipt's commit is a checkpoint commit, not a PR head; `treeDigest` is SHA256 of
-`git-tree:<Git tree object ID>`. Missing checkpoints remain unreconciled rather than
+`sourceSnapshot` commit is a checkpoint commit, not a PR head; `treeDigest` is SHA256 of
+`git-tree:<Git tree object ID>`. For a succeeded run, the worker first publishes the
+worktree once per request: it commits leftover changes on the admitted branch (never
+`.env*`, `*.pem`, or `*.key`), pushes it to `origin`, and opens or reuses a pull request
+through the same forge login the Git panel uses (`fj`/`tea` for Forgejo, `gh` for GitHub).
+The result is `publishedHead`, or `publishSkippedReason` when nothing was pushed. The
+environment host therefore needs push access to `origin` and a forge CLI login. Missing checkpoints remain unreconciled rather than
 using the current worktree as evidence. This first bridge supports Git checkpoint
 captures; interruption, missing checkpoints, and non-Git work need explicit recovery.
 Outbox delivery retries on relevant events, restart, and every 30 seconds.

@@ -39,3 +39,13 @@ export function renderErrorPage(description: string): string {
     <p>Close this page and start the sign-in again from your agent.</p>`,
   );
 }
+
+/** The page a provider's sign-in returns to when T3 signs in to an outside MCP server. */
+export function renderMcpClientCallbackPage(title: string, description: string): string {
+  return shell(
+    title,
+    `<h1>${escapeHtml(title)}</h1>
+    <p>${escapeHtml(description)}</p>
+    <p>You can close this page and return to T3 Code.</p>`,
+  );
+}

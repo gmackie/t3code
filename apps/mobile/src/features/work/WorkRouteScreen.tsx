@@ -1,3 +1,4 @@
+import { msg, useMessages } from "gt-react-native";
 import { bobOperationSchemas } from "@t3tools/contracts/bobContract";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { useNavigation, type StaticScreenProps } from "@react-navigation/native";
@@ -126,6 +127,8 @@ function WorkScreen({
   threadId: ThreadId;
   connection: ReturnType<typeof useBobConnection>;
 }) {
+  const m = useMessages();
+
   const navigation = useNavigation();
   const openLinkedThread = useOpenLinkedThread();
   const thread = useThreadShell(scopeThreadRef(environmentId, threadId));
@@ -214,34 +217,44 @@ function WorkScreen({
           : [];
   return (
     <View className="flex-1 bg-background">
-      <AppBar title="Work" onBack={() => navigation.goBack()} />
+      <AppBar title={m(msg("Work"))} onBack={() => navigation.goBack()} />
       <ScrollView contentContainerClassName="gap-4 p-4">
-        <AppText>Plans and execution coordinated by Bob</AppText>
+        <AppText>{m(msg("Plans and execution coordinated by Bob"))}</AppText>
         {(error || connection.error) && (
           <AppText accessibilityRole="alert">{error ?? connection.error}</AppText>
         )}
         {!connection.data?.configured && (
-          <AppText>Connect this environment to Bob to manage work.</AppText>
+          <AppText>{m(msg("Connect this environment to Bob to manage work."))}</AppText>
         )}
         <Button
-          label="Refresh"
+          label={m(msg("Refresh"))}
           disabled={busy || !connection.data?.configured}
           onPress={() => void refresh(plan?.planId)}
         />
         {pending && (
-          <Button label="Retry same request" disabled={busy} onPress={() => void mutate(pending)} />
+          <Button
+            label={m(msg("Retry same request"))}
+            disabled={busy}
+            onPress={() => void mutate(pending)}
+          />
         )}
         {plans.map((entry) => (
           <Button
             key={entry.planId}
-            label={`${entry.itemCount} issues · ${entry.state} · ${entry.planId.slice(0, 8)}`}
+            label={m(
+              msg("{value0} issues · {value1} · {value2}", {
+                value0: entry.itemCount,
+                value1: entry.state,
+                value2: entry.planId.slice(0, 8),
+              }),
+            )}
             disabled={busy}
             onPress={() => void refresh(entry.planId)}
           />
         ))}
         {next && (
           <Button
-            label="More plans"
+            label={m(msg("More plans"))}
             disabled={busy}
             onPress={() => void refresh(plan?.planId, next)}
           />
@@ -249,7 +262,9 @@ function WorkScreen({
         {plan && (
           <>
             <AppText>
-              {plan.state} · version {plan.resourceVersion}
+              {plan.state}
+              {m(msg(" · version "))}
+              {plan.resourceVersion}
             </AppText>
             {capabilities?.operations.includes("ControlPlan") &&
               actions.map((action) => (
@@ -291,10 +306,12 @@ function WorkScreen({
                   }{" "}
                   · {item.state}
                 </AppText>
-                <AppText>{item.achievedMilestones.join(" → ") || "No milestone confirmed"}</AppText>
+                <AppText>
+                  {item.achievedMilestones.join(" → ") || m(msg("No milestone confirmed"))}
+                </AppText>
                 {item.execution && (
                   <Button
-                    label="Open execution thread"
+                    label={m(msg("Open execution thread"))}
                     onPress={() =>
                       openLinkedThread({
                         environmentId: EnvironmentId.make(item.execution!.thread.environmentId),
@@ -307,7 +324,11 @@ function WorkScreen({
               </View>
             ))}
             <AppText>
-              Execution success keeps production work open until deployment and health are verified.
+              {m(
+                msg(
+                  "Execution success keeps production work open until deployment and health are verified.",
+                ),
+              )}
             </AppText>
           </>
         )}

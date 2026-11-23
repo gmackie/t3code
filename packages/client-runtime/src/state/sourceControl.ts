@@ -34,6 +34,14 @@ export function createSourceControlEnvironmentAtoms<R, E>(
       label: "environment-data:source-control:check-app-access",
       tag: WS_METHODS.sourceControlAppAccess,
     }),
+    checkStarred: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:source-control:check-starred",
+      tag: WS_METHODS.sourceControlStarred,
+    }),
+    star: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:source-control:star",
+      tag: WS_METHODS.sourceControlStar,
+    }),
     repository: createEnvironmentRpcQueryAtomFamily(runtime, {
       label: "environment-data:source-control:repository",
       tag: WS_METHODS.sourceControlLookupRepository,
@@ -129,14 +137,10 @@ function forgeGraphSignInCommands<R, E>(
       execute: Effect.fn("sourceControl.forgeGraphSignInState")(function* () {
         const registry = yield* AtomRegistry.AtomRegistry;
         const supervisor = yield* EnvironmentSupervisor;
-        const result = yield* Effect.promise(() =>
-          forgeGraphSignInStatus.run(registry, {
-            environmentId: supervisor.target.environmentId,
-            input: {},
-          }),
-        );
-        if (result._tag === "Failure") return yield* Effect.failCause(result.cause);
-        return result.value;
+        return yield* forgeGraphSignInStatus.run(registry, {
+          environmentId: supervisor.target.environmentId,
+          input: {},
+        });
       }),
     }),
     forgeGraphSignInCancel: createEnvironmentRpcCommand(runtime, {

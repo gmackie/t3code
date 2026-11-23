@@ -1,4 +1,9 @@
 import {
+  type DisabledSkills,
+  type DisabledSkillsProjectOverride,
+  type McpServerConfig,
+  type McpServerProjectOverrides,
+  type McpServers,
   type ModelSelection,
   PROJECT_FILE_BACKED_SETTINGS,
   PROJECT_SCOPED_SERVER_SETTING_KEYS,
@@ -7,12 +12,14 @@ import {
   type ProjectScopedServerSettingKey,
   type ProjectSettingsOverrides,
   resolveProjectProviderInstanceEnabled,
+  resolveTextGenerationSelectionEnabled,
   type ResolvedServerSettings,
   type ServerSettings,
   type T3ProjectFile,
   type ThreadEnvMode,
   type WorktreeCleanupRules,
 } from "@t3tools/contracts";
+import { readCustomModelEntries } from "./model.ts";
 import { normalizeProjectPathForComparison } from "./path.ts";
 import { fallbackTextGenerationModelSelection } from "./serverSettings.ts";
 
@@ -135,30 +142,60 @@ function resolveProjectOverrides(
     const value = overrides[key];
     // Forward-compatible decoding can leave a present undefined, which is not an override.
     if (value === undefined) continue;
+    // Sparse per-name overrides: the project adds to and switches the
+    // environment's entries instead of replacing the whole value, so a server
+    // or skill added to the environment later still reaches the project.
+    if (key === "mcpServers") {
+      effective[key] = mergeProjectMcpServers(settings.mcpServers, overrides.mcpServers);
+      sources[key] = "project";
+      continue;
+    }
+    if (key === "disabledSkills") {
+      effective[key] = mergeProjectDisabledSkills(
+        settings.disabledSkills,
+        overrides.disabledSkills,
+      );
+      sources[key] = "project";
+      continue;
+    }
+    // A model on a disabled provider falls back to the environment, like the
+    // environment-level guards do for these keys.
     if (
       (key === "textGenerationModelSelection" || key === "defaultModelSelection") &&
       value !== undefined &&
       value !== null &&
-      !resolveProjectProviderInstanceEnabled(
-        settings,
-        projectId,
-        (value as ModelSelection).instanceId,
-      )
+      !(
+        key === "textGenerationModelSelection"
+          ? resolveTextGenerationSelectionEnabled
+          : resolveProjectProviderInstanceEnabled
+      )(settings, projectId, (value as ModelSelection).instanceId)
     ) {
       continue;
+    }
+    // Clients resolve a hidden model to the catalog's first visible one, so a
+    // hidden project default would silently pick a model nobody chose.
+    // Custom models stay visible even when listed as hidden, as in the clients.
+    if (key === "defaultModelSelection" && value !== null) {
+      const { instanceId, model } = value as ModelSelection;
+      const config = settings.providerInstances[instanceId]?.config as
+        | { customModels?: unknown }
+        | undefined;
+      if (
+        settings.providerModelPreferences?.[instanceId]?.hiddenModels.includes(model) &&
+        !readCustomModelEntries(config?.customModels).some((entry) => entry.slug === model)
+      ) {
+        continue;
+      }
     }
     effective[key] = value;
     sources[key] = "project";
   }
   const textGeneration = effective.textGenerationModelSelection as ModelSelection;
-  if (!resolveProjectProviderInstanceEnabled(settings, projectId, textGeneration.instanceId)) {
+  if (!resolveTextGenerationSelectionEnabled(settings, projectId, textGeneration.instanceId)) {
     const fallback = fallbackTextGenerationModelSelection(
       settings.providerInstances,
       (instanceId) => resolveProjectProviderInstanceEnabled(settings, projectId, instanceId),
-      {
-        includeConfiguredInstances: true,
-        defaultModelSelection: effective.defaultModelSelection as ModelSelection | null,
-      },
+      { defaultModelSelection: effective.defaultModelSelection as ModelSelection | null },
     );
     if (fallback !== null) effective.textGenerationModelSelection = fallback;
   }
@@ -193,11 +230,50 @@ export function resolveNewThreadEnvMode(input: {
   return isNewProjectFolder ? "local" : configured;
 }
 
+/** Worktree mode needs a repository: the project folder, or a folder the project tracks. */
 export function resolveSendEnvMode(input: {
   readonly requestedEnvMode: ThreadEnvMode;
   readonly isGitRepo: boolean;
+  readonly tracksGitRepositories?: boolean;
 }): ThreadEnvMode {
-  return input.isGitRepo ? input.requestedEnvMode : "local";
+  return input.isGitRepo || input.tracksGitRepositories === true ? input.requestedEnvMode : "local";
+}
+
+/**
+ * The environment's servers with a project's entries applied by name: an
+ * entry with a transport adds or replaces a server, one without only switches
+ * the inherited server. A switch for a server the environment no longer has
+ * is dropped.
+ */
+function mergeProjectMcpServers(
+  environment: McpServers,
+  project: McpServerProjectOverrides | undefined,
+): McpServers {
+  if (project === undefined) return environment;
+  const merged: Record<string, McpServerConfig> = { ...environment };
+  for (const [name, entry] of Object.entries(project)) {
+    if (entry.transport !== undefined) {
+      merged[name] = { enabled: entry.enabled, transport: entry.transport };
+      continue;
+    }
+    const inherited = Object.hasOwn(environment, name) ? environment[name] : undefined;
+    if (inherited !== undefined) merged[name] = { ...inherited, enabled: entry.enabled };
+  }
+  return merged as McpServers;
+}
+
+/** The environment's disabled skills with a project's per-name switches applied. */
+function mergeProjectDisabledSkills(
+  environment: DisabledSkills,
+  project: DisabledSkillsProjectOverride | undefined,
+): DisabledSkills {
+  if (project === undefined) return environment;
+  const disabled = new Map(environment.map((name) => [name.toLowerCase(), name]));
+  for (const [name, off] of Object.entries(project)) {
+    if (off) disabled.set(name.toLowerCase(), name);
+    else disabled.delete(name.toLowerCase());
+  }
+  return [...disabled.values()].sort();
 }
 
 export function clearProjectSettingsOverrides(
@@ -208,7 +284,10 @@ export function clearProjectSettingsOverrides(
   const current = settings.projectSettingsOverrides[projectId];
   if (current === undefined) return null;
   const next = { ...current };
-  for (const key of keys) delete next[key];
+  for (const key of keys) {
+    if (key === "mcpServers" || key === "disabledSkills") next[key] = {};
+    else delete next[key];
+  }
   return Object.keys(next).length === 0 ? null : next;
 }
 

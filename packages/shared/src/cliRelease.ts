@@ -8,7 +8,8 @@ export const CLI_RELEASES_PAGE_URL = `https://github.com/${CLI_RELEASE_REPOSITOR
 export const CLI_RELEASE_CHECKSUMS_FILE = "SHA256SUMS";
 export const CLI_RELEASE_BASE_URL_ENV = "T3CODE_RELEASE_BASE_URL";
 
-// Keep archive keys aligned with the Linux matrix, Windows ARM64 build, and cli_archive rows in release.yml.
+// Keep archive keys aligned with the Linux matrix, Windows ARM64 build, and cli_archive rows in release.yml,
+// and with the SSH runner's host check in packages/ssh/src/tunnel.ts.
 // Node single-executables do not support darwin-x64 and segfault at startup.
 const CLI_ARCHIVE_PLATFORM_KEYS = [
   "darwin-arm64",
@@ -59,6 +60,22 @@ export function cliReleaseDownloadBaseUrl(version: string, baseUrl?: string): st
   return `${(baseUrl?.trim() || cliReleaseDefaultBaseUrl(version)).replace(/\/+$/, "")}/v${version}`;
 }
 
+/** `segments` added to `baseUrl`'s path, keeping its query, such as a signed mirror URL's token. */
+export function releaseAssetUrl(baseUrl: string, ...segments: ReadonlyArray<string>): string {
+  const url = new URL(baseUrl);
+  url.pathname = [url.pathname.replace(/\/+$/, ""), ...segments.map(encodeURIComponent)].join("/");
+  return url.toString();
+}
+
+/** A file of release `version`, from `baseUrl` laid out as GitHub's release downloads. */
+export function cliReleaseAssetUrl(version: string, fileName: string, baseUrl?: string): string {
+  return releaseAssetUrl(
+    baseUrl?.trim() || cliReleaseDefaultBaseUrl(version),
+    `v${version}`,
+    fileName,
+  );
+}
+
 export function parseChecksums(text: string): ReadonlyMap<string, string> {
   const checksums = new Map<string, string>();
   for (const line of text.split(/\r?\n/)) {
@@ -94,6 +111,21 @@ export function crossesReleaseTrack(fromVersion: string, toVersion: string): boo
 export function desktopUpdateChannelOf(version: string): "latest" | "nightly" | "gmacko" {
   if (GMACKO_VERSION_PATTERN.test(version)) return "gmacko";
   return cliReleaseChannelOf(version) === "nightly" ? "nightly" : "latest";
+}
+
+/**
+ * The update feed file a desktop app on this platform reads, which an update mirror publishes at
+ * its root beside the release's CLI archives.
+ */
+export function updateFeedFileName(
+  channel: "latest" | "nightly",
+  platform: NodeJS.Platform,
+  arch: string,
+): string {
+  if (platform === "darwin") return `${channel}-mac.yml`;
+  if (platform === "linux")
+    return arch === "arm64" ? `${channel}-linux-arm64.yml` : `${channel}-linux.yml`;
+  return `${channel}.yml`;
 }
 
 /** Whether a track switch may install `found` after its database check cleared `checked`: any build

@@ -1,3 +1,4 @@
+import { msg, useMessages } from "gt-react";
 import { useMemo, useState } from "react";
 import { Maximize, Minus, Plus } from "lucide-react";
 import { useEnvironmentQuery } from "../state/query";
@@ -47,6 +48,8 @@ function LibraryContent({
   path: string;
   read: LibraryRead;
 }) {
+  const m = useMessages();
+
   const result = useEnvironmentQuery(
     useMemo(() => cadQuery(async (signal) => payload(await read(path, signal))), [path, read]),
   );
@@ -77,7 +80,7 @@ function LibraryContent({
         <button
           type="button"
           className="kicad-icon-button"
-          aria-label="Zoom out"
+          aria-label={m(msg("Zoom out"))}
           onClick={() => setZoom((z) => z / 1.4)}
         >
           <Minus size={14} />
@@ -85,7 +88,7 @@ function LibraryContent({
         <button
           type="button"
           className="kicad-icon-button"
-          aria-label={`Fit ${kind}`}
+          aria-label={m(msg("Fit {value0}", { value0: kind }))}
           onClick={() => setZoom(1)}
         >
           <Maximize size={14} />
@@ -93,7 +96,7 @@ function LibraryContent({
         <button
           type="button"
           className="kicad-icon-button"
-          aria-label="Zoom in"
+          aria-label={m(msg("Zoom in"))}
           onClick={() => setZoom((z) => z * 1.4)}
         >
           <Plus size={14} />
@@ -114,8 +117,8 @@ function LibraryContent({
           >
             {error ||
               (members.length === 0 && path
-                ? "No exported preview available."
-                : "Loading library preview…")}
+                ? m(msg("No exported preview available."))
+                : m(msg("Loading library preview…")))}
           </div>
         )}
       </div>

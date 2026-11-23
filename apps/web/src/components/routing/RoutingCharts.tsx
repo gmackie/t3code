@@ -1,3 +1,4 @@
+import { msg, useMessages } from "gt-react";
 import { useState } from "react";
 
 import { formatCount, formatHourShort } from "@t3tools/shared/usageFormat";
@@ -22,6 +23,8 @@ export function StackedHourChart({
   readonly stacked: StackedSeries;
   readonly timeZone: string;
 }) {
+  const m = useMessages();
+
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
   const count = stacked.columns.length;
   const slot = count === 0 ? 0 : VIEW_WIDTH / count;
@@ -46,7 +49,7 @@ export function StackedHourChart({
         viewBox={`0 0 ${VIEW_WIDTH} ${VIEW_HEIGHT}`}
         preserveAspectRatio="none"
         role="img"
-        aria-label={`${title} per hour`}
+        aria-label={m(msg("{value0} per hour", { value0: title }))}
         onMouseLeave={() => setHoverIndex(null)}
       >
         <line
@@ -92,7 +95,9 @@ export function StackedHourChart({
               className="size-2 shrink-0 rounded-full"
               style={{ backgroundColor: colorForLabel(series, label, index) }}
             />
-            <span>{series === "decisions.tier" ? `Tier ${label}` : label}</span>
+            <span>
+              {series === "decisions.tier" ? m(msg("Tier {value0}", { value0: label })) : label}
+            </span>
             <span className="text-foreground tabular-nums">
               {formatCount(hovered ? (hovered.values[index] ?? 0) : sumLabel(stacked, index))}
             </span>

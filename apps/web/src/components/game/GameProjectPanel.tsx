@@ -1,3 +1,4 @@
+import { msg, useMessages } from "gt-react";
 import type { ScopedThreadRef } from "@t3tools/contracts";
 import { environmentEndpointUrl } from "@t3tools/client-runtime/environment";
 import * as Option from "effect/Option";
@@ -15,6 +16,8 @@ export function GameProjectPanel({
   threadRef: ScopedThreadRef;
   projectPath: string | null;
 }) {
+  const m = useMessages();
+
   const frame = useRef<HTMLIFrameElement>(null);
   const palette = useHtmlRenderTheme();
   const fontSize = useClientSettings((settings) => settings.fontSizeInterface);
@@ -51,7 +54,8 @@ export function GameProjectPanel({
   const ticket = ticketQuery.data;
   const error = projectPath ? ticketQuery.error : "Open a project to connect to Unity.";
   if (error) return <p role="alert">{error}</p>;
-  if (!ticket || Option.isNone(connection)) return <p role="status">Opening Unity viewer…</p>;
+  if (!ticket || Option.isNone(connection))
+    return <p role="status">{m(msg("Opening Unity viewer…"))}</p>;
   const url = new URL(environmentEndpointUrl(connection.value.httpBaseUrl, "/api/game/viewer"));
   url.hash = new URLSearchParams({
     ticket: ticket.token,
@@ -61,7 +65,7 @@ export function GameProjectPanel({
     <iframe
       ref={frame}
       onLoad={postTheme}
-      title="Unity game viewer"
+      title={m(msg("Unity game viewer"))}
       src={url.toString()}
       sandbox="allow-scripts allow-same-origin allow-pointer-lock"
       allow="gamepad"

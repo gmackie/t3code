@@ -1,3 +1,4 @@
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import {
   ProviderInstanceId,
@@ -53,6 +54,26 @@ const operationOf = (
   query: Record<string, unknown>,
   body: unknown,
 ) => {
+  if (method === "GET" && path === "/api/experimental/job" && query.kind === "image")
+    return { type: "imageJobs", input: query };
+  if (method === "GET" && path.startsWith("/api/fs/read/"))
+    return { type: "image.read", input: { path, ...query } };
+  const rpc = /^\/api\/rpc\/([^/]+)\/([^/]+)$/.exec(path);
+  if (method === "POST" && rpc !== null)
+    return {
+      type: "rpc.call",
+      input: { rpcID: rpc[1], method: rpc[2], ...query, ...(body as object) },
+    };
+  if (method === "GET" && path === "/api/experimental/job")
+    return { type: "job.list", input: query };
+  const shell = /^\/api\/shell(?:\/([^/]+)(\/output)?)?$/.exec(path);
+  if (shell !== null) {
+    const input = { ...(shell[1] === undefined ? {} : { id: shell[1] }), ...query };
+    return {
+      type: `shell.${method === "DELETE" ? "remove" : shell[2] ? "output" : shell[1] ? "get" : "list"}`,
+      input,
+    };
+  }
   const session = /^\/api\/session\/([^/]+)(\/.*)?$/.exec(path);
   if (method === "GET" && path === "/api/event") return { type: "event.subscribe" };
   if (method === "GET" && path === "/api/model") return { type: "model.list", input: query };
@@ -60,12 +81,17 @@ const operationOf = (
   if (method === "POST" && path === "/api/session") return { type: "session.create", input: body };
   if (method === "GET" && path === "/api/session/active") return { type: "session.active" };
   if (method === "GET" && path === "/api/command") return { type: "command.list", input: query };
+  if (method === "GET" && path === "/api/mcp") return { type: "mcp.list", input: query };
   const mcp = /^\/api\/experimental\/mcp\/([^/]+)$/.exec(path);
   if (mcp !== null && method === "PUT") {
     return { type: "mcp.add", input: { server: mcp[1], ...query, ...(body as object) } };
   }
   if (mcp !== null && method === "DELETE") {
     return { type: "mcp.remove", input: { server: mcp[1], ...query } };
+  }
+  const connectMcp = /^\/api\/experimental\/mcp\/([^/]+)\/connect$/.exec(path);
+  if (connectMcp !== null && method === "POST") {
+    return { type: "mcp.connect", input: { server: connectMcp[1], ...query } };
   }
   const entry = /^\/api\/experimental\/session\/([^/]+)\/instructions\/entries\/([^/]+)$/.exec(
     path,
@@ -127,10 +153,61 @@ const operationOf = (
   return { type: `${method} ${path}`, input: { ...query, body } };
 };
 
+interface McpReplayState {
+  readonly servers: Map<string, { readonly config: unknown; status: "connected" | "failed" }>;
+  readonly failingConnections: Set<string>;
+  readonly failingRemovals: Set<string>;
+  readonly calls: Array<{ readonly type: string; readonly server: string }>;
+}
+
+const mcpResponse = (
+  state: McpReplayState,
+  operation: { readonly type: string; readonly input?: unknown },
+) => {
+  const input = operation.input as Record<string, unknown>;
+  if (operation.type === "mcp.list") {
+    return new Response(
+      encodeJson({
+        location: { directory: input["location[directory]"] },
+        data: [...state.servers].map(([name, entry]) => ({
+          name,
+          status: {
+            status: entry.status,
+            ...(entry.status === "failed" ? { error: "Unavailable" } : {}),
+          },
+        })),
+      }),
+      { headers: { "content-type": "application/json" } },
+    );
+  }
+  const server = String(input.server);
+  state.calls.push({ type: operation.type, server });
+  if (operation.type === "mcp.add") {
+    const previous = state.servers.get(server);
+    // OpenCode 2.0.28 reconciles only changed configs. Repeating add cannot heal.
+    if (JSON.stringify(previous?.config) !== JSON.stringify(input.config)) {
+      state.servers.set(server, {
+        config: input.config,
+        status: state.failingConnections.has(server) ? "failed" : "connected",
+      });
+    }
+  } else if (operation.type === "mcp.connect") {
+    const entry = state.servers.get(server);
+    if (entry !== undefined)
+      entry.status = state.failingConnections.has(server) ? "failed" : "connected";
+  } else if (operation.type === "mcp.remove") {
+    if (state.failingRemovals.has(server)) return new Response(null, { status: 500 });
+    state.servers.delete(server);
+  }
+  return new Response(null, { status: 204 });
+};
+
 const replayHttpClient = (
   controller: OpenCodeReplayController,
   replayGate: ProviderReplayGate | undefined,
   onPrompt: ((input: unknown) => void) | undefined,
+  mcp: McpReplayState | undefined,
+  beforeResponse: ((path: string) => Effect.Effect<void>) | undefined,
 ) =>
   HttpClient.make((request, url) =>
     Effect.tryPromise({
@@ -152,6 +229,9 @@ const replayHttpClient = (
         // HTTP streams and requests use separate connections; deliver prior recorded inbound data before matching requests.
         if (operation.type !== "event.subscribe") await controller.untilInboundDelivered();
         if (operation.type === "session.prompt") onPrompt?.(operation.input);
+        if (mcp !== undefined && operation.type.startsWith("mcp.")) {
+          return mcpResponse(mcp, operation);
+        }
         await controller.expectOutbound(operation);
         if (operation.type === "event.subscribe") {
           controller.exited = false;
@@ -169,6 +249,11 @@ const replayHttpClient = (
         }
         // Recorded responses are the raw HTTP bodies; `null` is an empty 204.
         const body = await controller.response(operation.type);
+        if (typeof body === "object" && body !== null && "imageBase64" in body) {
+          return new Response(Buffer.from(String(body.imageBase64), "base64"), {
+            headers: { "content-type": "image/png" },
+          });
+        }
         if (body === "<hang>") return new Promise<Response>(() => {});
         if (typeof body === "object" && body !== null && "status" in body && "body" in body) {
           return new Response(encodeJson(body.body), {
@@ -184,14 +269,20 @@ const replayHttpClient = (
         new HttpClientError.HttpClientError({
           reason: new HttpClientError.TransportError({ request, cause }),
         }),
-    }).pipe(Effect.map((response) => HttpClientResponse.fromWeb(request, response))),
+    }).pipe(
+      Effect.map((response) => HttpClientResponse.fromWeb(request, response)),
+      Effect.tap(() => beforeResponse?.(url.pathname) ?? Effect.void),
+    ),
   );
 
 export const replayServer = (
   transcript: ProviderReplayTranscript,
   options?: {
     readonly external?: boolean;
+    readonly processExit?: Effect.Effect<void>;
+    readonly beforeResponse?: (path: string) => Effect.Effect<void>;
     readonly onPrompt?: (input: unknown) => void;
+    readonly mcp?: McpReplayState;
     readonly replayGate?: ProviderReplayGate;
     readonly borrowers?: { current: number };
   },
@@ -207,7 +298,13 @@ export const replayServer = (
     const opencode = yield* OpenCode2Client.make.pipe(
       Effect.provideService(
         HttpClient.HttpClient,
-        replayHttpClient(controller, options?.replayGate, options?.onPrompt),
+        replayHttpClient(
+          controller,
+          options?.replayGate,
+          options?.onPrompt,
+          options?.mcp,
+          options?.beforeResponse,
+        ),
       ),
     );
     const connection = {
@@ -215,6 +312,7 @@ export const replayServer = (
       url: BASE_URL,
       version: transcript.version,
       external: options?.external ?? false,
+      ...(options?.external ? {} : { processExit: options?.processExit ?? Effect.never }),
     };
     const borrowers = options?.borrowers;
     return OpenCode2Server.OpenCode2Server.of({
@@ -231,6 +329,7 @@ export const replayServer = (
                   borrowers.current -= 1;
                 }),
             ),
+      forget: Effect.void,
     });
   });
 
@@ -238,7 +337,10 @@ const makeReplayAdapter = (
   transcript: ProviderReplayTranscript,
   options?: {
     readonly external?: boolean;
+    readonly processExit?: Effect.Effect<void>;
+    readonly beforeResponse?: (path: string) => Effect.Effect<void>;
     readonly onPrompt?: (input: unknown) => void;
+    readonly mcp?: McpReplayState;
     readonly replayGate?: ProviderReplayGate;
     readonly borrowers?: { current: number };
   },
@@ -250,7 +352,9 @@ const makeReplayAdapter = (
     );
   });
 
-const layerReplayHost = TestProviderHost.layer().pipe(Layer.provide(NodeServices.layer));
+const layerReplayHost = TestProviderHost.layer().pipe(
+  Layer.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
+);
 
 const layerReplayHostWithAttachments = (
   attachmentsDir: string,
@@ -278,14 +382,22 @@ function layerRegistry(
     makeReplayAdapter(transcript, { external: true, ...options }).pipe(
       Effect.map((adapter) => ProviderAdapterRegistry.layerFromAdapters([adapter])),
     ),
-  ).pipe(Layer.provide(Layer.mergeAll(layerReplayHost, IdAllocator.layer, NodeServices.layer)));
+  ).pipe(
+    Layer.provide(
+      Layer.mergeAll(layerReplayHost, IdAllocator.layer, NodeServices.layer, NodeCrypto.layer),
+    ),
+  );
 }
 
 export const openCode2ReplayRuntime = (
   entries: ReadonlyArray<ProviderReplayEntry>,
   options?: {
     readonly external?: boolean;
+    readonly processExit?: Effect.Effect<void>;
+    readonly beforeResponse?: (path: string) => Effect.Effect<void>;
+    readonly version?: string;
     readonly onPrompt?: (input: unknown) => void;
+    readonly mcp?: McpReplayState;
     readonly borrowers?: { current: number };
     readonly replayGate?: ProviderReplayGate;
     readonly attachmentsDir?: string;
@@ -299,7 +411,7 @@ export const openCode2ReplayRuntime = (
       {
         provider: OPENCODE_PROVIDER,
         protocol: OPENCODE2_HTTP_PROTOCOL,
-        version: "2.0.18",
+        version: options?.version ?? "2.0.18",
         scenario: "opencode2_adapter",
         entries,
       },
@@ -329,6 +441,7 @@ export const openCode2ReplayRuntime = (
             ),
         IdAllocator.layer,
         NodeServices.layer,
+        NodeCrypto.layer,
       ),
     ),
   );

@@ -1,5 +1,7 @@
 import {
   DEFAULT_SERVER_SETTINGS,
+  type McpServerConfig,
+  type ServerSettings,
   ProjectId,
   ProviderDriverKind,
   ProviderInstanceId,
@@ -30,6 +32,9 @@ describe("resolveSendEnvMode", () => {
 
   it.each(["local", "worktree"] as const)("preserves %s for git repositories", (mode) => {
     expect(resolveSendEnvMode({ requestedEnvMode: mode, isGitRepo: true })).toBe(mode);
+    expect(
+      resolveSendEnvMode({ requestedEnvMode: mode, isGitRepo: false, tracksGitRepositories: true }),
+    ).toBe(mode);
   });
 });
 
@@ -118,6 +123,32 @@ describe("resolveProjectSettings", () => {
     expect(resolved.settings.defaultModelSelection).toBeNull();
     expect(resolved.sources.defaultModelSelection).toBe("environment");
   });
+
+  // regression: #17556 a hidden project default silently became the catalog's first model
+  it.each([
+    ["hidden", ["gpt-5.6-terra", "gpt-5.6-sol"], [], "gpt-6.1-sol", "environment"],
+    ["visible", ["gpt-5.6-terra"], [], "gpt-5.6-sol", "project"],
+    ["custom", ["gpt-5.6-sol"], ["gpt-5.6-sol"], "gpt-5.6-sol", "project"],
+  ] as const)(
+    "resolves a %s project default model against the environment default",
+    (_visibility, hiddenModels, customModels, expectedModel, expectedSource) => {
+      const codex = ProviderInstanceId.make("codex");
+      const settings = applyServerSettingsPatch(DEFAULT_SERVER_SETTINGS, {
+        defaultModelSelection: createModelSelection(codex, "gpt-6.1-sol"),
+        providerInstances: {
+          [codex]: { driver: ProviderDriverKind.make("codex"), config: { customModels } },
+        },
+        providerModelPreferences: { [codex]: { hiddenModels, modelOrder: [] } },
+        projectSettingsOverrides: {
+          [projectId]: { defaultModelSelection: createModelSelection(codex, "gpt-5.6-sol") },
+        },
+      });
+      const resolved = resolveProjectSettings(settings, projectId);
+      expect(resolved.settings.defaultModelSelection?.model).toBe(expectedModel);
+      expect(resolved.sources.defaultModelSelection).toBe(expectedSource);
+      expect(resolved.overrides.defaultModelSelection?.model).toBe("gpt-5.6-sol");
+    },
+  );
 
   it("moves text generation off an instance the project turned off", () => {
     const codex = ProviderInstanceId.make("codex");
@@ -411,4 +442,105 @@ describe("resolveWorktreeCleanup", () => {
         .worktreeAfterDays,
     ).toBe(8);
   });
+});
+
+const linear: McpServerConfig = {
+  enabled: true,
+  transport: { type: "http", url: "https://mcp.linear.app/mcp", headers: [] },
+};
+const supabase: McpServerConfig = {
+  enabled: true,
+  transport: {
+    type: "stdio",
+    command: "npx",
+    args: ["-y", "@supabase/mcp-server-supabase"],
+    env: [{ name: "SUPABASE_ACCESS_TOKEN", value: "env-token", sensitive: true }],
+  },
+};
+
+describe("project tools overrides", () => {
+  it("merges servers per name so environment servers still reach the project", () => {
+    const projectSupabase: McpServerConfig = {
+      enabled: true,
+      transport: { type: "stdio", command: "npx", args: ["--project-ref", "project-db"], env: [] },
+    };
+    const settings = {
+      ...DEFAULT_SERVER_SETTINGS,
+      mcpServers: { linear, supabase, sentry: linear },
+      projectSettingsOverrides: {
+        [projectId]: {
+          mcpServers: {
+            // Replaces the environment's server of the same name.
+            supabase: projectSupabase,
+            // Switches an inherited server off without restating it.
+            sentry: { enabled: false },
+            // A switch for a server the environment no longer has is ignored,
+            // including names an object inherits.
+            removed: { enabled: true },
+            constructor: { enabled: true },
+            playwright: {
+              enabled: true,
+              transport: { type: "stdio", command: "npx", args: ["@playwright/mcp"], env: [] },
+            },
+          },
+        },
+      },
+    } satisfies ServerSettings;
+
+    const resolved = resolveProjectSettings(settings, projectId);
+
+    expect(resolved.sources.mcpServers).toBe("project");
+    expect(resolved.settings.mcpServers).toEqual({
+      linear,
+      supabase: projectSupabase,
+      sentry: { ...linear, enabled: false },
+      playwright: {
+        enabled: true,
+        transport: { type: "stdio", command: "npx", args: ["@playwright/mcp"], env: [] },
+      },
+    });
+  });
+
+  it("turns skills off and back on per project over the environment list", () => {
+    const settings = {
+      ...DEFAULT_SERVER_SETTINGS,
+      disabledSkills: ["grill-me", "Prepare-PR"],
+      projectSettingsOverrides: {
+        [projectId]: { disabledSkills: { "prepare-pr": false, "expo-deployment": true } },
+      },
+    } satisfies ServerSettings;
+
+    expect(resolveProjectSettings(settings, projectId).settings.disabledSkills).toEqual([
+      "expo-deployment",
+      "grill-me",
+    ]);
+    expect(
+      resolveProjectSettings(
+        applyServerSettingsPatch(settings, { projectSettingsOverrides: { [projectId]: null } }),
+        projectId,
+      ).settings.disabledSkills,
+    ).toEqual(settings.disabledSkills);
+    expect(resolveProjectSettings(settings, null).settings.disabledSkills).toEqual([
+      "grill-me",
+      "Prepare-PR",
+    ]);
+  });
+});
+
+it("keeps project speech vocabulary on its originating project and clears it to inherit", () => {
+  const words = [{ term: "Effect", aliases: ["a fact"] }];
+  const settings = applyServerSettingsPatch(DEFAULT_SERVER_SETTINGS, {
+    projectSettingsOverrides: { [projectId]: { speechProjectCustomWords: words } },
+  });
+  expect(resolveProjectSettings(settings, projectId).settings.speechProjectCustomWords).toEqual(
+    words,
+  );
+  expect(
+    resolveProjectSettings(settings, otherProjectId).settings.speechProjectCustomWords,
+  ).toEqual([]);
+  const cleared = clearProjectSettingsOverrides(settings, projectId, ["speechProjectCustomWords"]);
+  const restored = applyServerSettingsPatch(settings, {
+    projectSettingsOverrides: { [projectId]: cleared },
+  });
+  expect(resolveProjectSettings(restored, projectId).settings.speechProjectCustomWords).toEqual([]);
 });

@@ -8,8 +8,8 @@ import * as Path from "effect/Path";
 import * as SqlClient from "effect/sql/SqlClient";
 
 import { migrationManifest, reconcileMigrationLedger, runMigrations } from "./Migrations.ts";
-import BoundedShellLookups from "./Migrations/074_BoundedShellLookups.ts";
-import BobExecutionAdmission from "./Migrations/075_BobExecutionAdmission.ts";
+import BoundedShellLookups from "./Migrations/080_BoundedShellLookups.ts";
+import BobExecutionAdmission from "./Migrations/081_BobExecutionAdmission.ts";
 import PeerLinks from "./Migrations/070_PeerLinks.ts";
 import PeerLinkFence from "./Migrations/071_PeerLinkFence.ts";
 import WaitingLinkRequestIndex from "./Migrations/072_WaitingLinkRequestIndex.ts";
@@ -113,6 +113,31 @@ describe("migration ledger reconciliation", () => {
         yield* reconcileMigrationLedger();
         const after = yield* readLedger;
         assert.deepStrictEqual(after, before);
+      }),
+    ),
+  );
+
+  it.effect("re-keys an upstream ledger without repeating applied migrations", () =>
+    withFreshDatabase(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* runMigrations();
+        const before = yield* readLedger;
+        yield* sql`UPDATE effect_sql_migrations SET migration_id = migration_id + 1000 WHERE migration_id IN (80, 81)`;
+        yield* sql`UPDATE effect_sql_migrations SET migration_id = -migration_id WHERE migration_id BETWEEN 82 AND 98`;
+        yield* sql`UPDATE effect_sql_migrations SET migration_id = -migration_id - 2 WHERE migration_id < 0`;
+
+        yield* runMigrations();
+
+        yield* assertLedgerMatchesManifest();
+        const after = yield* readLedger;
+        for (const row of before.filter((row) => row.migration_id >= 82)) {
+          assert.deepStrictEqual(
+            after.find((entry) => entry.name === row.name),
+            row,
+          );
+        }
+        assert.deepStrictEqual(yield* runMigrations(), []);
       }),
     ),
   );
@@ -221,6 +246,14 @@ describe("migration ledger reconciliation", () => {
           [71, "PeerLinkFence"],
           [72, "WaitingLinkRequestIndex"],
           [73, "ActiveTurnItemIndexes"],
+          [74, "ExcludeAttachmentPlaceholdersFromSearch"],
+          [75, "SubagentDeliveryState"],
+          [76, "ProjectionProjectsPinArchive"],
+          [77, "RepairBooleanSettledOverride"],
+          [78, "DropOrchestrationEventCorrelationIndex"],
+          [79, "DelegatedRecoveryIndexes"],
+          [82, "ScheduledTaskThreadMode"],
+          ...migrationManifest.filter(([id]) => id > 82),
         ]);
         yield* assertLedgerMatchesManifest();
         const rows = yield* readLedger;
@@ -261,6 +294,14 @@ describe("migration ledger reconciliation", () => {
           [71, "PeerLinkFence"],
           [72, "WaitingLinkRequestIndex"],
           [73, "ActiveTurnItemIndexes"],
+          [74, "ExcludeAttachmentPlaceholdersFromSearch"],
+          [75, "SubagentDeliveryState"],
+          [76, "ProjectionProjectsPinArchive"],
+          [77, "RepairBooleanSettledOverride"],
+          [78, "DropOrchestrationEventCorrelationIndex"],
+          [79, "DelegatedRecoveryIndexes"],
+          [82, "ScheduledTaskThreadMode"],
+          ...migrationManifest.filter(([id]) => id > 82),
         ]);
         yield* assertLedgerMatchesManifest();
         const columns = yield* sql<{ readonly name: string }>`
@@ -298,6 +339,14 @@ describe("migration ledger reconciliation", () => {
           [68, "ShellStopRequestIndex"],
           [69, "ThreadMessageSearch"],
           [73, "ActiveTurnItemIndexes"],
+          [74, "ExcludeAttachmentPlaceholdersFromSearch"],
+          [75, "SubagentDeliveryState"],
+          [76, "ProjectionProjectsPinArchive"],
+          [77, "RepairBooleanSettledOverride"],
+          [78, "DropOrchestrationEventCorrelationIndex"],
+          [79, "DelegatedRecoveryIndexes"],
+          [82, "ScheduledTaskThreadMode"],
+          ...migrationManifest.filter(([id]) => id > 82),
         ]);
         yield* assertLedgerMatchesManifest();
         const rows = yield* readLedger;
@@ -340,6 +389,14 @@ describe("migration ledger reconciliation", () => {
         assert.deepStrictEqual(executed, [
           [69, "ThreadMessageSearch"],
           [73, "ActiveTurnItemIndexes"],
+          [74, "ExcludeAttachmentPlaceholdersFromSearch"],
+          [75, "SubagentDeliveryState"],
+          [76, "ProjectionProjectsPinArchive"],
+          [77, "RepairBooleanSettledOverride"],
+          [78, "DropOrchestrationEventCorrelationIndex"],
+          [79, "DelegatedRecoveryIndexes"],
+          [82, "ScheduledTaskThreadMode"],
+          ...migrationManifest.filter(([id]) => id > 82),
         ]);
         yield* assertLedgerMatchesManifest();
         const triggers = yield* sql<{ readonly name: string }>`
@@ -368,13 +425,99 @@ describe("migration ledger reconciliation", () => {
 
         const executed = yield* runMigrations();
 
-        assert.deepStrictEqual(executed, [[73, "ActiveTurnItemIndexes"]]);
+        assert.deepStrictEqual(executed, [
+          [73, "ActiveTurnItemIndexes"],
+          [74, "ExcludeAttachmentPlaceholdersFromSearch"],
+          [75, "SubagentDeliveryState"],
+          [76, "ProjectionProjectsPinArchive"],
+          [77, "RepairBooleanSettledOverride"],
+          [78, "DropOrchestrationEventCorrelationIndex"],
+          [79, "DelegatedRecoveryIndexes"],
+          [82, "ScheduledTaskThreadMode"],
+          ...migrationManifest.filter(([id]) => id > 82),
+        ]);
         yield* assertLedgerMatchesManifest();
         const indexes = yield* sql<{ readonly name: string }>`
           SELECT name FROM sqlite_master
           WHERE type = 'index' AND name = 'orchestration_v2_projection_turn_items_active_run_idx'
         `;
         assert.strictEqual(indexes.length, 1);
+        assert.deepStrictEqual(yield* runMigrations(), []);
+        assert.deepEqual(yield* sql`PRAGMA quick_check`, [{ quick_check: "ok" }]);
+      }),
+    ),
+  );
+
+  it.effect("upgrades a custom-local profile after upstream claimed 74 to 76", () =>
+    withFreshDatabase(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* runMigrations({ toMigrationInclusive: 73 });
+        // custom-local released BoundedShellLookups and BobExecutionAdmission as 74 and 75.
+        yield* sql`DROP INDEX IF EXISTS orchestration_v2_projection_turn_items_failed_error_idx`;
+        yield* BoundedShellLookups;
+        yield* BobExecutionAdmission;
+        yield* sql`INSERT INTO effect_sql_migrations (migration_id, name, created_at) VALUES
+          (74, 'BoundedShellLookups', '2026-10-30 08:00:00'),
+          (75, 'BobExecutionAdmission', '2026-10-30 08:00:00')`;
+
+        const executed = yield* runMigrations();
+
+        assert.deepStrictEqual(executed, [
+          [74, "ExcludeAttachmentPlaceholdersFromSearch"],
+          [75, "SubagentDeliveryState"],
+          [76, "ProjectionProjectsPinArchive"],
+          [77, "RepairBooleanSettledOverride"],
+          [78, "DropOrchestrationEventCorrelationIndex"],
+          [79, "DelegatedRecoveryIndexes"],
+          [82, "ScheduledTaskThreadMode"],
+          ...migrationManifest.filter(([id]) => id > 82),
+        ]);
+        yield* assertLedgerMatchesManifest();
+        const rows = yield* readLedger;
+        assert.deepStrictEqual(
+          rows.find((row) => row.name === "BobExecutionAdmission")?.created_at,
+          "2026-10-30 08:00:00",
+        );
+        const projectColumns = yield* sql<{ readonly name: string }>`
+          SELECT name FROM pragma_table_info('projection_projects')
+          WHERE name IN ('pinned_at', 'archived_at')
+        `;
+        assert.strictEqual(projectColumns.length, 2);
+        assert.deepStrictEqual(yield* runMigrations(), []);
+        assert.deepEqual(yield* sql`PRAGMA quick_check`, [{ quick_check: "ok" }]);
+      }),
+    ),
+  );
+
+  it.effect("upgrades a custom-local profile after upstream claimed 77", () =>
+    withFreshDatabase(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* runMigrations({ toMigrationInclusive: 76 });
+        // custom-local released BoundedShellLookups and BobExecutionAdmission as 77 and 78.
+        yield* sql`DROP INDEX IF EXISTS orchestration_v2_projection_turn_items_failed_error_idx`;
+        yield* BoundedShellLookups;
+        yield* BobExecutionAdmission;
+        yield* sql`INSERT INTO effect_sql_migrations (migration_id, name, created_at) VALUES
+          (77, 'BoundedShellLookups', '2026-11-01 08:00:00'),
+          (78, 'BobExecutionAdmission', '2026-11-01 08:00:00')`;
+
+        const executed = yield* runMigrations();
+
+        assert.deepStrictEqual(executed, [
+          [77, "RepairBooleanSettledOverride"],
+          [78, "DropOrchestrationEventCorrelationIndex"],
+          [79, "DelegatedRecoveryIndexes"],
+          [82, "ScheduledTaskThreadMode"],
+          ...migrationManifest.filter(([id]) => id > 82),
+        ]);
+        yield* assertLedgerMatchesManifest();
+        const rows = yield* readLedger;
+        assert.deepStrictEqual(
+          rows.find((row) => row.name === "BoundedShellLookups")?.created_at,
+          "2026-11-01 08:00:00",
+        );
         assert.deepStrictEqual(yield* runMigrations(), []);
         assert.deepEqual(yield* sql`PRAGMA quick_check`, [{ quick_check: "ok" }]);
       }),
@@ -534,12 +677,56 @@ describe("runMigrations", () => {
     }).pipe(Effect.provide(NodeSqliteClient.layer({ filename: ":memory:" }))),
   );
 
-  it.effect("upgrades a database at exactly 54", () =>
+  it.effect("upgrades a database at exactly 54, then rechecks it without a write lock", () =>
     Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
       yield* runMigrations({ toMigrationInclusive: 54 });
       assert.deepStrictEqual(yield* runMigrations(), v2Migrations);
       assert.deepStrictEqual(yield* history, migrationManifest);
       assert.isAbove(yield* v2TableCount, 0);
+
+      // query_only rejects BEGIN IMMEDIATE, which CLI startup would otherwise take on the live database.
+      yield* sql`PRAGMA query_only = ON`;
+      assert.deepStrictEqual(yield* runMigrations(), []);
+      assert.deepStrictEqual(yield* history, migrationManifest);
+    }).pipe(Effect.provide(NodeSqliteClient.layer({ filename: ":memory:" }))),
+  );
+
+  it.effect("drops the unused correlation index and keeps correlation values", () =>
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* runMigrations({ toMigrationInclusive: 54 });
+      yield* sql`
+        INSERT INTO orchestration_events (
+          event_id, aggregate_kind, stream_id, stream_version, event_type, occurred_at,
+          command_id, causation_event_id, correlation_id, actor_kind, payload_json, metadata_json
+        )
+        VALUES (
+          'event-1', 'thread', 'thread-1', 0, 'thread.created', '2026-01-01T00:00:00.000Z',
+          'command-1', NULL, 'correlation-1', 'client', '{}', '{}'
+        )
+      `;
+
+      yield* runMigrations();
+
+      const indexes = yield* sql<{ readonly name: string }>`
+        SELECT name FROM sqlite_master
+        WHERE type = 'index' AND tbl_name = 'orchestration_events' AND sql IS NOT NULL
+      `;
+      const indexNames = indexes.map((row) => row.name);
+      assert.notInclude(indexNames, "idx_orch_events_correlation_id");
+      for (const kept of [
+        "idx_orch_events_stream_version",
+        "idx_orch_events_stream_sequence",
+        "idx_orch_events_command_id",
+        "idx_orchestration_events_agent_stream_sequence",
+      ]) {
+        assert.include(indexNames, kept);
+      }
+      const events = yield* sql<{ readonly correlation_id: string | null }>`
+        SELECT correlation_id FROM orchestration_events WHERE event_id = 'event-1'
+      `;
+      assert.deepStrictEqual(events, [{ correlation_id: "correlation-1" }]);
     }).pipe(Effect.provide(NodeSqliteClient.layer({ filename: ":memory:" }))),
   );
 
@@ -575,6 +762,36 @@ describe("runMigrations", () => {
       );
       assert.notInclude(String(exit), "57_ScheduledTaskWebhooks");
       assert.deepStrictEqual(yield* history, before);
+    }).pipe(Effect.provide(NodeSqliteClient.layer({ filename: ":memory:" }))),
+  );
+
+  it.effect("keeps the migrations that finished before a later one failed", () =>
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* runMigrations({ toMigrationInclusive: 83 });
+      yield* sql`CREATE TABLE orchestration_v2_projection_turn_item_counts (thread_id TEXT)`;
+
+      const exit = yield* Effect.exit(runMigrations());
+
+      assert.isTrue(Exit.isFailure(exit));
+      assert.deepStrictEqual(
+        yield* history,
+        migrationManifest.filter(([id]) => id <= 86),
+      );
+    }).pipe(Effect.provide(NodeSqliteClient.layer({ filename: ":memory:" }))),
+  );
+
+  it.effect("reapplies peer link migrations whose ledger rows are missing", () =>
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* runMigrations({ toMigrationInclusive: 72 });
+      yield* sql`DELETE FROM effect_sql_migrations WHERE migration_id BETWEEN 70 AND 72`;
+
+      assert.deepStrictEqual(
+        yield* runMigrations(),
+        migrationManifest.filter(([id]) => id >= 70),
+      );
+      assert.deepStrictEqual(yield* history, migrationManifest);
     }).pipe(Effect.provide(NodeSqliteClient.layer({ filename: ":memory:" }))),
   );
 

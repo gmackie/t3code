@@ -21,7 +21,11 @@ vi.mock("electron", () => ({
 vi.mock("electron-webauthn", () => webauthn);
 
 import * as DesktopEnvironment from "../app/DesktopEnvironment.ts";
-import { PASSKEY_CREATE_CHANNEL, PASSKEY_GET_CHANNEL } from "./GuestProtocol.ts";
+import {
+  PASSKEY_CREATE_CHANNEL,
+  PASSKEY_GET_CHANNEL,
+  SECURITY_KEY_REQUEST_CHANNEL,
+} from "./GuestProtocol.ts";
 import * as PreviewPasskeys from "./Passkeys.ts";
 
 const layerFor = (packageJson: object, isPackaged = true) =>
@@ -46,23 +50,41 @@ const layerFor = (packageJson: object, isPackaged = true) =>
 
 type Handler = (event: { readonly senderFrame: object | null }, publicKey: unknown) => unknown;
 
+type Listener = (...args: ReadonlyArray<unknown>) => void;
+
 const makeGuest = (origin = "https://accounts.example.com") => {
   const handlers = new Map<string, Handler>();
+  const listeners = new Map<string, Listener>();
   const state = { focused: true };
   const mainFrame = { origin, isDestroyed: () => false };
   const guest = {
     mainFrame,
     hostWebContents: {},
     isFocused: () => state.focused,
+    on: (event: string, listener: Listener) => listeners.set(event, listener),
+    removeListener: (event: string) => listeners.delete(event),
     ipc: {
       handle: (channel: string, handler: Handler) => handlers.set(channel, handler),
       removeHandler: (channel: string) => handlers.delete(channel),
+      on: (channel: string, listener: Listener) => listeners.set(channel, listener),
+      removeListener: (channel: string) => listeners.delete(channel),
     },
   };
   const call = (channel: string, publicKey: unknown, senderFrame: object | null = mainFrame) =>
     Effect.promise(async () => handlers.get(channel)?.({ senderFrame }, publicKey));
-  return { guest: guest as unknown as Electron.WebContents, mainFrame, handlers, state, call };
+  const emit = (event: string, ...args: ReadonlyArray<unknown>) => listeners.get(event)?.(...args);
+  return {
+    guest: guest as unknown as Electron.WebContents,
+    mainFrame,
+    handlers,
+    listeners,
+    state,
+    call,
+    emit,
+  };
 };
+
+const ignoreSecurityKeyRequest = () => {};
 
 const bridgeLayer = layerFor({ t3codeWebAuthn: { browserPasskeys: true } });
 
@@ -106,7 +128,7 @@ describe("PreviewPasskeys", () => {
         errorObject: new Error("native detail"),
       });
 
-      const detach = passkeys.attachGuest(guest);
+      const detach = passkeys.attachGuest(guest, ignoreSecurityKeyRequest);
       const publicKey = { challenge: new Uint8Array([1]), rpId: "example.com" };
       const result = yield* call(PASSKEY_GET_CHANNEL, publicKey);
 
@@ -138,7 +160,7 @@ describe("PreviewPasskeys", () => {
     Effect.gen(function* () {
       const passkeys = yield* PreviewPasskeys.PreviewPasskeys;
       const { guest, call } = makeGuest();
-      passkeys.attachGuest(guest);
+      passkeys.attachGuest(guest, ignoreSecurityKeyRequest);
       webauthn.createCredential.mockResolvedValue({
         success: true,
         data: {
@@ -200,7 +222,7 @@ describe("PreviewPasskeys", () => {
     Effect.gen(function* () {
       const passkeys = yield* PreviewPasskeys.PreviewPasskeys;
       const { guest, call } = makeGuest();
-      passkeys.attachGuest(guest);
+      passkeys.attachGuest(guest, ignoreSecurityKeyRequest);
       const assertion = (credentialId: string) => ({
         success: true,
         data: {
@@ -240,14 +262,14 @@ describe("PreviewPasskeys", () => {
       const publicKey = { challenge: new Uint8Array([1]), rpId: "example.com" };
 
       const lan = makeGuest("http://192.168.1.5:3000");
-      passkeys.attachGuest(lan.guest);
+      passkeys.attachGuest(lan.guest, ignoreSecurityKeyRequest);
       assert.deepStrictEqual(yield* lan.call(PASSKEY_GET_CHANNEL, publicKey), notAllowed);
       const subdomain = makeGuest("http://app.localhost:3000");
-      passkeys.attachGuest(subdomain.guest);
+      passkeys.attachGuest(subdomain.guest, ignoreSecurityKeyRequest);
       assert.deepStrictEqual(yield* subdomain.call(PASSKEY_GET_CHANNEL, publicKey), notAllowed);
 
       const page = makeGuest();
-      passkeys.attachGuest(page.guest);
+      passkeys.attachGuest(page.guest, ignoreSecurityKeyRequest);
       page.state.focused = false;
       assert.deepStrictEqual(yield* page.call(PASSKEY_GET_CHANNEL, publicKey), notAllowed);
       assert.strictEqual(webauthn.getCredential.mock.calls.length, 0);
@@ -287,7 +309,7 @@ describe("PreviewPasskeys", () => {
       ]);
       assert.isFalse(entitled.bridgeEnabled);
       const { guest, handlers } = makeGuest();
-      entitled.attachGuest(guest);
+      entitled.attachGuest(guest, ignoreSecurityKeyRequest);
       assert.strictEqual(handlers.size, 0);
 
       const unpackaged = yield* PreviewPasskeys.PreviewPasskeys.pipe(
@@ -302,6 +324,42 @@ describe("PreviewPasskeys", () => {
       assert.strictEqual(electron.configureWebAuthn.mock.calls.length, 1);
       assert.isFalse(unpackaged.bridgeEnabled);
     }),
+  );
+
+  it.effect("without the bridge, reports the guest's pending security-key requests", () =>
+    Effect.gen(function* () {
+      const passkeys = yield* PreviewPasskeys.PreviewPasskeys;
+      const { guest, mainFrame, listeners, emit } = makeGuest();
+      const reports: Array<string | null> = [];
+      const detach = passkeys.attachGuest(guest, (origin) => reports.push(origin));
+      const report = (phase: string, senderFrame: object = mainFrame) =>
+        emit(SECURITY_KEY_REQUEST_CHANNEL, { senderFrame }, phase);
+
+      // Only the main frame runs the preload, and an unmatched end means nothing.
+      report("start", { origin: "https://ads.example.net" });
+      report("end");
+      assert.deepStrictEqual(reports, []);
+
+      report("start");
+      report("start");
+      report("end");
+      assert.deepStrictEqual(reports, [
+        "https://accounts.example.com",
+        "https://accounts.example.com",
+      ]);
+      report("end");
+      assert.deepStrictEqual(reports.at(-1), null);
+
+      // A new document drops requests whose end will never arrive.
+      report("start");
+      emit("did-navigate");
+      assert.deepStrictEqual(reports.slice(-2), ["https://accounts.example.com", null]);
+      emit("did-navigate");
+      assert.strictEqual(reports.length, 5);
+
+      detach();
+      assert.strictEqual(listeners.size, 0);
+    }).pipe(Effect.provide(layerFor({}))),
   );
 
   it.effect("asks which passkey to use only when a site has several", () =>

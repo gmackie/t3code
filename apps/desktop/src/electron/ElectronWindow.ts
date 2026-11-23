@@ -27,8 +27,9 @@ function windowsForegroundFocusTarget(window: Electron.BrowserWindow) {
     windowId: window.id,
     processId: process.pid,
     title: window.getTitle(),
-    bounds: window.getBounds(),
-    contentBounds: window.getContentBounds(),
+    // xa11y reports physical desktop pixels on Windows; Electron bounds are DIPs.
+    bounds: Electron.screen.dipToScreenRect(window, window.getBounds()),
+    contentBounds: Electron.screen.dipToScreenRect(window, window.getContentBounds()),
   };
 }
 
@@ -128,7 +129,10 @@ export class ElectronWindow extends Context.Service<
     readonly applyCurrentOpacity: (window: Electron.BrowserWindow) => Effect.Effect<void>;
     readonly setAllOpacity: (opacity: WindowOpacity) => Effect.Effect<void>;
     readonly syncAllAppearance: <E, R>(
-      sync: (window: Electron.BrowserWindow) => Effect.Effect<void, E, R>,
+      sync: (
+        window: Electron.BrowserWindow,
+        appearance: { readonly titleBarOverlay: boolean },
+      ) => Effect.Effect<void, E, R>,
     ) => Effect.Effect<void, E, R>;
   }
 >()("@t3tools/desktop/electron/ElectronWindow") {}
@@ -149,6 +153,7 @@ export const make = Effect.gen(function* () {
   const mainWindowRef = yield* Ref.make<Option.Option<Electron.BrowserWindow>>(Option.none());
   const opacityRef = yield* Ref.make<WindowOpacity>(100);
   const auxiliaryWindows = new WeakSet<Electron.BrowserWindow>();
+  const titleBarOverlayWindows = new WeakSet<Electron.BrowserWindow>();
 
   const listWindows = Effect.try({
     try: () => Electron.BrowserWindow.getAllWindows(),
@@ -267,6 +272,9 @@ export const make = Effect.gen(function* () {
           try: () => {
             const created = new Electron.BrowserWindow(options);
             if (behavior?.auxiliary === true) auxiliaryWindows.add(created);
+            if (options.titleBarOverlay !== undefined && options.titleBarOverlay !== false) {
+              titleBarOverlayWindows.add(created);
+            }
             return created;
           },
           catch: (cause) => new ElectronWindowCreateError({ options: diagnosticOptions, cause }),
@@ -420,14 +428,17 @@ export const make = Effect.gen(function* () {
       }
     }),
     syncAllAppearance: Effect.fn("desktop.electron.window.syncAllAppearance")(function* <E, R>(
-      sync: (window: Electron.BrowserWindow) => Effect.Effect<void, E, R>,
+      sync: (
+        window: Electron.BrowserWindow,
+        appearance: { readonly titleBarOverlay: boolean },
+      ) => Effect.Effect<void, E, R>,
     ) {
       const windows = yield* listWindows;
       for (const window of windows) {
         if (yield* isWindowDestroyed(window)) {
           continue;
         }
-        yield* sync(window);
+        yield* sync(window, { titleBarOverlay: titleBarOverlayWindows.has(window) });
       }
     }),
   });

@@ -1,16 +1,19 @@
+import { msg, useMessages } from "gt-react";
 import type { ScopedThreadRef } from "@t3tools/contracts";
 import { selectSelectedRightPanelSurface, useRightPanelStore } from "~/rightPanelStore";
 import { cn } from "~/lib/utils";
 
 /** Changes the workspace tools without navigating or interrupting the active agent. */
 export function WorkspaceModeSwitcher({ threadRef }: { threadRef: ScopedThreadRef }) {
+  const m = useMessages();
+
   const kind = useRightPanelStore(
     (state) => selectSelectedRightPanelSurface(state.byThreadKey, threadRef)?.kind,
   );
   return (
     <div
       role="group"
-      aria-label="Workspace mode"
+      aria-label={m(msg("Workspace mode"))}
       className="electron-no-drag flex shrink-0 rounded-md border border-border p-0.5"
     >
       {(["Code", "CAD", "Game", "Reverse", "Systems"] as const).map((label) => {
@@ -28,7 +31,7 @@ export function WorkspaceModeSwitcher({ threadRef }: { threadRef: ScopedThreadRe
           <button
             key={label}
             type="button"
-            aria-label={`Switch to ${label} mode`}
+            aria-label={m(msg("Switch to {value0} mode", { value0: label }))}
             aria-pressed={selected}
             className={cn(
               "rounded px-2 py-1 text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",

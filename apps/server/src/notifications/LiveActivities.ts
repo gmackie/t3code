@@ -10,6 +10,8 @@ import { makeAggregateState } from "@t3tools/shared/agentActivityAggregate";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
+import * as Path from "effect/Path";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
@@ -23,7 +25,7 @@ import * as LiveActivityApns from "./LiveActivityApns.ts";
 
 const isLiveActivityError = Schema.is(LiveActivityError);
 const encodeSignature = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown));
-const STORE_KEY = "notifications/live-activities.json";
+const STORE_KEY = "notifications-live-activities.json";
 const Devices = Schema.fromJsonString(
   Schema.Array(
     Schema.Struct({
@@ -58,7 +60,22 @@ const make = Effect.gen(function* () {
   const projects = yield* ProjectService.ProjectService;
   const environment = yield* ServerEnvironment.ServerEnvironment;
   const lock = yield* Semaphore.make(1);
-  const stored = yield* secrets.get(STORE_KEY);
+  let stored = yield* secrets.get(STORE_KEY);
+  if (Option.isNone(stored) && secrets.directory !== undefined) {
+    const fs = yield* FileSystem.FileSystem;
+    const path = yield* Path.Path;
+    // Released lane builds stored registrations under this fixed nested name.
+    stored = yield* fs
+      .readFile(path.join(secrets.directory, "notifications", "live-activities.json.bin"))
+      .pipe(
+        Effect.asSome,
+        Effect.catchIf(
+          (cause) => cause.reason._tag === "NotFound",
+          () => Effect.succeedNone,
+        ),
+      );
+    if (Option.isSome(stored)) yield* secrets.set(STORE_KEY, stored.value);
+  }
   let devices = Option.isSome(stored)
     ? yield* decodeDevices(new TextDecoder().decode(stored.value))
     : [];

@@ -55,7 +55,6 @@ import type {
 } from "@t3tools/contracts/reverseWorkbench";
 import * as Config from "effect/Config";
 import * as Context from "effect/Context";
-import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
@@ -179,9 +178,10 @@ const unexpected = (cause: unknown) =>
       ),
     ),
   );
-class UnexpectedReverseFailure extends Data.TaggedError("UnexpectedReverseFailure")<{
-  readonly cause: unknown;
-}> {}
+class UnexpectedReverseFailure extends Schema.TaggedError<UnexpectedReverseFailure>()(
+  "UnexpectedReverseFailure",
+  { cause: Schema.Defect() },
+) {}
 const attempt = <A>(run: () => Promise<A>) =>
   Effect.tryPromise({
     try: run,

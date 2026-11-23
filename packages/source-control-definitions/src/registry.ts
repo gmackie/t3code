@@ -2,34 +2,46 @@ import * as AzureDevOps from "@t3tools/source-control-azure-devops/shared/defini
 import * as Bitbucket from "@t3tools/source-control-bitbucket/shared/definition";
 import { makeSourceControlDefinitionRegistry } from "@t3tools/source-control-core/shared/definition";
 import * as ForgeGraph from "@t3tools/source-control-forgegraph/shared/definition";
+import * as CursorOrigin from "@t3tools/source-control-cursor-origin/shared/definition";
 import * as Forgejo from "@t3tools/source-control-forgejo/shared/definition";
 import * as GitCafe from "@t3tools/source-control-gitcafe/shared/definition";
 import * as GitHub from "@t3tools/source-control-github/shared/definition";
 import * as GitLab from "@t3tools/source-control-gitlab/shared/definition";
+import * as TanStackSource from "@t3tools/source-control-tanstack-source/shared/definition";
 
 export { canonicalizePullRequestUrl as canonicalizeGitCafePullRequestUrl } from "@t3tools/source-control-gitcafe/shared/definition";
 
 /**
- * GitHub comes first to preserve the client default for repositories with an unknown host.
- * GitCafe and ForgeGraph claim URLs first because GitHub and Forgejo accept the same routes on
- * any hostname.
- * Remote recognition needs its own order because host labels can overlap (`gitea.github.example`).
+ * GitHub comes first as the client default for unknown hosts. GitCafe, ForgeGraph, TanStack Source
+ * and Origin claim URLs first: GitHub and Forgejo accept the same routes on any hostname.
+ * TanStack Source is a private beta: every reader knows its URLs, and only a server with its flag
+ * on offers the forge.
  */
 export const builtInSourceControlDefinitions = makeSourceControlDefinitionRegistry(
   [
     GitHub.definition,
+    CursorOrigin.definition,
     GitLab.definition,
     GitCafe.definition,
     ForgeGraph.definition,
+    TanStackSource.definition,
     Forgejo.definition,
     Bitbucket.definition,
     AzureDevOps.definition,
   ],
   {
-    claimChangeRequestUrlsFirst: [GitCafe.definition.kind, ForgeGraph.definition.kind],
+    claimChangeRequestUrlsFirst: [
+      GitCafe.definition.kind,
+      ForgeGraph.definition.kind,
+      TanStackSource.definition.kind,
+      CursorOrigin.definition.kind,
+      AzureDevOps.definition.kind,
+    ],
     recognizeRemotesIn: [
       GitCafe.definition.kind,
       ForgeGraph.definition.kind,
+      TanStackSource.definition.kind,
+      CursorOrigin.definition.kind,
       Forgejo.definition.kind,
       GitHub.definition.kind,
       GitLab.definition.kind,

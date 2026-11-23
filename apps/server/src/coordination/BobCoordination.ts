@@ -131,7 +131,15 @@ const make = Effect.gen(function* () {
       });
     const endpoint = config.coordinator;
     return yield* Effect.gen(function* () {
-      const base = yield* Effect.try(() => new URL(endpoint.baseUrl));
+      const base = yield* Effect.try({
+        try: () => new URL(endpoint.baseUrl),
+        catch: () =>
+          new BobCoordinationError({
+            code: "InvalidConfiguration",
+            status: 503,
+            message: "Invalid Bob endpoint.",
+          }),
+      });
       if (base.username || base.password || !["http:", "https:"].includes(base.protocol))
         return yield* new BobCoordinationError({
           code: "InvalidConfiguration",

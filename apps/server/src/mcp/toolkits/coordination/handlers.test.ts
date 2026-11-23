@@ -74,7 +74,7 @@ it.effect(
     const calls: Array<string> = [];
     let active = true;
     const live = McpHttpServer.layerCoordinationToolkit.pipe(
-      Layer.provideMerge(McpServer.McpServer.layer),
+      Layer.provideMerge(McpHttpServer.layerInProcessMcpServer),
       Layer.provide(
         Layer.mock(Threads.ThreadManagementService)({
           getThreadShell: () =>

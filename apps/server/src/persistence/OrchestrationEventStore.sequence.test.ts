@@ -1,5 +1,6 @@
 import { CommandId, EventId, ProviderSessionId, ThreadId } from "@t3tools/contracts";
 import { assert, it } from "@effect/vitest";
+import * as Arr from "effect/Array";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -54,7 +55,7 @@ function eventRow(
 }
 
 const seedEvents = Effect.fn("test.seedSequenceEvents")(function* (
-  rows: ReadonlyArray<ReturnType<typeof eventRow>>,
+  rows: Arr.NonEmptyReadonlyArray<ReturnType<typeof eventRow>>,
 ) {
   const sql = yield* SqlClient.SqlClient;
   return yield* sql<{
@@ -118,7 +119,7 @@ it.effect(
     Effect.gen(function* () {
       const store = yield* OrchestrationEventStore.OrchestrationEventStore;
       const rows = yield* seedEvents(
-        Array.from({ length: 1_560 }, (_, index) => {
+        Arr.makeBy(1_560, (index) => {
           const kind = index % 3 === 1 ? "project" : "thread";
           return eventRow(
             index,
@@ -304,9 +305,10 @@ it.effect("replays shell references without reading or decoding transcript paylo
 it.effect("pages shell catch-up within its sequence range without legacy events", () =>
   Effect.gen(function* () {
     const store = yield* OrchestrationEventStore.OrchestrationEventStore;
-    const rows = yield* seedEvents(
-      Array.from({ length: 650 }, (_, i) => eventRow(i + 1, "thread", i % 5 === 0 ? 1 : 2)),
+    const generated = Array.from({ length: 650 }, (_, i) =>
+      eventRow(i + 1, "thread", i % 5 === 0 ? 1 : 2),
     );
+    const rows = yield* seedEvents([generated[0]!, ...generated.slice(1)]);
     const afterSequence = rows[4]!.sequence;
     const throughSequence = rows[645]!.sequence;
     const expected = rows.filter(

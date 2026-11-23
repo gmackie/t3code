@@ -1,11 +1,16 @@
 import type { RelayAgentActivityAggregateRow } from "@t3tools/contracts/relay";
 import {
   sanitizeAgentActivityAggregateRow,
+  sanitizeAgentActivityAggregateState,
   truncateText,
   sanitizeDeepLink,
 } from "@t3tools/shared/agentActivityPayloads";
 import type { ApnsNotificationPayload } from "./apnsDeliveryJobs.ts";
-const MAX_SUMMARY_TEXT_LENGTH = 120;
+
+// ApnsClient truncates alert text to the same length as these payloads.
+export const MAX_SUMMARY_TEXT_LENGTH = 120;
+export { sanitizeAgentActivityAggregateState, truncateText };
+
 export function sanitizeApnsNotificationPayload(
   notification: ApnsNotificationPayload,
 ): ApnsNotificationPayload {

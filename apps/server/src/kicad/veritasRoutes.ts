@@ -1,3 +1,8 @@
+import * as SchemaForRoute from "effect/Schema";
+
+class KiCadRouteError extends SchemaForRoute.TaggedError<KiCadRouteError>()("KiCadRouteError", {
+  cause: SchemaForRoute.Defect(),
+}) {}
 // @effect-diagnostics nodeBuiltinImport:off
 import {
   AuthOrchestrationOperateScope,
@@ -61,11 +66,15 @@ export const kicadVeritasRouteLayer = Layer.unwrap(
           const action = yield* request.json.pipe(
             Effect.flatMap(Schema.decodeUnknownEffect(VeritasCadAction)),
           );
-          yield* Effect.tryPromise(() => bridge.action(session.cwd, action));
+          yield* Effect.tryPromise({
+            try: () => bridge.action(session.cwd, action),
+            catch: (cause) => new KiCadRouteError({ cause }),
+          });
         }
-        const status = yield* Effect.tryPromise(() =>
-          bridge.status(session.cwd, session.canOperate),
-        );
+        const status = yield* Effect.tryPromise({
+          try: () => bridge.status(session.cwd, session.canOperate),
+          catch: (cause) => new KiCadRouteError({ cause }),
+        });
         return yield* HttpServerResponse.json(status, { headers: { "Cache-Control": "no-store" } });
       },
       Effect.catchTags({
@@ -77,7 +86,7 @@ export const kicadVeritasRouteLayer = Layer.unwrap(
         HttpServerResponse.json(
           {
             error:
-              error._tag === "UnknownError" && error.cause instanceof Error
+              error._tag === "KiCadRouteError" && error.cause instanceof Error
                 ? error.cause.message
                 : "Unable to complete the Veritas request. Check its connection and project settings.",
           },
@@ -97,7 +106,10 @@ export const kicadVeritasRouteLayer = Layer.unwrap(
           const snapshotToken = Option.isSome(requestUrl)
             ? (requestUrl.value.pathname.split("/").at(-1) ?? "")
             : "";
-          const path = yield* Effect.tryPromise(() => bridge.snapshotPath(snapshotToken));
+          const path = yield* Effect.tryPromise({
+            try: () => bridge.snapshotPath(snapshotToken),
+            catch: (cause) => new KiCadRouteError({ cause }),
+          });
           if (!path)
             return HttpServerResponse.text("Design snapshot expired or not found.", {
               status: 404,

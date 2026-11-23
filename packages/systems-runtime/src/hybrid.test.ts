@@ -1,6 +1,8 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
+import * as Digest from "effect/crypto/Digest";
 import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
 import type { PackFiles } from "@t3tools/systems-model/pack";
 import { format } from "@t3tools/systems-model/rational";
 import type { RunOutcome } from "@t3tools/systems-model/trace";
@@ -76,7 +78,7 @@ const solverSteps = (outcome: RunOutcome) =>
     .filter((event) => event.kind === "solver.step")
     .map((event) => [format(event.time), (event.payload as { steps: number }).steps] as const);
 
-it.layer(NodeServices.layer)("hybrid simulation", (it) => {
+it.layer(Layer.mergeAll(NodeServices.layer, Digest.layerWebCrypto))("hybrid simulation", (it) => {
   it.effect("RK45 meets its tolerance on the decay model and lands exactly on barriers", () =>
     Effect.gen(function* () {
       const { run, resolved } = yield* exponentialRun(yield* loadFiles, -1, [1, 3], [1, 1], {

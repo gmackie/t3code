@@ -14,7 +14,7 @@ import { MetaMaskWallet } from "./MetaMaskWallet.ts";
 
 const fixtures = vi.hoisted(() => ({
   configuration: undefined as MetaMaskConfiguration | undefined,
-  approvals: [] as Array<typeof MetaMaskApproval.Type>,
+  approvals: [] as Array<MetaMaskApproval>,
   confirmation: vi.fn(async () => true),
   editFees: vi.fn(async (_page: Page, _input: unknown, beforeSave: () => Promise<void>) => {
     await beforeSave();

@@ -1,3 +1,6 @@
+// @effect-diagnostics nodeBuiltinImport:off - Plugin view ids use Node's synchronous digest.
+import * as NodeCrypto from "node:crypto";
+
 import type { ThreadId } from "@t3tools/contracts";
 import {
   injectMcpAppCsp,
@@ -13,7 +16,7 @@ import * as FileSystem from "effect/FileSystem";
 import * as Predicate from "effect/Predicate";
 
 import { resolveAttachmentRelativePath } from "../attachmentPaths.ts";
-import { createAttachmentId } from "../attachmentStore.ts";
+import { createAttachmentId, createDeterministicAttachmentId } from "../attachmentStore.ts";
 
 const encoder = new TextEncoder();
 
@@ -45,9 +48,26 @@ function readMcpAppDocument(
   return undefined;
 }
 
+/**
+ * A thread owns the snapshots its tool calls produce. A plugin's panel views
+ * are stored under the plugin's segment with an id derived from their content,
+ * so reopening an unchanged view reuses its file and an edited view gets a new
+ * URL without a version bump.
+ */
+export type McpAppSnapshotOwner =
+  | { readonly threadId: ThreadId }
+  | { readonly pluginSegment: string };
+
+const snapshotAttachmentId = (owner: McpAppSnapshotOwner, document: string) => {
+  if ("threadId" in owner) return createAttachmentId(owner.threadId, "html");
+  const digest = NodeCrypto.createHash("sha256").update(document).digest("hex");
+  const id = createDeterministicAttachmentId(owner.pluginSegment, digest);
+  return id === null ? null : `${id}-html`;
+};
+
 export const snapshotMcpApp = Effect.fn("McpAppSnapshot.snapshot")(function* (input: {
   readonly attachmentsDir: string;
-  readonly threadId: ThreadId;
+  readonly owner: McpAppSnapshotOwner;
   readonly server: string;
   readonly tool: string;
   readonly resourceUri: string;
@@ -63,8 +83,12 @@ export const snapshotMcpApp = Effect.fn("McpAppSnapshot.snapshot")(function* (in
     });
     return undefined;
   }
+  const html = document.html;
+  const ui = Predicate.isObject(document.meta) ? document.meta : {};
+  const csp = readMcpAppCsp(ui.csp);
+  const contents = injectMcpAppCsp(html, csp);
   // The `-html` suffix makes the asset route serve it as a sandboxed document.
-  const attachmentId = createAttachmentId(input.threadId, "html");
+  const attachmentId = snapshotAttachmentId(input.owner, contents);
   const filePath =
     attachmentId === null
       ? null
@@ -73,14 +97,14 @@ export const snapshotMcpApp = Effect.fn("McpAppSnapshot.snapshot")(function* (in
           relativePath: `${attachmentId}.html`,
         });
   if (attachmentId === null || filePath === null) return undefined;
-  const html = document.html;
-  const ui = Predicate.isObject(document.meta) ? document.meta : {};
-  const csp = readMcpAppCsp(ui.csp);
   const fileSystem = yield* FileSystem.FileSystem;
-  // Failed or interrupted writes remove documents that thread deletion cannot yet find.
-  yield* fileSystem
-    .writeFileString(filePath, injectMcpAppCsp(html, csp))
-    .pipe(Effect.onError(() => fileSystem.remove(filePath, { force: true }).pipe(Effect.ignore)));
+  const unchanged = "pluginSegment" in input.owner && (yield* fileSystem.exists(filePath));
+  if (!unchanged) {
+    // Failed or interrupted writes remove documents that thread deletion cannot yet find.
+    yield* fileSystem
+      .writeFileString(filePath, contents)
+      .pipe(Effect.onError(() => fileSystem.remove(filePath, { force: true }).pipe(Effect.ignore)));
+  }
   const permissions = readMcpAppPermissions(ui.permissions);
   return {
     attachmentId,

@@ -1,11 +1,14 @@
 import * as Effect from "effect/Effect";
-import * as Data from "effect/Data";
+import * as Schema from "effect/Schema";
 import { Atom } from "effect/reactivity";
 
-class CadQueryError extends Data.TaggedError("CadQueryError")<{
-  message: string;
-  cause: unknown;
-}> {}
+class CadQueryError extends Schema.TaggedError<CadQueryError>()("CadQueryError", {
+  cause: Schema.Defect(),
+}) {
+  override get message() {
+    return "Could not load the CAD project.";
+  }
+}
 
 /** The standalone CAD page uses ticket-authenticated HTTP, outside the environment RPC runtime. */
 export function cadQuery<A>(read: (signal: AbortSignal) => Promise<A>) {
@@ -14,7 +17,6 @@ export function cadQuery<A>(read: (signal: AbortSignal) => Promise<A>) {
       try: read,
       catch: (cause) =>
         new CadQueryError({
-          message: cause instanceof Error ? cause.message : String(cause),
           cause,
         }),
     }),

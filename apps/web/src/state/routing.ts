@@ -1,3 +1,5 @@
+import { m } from "~/i18n/messages";
+import { msg } from "gt-react";
 /**
  * What each environment's Pistache router reports. Every connected environment answers the same
  * typed query; the page lists environments with a configured router, and the composer badge asks
@@ -33,7 +35,8 @@ const routingOverviewsAtom = Atom.make((get): readonly EnvironmentRoutingStatus[
       environmentId,
       label: presentation.entry.target.label,
       isPending: result.waiting,
-      error: result._tag === "Failure" ? "This environment could not report routing." : null,
+      error:
+        result._tag === "Failure" ? m(msg("This environment could not report routing.")) : null,
       overview: Option.getOrNull(AsyncResult.value(result)),
     });
   }

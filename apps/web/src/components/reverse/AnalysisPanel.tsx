@@ -1,3 +1,4 @@
+import { msg, useMessages } from "gt-react";
 import { useEffect, useRef, useState } from "react";
 import type {
   ReverseInvestigation,
@@ -36,6 +37,8 @@ export function AnalysisPanel({
   /** Load settings saved from an earlier analysis of this firmware. */
   ghidraProfile: ReverseInvestigation["ghidraProfile"];
 }) {
+  const m = useMessages();
+
   const importExtracted = useAtomCommand(reverseEnvironment.importExtracted, {
     reportFailure: false,
   });
@@ -171,7 +174,10 @@ export function AnalysisPanel({
   }
   const go = (at: string) => void run("ghidra", { action: "function", address: at });
   return (
-    <section aria-label="Firmware analysis" className="space-y-3 border-b border-border p-3">
+    <section
+      aria-label={m(msg("Firmware analysis"))}
+      className="space-y-3 border-b border-border p-3"
+    >
       <div className="flex flex-wrap gap-2">
         {(["ghidra", "binwalk", "unblob", "gadgets", "posture", "rea"] as const).map((kind) => (
           <Button
@@ -181,43 +187,48 @@ export function AnalysisPanel({
             disabled={busy}
             onClick={() => void run(kind)}
           >
-            {kind === "gadgets" ? "ROP / JOP / COP" : kind}
+            {kind === "gadgets" ? m(msg("ROP / JOP / COP")) : kind}
           </Button>
         ))}
       </div>
       <details>
-        <summary className="cursor-pointer text-xs">Raw image loading and gadget profile</summary>
+        <summary className="cursor-pointer text-xs">
+          {m(msg("Raw image loading and gadget profile"))}
+        </summary>
         <div className="mt-2 grid gap-2 sm:grid-cols-3">
           <Input
-            aria-label="Ghidra language ID"
-            placeholder="Ghidra language ID (blank: detect)"
+            aria-label={m(msg("Ghidra language ID"))}
+            placeholder={m(msg("Ghidra language ID (blank: detect)"))}
             value={languageId}
             disabled={busy}
             onChange={(e) => setLanguageId(e.target.value)}
           />
           <Input
-            aria-label="Image base address"
-            placeholder="Image base, e.g. 0x08000000"
+            aria-label={m(msg("Image base address"))}
+            placeholder={m(msg("Image base, e.g. 0x08000000"))}
             value={imageBase}
             disabled={busy}
             onChange={(e) => setImageBase(e.target.value)}
           />
           <Input
-            aria-label="Raw gadget profile"
-            placeholder="Gadget profile: thumb / arm / arm64 / mips / x64"
+            aria-label={m(msg("Raw gadget profile"))}
+            placeholder={m(msg("Gadget profile: thumb / arm / arm64 / mips / x64"))}
             value={rawProfile}
             disabled={busy}
             onChange={(e) => setRawProfile(e.target.value)}
           />
         </div>
         <p className="mt-1 text-xs text-muted-foreground">
-          Raw images require known load addresses and entry points. CPU support does not imply a
-          complete device model.
+          {m(
+            msg(
+              "Raw images require known load addresses and entry points. CPU support does not imply a complete device model.",
+            ),
+          )}
         </p>
       </details>
       {busy && (
         <p role="status" className="text-xs">
-          Analysis running on the owning environment…
+          {m(msg("Analysis running on the owning environment…"))}
         </p>
       )}
       {error && (
@@ -228,9 +239,14 @@ export function AnalysisPanel({
       {result && (
         <div className="space-y-2">
           <p className="text-xs">
-            {result.kind} · {result.toolVersion ?? "version unreported"} · receipt{" "}
-            {result.receiptId ?? "not supplied"}
-            {result.truncated ? " · partial result" : ""}
+            {m(
+              msg("{kind} · {version} · receipt ", {
+                kind: result.kind,
+                version: result.toolVersion ?? m(msg("version unreported")),
+              }),
+            )}
+            {result.receiptId ?? m(msg("not supplied"))}
+            {result.truncated ? m(msg(" · partial result")) : ""}
           </p>
           <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-all text-xs">
             {result.output.slice(0, 40000)}
@@ -241,7 +257,13 @@ export function AnalysisPanel({
               className="flex items-center gap-2 border-b border-border font-mono text-xs"
             >
               <span className="min-w-0 flex-1 break-all">
-                {file.path} · {file.bytes} bytes · {file.sha256?.slice(0, 16)}
+                {m(
+                  msg("{path} · {bytes} bytes · {hash}", {
+                    path: file.path,
+                    bytes: file.bytes,
+                    hash: file.sha256?.slice(0, 16) ?? "",
+                  }),
+                )}
               </span>
               {result.receiptId && (
                 <Button
@@ -250,7 +272,7 @@ export function AnalysisPanel({
                   disabled={busy}
                   onClick={() => void openExtracted(result.receiptId!, file.path)}
                 >
-                  Open
+                  {m(msg("Open"))}
                 </Button>
               )}
             </div>
@@ -272,8 +294,8 @@ export function AnalysisPanel({
         <>
           <div className="flex gap-2">
             <Input
-              aria-label="Filter functions"
-              placeholder="Filter this function page"
+              aria-label={m(msg("Filter functions"))}
+              placeholder={m(msg("Filter this function page"))}
               value={filter}
               onChange={(e) => setFilter(e.target.value)}
             />
@@ -283,7 +305,7 @@ export function AnalysisPanel({
               disabled={busy || cursor === undefined}
               onClick={() => void run("ghidra", { action: "list", cursor })}
             >
-              Next page
+              {m(msg("Next page"))}
             </Button>
           </div>
           <div className="grid min-h-60 gap-2 lg:grid-cols-[minmax(10rem,25%)_minmax(0,1fr)]">
@@ -310,7 +332,7 @@ export function AnalysisPanel({
                 <>
                   <div className="mb-2 flex gap-2">
                     <Input
-                      aria-label="New function name"
+                      aria-label={m(msg("New function name"))}
                       value={newName}
                       onChange={(e) => setNewName(e.target.value)}
                     />
@@ -326,7 +348,7 @@ export function AnalysisPanel({
                         })
                       }
                     >
-                      Apply rename
+                      {m(msg("Apply rename"))}
                     </Button>
                     <Button
                       size="sm"
@@ -335,7 +357,7 @@ export function AnalysisPanel({
                         onRecordFinding({ title: `${selected.name}: `, address: selected.address })
                       }
                     >
-                      Record finding
+                      {m(msg("Record finding"))}
                     </Button>
                   </div>
                   <pre className="max-h-96 overflow-auto border border-border p-2 text-xs">
@@ -345,7 +367,9 @@ export function AnalysisPanel({
                     className="mt-2"
                     onToggle={(event) => setTokensOpen(event.currentTarget.open)}
                   >
-                    <summary className="cursor-pointer text-xs">Address-linked tokens</summary>
+                    <summary className="cursor-pointer text-xs">
+                      {m(msg("Address-linked tokens"))}
+                    </summary>
                     <div className="max-h-32 overflow-auto font-mono text-xs">
                       {/* Thousands of token buttons; mount them only while the section is open. */}
                       {tokensOpen &&
@@ -370,8 +394,8 @@ export function AnalysisPanel({
                   </details>
                   {selected.instructions.length > MAX_INSTRUCTION_ROWS && (
                     <p className="mt-2 text-xs text-muted-foreground">
-                      Showing the first {MAX_INSTRUCTION_ROWS} of {selected.instructions.length}{" "}
-                      instructions.
+                      {m(msg("Showing the first "))}
+                      {MAX_INSTRUCTION_ROWS} of {selected.instructions.length} instructions.
                     </p>
                   )}
                   <div className="mt-2 max-h-64 overflow-auto border border-border font-mono text-xs">
@@ -388,7 +412,7 @@ export function AnalysisPanel({
                   </div>
                   <div className="mt-2 grid gap-2 sm:grid-cols-2">
                     <div className="text-xs">
-                      Calls
+                      {m(msg("Calls"))}
                       {selected.callees?.map((fn) => (
                         <Button
                           key={fn.address}
@@ -403,7 +427,7 @@ export function AnalysisPanel({
                       ))}
                     </div>
                     <div className="text-xs">
-                      Incoming references
+                      {m(msg("Incoming references"))}
                       {selected.xrefs?.map((ref, i) => (
                         <Button
                           // oxlint-disable-next-line react/no-array-index-key -- one source address can reference a function more than once; the list is fixed per function
@@ -421,9 +445,9 @@ export function AnalysisPanel({
                   </div>
                   <div className="mt-2 flex gap-2">
                     <Input
-                      aria-label="Analysis comment"
+                      aria-label={m(msg("Analysis comment"))}
                       maxLength={8192}
-                      placeholder="Reviewed analysis comment"
+                      placeholder={m(msg("Reviewed analysis comment"))}
                       value={comment}
                       onChange={(e) => setComment(e.target.value)}
                     />
@@ -439,13 +463,13 @@ export function AnalysisPanel({
                         })
                       }
                     >
-                      Save comment
+                      {m(msg("Save comment"))}
                     </Button>
                   </div>
                 </>
               ) : (
                 <p className="p-3 text-xs text-muted-foreground">
-                  Choose a function to decompile it in the live session.
+                  {m(msg("Choose a function to decompile it in the live session."))}
                 </p>
               )}
             </div>
@@ -454,8 +478,8 @@ export function AnalysisPanel({
       )}
       <div className="flex flex-wrap gap-2">
         <Input
-          aria-label="Navigate to address"
-          placeholder="Function / instruction address 0x…"
+          aria-label={m(msg("Navigate to address"))}
+          placeholder={m(msg("Function / instruction address 0x…"))}
           value={address}
           onChange={(e) => setAddress(e.target.value)}
         />
@@ -468,11 +492,11 @@ export function AnalysisPanel({
           disabled={busy}
           onClick={() => void run("ghidra", { action: "close" })}
         >
-          Close Ghidra session
+          {m(msg("Close Ghidra session"))}
         </Button>
       </div>
       <div className="flex flex-wrap items-center gap-2">
-        <span className="text-xs">QEMU machine</span>
+        <span className="text-xs">{m(msg("QEMU machine"))}</span>
         {(["lm3s6965evb", "mps2-an385"] as const).map((item) => (
           <Button
             size="compact"
@@ -486,7 +510,7 @@ export function AnalysisPanel({
           </Button>
         ))}
         <Button size="sm" disabled={busy} onClick={() => void observe()}>
-          Observe five seconds
+          {m(msg("Observe five seconds"))}
         </Button>
       </div>
       {emulation && (
@@ -497,8 +521,11 @@ export function AnalysisPanel({
         </pre>
       )}
       <p className="text-xs text-muted-foreground">
-        Syntactic gadgets are candidates, not proof of exploitability. QEMU observations never count
-        as physical qualification. Native analyzers require a configured isolated worker.
+        {m(
+          msg(
+            "Syntactic gadgets are candidates, not proof of exploitability. QEMU observations never count as physical qualification. Native analyzers require a configured isolated worker.",
+          ),
+        )}
       </p>
     </section>
   );

@@ -37,6 +37,9 @@ describe("shouldBundleCliDependency", () => {
       "@yuuang/ffi-rs-win32-x64-msvc",
       "@ff-labs/fff-node",
       "@napi-rs/keyring",
+      "transcribe-cpp",
+      "@transcribe-cpp/win32-x64-cpu-vulkan",
+      "koffi",
       "@clerk/electron-passkeys",
       "node-addon-api",
     ]) {
@@ -46,6 +49,13 @@ describe("shouldBundleCliDependency", () => {
 
   it("treats prefix-matched siblings as external", () => {
     assert.strictEqual(shouldBundleCliDependency("node-gyp-build-optional-packages"), false);
+  });
+
+  it("bundles zod for its importers while still staging it for Cursor", () => {
+    for (const id of ["zod", "zod/v4", "zod/v3"]) {
+      assert.strictEqual(shouldBundleCliDependency(id), true, id);
+    }
+    assert.strictEqual(isRuntimeExternalCliDependency("zod"), true);
   });
 });
 

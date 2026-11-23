@@ -1,6 +1,7 @@
 import { EasDeviceHostConfigs, SimlockDeviceHostConfigs, SshDeviceHostConfigs } from "./device.ts";
 import {
   AuthOrchestrationOperateScope,
+  AuthAccessWriteScope,
   AuthSettingsWriteScope,
   AuthProvidersManageScope,
   type AuthEnvironmentScope,
@@ -9,8 +10,10 @@ import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Duration from "effect/Duration";
 import * as Schema from "effect/Schema";
+import * as Struct from "effect/Struct";
 import * as SchemaTransformation from "effect/SchemaTransformation";
 import {
+  EnvironmentId,
   ForwardCompatibleNullable,
   ForwardCompatibleOptional,
   OmittedWhenNull,
@@ -20,6 +23,9 @@ import {
   TrimmedString,
 } from "./baseSchemas.ts";
 import { UsageLimitSourceId } from "./usageLimitSourceId.ts";
+import { UsageModelFilter } from "./usage.ts";
+import { SecretProviderId, SecretProviderSlug } from "./secretReference.ts";
+import { containsSecretReference, SettingsSecretValue } from "./settingsSecretValue.ts";
 import { EnvironmentMachineKind, ThreadEnvMode, WorktreeSubmodules } from "./environment.ts";
 import { KeybindingShortcut } from "./keybindings.ts";
 import {
@@ -29,7 +35,6 @@ import {
   ProviderOptionSelections,
 } from "./model.ts";
 import { ModelSelection } from "./modelSelection.ts";
-import { PluginPackageId } from "./pluginPackages.ts";
 import { ProjectScript, type ProjectMutation } from "./project.ts";
 import { DEFAULT_RUNTIME_MODE, RuntimeMode } from "./providerPolicy.ts";
 import { BrowserProfile, BrowserProfileId, DEFAULT_BROWSER_PROFILE_ID } from "./browserProfile.ts";
@@ -49,6 +54,23 @@ import {
   ProviderDriverKind,
 } from "./providerInstance.ts";
 import { PullRequestMergeMethod } from "./pullRequest.ts";
+import {
+  DisabledSkills,
+  DisabledSkillsProjectOverride,
+  McpServerConfig,
+  McpServerName,
+  McpServerProjectOverrides,
+  McpServers,
+} from "./agentTools.ts";
+import {
+  CloudSpeechModelId,
+  SpeechAcceleration,
+  SpeechCorrectionCue,
+  SpeechCustomWords,
+  SpeechLanguage,
+  SpeechModelUnloadTimeout,
+  SpeechPostProcessingPromptSettings,
+} from "./speech.ts";
 
 export const TimestampFormat = Schema.Literals(["locale", "12-hour", "24-hour"]);
 export type TimestampFormat = typeof TimestampFormat.Type;
@@ -82,7 +104,7 @@ export const SidebarAutoSettleAfterDays = Schema.Number.check(
   }),
 );
 export type SidebarAutoSettleAfterDays = typeof SidebarAutoSettleAfterDays.Type;
-const DEFAULT_SIDEBAR_AUTO_SETTLE_AFTER_DAYS: SidebarAutoSettleAfterDays = 3;
+const DEFAULT_SIDEBAR_AUTO_SETTLE_AFTER_DAYS: SidebarAutoSettleAfterDays = 7;
 
 export const MAX_SNOOZE_PRESET_MINUTES = 30 * 24 * 60;
 export const MAX_SNOOZE_PRESETS = 8;
@@ -131,7 +153,7 @@ export const GlassOpacity = Schema.Int.check(
   }),
 );
 export type GlassOpacity = typeof GlassOpacity.Type;
-export const DEFAULT_GLASS_OPACITY: GlassOpacity = 80;
+const DEFAULT_GLASS_OPACITY: GlassOpacity = 80;
 export const MIN_WINDOW_OPACITY = 40;
 export const MAX_WINDOW_OPACITY = 100;
 /** Desktop window opacity in percent; below 100 the whole macOS window turns translucent. */
@@ -139,7 +161,7 @@ export const WindowOpacity = Schema.Int.check(
   Schema.isBetween({ minimum: MIN_WINDOW_OPACITY, maximum: MAX_WINDOW_OPACITY }),
 );
 export type WindowOpacity = typeof WindowOpacity.Type;
-export const DEFAULT_WINDOW_OPACITY: WindowOpacity = 100;
+const DEFAULT_WINDOW_OPACITY: WindowOpacity = 100;
 
 export const MIN_APPEARANCE_CONTRAST = 50;
 export const MAX_APPEARANCE_CONTRAST = 200;
@@ -295,6 +317,10 @@ export const DefaultThemePreference = Schema.String.check(Schema.isMaxLength(64)
 // Excluded from RPC patches so t3 theme set can validate syntax and resolvability.
 export type DefaultThemePreference = typeof DefaultThemePreference.Type;
 
+/** A mode clients apply once per set, like the default theme. Empty sets none. */
+export const DefaultAppearancePreference = Schema.Literals(["", "light", "dark", "system"]);
+export type DefaultAppearancePreference = typeof DefaultAppearancePreference.Type;
+
 export const DEFAULT_BROWSER_VIEWPORT: PreviewViewportSetting = FILL_PREVIEW_VIEWPORT;
 export const DEFAULT_BROWSER_AUTO_SHOW_FLOATING_PREVIEW = true;
 export {
@@ -305,6 +331,13 @@ export {
 export const BrowserLinkTarget = Schema.Literals(["system", "app"]);
 export type BrowserLinkTarget = typeof BrowserLinkTarget.Type;
 export const DEFAULT_BROWSER_LINK_TARGET: BrowserLinkTarget = "system";
+/**
+ * Where a plain click opens a subagent, a side chat or a linked environment's thread: beside the
+ * thread you are in, or in its place. A modified click opens it in the other one.
+ */
+export const SideThreadOpenTarget = Schema.Literals(["panel", "main"]);
+export type SideThreadOpenTarget = typeof SideThreadOpenTarget.Type;
+const DEFAULT_SIDE_THREAD_OPEN_TARGET: SideThreadOpenTarget = "panel";
 /**
  * What the address bar searches with when the input is not an address.
  * "custom" uses `browserCustomSearchUrl`, a template with `%s` for the query.
@@ -339,6 +372,13 @@ export type ChatWidth = typeof ChatWidth.Type;
 export const EffortDisplay = Schema.Literals(["label", "bars"]);
 export type EffortDisplay = typeof EffortDisplay.Type;
 
+export const ToolCallVisibility = Schema.Literals(["showAll", "hideSuccessful", "hideAll", "zen"]);
+export type ToolCallVisibility = typeof ToolCallVisibility.Type;
+
+/** What the open thread reads to a screen reader: turn status, the agent's in-between messages too, or every step. */
+export const ScreenReaderAnnouncements = Schema.Literals(["status", "messages", "everything"]);
+export type ScreenReaderAnnouncements = typeof ScreenReaderAnnouncements.Type;
+
 export const ModelFavorite = Schema.Struct({
   provider: ProviderInstanceId,
   model: TrimmedNonEmptyString,
@@ -355,6 +395,35 @@ export type ModelPreferences = {
   readonly favorites: typeof ModelFavorites.Type;
   readonly providerModelPreferences: typeof ProviderModelPreferences.Type;
 };
+
+export const VoiceShortcutMode = Schema.Literals(["auto", "hold", "toggle"]);
+export type VoiceShortcutMode = typeof VoiceShortcutMode.Type;
+
+export const VoiceMicrophoneEntry = Schema.Union([
+  Schema.Struct({ kind: Schema.Literal("default") }),
+  Schema.Struct({ kind: Schema.Literal("device"), deviceId: Schema.String, label: Schema.String }),
+]);
+export type VoiceMicrophoneEntry = typeof VoiceMicrophoneEntry.Type;
+
+/**
+ * Where this device sends microphone audio. A cloud grant names the forwarding environment and
+ * the provider; an OpenRouter grant also names the exact model, since OpenRouter has no default.
+ */
+export const VoiceTranscriptionDestination = Schema.Union([
+  Schema.Struct({ kind: Schema.Literal("environment"), environmentId: EnvironmentId }),
+  Schema.Struct({
+    kind: Schema.Literal("cloud"),
+    environmentId: EnvironmentId,
+    provider: Schema.Literals(["openai", "xai"]),
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("cloud"),
+    environmentId: EnvironmentId,
+    provider: Schema.Literal("openrouter"),
+    model: CloudSpeechModelId,
+  }),
+]);
+export type VoiceTranscriptionDestination = typeof VoiceTranscriptionDestination.Type;
 
 export const ClientSettingsSchema = Schema.Struct({
   notificationMode: NotificationMode.pipe(
@@ -423,6 +492,7 @@ export const ClientSettingsSchema = Schema.Struct({
     Schema.withDecodingDefault(Effect.succeed(DEFAULT_QUIT_CONFIRMATION_MODE)),
   ),
   confirmThreadArchive: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
+  confirmTerminalClose: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
   confirmThreadDelete: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
   confirmThreadUnpin: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   diffFilesCollapsed: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
@@ -474,15 +544,15 @@ export const ClientSettingsSchema = Schema.Struct({
 
   pullRequestLinksOpenInApp: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
 
-  planModeEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
-  contextWindowMeterEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   composerRichTextEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
-  composerReviewEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
   sendShortcut: Schema.Literals(["enter", "mod-enter-multiline", "mod-enter"]).pipe(
     Schema.withDecodingDefault(Effect.succeed("enter")),
   ),
   followUpBehavior: Schema.Literals(["queue", "steer"]).pipe(
     Schema.withDecodingDefault(Effect.succeed("steer")),
+  ),
+  sideThreadOpenTarget: SideThreadOpenTarget.pipe(
+    Schema.withDecodingDefault(Effect.succeed(DEFAULT_SIDE_THREAD_OPEN_TARGET)),
   ),
   proactivePanelsEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   showSkillsInSlashMenu: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
@@ -490,6 +560,13 @@ export const ClientSettingsSchema = Schema.Struct({
   boringSidebarMultilineRows: Schema.Boolean.pipe(
     Schema.withDecodingDefault(Effect.succeed(false)),
   ),
+  toolCallVisibility: ToolCallVisibility.pipe(
+    Schema.withDecodingDefault(Effect.succeed("showAll" as const)),
+  ),
+  screenReaderAnnouncements: ScreenReaderAnnouncements.pipe(
+    Schema.withDecodingDefault(Effect.succeed("status" as const)),
+  ),
+  screenReaderWindowTitle: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   // Retired Labs toggle. Still read as the default for the Usage item in threadDetailsItems.
   threadDetailsUsageEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   // Sparse show/hide overrides for thread details card items. Missing ids use the client's
@@ -497,9 +574,6 @@ export const ClientSettingsSchema = Schema.Struct({
   threadDetailsItems: Schema.Record(Schema.String, Schema.Boolean).pipe(
     Schema.withDecodingDefault(Effect.succeed({})),
   ),
-  // Opt-in for the removed legacy sidebar. Still read so those users land in
-  // the boring sidebar; the boring sidebar toggle clears it.
-  legacySidebarEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   sidebarWorkingShelfEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
   sidebarProjectGroupingMode: SidebarProjectGroupingMode.pipe(
     Schema.withDecodingDefault(Effect.succeed(DEFAULT_SIDEBAR_PROJECT_GROUPING_MODE)),
@@ -517,6 +591,27 @@ export const ClientSettingsSchema = Schema.Struct({
   timestampFormat: TimestampFormat.pipe(
     Schema.withDecodingDefault(Effect.succeed(DEFAULT_TIMESTAMP_FORMAT)),
   ),
+  // Superseded by voiceMicrophones; read only to seed an empty order.
+  voiceMicrophone: Schema.String.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
+  // Device-local microphone order. Recording uses the first connected entry.
+  voiceMicrophones: Schema.Array(VoiceMicrophoneEntry).pipe(
+    Schema.withDecodingDefault(Effect.succeed([])),
+  ),
+  voiceShortcutMode: VoiceShortcutMode.pipe(Schema.withDecodingDefault(Effect.succeed("auto"))),
+  speechLanguage: SpeechLanguage.pipe(Schema.withDecodingDefault(Effect.succeed("auto"))),
+  speechTranslateToEnglish: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
+  speechCustomWords: SpeechCustomWords.pipe(Schema.withDecodingDefault(Effect.succeed([]))),
+  speechSilenceFiltering: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
+  speechStreaming: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
+  speechRemoveFillerWords: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
+  speechPostProcessingPrompt: SpeechPostProcessingPromptSettings.pipe(
+    Schema.withDecodingDefault(
+      Effect.succeed({ mode: "default" as const, customInstructions: "" }),
+    ),
+  ),
+  speechCorrectionWord: SpeechCorrectionCue.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
+  // A locale code or "system". Open string so new locales and downgrades need no migration.
+  language: Schema.String.pipe(Schema.withDecodingDefault(Effect.succeed("en"))),
   snapShotEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   snapShotIncludeAccessibility: Schema.Boolean.pipe(
     Schema.withDecodingDefault(Effect.succeed(true)),
@@ -598,6 +693,8 @@ declare module "effect/Schema" {
     interface Annotations {
       /** Store this credential separately and expose only whether it is configured to clients. */
       readonly settingsSecret?: boolean | undefined;
+      /** Set by `SettingsSecretValue`: the credential may name a secret provider reference. */
+      readonly settingsSecretReference?: boolean | undefined;
       readonly providerSettingsForm?: ProviderSettingsFormAnnotation | undefined;
       readonly providerSettingsFormSchema?: ProviderSettingsFormSchemaAnnotation | undefined;
     }
@@ -816,7 +913,7 @@ export const AntigravitySettings = makeProviderSettingsSchema(
         },
       }),
     ),
-    apiKey: TrimmedString.pipe(
+    apiKey: SettingsSecretValue.pipe(
       secretSetting,
       Schema.withDecodingDefault(Effect.succeed("")),
       Schema.annotateKey({
@@ -867,46 +964,87 @@ export const UsageLimitSourceConfig = Schema.Struct({
   kind: Schema.Literal("cliproxy"),
   label: Schema.optional(TrimmedNonEmptyString),
   url: TrimmedNonEmptyString,
-  managementKey: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed("")), secretSetting),
+  managementKey: SettingsSecretValue.pipe(
+    Schema.withDecodingDefault(Effect.succeed("")),
+    secretSetting,
+  ),
   enabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
 });
 export type UsageLimitSourceConfig = typeof UsageLimitSourceConfig.Type;
 
-// Final once shipped: older builds drop entries whose key fails here, and erase them on their next save.
-// Unlike provider slugs it may start with a digit, so a provider named "1Password" fits.
-const SecretProviderSlug = TrimmedNonEmptyString.check(
-  Schema.isMaxLength(64),
-  Schema.isPattern(/^[a-zA-Z0-9][a-zA-Z0-9_-]*$/),
+export const TextGeneratorKind = Schema.Literals(["openaiCompatible", "anthropic"]);
+export type TextGeneratorKind = typeof TextGeneratorKind.Type;
+
+const TextGeneratorBaseUrl = TrimmedNonEmptyString.check(
+  Schema.isMaxLength(2048),
+  Schema.makeFilter((value) => {
+    try {
+      const url = new URL(value);
+      return (
+        (url.protocol === "http:" || url.protocol === "https:") &&
+        !url.username &&
+        !url.password &&
+        !url.search &&
+        !url.hash
+      );
+    } catch {
+      return false;
+    }
+  }),
 );
 
-export const SecretProviderId = SecretProviderSlug.pipe(Schema.brand("SecretProviderId"));
-export type SecretProviderId = typeof SecretProviderId.Type;
+/** A model API that only generates text. Its key shares the id namespace with provider instances. */
+export const TextGeneratorConfig = Schema.Struct({
+  kind: TextGeneratorKind,
+  label: Schema.optional(TrimmedNonEmptyString),
+  baseUrl: TextGeneratorBaseUrl,
+  apiKey: SettingsSecretValue.pipe(Schema.withDecodingDefault(Effect.succeed("")), secretSetting),
+  enabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
+});
+export type TextGeneratorConfig = typeof TextGeneratorConfig.Type;
+
+export const TextGeneratorModel = Schema.Struct({
+  id: TrimmedNonEmptyString,
+  name: TrimmedNonEmptyString,
+});
+export type TextGeneratorModel = typeof TextGeneratorModel.Type;
+
+export const ListTextGeneratorModelsInput = Schema.Struct({
+  id: ProviderInstanceId,
+  /**
+   * Unsaved settings to check before saving, such as from the add dialog. A redacted key keeps
+   * the one saved under `id`.
+   */
+  config: Schema.optional(TextGeneratorConfig),
+  /** Skip the server's cached list and ask the API again. */
+  refresh: Schema.optional(Schema.Boolean),
+  /** Also have a model answer a tiny prompt, which proves the key, endpoint, and model. */
+  test: Schema.optional(Schema.Boolean),
+  /** With `test`, the model to try; a cheap listed one when omitted. */
+  model: Schema.optional(TrimmedNonEmptyString),
+});
+export type ListTextGeneratorModelsInput = typeof ListTextGeneratorModelsInput.Type;
+
+export const ListTextGeneratorModelsResult = Schema.Struct({
+  models: Schema.Array(TextGeneratorModel),
+  /** The model that answered, when `test` was set. */
+  testedModel: Schema.optional(TrimmedNonEmptyString),
+});
+export type ListTextGeneratorModelsResult = typeof ListTextGeneratorModelsResult.Type;
+
+export class TextGeneratorError extends Schema.TaggedError<TextGeneratorError>()(
+  "TextGeneratorError",
+  { detail: Schema.String },
+) {
+  override get message(): string {
+    return this.detail;
+  }
+}
 
 export const SecretProviderKind = SecretProviderSlug.pipe(Schema.brand("SecretProviderKind"));
 export type SecretProviderKind = typeof SecretProviderKind.Type;
 
-const ONE_PASSWORD_ACCOUNT_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
-
-/**
- * Any value `op --account` accepts: shorthand, sign-in address, account ID, or user ID.
- * It is passed to the CLI as an argument, so it can never start with `-`.
- */
-export const OnePasswordAccount = Schema.String.check(
-  Schema.isMaxLength(253),
-  Schema.makeFilter((value: string) =>
-    ONE_PASSWORD_ACCOUNT_PATTERN.test(value)
-      ? true
-      : "1Password account must be a shorthand, sign-in address, or ID with no spaces.",
-  ),
-).pipe(Schema.brand("OnePasswordAccount"));
-export type OnePasswordAccount = typeof OnePasswordAccount.Type;
-
 export const SecretProviderLabel = TrimmedNonEmptyString.check(Schema.isMaxLength(64));
-
-export const OnePasswordSecretProviderConfig = Schema.Struct({
-  account: OnePasswordAccount,
-});
-export type OnePasswordSecretProviderConfig = typeof OnePasswordSecretProviderConfig.Type;
 
 /** Kinds decode their own config; unknown-kind envelopes round-trip verbatim across versions. */
 export const SecretProviderConfig = Schema.Struct({
@@ -916,31 +1054,12 @@ export const SecretProviderConfig = Schema.Struct({
 });
 export type SecretProviderConfig = typeof SecretProviderConfig.Type;
 
-/** Kinds this build can resolve. Their `config` holds no credentials, so clients may read it. */
-const SECRET_PROVIDER_KIND_CONFIG_GUARDS: Readonly<Record<string, (config: unknown) => boolean>> = {
-  one_password: Schema.is(OnePasswordSecretProviderConfig),
-};
-
-export function isKnownSecretProviderKind(kind: string): boolean {
-  return Object.hasOwn(SECRET_PROVIDER_KIND_CONFIG_GUARDS, kind);
-}
-
-// Limits that may change later are enforced on writes only, never on the stored envelope.
-// Writes must be a kind this build knows with a config it accepts, so an older server
-// rejects a newer kind instead of storing what it cannot check.
+// Limits that may change later are enforced on writes only, never on the stored envelope. The
+// server also checks the kind and its config against the secret providers it has loaded.
 const SecretProviderConfigWrite = Schema.Struct({
   ...SecretProviderConfig.fields,
   label: SecretProviderLabel,
-}).check(
-  Schema.makeFilter((entry) => {
-    if (!isKnownSecretProviderKind(entry.kind)) {
-      return `Unsupported secret provider kind: ${entry.kind}.`;
-    }
-    return SECRET_PROVIDER_KIND_CONFIG_GUARDS[entry.kind]!(entry.config)
-      ? true
-      : `Invalid ${entry.kind} secret provider config.`;
-  }),
-);
+});
 
 export const SourceControlHostSettings = Schema.Record(Schema.String, Schema.Unknown);
 export type SourceControlHostSettings = typeof SourceControlHostSettings.Type;
@@ -1077,6 +1196,10 @@ export type BackgroundActivitySettings = typeof BackgroundActivitySettings.Type;
 export const ResponseStreamingMode = Schema.Literals(["turn", "paragraph"]);
 export type ResponseStreamingMode = typeof ResponseStreamingMode.Type;
 
+/** `on-request`: agents report only when the user asks. `auto`: they also report on their own. */
+export const AgentFeedbackMode = Schema.Literals(["off", "on-request", "auto"]);
+export type AgentFeedbackMode = typeof AgentFeedbackMode.Type;
+
 const StorageRetentionDays = Schema.NullOr(
   Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 3650 })),
 );
@@ -1140,6 +1263,9 @@ export const PROJECT_SCOPED_SERVER_SETTING_KEYS = [
   "sidebarAutoSettleKeepPullRequests",
   "continueThreadsAfterServerUpdate",
   "responseStreamingMode",
+  "mcpServers",
+  "disabledSkills",
+  "speechProjectCustomWords",
 ] as const;
 export type ProjectScopedServerSettingKey = (typeof PROJECT_SCOPED_SERVER_SETTING_KEYS)[number];
 
@@ -1177,10 +1303,16 @@ export const ProjectSettingsOverrides = Schema.Struct({
   sidebarAutoSettleKeepPullRequests: Schema.optionalKey(Schema.Boolean),
   continueThreadsAfterServerUpdate: Schema.optionalKey(Schema.Boolean),
   responseStreamingMode: Schema.optionalKey(ResponseStreamingMode),
+  speechProjectCustomWords: Schema.optionalKey(SpeechCustomWords),
   providerInstances: Schema.optionalKey(
     Schema.Record(ProviderInstanceId, ProjectProviderInstanceOverride),
   ),
+
+  // Sparse: merged per name over the environment's value, not a replacement.
+  mcpServers: ForwardCompatibleOptional(McpServerProjectOverrides),
+  disabledSkills: ForwardCompatibleOptional(DisabledSkillsProjectOverride),
 } satisfies Record<ProjectScopedServerSettingKey | "providerInstances", unknown>);
+
 export type ProjectSettingsOverrides = typeof ProjectSettingsOverrides.Type;
 
 // Whole-entry writers must round-trip unknown keys; keep the type closed to catch misspellings.
@@ -1220,14 +1352,33 @@ export const DatabaseStorageStatus = Schema.Struct({
   incrementalVacuumEnabled: Schema.Boolean,
   /** Run on the host while offline. */
   compactCommand: Schema.String,
+  /** The server can run the repair itself: the desktop app or background service restarts it. */
+  canReclaim: Schema.optionalKey(Schema.Boolean),
+  /** Why the last repair started from Settings failed. */
+  reclaimFailure: Schema.optionalKey(Schema.String),
 });
 export type DatabaseStorageStatus = typeof DatabaseStorageStatus.Type;
+
+export class DatabaseReclaimError extends Schema.TaggedError<DatabaseReclaimError>()(
+  "DatabaseReclaimError",
+  { reason: Schema.String },
+) {
+  override get message() {
+    return this.reason;
+  }
+}
 
 export function shouldRecommendDatabaseCompaction(status: DatabaseStorageStatus): boolean {
   return (
     !status.incrementalVacuumEnabled &&
     status.reclaimableBytes >= DATABASE_COMPACTION_RECOMMENDED_BYTES
   );
+}
+
+/** Offline minutes the repair takes, at 30 s per GiB of live data (a BB-1 NVMe disk took 21 s). */
+export function databaseReclaimMinutes(status: DatabaseStorageStatus): number {
+  const liveGiB = (status.databaseBytes - status.reclaimableBytes) / 1024 ** 3;
+  return Math.max(1, Math.ceil(liveGiB / 2));
 }
 
 export const StorageCleanupReportEntry = Schema.Struct({
@@ -1271,6 +1422,20 @@ export const StorageCleanupSettings = Schema.Struct({
 });
 export type StorageCleanupSettings = typeof StorageCleanupSettings.Type;
 
+const UsageHistoryRetentionDays = Schema.Union([
+  Schema.Int.check(Schema.isGreaterThan(0)),
+  Schema.Literal("unlimited"),
+]);
+
+const CloudSpeechCredential = SettingsSecretValue.pipe(
+  Schema.withDecodingDefault(Effect.succeed("")),
+);
+export const CloudSpeechCredentials = Schema.Struct({
+  openai: CloudSpeechCredential,
+  xai: CloudSpeechCredential,
+  openrouter: CloudSpeechCredential,
+});
+
 export const ServerSettings = Schema.Struct({
   // Null means unmigrated; empty is authoritative and must not resurrect cleared preferences.
   favorites: Schema.NullOr(ModelFavorites).pipe(Schema.withDecodingDefault(Effect.succeed(null))),
@@ -1283,6 +1448,8 @@ export const ServerSettings = Schema.Struct({
   ),
 
   worktreesDirectory: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
+  /** macOS only, Labs beta: clone new worktrees from a cached checkout instead of writing every file. */
+  fastWorktreeCheckout: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   /** Server-maintained history keeps old worktrees eligible for cleanup and review diffs. */
   previousWorktreesDirectories: Schema.Array(TrimmedString).pipe(
     Schema.withDecodingDefault(Effect.succeed([])),
@@ -1290,12 +1457,39 @@ export const ServerSettings = Schema.Struct({
   responseStreamingMode: ResponseStreamingMode.pipe(
     Schema.withDecodingDefault(Effect.succeed("paragraph" as const)),
   ),
+  agentFeedback: Schema.Struct({
+    mode: AgentFeedbackMode.pipe(Schema.withDecodingDefaultKey(Effect.succeed("off" as const))),
+  }).pipe(Schema.withDecodingDefault(Effect.succeed({ mode: "off" as const }))),
   enableProviderUpdateChecks: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
   continueThreadsAfterServerUpdate: Schema.Boolean.pipe(
     Schema.withDecodingDefault(Effect.succeed(true)),
   ),
+  /** Holds an OS sleep inhibitor while any run is active; closing a laptop lid still sleeps it. */
+  keepAwakeWhileAgentsWork: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
+  /** New T3 Connect device keys wait for approval from someone already trusted here. */
+  requireConnectDeviceApproval: Schema.Boolean.pipe(
+    Schema.withDecodingDefault(Effect.succeed(false)),
+  ),
 
   enableAgentBrowserAccess: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
+  /** Lets clients reach this machine's loopback ports over `/api/preview/tunnel`. */
+  enablePreviewTunnel: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
+  cloudSpeechCredentials: CloudSpeechCredentials.pipe(
+    Schema.withDecodingDefault(Effect.succeed({ openai: "", xai: "", openrouter: "" })),
+  ),
+  speechModelId: Schema.String.pipe(
+    Schema.withDecodingDefault(Effect.succeed("handy-computer/parakeet-unified-en-0.6b-gguf")),
+  ),
+  speechAcceleration: SpeechAcceleration.pipe(Schema.withDecodingDefault(Effect.succeed("auto"))),
+  speechModelUnloadTimeout: SpeechModelUnloadTimeout.pipe(
+    Schema.withDecodingDefault(Effect.succeed("min_15")),
+  ),
+  // Vocabulary shared by everyone who dictates in a project; it lives with the project's environment.
+  speechProjectCustomWords: SpeechCustomWords.pipe(Schema.withDecodingDefault(Effect.succeed([]))),
+  // Null follows textGenerationModelSelection; a selection pins transcript cleanup to its own model.
+  speechPostProcessingModelSelection: Schema.NullOr(ModelSelection).pipe(
+    Schema.withDecodingDefault(Effect.succeed(null)),
+  ),
   projectAgentBrowserAccessOverrides: Schema.Record(ProjectId, Schema.Boolean).pipe(
     Schema.withDecodingDefault(Effect.succeed({})),
   ),
@@ -1347,6 +1541,18 @@ export const ServerSettings = Schema.Struct({
   snoozePresets: SnoozePresetSettings.pipe(
     Schema.withDecodingDefault(Effect.succeed(DEFAULT_SNOOZE_PRESETS)),
   ),
+  /** Clients hide threads with these tags while `hideTaggedThreads` is on. Bad entries drop alone, so a hand edit cannot reset settings. */
+  hiddenThreadTags: Schema.Array(Schema.Unknown).pipe(
+    Schema.decodeTo(
+      Schema.Array(Schema.String),
+      SchemaTransformation.transform<ReadonlyArray<string>, ReadonlyArray<unknown>>({
+        decode: (values) => values.filter((value) => typeof value === "string"),
+        encode: (values) => values,
+      }),
+    ),
+    Schema.withDecodingDefault(Effect.succeed([])),
+  ),
+  hideTaggedThreads: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   /** Beta: guest links for this machine's threads. Off refuses new links and pauses existing ones. */
   guestSharingEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   /**
@@ -1354,6 +1560,10 @@ export const ServerSettings = Schema.Struct({
    * and tasks on another machine; tasks already running there finish.
    */
   linkedEnvironmentsEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
+  /** Beta: durable workflows from the workflows folder of the T3 home. Off runs none of them. */
+  workflowsEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
+  /** Beta: Claude and Codex predict the next prompt after completed turns. Codex follows a change at once; open Claude threads after they restart. */
+  promptSuggestionsEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   sidebarAutoSettleKeepPullRequests: Schema.Boolean.pipe(
     Schema.withDecodingDefault(Effect.succeed(false)),
   ),
@@ -1378,6 +1588,12 @@ export const ServerSettings = Schema.Struct({
   defaultThemeSetAt: Schema.String.check(Schema.isMaxLength(64)).pipe(
     Schema.withDecodingDefault(Effect.succeed("")),
   ),
+  defaultAppearance: DefaultAppearancePreference.pipe(
+    Schema.withDecodingDefault(Effect.succeed("" as const)),
+  ),
+  defaultAppearanceSetAt: Schema.String.check(Schema.isMaxLength(64)).pipe(
+    Schema.withDecodingDefault(Effect.succeed("")),
+  ),
   environmentIcon: ForwardCompatibleNullable(EnvironmentMachineKind).pipe(
     Schema.withDecodingDefault(Effect.succeed(null)),
   ),
@@ -1391,6 +1607,8 @@ export const ServerSettings = Schema.Struct({
     Schema.withDecodingDefault(Effect.succeed(null)),
   ),
   addProjectBaseDirectory: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
+  /** Clones default to `<addProjectBaseDirectory>/<host>/<owner>/<repo>`, like ghq. */
+  ghqCloneLayout: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   textGenerationModelSelection: ModelSelection.pipe(
     Schema.withDecodingDefault(
       Effect.succeed({
@@ -1432,10 +1650,6 @@ export const ServerSettings = Schema.Struct({
   providerInstances: Schema.Record(ProviderInstanceId, ProviderInstanceConfig).pipe(
     Schema.withDecodingDefault(Effect.succeed({})),
   ),
-  // Internal: which bundled plugin packages are on. Not part of public patches.
-  enabledPluginIds: Schema.Array(PluginPackageId).pipe(
-    Schema.withDecodingDefault(Effect.succeed([])),
-  ),
   issues: Schema.Struct({
     linear: LinearIssueSettings.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
   }).pipe(Schema.withDecodingDefault(Effect.succeed({}))),
@@ -1443,15 +1657,23 @@ export const ServerSettings = Schema.Struct({
   sourceControlHosts: Schema.Record(Schema.String, SourceControlHostSettings).pipe(
     Schema.withDecodingDefault(Effect.succeed({})),
   ),
+  /** Hosts the add and publish project pickers offer, by kind. An unset host is off, except the default one. */
+  offeredSourceControlProviders: Schema.Record(Schema.String, Schema.Boolean).pipe(
+    Schema.withDecodingDefault(Effect.succeed({})),
+  ),
   // User-chosen ids preserve rows across edits; undecodable entries round-trip untouched.
   usageLimitSources: Schema.Record(UsageLimitSourceId, UsageLimitSourceConfig).pipe(
+    Schema.withDecodingDefault(Effect.succeed({})),
+  ),
+  textGenerators: Schema.Record(ProviderInstanceId, TextGeneratorConfig).pipe(
     Schema.withDecodingDefault(Effect.succeed({})),
   ),
   secretProviders: Schema.Record(SecretProviderId, SecretProviderConfig).pipe(
     Schema.withDecodingDefault(Effect.succeed({})),
   ),
-  cursorKeychainUsageEnabled: Schema.Boolean.pipe(
-    Schema.withDecodingDefault(Effect.succeed(false)),
+
+  usageHistoryRetentionDays: UsageHistoryRetentionDays.pipe(
+    Schema.withDecodingDefault(Effect.succeed(92)),
   ),
 
   usagePriceOverrides: Schema.Record(TrimmedNonEmptyString, UsageModelPriceOverride).pipe(
@@ -1461,6 +1683,13 @@ export const ServerSettings = Schema.Struct({
   usageModelAliases: Schema.Record(TrimmedNonEmptyString, TrimmedNonEmptyString).pipe(
     Schema.withDecodingDefault(Effect.succeed({})),
   ),
+  /** MCP servers T3 adds to every provider session, keyed by server name. */
+  mcpServers: McpServers.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
+  /** Skill names hidden from every agent on this environment. */
+  disabledSkills: DisabledSkills.pipe(Schema.withDecodingDefault(Effect.succeed([]))),
+
+  /** Sent by the Usage tab with each summary request to this environment; edit in settings.json. Invalid values are ignored. */
+  usageModelFilter: ForwardCompatibleOptional(UsageModelFilter),
 });
 export type ServerSettings = typeof ServerSettings.Type;
 
@@ -1476,7 +1705,7 @@ export const providerInstanceConfigEnabledFlag = (config: unknown): boolean | un
 
 // Must match each driver's enabled decoding default.
 const DEFAULT_DISABLED_PROVIDER_DRIVERS: ReadonlySet<ProviderDriverKind> = new Set(
-  ["cursor", "grok", "fx", "muse", "pi", "opencode", "antigravity"].map((driver) =>
+  ["cursor", "grok", "fx", "kiro", "muse", "pi", "opencode", "antigravity"].map((driver) =>
     ProviderDriverKind.make(driver),
   ),
 );
@@ -1518,6 +1747,27 @@ export const resolveProjectProviderInstanceEnabled = (
     ? resolveProviderInstanceEnabled(instanceConfig)
     : isUnconfiguredDefaultInstanceEnabled(instanceId);
 };
+
+/** The text generator a selection names, if any; it takes precedence over a provider instance. */
+export const textGeneratorForSelection = (
+  settings: Pick<ServerSettings, "textGenerators">,
+  instanceId: ProviderInstanceId,
+): TextGeneratorConfig | undefined =>
+  Object.hasOwn(settings.textGenerators, instanceId)
+    ? settings.textGenerators[instanceId]
+    : undefined;
+
+/** Whether a text generation selection can run: an enabled text generator or provider instance. */
+export const resolveTextGenerationSelectionEnabled = (
+  settings: Pick<
+    ServerSettings,
+    "providerInstances" | "projectSettingsOverrides" | "textGenerators"
+  >,
+  projectId: ProjectId | null,
+  instanceId: ProviderInstanceId,
+): boolean =>
+  textGeneratorForSelection(settings, instanceId)?.enabled ??
+  resolveProjectProviderInstanceEnabled(settings, projectId, instanceId);
 
 const decodeClaudeSettings = Schema.decodeUnknownOption(ClaudeSettings);
 
@@ -1579,10 +1829,17 @@ export const ServerSettingsOperation = Schema.Literals([
   "remove-secret",
   "remove-stale-secret",
   "write-secret",
+  "write-secret-provider",
   "write-file",
   "prepare-directory",
+  "write-managed-setting",
+  "use-disallowed-provider",
 ]);
 export type ServerSettingsOperation = typeof ServerSettingsOperation.Type;
+
+/** Why a provider the administrator's policy leaves out cannot be used. */
+export const disallowedProviderMessage = (organization: string | undefined, label: string) =>
+  `${organization === undefined ? "Your organization" : `${organization}'s`} policy does not allow the ${label} provider.`;
 
 export class ServerSettingsError extends Schema.TaggedError<ServerSettingsError>()(
   "ServerSettingsError",
@@ -1591,10 +1848,24 @@ export class ServerSettingsError extends Schema.TaggedError<ServerSettingsError>
     operation: ServerSettingsOperation,
     providerInstanceId: Schema.optional(Schema.String),
     environmentVariable: Schema.optional(Schema.String),
+    /** For `write-managed-setting`: the locked dot path and who manages it. */
+    managedSetting: Schema.optional(Schema.String),
+    managedBy: Schema.optional(Schema.String),
+    /** For `use-disallowed-provider`: the provider's name as users know it. */
+    providerLabel: Schema.optional(Schema.String),
     cause: Schema.optional(Schema.Defect()),
   },
 ) {
   override get message(): string {
+    if (this.operation === "write-managed-setting") {
+      return `${this.managedSetting ?? "This setting"} is managed by ${this.managedBy ?? "your organization"} and cannot be changed.`;
+    }
+    if (this.operation === "use-disallowed-provider") {
+      return disallowedProviderMessage(
+        this.managedBy,
+        this.providerLabel ?? this.providerInstanceId ?? "this",
+      );
+    }
     const provider =
       this.providerInstanceId === undefined ? "" : ` for provider ${this.providerInstanceId}`;
     const variable =
@@ -1667,10 +1938,27 @@ export const ServerSettingsPatch = Schema.Struct({
     }),
   ),
   worktreesDirectory: Schema.optionalKey(TrimmedString),
+  fastWorktreeCheckout: Schema.optionalKey(Schema.Boolean),
   responseStreamingMode: Schema.optionalKey(ResponseStreamingMode),
+  agentFeedback: Schema.optionalKey(Schema.Struct({ mode: AgentFeedbackMode })),
   enableProviderUpdateChecks: Schema.optionalKey(Schema.Boolean),
   continueThreadsAfterServerUpdate: Schema.optionalKey(Schema.Boolean),
+  keepAwakeWhileAgentsWork: Schema.optionalKey(Schema.Boolean),
+  requireConnectDeviceApproval: Schema.optionalKey(Schema.Boolean),
   enableAgentBrowserAccess: Schema.optionalKey(Schema.Boolean),
+  enablePreviewTunnel: Schema.optionalKey(Schema.Boolean),
+  cloudSpeechCredentials: Schema.optionalKey(
+    Schema.Struct({
+      openai: Schema.optionalKey(SettingsSecretValue),
+      xai: Schema.optionalKey(SettingsSecretValue),
+      openrouter: Schema.optionalKey(SettingsSecretValue),
+    }),
+  ),
+  speechModelId: Schema.optionalKey(Schema.String),
+  speechAcceleration: Schema.optionalKey(SpeechAcceleration),
+  speechModelUnloadTimeout: Schema.optionalKey(SpeechModelUnloadTimeout),
+  speechProjectCustomWords: Schema.optionalKey(SpeechCustomWords),
+  speechPostProcessingModelSelection: Schema.optionalKey(Schema.NullOr(ModelSelection)),
   projectAgentBrowserAccessOverrides: Schema.optionalKey(
     Schema.Record(ProjectId, Schema.NullOr(Schema.Boolean)),
   ),
@@ -1714,8 +2002,12 @@ export const ServerSettingsPatch = Schema.Struct({
   autoResumeLimitedThreads: Schema.optionalKey(Schema.Boolean),
   snoozeLimitedThreads: Schema.optionalKey(Schema.Boolean),
   snoozePresets: Schema.optionalKey(SnoozePresetSettings),
+  hiddenThreadTags: Schema.optionalKey(Schema.Array(Schema.String)),
+  hideTaggedThreads: Schema.optionalKey(Schema.Boolean),
   guestSharingEnabled: Schema.optionalKey(Schema.Boolean),
   linkedEnvironmentsEnabled: Schema.optionalKey(Schema.Boolean),
+  workflowsEnabled: Schema.optionalKey(Schema.Boolean),
+  promptSuggestionsEnabled: Schema.optionalKey(Schema.Boolean),
   backgroundActivity: Schema.optionalKey(
     Schema.Struct({
       schemaVersion: Schema.optionalKey(Schema.Literal(1)),
@@ -1727,11 +2019,16 @@ export const ServerSettingsPatch = Schema.Struct({
   automaticGitFetchInterval: Schema.optionalKey(Schema.DurationFromMillis),
   providerHealthRefreshInterval: Schema.optionalKey(Schema.DurationFromMillis),
   backgroundActivityProfile: Schema.optionalKey(BackgroundActivityProfile),
+  defaultTheme: Schema.optionalKey(DefaultThemePreference),
+  defaultThemeSetAt: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(64))),
+  defaultAppearance: Schema.optionalKey(DefaultAppearancePreference),
+  defaultAppearanceSetAt: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(64))),
   environmentIcon: Schema.optionalKey(Schema.NullOr(EnvironmentMachineKind)),
   defaultThreadEnvMode: Schema.optionalKey(Schema.NullOr(ThreadEnvMode)),
   newWorktreesStartFromOrigin: Schema.optionalKey(Schema.Boolean),
   worktreeSubmodules: Schema.optionalKey(Schema.NullOr(WorktreeSubmodules)),
   addProjectBaseDirectory: Schema.optionalKey(TrimmedString),
+  ghqCloneLayout: Schema.optionalKey(Schema.Boolean),
   textGenerationModelSelection: Schema.optionalKey(ModelSelectionPatch),
   threadTitleInstructions: Schema.optionalKey(TrimmedString),
   branchNamingMode: Schema.optionalKey(BranchNamingMode),
@@ -1762,18 +2059,24 @@ export const ServerSettingsPatch = Schema.Struct({
       otlpLogsUrl: Schema.optionalKey(TrimmedString),
     }),
   ),
-  /** Merges per host, replacing patched fields whole; redaction markers retain secrets, empty or omitted secrets remove them. */
+  /** Merges per host, replacing patched fields whole; redaction markers retain secrets, empty secrets remove them. A non-empty token map keeps the saved tokens of hosts it omits; an empty map clears them all. */
   sourceControlHosts: Schema.optionalKey(Schema.Record(Schema.String, SourceControlHostSettings)),
+  offeredSourceControlProviders: Schema.optionalKey(Schema.Record(Schema.String, Schema.Boolean)),
   // Replace whole maps to avoid half-merged driver configs.
   providerInstances: Schema.optionalKey(Schema.Record(ProviderInstanceId, ProviderInstanceConfig)),
   // Merge per source to avoid racing other edits; null removes an entry.
   usageLimitSources: Schema.optionalKey(
     Schema.Record(UsageLimitSourceId, Schema.NullOr(UsageLimitSourceConfig)),
   ),
+  // Merge per entry like usageLimitSources; null removes an entry.
+  textGenerators: Schema.optionalKey(
+    Schema.Record(ProviderInstanceId, Schema.NullOr(TextGeneratorConfig)),
+  ),
   secretProviders: Schema.optionalKey(
     Schema.Record(SecretProviderId, Schema.NullOr(SecretProviderConfigWrite)),
   ),
-  cursorKeychainUsageEnabled: Schema.optionalKey(Schema.Boolean),
+
+  usageHistoryRetentionDays: Schema.optionalKey(UsageHistoryRetentionDays),
 
   usagePriceOverrides: Schema.optionalKey(
     Schema.Record(TrimmedNonEmptyString, Schema.NullOr(UsageModelPriceOverride)),
@@ -1782,30 +2085,100 @@ export const ServerSettingsPatch = Schema.Struct({
   usageModelAliases: Schema.optionalKey(
     Schema.Record(TrimmedNonEmptyString, Schema.NullOr(TrimmedNonEmptyString)),
   ),
+  /**
+   * Each entry replaces one server; `null` removes it. A sensitive variable
+   * sent back with `valueRedacted` and no value keeps its stored secret.
+   */
+  mcpServers: Schema.optionalKey(Schema.Record(McpServerName, Schema.NullOr(McpServerConfig))),
+  disabledSkills: Schema.optionalKey(DisabledSkills),
 });
 export type ServerSettingsPatch = typeof ServerSettingsPatch.Type;
 
+/** The theme service sets theme defaults after it validates them, so clients cannot. */
+export const ClientServerSettingsPatch = ServerSettingsPatch.mapFields(
+  Struct.omit(["defaultTheme", "defaultThemeSetAt", "defaultAppearance", "defaultAppearanceSetAt"]),
+);
+
 export function requiredScopesForServerSettingsPatch(
   patch: ServerSettingsPatch,
+  current?: Pick<ServerSettings, "projectSettingsOverrides">,
 ): ReadonlyArray<AuthEnvironmentScope> {
   let changesProviders = false;
   let changesSettings = false;
+  let changesAccess = false;
   for (const [key, value] of Object.entries(patch)) {
     if (value === undefined) continue;
-    if (
+    if (key === "requireConnectDeviceApproval" || key === "enablePreviewTunnel") {
+      changesAccess = true;
+    } else if (
       key === "providers" ||
       key === "providerInstances" ||
       key === "usageLimitSources" ||
-      key === "secretProviders"
+      key === "secretProviders" ||
+      // A server is a command T3 runs for every agent, like a provider binary.
+      key === "textGenerators" ||
+      key === "mcpServers"
     ) {
       changesProviders = true;
     } else {
       changesSettings = true;
     }
   }
+  // So does a project entry that carries its own server. Switching an
+  // inherited server off or on for a project is an ordinary setting.
+  if (
+    Object.entries(patch.projectSettingsOverrides ?? {}).some(([projectId, entry]) => {
+      const previous = current?.projectSettingsOverrides[projectId as ProjectId]?.mcpServers ?? {};
+      if (
+        (entry === null || entry.mcpServers !== undefined) &&
+        Object.entries(previous).some(
+          ([name, server]) =>
+            server.transport !== undefined && entry?.mcpServers?.[name]?.transport === undefined,
+        )
+      )
+        return true;
+      return Object.entries(entry?.mcpServers ?? {}).some(([name, server]) => {
+        if (server.transport === undefined) return false;
+        const stored =
+          current?.projectSettingsOverrides[projectId as ProjectId]?.mcpServers?.[name]?.transport;
+        const comparable = (transport: typeof stored, storedValue = false) =>
+          transport === undefined
+            ? undefined
+            : {
+                ...transport,
+                ...(transport.type === "stdio"
+                  ? {
+                      env: transport.env.map((variable) => ({
+                        ...variable,
+                        value: storedValue && variable.sensitive ? "" : variable.value,
+                      })),
+                    }
+                  : {
+                      headers: transport.headers.map((variable) => ({
+                        ...variable,
+                        value: storedValue && variable.sensitive ? "" : variable.value,
+                      })),
+                    }),
+              };
+        return (
+          stored === undefined ||
+          JSON.stringify(comparable(stored, true)) !== JSON.stringify(comparable(server.transport))
+        );
+      });
+    })
+  ) {
+    changesProviders = true;
+  }
+  // A reference can name any secret the store holds; choosing where one goes is provider authority.
+  if (containsSecretReference(patch)) changesProviders = true;
+  // Removing a secret provider also clears the settings fields that read from it.
+  if (Object.values(patch.secretProviders ?? {}).some((entry) => entry === null)) {
+    changesSettings = true;
+  }
   return [
-    ...(changesSettings || !changesProviders ? [AuthSettingsWriteScope] : []),
+    ...(changesSettings || (!changesProviders && !changesAccess) ? [AuthSettingsWriteScope] : []),
     ...(changesProviders ? [AuthProvidersManageScope] : []),
+    ...(changesAccess ? [AuthAccessWriteScope] : []),
   ];
 }
 
@@ -1846,6 +2219,7 @@ export const ClientSettingsPatch = Schema.Struct({
   browserDefaultProfileId: Schema.optionalKey(BrowserProfileId),
   confirmQuit: Schema.optionalKey(QuitConfirmationMode),
   confirmThreadArchive: Schema.optionalKey(Schema.Boolean),
+  confirmTerminalClose: Schema.optionalKey(Schema.Boolean),
   confirmThreadDelete: Schema.optionalKey(Schema.Boolean),
   confirmThreadUnpin: Schema.optionalKey(Schema.Boolean),
   diffFilesCollapsed: Schema.optionalKey(Schema.Boolean),
@@ -1871,19 +2245,19 @@ export const ClientSettingsPatch = Schema.Struct({
     Schema.Record(TrimmedNonEmptyString, PullRequestMergeMethod),
   ),
   pullRequestLinksOpenInApp: Schema.optionalKey(Schema.Boolean),
-  planModeEnabled: Schema.optionalKey(Schema.Boolean),
-  contextWindowMeterEnabled: Schema.optionalKey(Schema.Boolean),
   composerRichTextEnabled: Schema.optionalKey(Schema.Boolean),
-  composerReviewEnabled: Schema.optionalKey(Schema.Boolean),
   sendShortcut: Schema.optionalKey(Schema.Literals(["enter", "mod-enter-multiline", "mod-enter"])),
   followUpBehavior: Schema.optionalKey(Schema.Literals(["queue", "steer"])),
+  sideThreadOpenTarget: Schema.optionalKey(SideThreadOpenTarget),
   proactivePanelsEnabled: Schema.optionalKey(Schema.Boolean),
   showSkillsInSlashMenu: Schema.optionalKey(Schema.Boolean),
   boringSidebarEnabled: Schema.optionalKey(Schema.Boolean),
   boringSidebarMultilineRows: Schema.optionalKey(Schema.Boolean),
+  toolCallVisibility: Schema.optionalKey(ToolCallVisibility),
+  screenReaderAnnouncements: Schema.optionalKey(ScreenReaderAnnouncements),
+  screenReaderWindowTitle: Schema.optionalKey(Schema.Boolean),
   threadDetailsUsageEnabled: Schema.optionalKey(Schema.Boolean),
   threadDetailsItems: Schema.optionalKey(Schema.Record(Schema.String, Schema.Boolean)),
-  legacySidebarEnabled: Schema.optionalKey(Schema.Boolean),
   sidebarWorkingShelfEnabled: Schema.optionalKey(Schema.Boolean),
   sidebarProjectGroupingMode: Schema.optionalKey(SidebarProjectGroupingMode),
   sidebarProjectGroupingOverrides: Schema.optionalKey(
@@ -1892,6 +2266,18 @@ export const ClientSettingsPatch = Schema.Struct({
   sidebarProjectSortOrder: Schema.optionalKey(SidebarProjectSortOrder),
   sidebarThreadSortOrder: Schema.optionalKey(SidebarThreadSortOrder),
   timestampFormat: Schema.optionalKey(TimestampFormat),
+  voiceMicrophone: Schema.optionalKey(Schema.String),
+  voiceMicrophones: Schema.optionalKey(Schema.Array(VoiceMicrophoneEntry)),
+  voiceShortcutMode: Schema.optionalKey(VoiceShortcutMode),
+  speechLanguage: Schema.optionalKey(SpeechLanguage),
+  speechTranslateToEnglish: Schema.optionalKey(Schema.Boolean),
+  speechCustomWords: Schema.optionalKey(SpeechCustomWords),
+  speechSilenceFiltering: Schema.optionalKey(Schema.Boolean),
+  speechStreaming: Schema.optionalKey(Schema.Boolean),
+  speechRemoveFillerWords: Schema.optionalKey(Schema.Boolean),
+  speechPostProcessingPrompt: Schema.optionalKey(SpeechPostProcessingPromptSettings),
+  speechCorrectionWord: Schema.optionalKey(SpeechCorrectionCue),
+  language: Schema.optionalKey(Schema.String),
   snapShotEnabled: Schema.optionalKey(Schema.Boolean),
   snapShotIncludeAccessibility: Schema.optionalKey(Schema.Boolean),
   snapShotShortcut: Schema.optionalKey(SnapShotShortcut),

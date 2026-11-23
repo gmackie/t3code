@@ -1,3 +1,4 @@
+import { msg, useMessages } from "gt-react-native";
 import { useAtomQueryRunner } from "../../state/use-atom-query-runner";
 import { kicadState } from "../../state/kicad";
 import { EnvironmentId } from "@t3tools/contracts";
@@ -60,6 +61,8 @@ type KiCadWebViewProps = {
 const KiCadWebView = WebView as unknown as ComponentType<KiCadWebViewProps>;
 
 export function KiCadViewerRouteScreen({ route }: Props) {
+  const m = useMessages();
+
   const navigation = useNavigation();
   const { cwd } = route.params;
   const environmentId = EnvironmentId.make(route.params.environmentId);
@@ -114,11 +117,12 @@ export function KiCadViewerRouteScreen({ route }: Props) {
           setViewer({
             request: sessionRequest,
             session: null,
-            error: cause instanceof Error ? cause.message : "Unable to open the KiCad viewer.",
+            error:
+              cause instanceof Error ? cause.message : m(msg("Unable to open the KiCad viewer.")),
           });
       });
     return () => controller.abort();
-  }, [sessionRequest]);
+  }, [sessionRequest, m]);
 
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Renew the mounted CAD WebView's ticket before expiry, releasing its timer on teardown.
   useEffect(() => {
@@ -152,6 +156,7 @@ export function KiCadViewerRouteScreen({ route }: Props) {
       "--accent-foreground": theme["--color-foreground"],
       "--border": theme["--color-border"],
     };
+    // oxlint-disable-next-line t3code/no-untranslated-copy -- Injected JavaScript is code, not UI copy.
     return `(() => { const vars = ${JSON.stringify(variables)}; for (const [key, value] of Object.entries(vars)) document.documentElement.style.setProperty(key, value); document.documentElement.classList.toggle("dark", ${themeAppearance === "dark"}); })(); true;`;
   }, [theme, themeAppearance]);
 
@@ -166,16 +171,16 @@ export function KiCadViewerRouteScreen({ route }: Props) {
       <View className="flex-row items-center gap-1 border-b border-border px-3 py-2">
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="Switch to Code mode"
+          accessibilityLabel={m(msg("Switch to Code mode"))}
           onPress={() => navigation.goBack()}
           className="rounded-md px-4 py-2"
         >
-          <Text className="text-foreground-muted">Code</Text>
+          <Text className="text-foreground-muted">{m(msg("Code"))}</Text>
         </Pressable>
         <View
           className="rounded-md bg-subtle-strong px-4 py-2"
           accessibilityRole="text"
-          accessibilityLabel="CAD mode, selected"
+          accessibilityLabel={m(msg("CAD mode, selected"))}
         >
           <Text>CAD</Text>
         </View>
@@ -202,11 +207,11 @@ export function KiCadViewerRouteScreen({ route }: Props) {
               // Analysis dashboards load in their own frame; full-page links open externally.
               if (request.isTopFrame === false) return true;
               void Linking.openURL(request.url).catch(() => {
-                showError("Unable to open the analysis dashboard in your browser.");
+                showError(m(msg("Unable to open the analysis dashboard in your browser.")));
               });
               return false;
             }
-            showError("Navigation outside the KiCad viewer was blocked.");
+            showError(m(msg("Navigation outside the KiCad viewer was blocked.")));
             return false;
           }}
           onLoadProgress={(event) => setProgress(event.nativeEvent.progress)}
@@ -240,16 +245,18 @@ export function KiCadViewerRouteScreen({ route }: Props) {
             <>
               <Text className="text-center text-sm text-foreground-muted">{error}</Text>
               <Pressable className="rounded-md bg-accent px-4 py-2" onPress={retry}>
-                <Text className="text-sm font-t3-bold text-foreground">Retry</Text>
+                <Text className="text-sm font-t3-bold text-foreground">{m(msg("Retry"))}</Text>
               </Pressable>
               <Text className="text-sm text-foreground-muted">
-                Use the back button to leave the viewer.
+                {m(msg("Use the back button to leave the viewer."))}
               </Text>
             </>
           ) : (
             <>
               <ActivityIndicator />
-              <Text className="text-sm text-foreground-muted">Opening KiCad viewer…</Text>
+              <Text className="text-sm text-foreground-muted">
+                {m(msg("Opening KiCad viewer…"))}
+              </Text>
             </>
           )}
         </View>
