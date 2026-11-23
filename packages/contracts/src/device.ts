@@ -638,6 +638,8 @@ export const DeviceToolListResult = Schema.Struct({
   hosts: Schema.Array(DeviceHostSummary),
   devices: Schema.Array(DeviceSummary),
   open: Schema.Array(Schema.Struct({ hostId: DeviceHostId, deviceId: DeviceId })),
+  /** Which hosts to use, in order, when this environment steers agents off local devices. */
+  guidance: Schema.optional(Schema.String),
 });
 export type DeviceToolListResult = typeof DeviceToolListResult.Type;
 
@@ -653,7 +655,15 @@ export const DeviceToolOpenInput = Schema.Struct({
     }),
   ),
   hostId: Schema.optional(
-    DeviceHostId.annotate({ description: "Host from `device_list`. Default local." }),
+    DeviceHostId.annotate({
+      description: "Host from `device_list`. Default: the first host `device_list` lists.",
+    }),
+  ),
+  useLocal: Schema.optional(
+    Schema.Boolean.annotate({
+      description:
+        "Allow this machine's devices when `device_list` says to avoid them. Only when the user named that device, or every host listed before it failed.",
+    }),
   ),
 });
 export type DeviceToolOpenInput = typeof DeviceToolOpenInput.Type;

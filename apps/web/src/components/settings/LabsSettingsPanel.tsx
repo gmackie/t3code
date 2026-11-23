@@ -34,6 +34,7 @@ export function LabsSettingsPanel() {
         <WorkflowsRow />
         <PromptSuggestionsRow />
         <SimlockHostsRow />
+        <SimlockAgentsAvoidLocalRow />
         <FastWorktreeCheckoutRow />
         <AgentFeedbackRow />
       </SettingsSection>
@@ -283,6 +284,33 @@ function SimlockHostsRow() {
             updateSettings({ simlockDeviceHostsEnabled: Boolean(checked) })
           }
           aria-label={gt("Simlock device hosts")}
+        />
+      }
+    />
+  );
+}
+
+function SimlockAgentsAvoidLocalRow() {
+  const searchableSetting = useSearchableSetting();
+  const settings = useScopedSettings();
+  const updateSettings = useUpdateScopedSettings();
+  const gt = useGT();
+  return (
+    <SettingsRow
+      serverScoped
+      {...searchableSetting("simlock-agents-avoid-local")}
+      settingKeys={["agentDevicesAvoidLocal"]}
+      description={gt(
+        "With Simlock device hosts on, agents use your Simlock pool, then SSH device hosts, and open this machine's simulators only when you name one or every other host fails. You can still open any device in the Device panel.",
+      )}
+      control={
+        <ScopedSwitch
+          settingKeys={["agentDevicesAvoidLocal"]}
+          checked={settings.agentDevicesAvoidLocal}
+          onCheckedChange={(checked) =>
+            updateSettings({ agentDevicesAvoidLocal: Boolean(checked) })
+          }
+          aria-label={gt("Keep agents on the Simlock pool")}
         />
       }
     />

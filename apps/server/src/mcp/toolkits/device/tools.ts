@@ -16,6 +16,7 @@ import { McpSchema, Tool, Toolkit } from "effect/ai";
 
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
 import * as DeviceService from "../../../device/DeviceService.ts";
+import * as Settings from "../../../serverSettings.ts";
 import * as ThreadManagementService from "../../../orchestration-v2/ThreadManagementService.ts";
 import * as ProjectService from "../../../project/ProjectService.ts";
 
@@ -24,12 +25,14 @@ const dependencies = [
   ThreadManagementService.ThreadManagementService,
   DeviceService.DeviceService,
 ];
+// Listing and opening read whether to steer agents off this machine's simulators.
+const hostChoiceDependencies = [...dependencies, Settings.ServerSettingsService];
 
 const DeviceToolFailure = Schema.Union([DeviceToolError, OrchestratorMcpFailure]);
 
 const DeviceListTool = Tool.make("device_list", {
   description:
-    "List iOS Simulators and Android Emulators on every device host, what each host can run, and what is open in this thread's Device panel. Call before `device_open` when you do not know a device id.",
+    "List iOS Simulators and Android Emulators on every device host, what each host can run, and what is open in this thread's Device panel. Call before `device_open` when you do not know a device id. When the result has `guidance`, follow it: use hosts in the order it gives.",
   // An empty struct serializes as `anyOf [object, array]`, which some
   // providers reject and then drop every tool on the server with it.
   parameters: Schema.Struct({
@@ -39,7 +42,7 @@ const DeviceListTool = Tool.make("device_list", {
   }),
   success: DeviceToolListResult,
   failure: DeviceToolFailure,
-  dependencies,
+  dependencies: hostChoiceDependencies,
 })
   .annotate(Tool.Title, "List devices")
   .annotate(Tool.Readonly, true)
@@ -50,12 +53,12 @@ const DeviceListTool = Tool.make("device_list", {
 
 const DeviceOpenTool = Tool.make("device_open", {
   description:
-    "Open a simulator or emulator for this thread. Pass `deviceId` and `hostId` from `device_list`. Boots it if needed and shows it in the user's Device panel. Returns the `agent-device` CLI call pinned to that device. Drive the device with that CLI.",
+    "Open a simulator or emulator for this thread. Pass `deviceId` and `hostId` from `device_list`; with no `hostId` it tries hosts in the order `device_list` gives. Boots it if needed and shows it in the user's Device panel. Returns the `agent-device` CLI call pinned to that device. Drive the device with that CLI.",
   parameters: DeviceToolOpenInput,
   success: DeviceToolOpenResult,
   failure: DeviceToolFailure,
   dependencies: [
-    ...dependencies,
+    ...hostChoiceDependencies,
     FileSystem.FileSystem,
     Path.Path,
     ServerConfig.ServerConfig,

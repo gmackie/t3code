@@ -605,6 +605,13 @@ export const SETTINGS_SEARCH_ITEMS = [
     ],
   },
   {
+    id: "simlock-agents-avoid-local",
+    title: msg("Keep agents on the Simlock pool"),
+    to: "/settings/labs",
+    scope: "environment",
+    searchTerms: [msg("simlock agents local simulators load fallback ssh device host")],
+  },
+  {
     id: "worktree-fast-checkout",
     title: msg("Fast worktree checkout"),
     to: "/settings/labs",

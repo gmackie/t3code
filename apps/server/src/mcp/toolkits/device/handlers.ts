@@ -8,10 +8,12 @@ import {
   type DeviceSummary,
   DeviceToolUnavailableError,
   LOCAL_DEVICE_HOST_ID,
+  type ThreadId,
 } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as DeviceService from "../../../device/DeviceService.ts";
+import * as Settings from "../../../serverSettings.ts";
 import { threadWorkspaceRoot } from "../../../project/threadWorkspaceRoot.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
 import * as McpToolAccess from "../../McpToolAccess.ts";
@@ -213,6 +215,140 @@ const pickDevice = Effect.fn("handlers.pickDevice")(function* (
 
 const toolError = (error: DeviceError | DeviceToolUnavailableError) => error;
 
+// EAS ranks after local: it bills per minute, so it is never an automatic fallback.
+const agentHostRank = { simlock: 0, ssh: 1, local: 2, eas: 3 } as const;
+
+/**
+ * The order agents should try hosts in, or undefined when they may pick freely.
+ * Simlock and SSH hosts sit in pools other tools can balance; this machine's
+ * simulators do not, so agents reach them last.
+ */
+function agentHostOrder(
+  hosts: ReadonlyArray<DeviceHostSummary>,
+  avoidLocal: boolean,
+): ReadonlyArray<DeviceHostSummary> | undefined {
+  if (!avoidLocal || !hosts.some((host) => host.kind === "simlock")) return undefined;
+  return [...hosts].sort((a, b) => agentHostRank[a.kind] - agentHostRank[b.kind]);
+}
+
+const hostUsable = (
+  state: { readonly hostStatuses: DeviceServiceState["hostStatuses"] },
+  host: DeviceHostSummary,
+  platform: DevicePlatform | undefined,
+) => {
+  if (state.hostStatuses[host.id]?.status === "failed") return false;
+  const known = host.platforms.filter(
+    (candidate) => platform === undefined || candidate.platform === platform,
+  );
+  return known.length === 0 || known.some((candidate) => candidate.available);
+};
+
+/** Hosts agents should use before this machine's devices. */
+const hostsBeforeLocal = (
+  state: { readonly hostStatuses: DeviceServiceState["hostStatuses"] },
+  order: ReadonlyArray<DeviceHostSummary>,
+  platform: DevicePlatform | undefined,
+) =>
+  order.filter(
+    (host) => agentHostRank[host.kind] < agentHostRank.local && hostUsable(state, host, platform),
+  );
+
+const hostList = (hosts: ReadonlyArray<DeviceHostSummary>) =>
+  hosts.map((host) => `${host.label.slice(0, 64)} (hostId ${host.id})`).join(", then ");
+
+function agentHostGuidance(order: ReadonlyArray<DeviceHostSummary>): string {
+  const pooled = order.filter((host) => agentHostRank[host.kind] < agentHostRank.local);
+  const local = order.find((host) => host.kind === "local");
+  return [
+    `Use device hosts in this order: ${hostList(pooled)}. If device_open fails on one, try the next.`,
+    local
+      ? `Use ${local.label} (hostId ${local.id}) only when the user names one of its devices or every host above failed; pass useLocal: true to device_open then.`
+      : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+}
+
+// Unreadable settings fall back to the safe default.
+const avoidLocalSetting = Settings.ServerSettingsService.pipe(
+  Effect.flatMap((settings) => settings.getSettings),
+  Effect.map((settings) => settings.agentDevicesAvoidLocal),
+  Effect.orElseSucceed(() => true),
+);
+
+const localRefusal = (blockedBy: ReadonlyArray<DeviceHostSummary>) =>
+  new DeviceToolUnavailableError({
+    reason: `This environment keeps agents off this machine's simulators while a Simlock pool is set up. Open a device on ${hostList(blockedBy)} instead. Pass useLocal: true only when the user named this device or those hosts failed.`,
+  });
+
+const openDevice = Effect.fn("handlers.openDevice")(function* (
+  threadId: ThreadId,
+  target: DeviceSummary,
+) {
+  const devices = yield* DeviceService.DeviceService;
+  // Resolve consent and agent connectivity before booting or registering a session.
+  if (!(yield* devices.agentReadinessIfSupported(target.hostId))) {
+    return yield* new DeviceToolUnavailableError({
+      reason:
+        "Agent device access requires enabled device support, agent access, and an available simulator platform on this host.",
+    });
+  }
+  const session = yield* devices.open(
+    {
+      threadId,
+      hostId: target.hostId,
+      deviceId: target.id,
+      platform: target.platform,
+    },
+    { workspaceRoot: yield* threadWorkspaceRoot(threadId) },
+  );
+  const after = yield* devices.state;
+  const device =
+    after.devices.find(
+      (candidate) => candidate.hostId === session.hostId && candidate.id === session.deviceId,
+    ) ?? target;
+  // Target the opened device: an Expo device and its agent-device daemon
+  // exist only once its session runs, and Android ids change on boot.
+  const opened = {
+    threadId,
+    hostId: session.hostId,
+    deviceId: session.deviceId,
+  };
+  const agent = yield* devices.agentTarget(opened);
+  const hostKind = after.hosts.find((host) => host.id === device.hostId)?.kind;
+  const targetArgs = [
+    ...(agent.agentDeviceId === null
+      ? []
+      : agentDeviceTargetArgs({ ...device, id: agent.agentDeviceId })),
+    ...agent.args,
+  ];
+  const launcher = yield* devices.agentLauncher({ ...opened, targetArgs });
+  if (Option.isNone(launcher)) {
+    return yield* new DeviceToolUnavailableError({
+      reason:
+        "The device was closed while device_open was preparing it. Call device_open again only if you still need it.",
+    });
+  }
+  const command = launcher.value;
+  return {
+    device,
+    agentDevice: { command, targetArgs, session: agent.session },
+    quickStart: agentDeviceQuickStart(
+      device,
+      [],
+      command,
+      hostKind === "simlock"
+        ? {
+            kind: "simlock",
+            ...(agent.installDirectory ? { installDirectory: agent.installDirectory } : {}),
+          }
+        : hostKind === "eas"
+          ? { kind: "eas" }
+          : undefined,
+    ),
+  };
+});
+
 const handlers = {
   device_list: McpToolAccess.readsAsCaller((input) =>
     Effect.gen(function* () {
@@ -226,6 +362,12 @@ const handlers = {
         });
       }
       const hostId = yield* resolveHostId(state.hosts, input?.hostId);
+      const order = agentHostOrder(state.hosts, yield* avoidLocalSetting);
+      const hosts = order ?? state.hosts;
+      const rank = new Map(hosts.map((host, index) => [host.id, index]));
+      const listed = order
+        ? [...state.devices].sort((a, b) => (rank.get(a.hostId) ?? 0) - (rank.get(b.hostId) ?? 0))
+        : state.devices;
       const open = state.sessions
         .filter((session) => session.threadId === scope.thread.threadId)
         .map((session) => ({ hostId: session.hostId, deviceId: session.deviceId }));
@@ -233,11 +375,10 @@ const handlers = {
         hostStatuses: Object.fromEntries(
           Object.entries(state.hostStatuses).filter(([id]) => !hostId || id === hostId),
         ),
-        hosts: hostId ? state.hosts.filter((host) => host.id === hostId) : state.hosts,
-        devices: hostId
-          ? state.devices.filter((device) => device.hostId === hostId)
-          : state.devices,
+        hosts: hostId ? hosts.filter((host) => host.id === hostId) : hosts,
+        devices: hostId ? listed.filter((device) => device.hostId === hostId) : listed,
         open,
+        ...(order ? { guidance: agentHostGuidance(order) } : {}),
       };
     }).pipe(Effect.mapError(toolError)),
   ),
@@ -253,68 +394,68 @@ const handlers = {
         });
       }
       const hostId = yield* resolveHostId(state.hosts, input.hostId);
+      const order = agentHostOrder(state.hosts, yield* avoidLocalSetting);
+      if (order === undefined) {
+        return yield* openDevice(
+          scope.thread.threadId,
+          yield* pickDevice(state, { ...input, hostId }),
+        );
+      }
+      if (hostId === undefined && input.deviceId === undefined) {
+        if (
+          input.platform === undefined &&
+          new Set(state.devices.map((device) => device.platform)).size > 1
+        ) {
+          return yield* new DeviceToolUnavailableError({
+            reason: "Both iOS and Android devices are available; pass platform or deviceId.",
+          });
+        }
+        // Try hosts in the agent order, reaching local only when every pooled host fails.
+        const failures: Array<string> = [];
+        for (const host of order) {
+          if (host.kind === "eas") continue;
+          if (
+            host.kind === "local" &&
+            !input.useLocal &&
+            failures.length === 0 &&
+            hostsBeforeLocal(state, order, input.platform).length > 0
+          )
+            break;
+          const attempt = yield* pickDevice(state, { ...input, hostId: host.id }).pipe(
+            Effect.flatMap((target) => openDevice(scope.thread.threadId, target)),
+            Effect.result,
+          );
+          if (attempt._tag === "Success") return attempt.success;
+          failures.push(`${hostName(host)}: ${attempt.failure.message}`);
+        }
+        return yield* new DeviceToolUnavailableError({
+          reason:
+            failures.length > 0
+              ? `No device host could open a device. ${failures.join(" ")}`
+              : "No device host is available. Call device_list to see why.",
+        });
+      }
       const target = yield* pickDevice(state, { ...input, hostId });
-      // Resolve consent and agent connectivity before booting or registering a session.
-      if (!(yield* devices.agentReadinessIfSupported(target.hostId))) {
-        return yield* new DeviceToolUnavailableError({
-          reason:
-            "Agent device access requires enabled device support, agent access, and an available simulator platform on this host.",
-        });
+      const blockedBy = hostsBeforeLocal(state, order, target.platform);
+      const targetKind = state.hosts.find((host) => host.id === target.hostId)?.kind;
+      if (targetKind === "local" && !input.useLocal && blockedBy.length > 0) {
+        return yield* localRefusal(blockedBy);
       }
-      const session = yield* devices.open(
-        {
-          threadId: scope.thread.threadId,
-          hostId: target.hostId,
-          deviceId: target.id,
-          platform: target.platform,
-        },
-        { workspaceRoot: yield* threadWorkspaceRoot(scope.thread.threadId) },
+      const next = order.slice(order.findIndex((host) => host.id === target.hostId) + 1);
+      const fallback = next.find(
+        (host) => host.kind !== "eas" && hostUsable(state, host, target.platform),
       );
-      const after = yield* devices.state;
-      const device =
-        after.devices.find(
-          (candidate) => candidate.hostId === session.hostId && candidate.id === session.deviceId,
-        ) ?? target;
-      // Target the opened device: an Expo device and its agent-device daemon
-      // exist only once its session runs, and Android ids change on boot.
-      const opened = {
-        threadId: scope.thread.threadId,
-        hostId: session.hostId,
-        deviceId: session.deviceId,
-      };
-      const agent = yield* devices.agentTarget(opened);
-      const hostKind = after.hosts.find((host) => host.id === device.hostId)?.kind;
-      const targetArgs = [
-        ...(agent.agentDeviceId === null
-          ? []
-          : agentDeviceTargetArgs({ ...device, id: agent.agentDeviceId })),
-        ...agent.args,
-      ];
-      const launcher = yield* devices.agentLauncher({ ...opened, targetArgs });
-      if (Option.isNone(launcher)) {
-        return yield* new DeviceToolUnavailableError({
-          reason:
-            "The device was closed while device_open was preparing it. Call device_open again only if you still need it.",
-        });
-      }
-      const command = launcher.value;
-      return {
-        device,
-        agentDevice: { command, targetArgs, session: agent.session },
-        quickStart: agentDeviceQuickStart(
-          device,
-          [],
-          command,
-          hostKind === "simlock"
-            ? {
-                kind: "simlock",
-                ...(agent.installDirectory ? { installDirectory: agent.installDirectory } : {}),
-              }
-            : hostKind === "eas"
-              ? { kind: "eas" }
-              : undefined,
+      return yield* openDevice(scope.thread.threadId, target).pipe(
+        Effect.catch((error) =>
+          fallback === undefined || targetKind === "local"
+            ? Effect.fail(error)
+            : Effect.fail(
+                new DeviceToolUnavailableError({
+                  reason: `${error.message} Next, call device_open with hostId ${fallback.id} and platform ${target.platform}${fallback.kind === "local" ? " and useLocal: true" : ""}.`,
+                }),
+              ),
         ),
-      };
+      );
     }).pipe(Effect.mapError(toolError)),
   ),
   device_screenshot: McpToolAccess.readsAsCaller((input) =>
