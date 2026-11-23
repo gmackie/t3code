@@ -40,6 +40,7 @@ import * as Path from "effect/Path";
 import {
   DeviceToolchainInstallError,
   ensureAgentDevice,
+  SIMLOCK_AGENT_DEVICE_VERSION,
   ensureDeviceHub,
 } from "./DeviceToolchain.ts";
 import {
@@ -261,6 +262,7 @@ export interface AgentDeviceLaunchers {
   readonly bind: (input: {
     readonly session: string;
     readonly targetArgs: ReadonlyArray<string>;
+    readonly agentDeviceVersion?: string | undefined;
   }) => Effect.Effect<string, DeviceError>;
   /** Removes every launcher whose session is not in `live`. */
   readonly prune: (live: ReadonlySet<string>) => Effect.Effect<void>;
@@ -1221,7 +1223,11 @@ export const makeWithHosts = Effect.fn("DeviceService.makeWithHosts")(function* 
               )
             )
               return Option.none();
-            const launcher = yield* launchers.bind({ session, targetArgs });
+            const launcher = yield* launchers.bind({
+              session,
+              targetArgs,
+              agentDeviceVersion: hosts.get(target.hostId)?.agentDeviceVersion,
+            });
             boundLaunchers.set(session, launcher);
             return Option.some(launcher);
           }),
@@ -1305,33 +1311,34 @@ export const make = Effect.gen(function* () {
         }),
     ),
   );
-  const agentCli = resolveNodeExecutable("Device automation").pipe(
-    Effect.andThen(ensureAgentDevice(config.baseDir)),
-    Effect.provideService(FileSystem.FileSystem, fs),
-    Effect.provideService(Path.Path, path),
-    Effect.provideService(ProcessRunner.ProcessRunner, runner),
-    Effect.map((tool) => tool.entryPath),
-    Effect.mapError((error) =>
-      error._tag === "NodeRuntimeUnavailableError"
-        ? new DeviceHostUnavailableError({
-            hostId: LOCAL_DEVICE_HOST_ID,
-            hostLabel: LOCAL_DEVICE_HOST_LABEL,
-            reason: nodeRuntimeUnavailableMessage("Device automation"),
-            cause: error,
-          })
-        : new DeviceOperationError({
-            operation: "install agent CLI",
-            reason: "command_failed",
-            cause: error,
-          }),
-    ),
-  );
+  const agentCli = (version?: string) =>
+    resolveNodeExecutable("Device automation").pipe(
+      Effect.andThen(ensureAgentDevice(config.baseDir, version)),
+      Effect.provideService(FileSystem.FileSystem, fs),
+      Effect.provideService(Path.Path, path),
+      Effect.provideService(ProcessRunner.ProcessRunner, runner),
+      Effect.map((tool) => tool.entryPath),
+      Effect.mapError((error) =>
+        error._tag === "NodeRuntimeUnavailableError"
+          ? new DeviceHostUnavailableError({
+              hostId: LOCAL_DEVICE_HOST_ID,
+              hostLabel: LOCAL_DEVICE_HOST_LABEL,
+              reason: nodeRuntimeUnavailableMessage("Device automation"),
+              cause: error,
+            })
+          : new DeviceOperationError({
+              operation: "install agent CLI",
+              reason: "command_failed",
+              cause: error,
+            }),
+      ),
+    );
   const launchers: AgentDeviceLaunchers = {
     bind: Effect.fn("DeviceService.bindLauncher")(
-      function* (input) {
-        const entryPath = yield* agentCli;
+      function* ({ agentDeviceVersion, ...input }) {
         // The unbound launcher stays current for agents that still call it with flags.
-        yield* ensureAgentDeviceShim({ entryPath, stateDir: config.stateDir });
+        yield* ensureAgentDeviceShim({ entryPath: yield* agentCli(), stateDir: config.stateDir });
+        const entryPath = yield* agentCli(agentDeviceVersion);
         return yield* bindAgentDeviceLauncher({ entryPath, stateDir: config.stateDir, ...input });
       },
       Effect.provideService(FileSystem.FileSystem, fs),
@@ -1453,7 +1460,7 @@ export const make = Effect.gen(function* () {
   const simlockAgentCli = Effect.fn("DeviceService.simlockAgentCli")(
     function* (hostId: string) {
       const nodePath = yield* resolveNodeExecutable("Device automation");
-      const tool = yield* ensureAgentDevice(config.baseDir).pipe(
+      const tool = yield* ensureAgentDevice(config.baseDir, SIMLOCK_AGENT_DEVICE_VERSION).pipe(
         Effect.mapError(
           (cause) =>
             new DeviceHost.DeviceHostError({ hostId, step: "installing agent tools", cause }),

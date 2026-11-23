@@ -10,9 +10,51 @@ import * as ProcessRunner from "../processRunner.ts";
 import {
   deviceToolVersions,
   DEVICE_HUB_VERSION,
+  ensureAgentDevice,
   ensureDeviceHub,
   isDeviceHubInstalled,
+  SIMLOCK_AGENT_DEVICE_VERSION,
 } from "./DeviceToolchain.ts";
+
+it.effect("installs the agent-device release a host asks for beside T3's own", () =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem;
+    const path = yield* Path.Path;
+    const baseDir = yield* fs.makeTempDirectoryScoped({ prefix: "t3-device-install-" });
+    const packages: string[] = [];
+    const tool = yield* ensureAgentDevice(baseDir, SIMLOCK_AGENT_DEVICE_VERSION).pipe(
+      Effect.provideService(ProcessRunner.ProcessRunner, {
+        run: ({ args }) =>
+          Effect.gen(function* () {
+            packages.push(args.at(-1)!);
+            const bin = path.join(args[2]!, "node_modules", "agent-device", "bin");
+            yield* fs.makeDirectory(bin, { recursive: true });
+            yield* fs.writeFileString(path.join(bin, "agent-device.mjs"), "");
+            return {
+              code: ChildProcessSpawner.ExitCode(0),
+              stdout: "",
+              stderr: "",
+              timedOut: false,
+              stdoutTruncated: false,
+              stderrTruncated: false,
+              stdoutInvalidUtf8: false,
+              stderrInvalidUtf8: false,
+            };
+          }).pipe(Effect.orDie),
+      }),
+    );
+    expect(packages).toEqual([`agent-device@${SIMLOCK_AGENT_DEVICE_VERSION}`]);
+    expect(tool.entryPath).toBe(
+      path.join(
+        baseDir,
+        "tools",
+        "agent-device",
+        SIMLOCK_AGENT_DEVICE_VERSION,
+        "node_modules/agent-device/bin/agent-device.mjs",
+      ),
+    );
+  }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+);
 
 it.effect("failed installation cleans staging and exposes only a safe failure message", () =>
   Effect.gen(function* () {

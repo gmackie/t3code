@@ -3,7 +3,11 @@ import * as Schema from "effect/Schema";
 import * as Effect from "effect/Effect";
 import * as Path from "effect/Path";
 import * as ProcessRunner from "../processRunner.ts";
-import { AGENT_DEVICE_VERSION, DEVICE_HUB_VERSION } from "./DeviceToolchain.ts";
+import {
+  AGENT_DEVICE_VERSION,
+  DEVICE_HUB_VERSION,
+  SIMLOCK_AGENT_DEVICE_VERSION,
+} from "./DeviceToolchain.ts";
 
 export const deviceToolMaintenanceScript = String.raw`
 const maintenanceFs = require('node:fs');
@@ -68,7 +72,7 @@ function pruneTools(root, specs, flat) {
       ? require('node:child_process').spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', '[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false); Get-CimInstance Win32_Process | Select-Object -ExpandProperty CommandLine'], { encoding: 'utf8', timeout: 10000 })
       : require('node:child_process').spawnSync('ps', ['-ax', '-o', 'command='], { encoding: 'utf8', timeout: 10000 });
     if (scan.status !== 0 || !scan.stdout) return;
-    for (const [name, required] of specs) {
+    for (const [name, required, ...retained] of specs) {
       const parent = flat ? root : maintenancePath.join(root, name);
       let names;
       try { names = maintenanceFs.readdirSync(parent); } catch { continue; }
@@ -87,7 +91,7 @@ function pruneTools(root, specs, flat) {
       if (!completed.some(value => value.version === required)) continue;
       const previous = completed.filter(value => value.version !== required).sort((a, b) => b.modified - a.modified || b.version.localeCompare(a.version, 'en', { numeric: true }))[0]?.version;
       for (const { version, directory } of completed) {
-        if (version === required || version === previous || scan.stdout.includes(directory + maintenancePath.sep)) continue;
+        if (version === required || version === previous || retained.includes(version) || scan.stdout.includes(directory + maintenancePath.sep)) continue;
         maintenanceFs.rmSync(directory, { recursive: true, force: true });
       }
     }
@@ -143,7 +147,7 @@ export const pruneLocalDeviceTools = Effect.fn("DeviceToolchain.prune")(function
   const path = yield* Path.Path;
   yield* runMaintenance(
     nodePath,
-    `pruneTools(${JSON.stringify(path.join(baseDir, "tools"))}, ${JSON.stringify(tool === "hub" ? [["expo-device-hub", DEVICE_HUB_VERSION]] : [["agent-device", AGENT_DEVICE_VERSION]])}, false)`,
+    `pruneTools(${JSON.stringify(path.join(baseDir, "tools"))}, ${JSON.stringify(tool === "hub" ? [["expo-device-hub", DEVICE_HUB_VERSION]] : [["agent-device", AGENT_DEVICE_VERSION, SIMLOCK_AGENT_DEVICE_VERSION]])}, false)`,
     "prune",
     tool,
   );
