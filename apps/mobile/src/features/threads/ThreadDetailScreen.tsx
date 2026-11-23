@@ -183,6 +183,7 @@ import type {
 import { PendingApprovalCard } from "./PendingApprovalCard";
 import { ComposerErrorNotice } from "./ComposerErrorNotice";
 import { ManagedRuntimeModeNotice } from "./ManagedRuntimeModeNotice";
+import { ComputerUseCard } from "./ComputerUseCard";
 import { FreshSessionNotice } from "./FreshSessionNotice";
 import { ComposerFeedback } from "./ComposerFeedback";
 import { ComposerUsageLimits } from "./ComposerUsageLimits";
@@ -1736,6 +1737,14 @@ function ThreadDetailBody(
                       threadRef={props.selectedThreadDetailRef}
                       maxHeight={pendingUserInputMaxHeight}
                     />
+                    {props.selectedThreadDetailRef === null ? null : (
+                      <ComputerUseCard
+                        threadRef={props.selectedThreadDetailRef}
+                        runningRunId={props.selectedThread.runtime?.activeRunId ?? null}
+                        canStop={props.canOperateThread}
+                        onStop={() => void runStatusAction("stop")}
+                      />
+                    )}
                     <ThreadGuestShareBar
                       threadRef={props.selectedThreadDetailRef}
                       canOperateThread={props.canOperateThread}
