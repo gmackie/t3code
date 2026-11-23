@@ -361,6 +361,10 @@
       "types": "./src/state/cua.ts",
       "default": "./src/state/cua.ts"
     },
+    "./state/computerUse": {
+      "types": "./src/state/computerUse.ts",
+      "default": "./src/state/computerUse.ts"
+    },
     "./state/peerLinks": {
       "types": "./src/state/peerLinks.ts",
       "default": "./src/state/peerLinks.ts"

@@ -1,4 +1,4 @@
-import type { ThreadStructureTurnItem } from "@t3tools/client-runtime/state/shell";
+import type { ThreadStructureTurnItem } from "./models.ts";
 import type { RunId, ToolActivityNativeAppReference } from "@t3tools/contracts";
 
 /** What the floating computer card shows until the live capture's first frame arrives. */

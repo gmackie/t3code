@@ -1,7 +1,7 @@
 import type { OrchestrationV2TurnItem, RunId } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
-import { isRunUsingComputer, selectLatestComputerUse } from "./computerUsePreview";
+import { isRunUsingComputer, selectLatestComputerUse } from "./computerUse.ts";
 
 const tool = (
   id: string,
