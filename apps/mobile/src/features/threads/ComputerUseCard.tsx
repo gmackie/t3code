@@ -54,7 +54,9 @@ function ComputerUseCardContent(props: {
   if (liveFrame !== null && liveFrame !== lastFrame) setLastFrame(liveFrame);
   const frame = live.status === "unavailable" ? null : (liveFrame ?? lastFrame);
   const aspectRatio =
-    frame && frame.width > 0 && frame.height > 0 ? frame.width / frame.height : DEFAULT_ASPECT_RATIO;
+    frame && frame.width > 0 && frame.height > 0
+      ? frame.width / frame.height
+      : DEFAULT_ASPECT_RATIO;
   const label = frame?.appName ?? gt("Computer");
   const caption =
     frame?.windowTitle && frame.windowTitle !== label ? `${label} · ${frame.windowTitle}` : label;
