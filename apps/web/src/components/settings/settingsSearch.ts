@@ -1185,6 +1185,24 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: [msg("allow simulator emulator ios android drive tools sessions")],
   },
   {
+    id: "agent-browser-tabs",
+    title: msg("Agent browser tabs"),
+    to: "/settings/devices",
+    targetId: "computer",
+    searchTerms: [
+      msg("chrome devtools tabs sign-ins signed in browser remote debugging edge brave"),
+    ],
+  },
+  {
+    id: "cua-computer-use",
+    title: msg("Computer use"),
+    to: "/settings/devices",
+    targetId: "computer",
+    searchTerms: [
+      msg("cua driver apps desktop screen click type agents control mac linux windows"),
+    ],
+  },
+  {
     id: "device-hub",
     title: msg("Use devices"),
     to: "/settings/devices",

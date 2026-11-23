@@ -11,6 +11,7 @@ import { collectMobileAssistantTextSelectors } from "../../lib/assistantCitation
 import { Button } from "../../components/ui/Button";
 import * as Dialog from "../../components/ui/Dialog";
 import { ASSISTANT_CITATION_MAX_TEXT_LENGTH, type AssistantCitation } from "@t3tools/contracts";
+import { parseNativeAppMention } from "@t3tools/shared/nativeAppMentions";
 import { useOpenPullRequest } from "../../native/useOpenPullRequest";
 import { useWorkspaceSettledContentWidth } from "../layout/workspace-content-width";
 import { useVisibleSecondClock } from "./use-visible-second-clock";
@@ -2835,6 +2836,7 @@ function UserMessageContent(props: UserMessageContentProps) {
     return `[${label}](t3-context://v1/${ref.kind}/${ref.contextId})`;
   });
   const onLinkPress = (href: string) => {
+    if (parseNativeAppMention(href)) return;
     const reference = parseComposerContextHref(href);
     if (!reference) return props.linkHandlers.onLinkPress?.(href);
     const record = props.context?.records.find(

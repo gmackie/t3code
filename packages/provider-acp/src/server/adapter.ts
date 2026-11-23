@@ -78,7 +78,10 @@ import { formatReadToolLabel, formatSearchToolLabel } from "@t3tools/shared/tool
 import { isWorkspaceImagePreviewPath } from "@t3tools/shared/mediaPreview";
 import * as ProviderHost from "@t3tools/provider-core/server/ProviderHost";
 import { makeAcpMcpOverAcpBridge, type AcpMcpOverAcpBridge } from "./mcpOverAcpBridge.ts";
-import { mcpToolPresentation } from "@t3tools/provider-core/server/mcpToolPresentation";
+import {
+  cuaCallContext,
+  mcpToolPresentation,
+} from "@t3tools/provider-core/server/mcpToolPresentation";
 import * as McpProviderSessions from "@t3tools/provider-core/server/McpProviderSessions";
 import * as McpProviderSession from "@t3tools/provider-core/server/mcpSession";
 import {
@@ -1131,6 +1134,9 @@ async function acpMcpContext(
   // user's servers.
   const userServers = await acpUserMcpServers(session.tools?.servers ?? [], resolveCommand);
   // codex-acp 1.2.0 and pi-acp drop injected HTTP servers, so HTTP is opt-in per flavor.
+  // Cua Driver and browser tabs are already stdio servers, so every list carries them like the
+  // user's servers.
+  const local = McpProviderSession.localAcpMcpServers(session);
   return {
     servers: [
       {
@@ -1144,8 +1150,9 @@ async function acpMcpContext(
         ],
       },
       ...userServers,
+      ...local,
     ],
-    acpServers: [{ type: "acp", name: "t3-code", serverId: "t3-code" }, ...userServers],
+    acpServers: [{ type: "acp", name: "t3-code", serverId: "t3-code" }, ...userServers, ...local],
     httpServers:
       mcpOverHttp === true
         ? [
@@ -1161,6 +1168,7 @@ async function acpMcpContext(
               ],
             },
             ...userServers,
+            ...local,
           ]
         : [],
     endpoint: session.endpoint,
@@ -4898,6 +4906,14 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
                 source: unknownRecord(
                   (unknownRecord(rawOutputRecord?.result) ?? rawOutputRecord)?._meta,
                 )?.source,
+                ...cuaCallContext({
+                  serverName: mcpIdentity.server,
+                  toolName: mcpIdentity.tool,
+                  threadId: base.threadId,
+                  status: base.status,
+                  args: mcpIdentity.input ?? unknownRecord(rawInputRecord?.arguments),
+                  result: rawOutput,
+                }),
               }),
               type: "dynamic_tool",
               toolName,
@@ -9218,6 +9234,8 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
             harness: flavor.runtimeHarness ?? driver,
             model: turnInput.modelSelection.model,
             runtimePolicy: turnInput.runtimePolicy,
+            computerUse: mcpSession?.cuaDriver !== undefined,
+            browserTabs: mcpSession?.browserTabs?.browserName,
             pullRequestLinking:
               sessionSetup === null ||
               flavor.sessionCarriesPullRequestLinking?.(sessionSetup.initializeResult) !== true,

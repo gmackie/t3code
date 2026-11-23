@@ -1,6 +1,7 @@
 import type { AgentFeedbackMode } from "@t3tools/contracts";
 
 import type { ProviderAdapterV2RuntimePolicy } from "./ProviderAdapter.ts";
+import { browserTabsInstructions } from "./mcpSession.ts";
 
 /** None while agent feedback is off, so users who never opt in pay no context for it. */
 export const AGENT_FEEDBACK_INSTRUCTIONS = {
@@ -15,6 +16,15 @@ Link each PR you create, take over, or push to: link_pull_request, or link_pull_
 If available, call link_issue for each issue you take on or file, even via CLI; skip issues you only read.
 </pull_request_linking>`;
 
+/**
+ * Only attached when the session actually has the `cua-driver` MCP server.
+ * The user shares the screen with the agent, so foreground delivery steals
+ * focus and windows the agent leaves open hide the thread they are watching.
+ */
+export const COMPUTER_USE_INSTRUCTIONS = `<computer_use>
+The cua-driver MCP tools control the computer the user is working on right now. Use them only for work that needs an app's GUI; when shell commands, other MCP tools, or the t3-code preview tools can do the task, use those instead. Every input tool (click, type_text, press_key, hotkey, scroll, drag, ...) defaults to delivery_mode "background", which acts on the target window without raising it or taking focus. Keep that default. Pass delivery_mode "foreground" only after a background action reported that it did not land, and never call bring_to_front just to look at a window: get_window_state captures it without activating it. Target windows by pid and window id rather than by what is frontmost. When the task is done, leave the desktop as you found it: close windows you opened, do not close windows the user had open, and restore the window that was active before you started so the user can see your reply.
+</computer_use>`;
+
 /** Omit model and effort when the harness manages them dynamically. */
 export function buildRuntimeInstructions(runtime: {
   readonly harness: string;
@@ -26,6 +36,10 @@ export function buildRuntimeInstructions(runtime: {
   readonly pullRequestLinking?: boolean;
   /** Adds the folder list of a multi-folder thread. */
   readonly runtimePolicy?: Pick<ProviderAdapterV2RuntimePolicy, "cwd" | "workspace"> | undefined;
+  /** True when this session's tool list includes the managed `cua-driver` MCP server. */
+  readonly computerUse?: boolean | undefined;
+  /** The browser `chrome-devtools` is attached to, when this session has browser tabs. */
+  readonly browserTabs?: string | undefined;
 }): string {
   const harness = toSingleLine(runtime.harness);
   const model = toSingleLine(runtime.model ?? "");
@@ -44,7 +58,12 @@ export function buildRuntimeInstructions(runtime: {
     runtime.pullRequestLinking === false
       ? runtimeInfo
       : `${runtimeInfo}\n\n${PULL_REQUEST_LINKING_INSTRUCTIONS}`;
-  return [linked + feedback, ...(workspace === "" ? [] : [workspace])].join("\n\n");
+  return [
+    linked + feedback,
+    ...(workspace === "" ? [] : [workspace]),
+    ...(runtime.computerUse ? [COMPUTER_USE_INSTRUCTIONS] : []),
+    ...(runtime.browserTabs ? [browserTabsInstructions(toSingleLine(runtime.browserTabs))] : []),
+  ].join("\n\n");
 }
 
 function toSingleLine(value: string): string {

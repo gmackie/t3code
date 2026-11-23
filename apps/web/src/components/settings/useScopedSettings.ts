@@ -64,7 +64,7 @@ function useRunScopedPlan() {
     environments: Parameters<typeof writeScopedSettings>[0],
     planner: Parameters<typeof writeScopedSettings>[1],
     onFailed?: () => void,
-  ) => {
+  ): Promise<{ readonly saved: boolean; readonly message: string | null }> => {
     const plan = planner(environments);
     if (plan.unavailableReason) {
       toastManager.add({
@@ -73,7 +73,7 @@ function useRunScopedPlan() {
         description: plan.unavailableReason,
       });
       onFailed?.();
-      return;
+      return Promise.resolve({ saved: false, message: plan.unavailableReason });
     }
     const save = {};
     const settle = (environmentId: EnvironmentId, saved?: ServerSettings) =>
@@ -89,7 +89,7 @@ function useRunScopedPlan() {
       ...writes,
       ...plan.serverWrites.map(({ environmentId, patch }) => ({ save, environmentId, patch })),
     ]);
-    void writeScopedSettings(
+    return writeScopedSettings(
       environments,
       planner,
       async (request) => {
@@ -114,16 +114,11 @@ function useRunScopedPlan() {
         return result;
       },
       persistClientSettingsPatch,
-    ).then(({ failedEnvironments, savedEnvironments, savedEnvironmentCount }) => {
-      if (failedEnvironments.length === 0) return;
-      onFailed?.();
-      toastManager.add({
-        type: "error",
-        title:
-          savedEnvironmentCount > 0
-            ? m(msg("Setting saved on some environments"))
-            : m(msg("Setting not saved")),
-        description: [
+    )
+      .then(({ failedEnvironments, savedEnvironments, savedEnvironmentCount }) => {
+        if (failedEnvironments.length === 0) return { saved: true, message: null };
+        onFailed?.();
+        const message = [
           ...failedEnvironments.map(({ label, message }) =>
             m(msg("Could not save on {label}: {message}", { label, message })),
           ),
@@ -136,9 +131,28 @@ function useRunScopedPlan() {
                 ),
               ]
             : []),
-        ].join("\n"),
+        ].join("\n");
+        toastManager.add({
+          type: "error",
+          title:
+            savedEnvironmentCount > 0
+              ? m(msg("Setting saved on some environments"))
+              : m(msg("Setting not saved")),
+          description: message,
+        });
+        return { saved: false, message };
+      })
+      .catch((error: unknown) => {
+        onFailed?.();
+        const message =
+          error instanceof Error ? error.message : m(msg("The save failed. Try again."));
+        toastManager.add({
+          type: "error",
+          title: m(msg("Setting not saved")),
+          description: message,
+        });
+        return { saved: false, message };
       });
-    });
   };
 }
 
@@ -159,7 +173,9 @@ export function useClearScopedSettings() {
   const run = useRunScopedPlan();
   return (keys: readonly ProjectScopedServerSettingKey[]) => {
     if (context === null) return;
-    run(context.environments, (current) => planScopedSettingsClear(context.scope, current, keys));
+    void run(context.environments, (current) =>
+      planScopedSettingsClear(context.scope, current, keys),
+    );
   };
 }
 
@@ -171,7 +187,7 @@ export function useClearProjectOverrides() {
     keys: readonly ProjectScopedServerSettingKey[],
   ) => {
     if (context === null) return;
-    run(context.environments, (current) => planProjectOverridesClear(current, entries, keys));
+    void run(context.environments, (current) => planProjectOverridesClear(current, entries, keys));
   };
 }
 

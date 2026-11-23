@@ -154,4 +154,11 @@ describe("buildRuntimeInstructions", () => {
     assert.include(block, `\n- Not listed: ${128 - shown} more\n</workspace_folders>`);
     assert.isBelow(new TextEncoder().encode(block).length, 4000);
   });
+
+  it("steers computer use to the background only when Cua is attached", () => {
+    assert.notInclude(buildRuntimeInstructions({ harness: "Claude Code" }), "<computer_use>");
+    const instructions = buildRuntimeInstructions({ harness: "Claude Code", computerUse: true });
+    assert.include(instructions, "<computer_use>");
+    assert.include(instructions, 'defaults to delivery_mode "background"');
+  });
 });

@@ -357,6 +357,10 @@
       "types": "./src/state/previewTunnel.ts",
       "default": "./src/state/previewTunnel.ts"
     },
+    "./state/cua": {
+      "types": "./src/state/cua.ts",
+      "default": "./src/state/cua.ts"
+    },
     "./state/peerLinks": {
       "types": "./src/state/peerLinks.ts",
       "default": "./src/state/peerLinks.ts"

@@ -60,8 +60,12 @@ import * as Stream from "effect/Stream";
 
 import { brokenVersionDetail } from "@t3tools/provider-core/server/compatibility";
 import * as ProviderHost from "@t3tools/provider-core/server/ProviderHost";
-import { mcpToolPresentation } from "@t3tools/provider-core/server/mcpToolPresentation";
+import {
+  cuaCallContext,
+  mcpToolPresentation,
+} from "@t3tools/provider-core/server/mcpToolPresentation";
 import * as McpProviderSessions from "@t3tools/provider-core/server/McpProviderSessions";
+import * as McpProviderSession from "@t3tools/provider-core/server/mcpSession";
 import * as ProviderEventLoggers from "@t3tools/provider-core/server/ProviderEventLoggers";
 import {
   structuralProtocolMethod,
@@ -1176,6 +1180,46 @@ export const makeOpenCodeAdapterV2 = Effect.fn("makeOpenCodeAdapterV2")(function
             ),
           );
         }
+        // Computer use is an addition: a server that cannot add it still runs
+        // the session, and the prompt only advertises it once it is attached.
+        const cuaDriver = mcpSession?.cuaDriver;
+        const computerUse =
+          hasT3Mcp && cuaDriver !== undefined
+            ? yield* OpenCodeRuntime.runOpenCodeSdk("mcp.add", () =>
+                client.mcp.add({
+                  name: McpProviderSession.CUA_MCP_SERVER_NAME,
+                  config: McpProviderSession.cuaOpenCodeMcpConfig(cuaDriver),
+                }),
+              ).pipe(
+                Effect.as(true),
+                Effect.catchCause((cause) =>
+                  Effect.logWarning("Could not add Cua Driver to OpenCode.", cause).pipe(
+                    Effect.as(false),
+                  ),
+                ),
+              )
+            : false;
+        const tabs = mcpSession?.browserTabs;
+        const browserTabs =
+          hasT3Mcp && tabs !== undefined
+            ? yield* OpenCodeRuntime.runOpenCodeSdk("mcp.add", () =>
+                client.mcp.add({
+                  name: McpProviderSession.BROWSER_TABS_MCP_SERVER_NAME,
+                  config: {
+                    type: "local",
+                    command: [tabs.command, ...tabs.args],
+                    environment: { ...tabs.env },
+                  },
+                }),
+              ).pipe(
+                Effect.as(tabs.browserName),
+                Effect.catchCause((cause) =>
+                  Effect.logWarning("Could not add Chrome DevTools MCP to OpenCode.", cause).pipe(
+                    Effect.as(undefined),
+                  ),
+                ),
+              )
+            : undefined;
 
         const now = yield* DateTime.now;
         let sessionEntity: OrchestrationV2ProviderSession = {
@@ -1897,6 +1941,16 @@ export const makeOpenCodeAdapterV2 = Effect.fn("makeOpenCodeAdapterV2")(function
                   serverName,
                   toolName: part.tool.slice(serverName.replace(/[^a-zA-Z0-9_-]/g, "_").length + 1),
                   title: toolTitle(part) === part.tool ? undefined : toolTitle(part),
+                  ...cuaCallContext({
+                    serverName,
+                    toolName: part.tool.slice(
+                      serverName.replace(/[^a-zA-Z0-9_-]/g, "_").length + 1,
+                    ),
+                    threadId: base.threadId,
+                    status: base.status,
+                    args: input,
+                    result: output,
+                  }),
                 });
           const files =
             part.state.status === "completed"
@@ -3659,6 +3713,8 @@ export const makeOpenCodeAdapterV2 = Effect.fn("makeOpenCodeAdapterV2")(function
                 model: turn.modelSelection.model,
                 agentFeedback: hasT3Mcp ? turn.agentFeedback : "off",
                 runtimePolicy: turn.runtimePolicy,
+                computerUse,
+                browserTabs,
               }),
             ]
               .filter(Boolean)

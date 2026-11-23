@@ -48,7 +48,10 @@ import * as Stream from "effect/Stream";
 import * as ProviderContinuationRequests from "@t3tools/provider-core/server/ProviderContinuationRequests";
 import * as ProviderHost from "@t3tools/provider-core/server/ProviderHost";
 import { backgroundWorkNotification } from "@t3tools/provider-core/server/notification";
-import { mcpToolPresentation } from "@t3tools/provider-core/server/mcpToolPresentation";
+import {
+  cuaCallContext,
+  mcpToolPresentation,
+} from "@t3tools/provider-core/server/mcpToolPresentation";
 import * as McpProviderSessions from "@t3tools/provider-core/server/McpProviderSessions";
 import * as McpProviderSession from "@t3tools/provider-core/server/mcpSession";
 import { CursorTransportFailure } from "./transportFailure.ts";
@@ -246,6 +249,7 @@ export function cursorMcpServers(
         Authorization: session.authorizationHeader,
       },
     },
+    ...McpProviderSession.localStdioMcpServers(session),
   };
 }
 
@@ -1701,6 +1705,14 @@ export const makeCursorAdapterV2 = Effect.fn("makeCursorAdapterV2")(function* (
                   ? mcpToolPresentation({
                       serverName: toolCall.args.providerIdentifier,
                       toolName: toolCall.args.toolName,
+                      ...cuaCallContext({
+                        serverName: toolCall.args.providerIdentifier,
+                        toolName: toolCall.args.toolName,
+                        threadId: base.threadId,
+                        status: base.status,
+                        args: toolCall.args.args,
+                        result: cursorToolOutput(toolCall),
+                      }),
                     })
                   : {}),
                 toolName: cursorToolName(toolCall),
@@ -2940,11 +2952,14 @@ export const makeCursorAdapterV2 = Effect.fn("makeCursorAdapterV2")(function* (
               detail: "Cursor turn requires non-empty text or attachments.",
             });
           }
+          const mcpSession = yield* mcpSessions.read(turnInput.threadId);
           const runtimeInstructions = buildRuntimeInstructions({
             agentFeedback: mcpServers === undefined ? "off" : (turnInput.agentFeedback ?? "off"),
             harness: "Cursor",
             model: turnInput.modelSelection.model,
             runtimePolicy: turnInput.runtimePolicy,
+            computerUse: mcpSession?.cuaDriver !== undefined,
+            browserTabs: mcpSession?.browserTabs?.browserName,
           });
           // Resend only on a new/compacted/rewound conversation or when the instructions change.
           const sendRuntimeInstructions = delivered.runtime !== runtimeInstructions;
