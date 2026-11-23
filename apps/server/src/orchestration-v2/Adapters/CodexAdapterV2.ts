@@ -1748,7 +1748,7 @@ export function codexThreadRuntimeParams(input: {
                     ),
                   },
                 }),
-            ...(mcpSession.browserTabs === undefined
+            ...(mcpSession?.browserTabs === undefined
               ? {}
               : {
                   [`mcp_servers.${McpProviderSession.BROWSER_TABS_MCP_SERVER_NAME}`]: {

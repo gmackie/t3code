@@ -20,7 +20,10 @@ const loadSdk = Effect.gen(function* () {
   for (const root of requireSdk.resolve.paths("@trycua/cua-driver") ?? []) {
     const dir = path.join(root, "@trycua", "cua-driver");
     if (yield* fs.exists(path.join(dir, "package.json"))) {
-      return yield* Effect.try(() => requireSdk(path.join(dir, "dist", "index.js")) as Sdk);
+      return yield* Effect.try({
+        try: () => requireSdk(path.join(dir, "dist", "index.js")) as Sdk,
+        catch: (cause) => new CuaApplicationsError({ cause }),
+      });
     }
   }
   return yield* new CuaApplicationsError({ cause: "Cua Driver SDK is not installed." });
@@ -53,16 +56,20 @@ export const make = Effect.fn("CuaApplications.make")(function* (
     return yield* Effect.scoped(
       Effect.gen(function* () {
         const client = yield* Effect.acquireRelease(
-          Effect.try(() => module.CuaDriver.connect(config.value.socketPath!) as unknown as Client),
+          Effect.try({
+            try: () => module.CuaDriver.connect(config.value.socketPath!) as unknown as Client,
+            catch: (cause) => new CuaApplicationsError({ cause }),
+          }),
           (client) =>
             Effect.promise(() => client.shutdown()).pipe(
               Effect.ignore,
               Effect.andThen(Effect.sync(() => client.uniffiDestroy())),
             ),
         );
-        const result = yield* Effect.tryPromise((signal) =>
-          client.listApps(module.ListAppsInput.new({}), { signal }),
-        );
+        const result = yield* Effect.tryPromise({
+          try: (signal) => client.listApps(module.ListAppsInput.new({}), { signal }),
+          catch: (cause) => new CuaApplicationsError({ cause }),
+        });
         const apps: CuaApplication[] = [];
         const seen = new Set<string>();
         for (const app of result.apps) {

@@ -524,7 +524,7 @@ export const layer = Layer.effect(
     if (config.mode === "desktop" && config.desktopTelemetryControlFd !== undefined) {
       return yield* make(yield* makeDesktopHostFactory());
     }
-    const override = process.env.T3CODE_CUA_DRIVER_PATH?.trim();
+    const override = (yield* HostProcess.Environment).T3CODE_CUA_DRIVER_PATH?.trim();
     const installation = yield* CuaDriverInstallation.CuaDriverInstallation;
     return yield* make(
       yield* makeStandaloneHostFactory(

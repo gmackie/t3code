@@ -19,6 +19,18 @@ import * as Stream from "effect/Stream";
 import * as DesktopEnvironment from "../app/DesktopEnvironment.ts";
 import * as DesktopTelemetryPublisher from "../telemetry/DesktopTelemetryPublisher.ts";
 
+/** A step of hosting the embedded Cua Driver threw or rejected. */
+export class DesktopCuaDriverError extends Schema.TaggedError<DesktopCuaDriverError>()(
+  "DesktopCuaDriverError",
+  { cause: Schema.Defect() },
+) {
+  override get message() {
+    return "Cua Driver could not be hosted.";
+  }
+}
+
+const hostFailure = (cause: unknown) => new DesktopCuaDriverError({ cause });
+
 export interface DesktopCuaDriverDependencies {
   readonly loadEmbedded: () => Promise<{
     readonly EmbeddedCuaDriverHost: {
@@ -148,7 +160,7 @@ export const make = Effect.fn("desktop.cuaDriver.make")(function* (
           hosts.delete(owned);
         })();
       }
-      return Effect.tryPromise(() => owned.releasePromise!).pipe(
+      return Effect.tryPromise({ try: () => owned.releasePromise!, catch: hostFailure }).pipe(
         Effect.interruptible,
         Effect.timeout("3 seconds"),
         Effect.ignoreCause,
@@ -222,10 +234,14 @@ export const make = Effect.fn("desktop.cuaDriver.make")(function* (
       return;
     }
     if (environment.platform === "darwin") {
-      const helpers = yield* Effect.tryPromise(dependencies.loadElectron);
-      const allowed = yield* Effect.try(() =>
-        helpers.hasRequiredMacOSPermissions(helpers.requestMacOSPermissions()),
-      );
+      const helpers = yield* Effect.tryPromise({
+        try: dependencies.loadElectron,
+        catch: hostFailure,
+      });
+      const allowed = yield* Effect.try({
+        try: () => helpers.hasRequiredMacOSPermissions(helpers.requestMacOSPermissions()),
+        catch: hostFailure,
+      });
       if (!allowed) {
         yield* unavailable(
           request.requestId,
@@ -234,37 +250,46 @@ export const make = Effect.fn("desktop.cuaDriver.make")(function* (
         return;
       }
     }
-    const module = yield* Effect.tryPromise(dependencies.loadEmbedded);
-    const owned = yield* Effect.try(() => {
-      const owned: OwnedHost = {
-        host: module.EmbeddedCuaDriverHost.withOptions(
-          cuaDriverHostOptions(
-            binaryPath.value,
-            environment.appUserModelId,
-            environment.platform,
-            process.env,
+    const module = yield* Effect.tryPromise({ try: dependencies.loadEmbedded, catch: hostFailure });
+    const owned = yield* Effect.try({
+      try: () => {
+        const owned: OwnedHost = {
+          host: module.EmbeddedCuaDriverHost.withOptions(
+            cuaDriverHostOptions(
+              binaryPath.value,
+              environment.appUserModelId,
+              environment.platform,
+              process.env,
+            ),
           ),
-        ),
-        abort: new AbortController(),
-      };
-      hosts.add(owned);
-      return owned;
+          abort: new AbortController(),
+        };
+        hosts.add(owned);
+        return owned;
+      },
+      catch: hostFailure,
     });
     yield* Effect.gen(function* () {
-      const connection = yield* Effect.tryPromise((signal) => {
-        signal.addEventListener("abort", () => owned.abort.abort(), { once: true });
-        owned.startPromise = owned.host.start({ signal: owned.abort.signal });
-        return owned.startPromise;
+      const connection = yield* Effect.tryPromise({
+        try: (signal) => {
+          signal.addEventListener("abort", () => owned.abort.abort(), { once: true });
+          owned.startPromise = owned.host.start({ signal: owned.abort.signal });
+          return owned.startPromise;
+        },
+        catch: hostFailure,
       });
       const mcp = yield* decodeMcpConfiguration({
         ...connection.mcp,
         socketPath: connection.socketPath,
       });
-      yield* Effect.try(() => {
-        owned.monitorPromise = owned.host.waitForExit(connection.generation, {
-          signal: owned.abort.signal,
-        });
-        void owned.monitorPromise.catch(() => undefined);
+      yield* Effect.try({
+        try: () => {
+          owned.monitorPromise = owned.host.waitForExit(connection.generation, {
+            signal: owned.abort.signal,
+          });
+          void owned.monitorPromise.catch(() => undefined);
+        },
+        catch: hostFailure,
       });
       const hosted: HostedDriver = { owned, connection, requestId: request.requestId };
       active = hosted;
@@ -275,7 +300,7 @@ export const make = Effect.fn("desktop.cuaDriver.make")(function* (
         status: "ready",
         mcp,
       });
-      yield* Effect.tryPromise(() => owned.monitorPromise!).pipe(
+      yield* Effect.tryPromise({ try: () => owned.monitorPromise!, catch: hostFailure }).pipe(
         Effect.ignore,
         Effect.andThen(
           mutex.withPermits(1)(
