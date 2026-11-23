@@ -23,6 +23,7 @@ import * as Schema from "effect/Schema";
 import * as Tracer from "effect/Tracer";
 import { HttpClient, HttpClientRequest, HttpClientResponse } from "effect/http";
 
+import * as CloudMintSigner from "../auth/CloudMintSigner.ts";
 import * as EnvironmentLinks from "./EnvironmentLinks.ts";
 import * as RelayConfiguration from "../Config.ts";
 import * as EnvironmentConnector from "./EnvironmentConnector.ts";
@@ -163,6 +164,7 @@ function layerConnectorTest(
   },
 ) {
   return EnvironmentConnector.layer.pipe(
+    Layer.provide(CloudMintSigner.layer),
     Layer.provide(NodeCryptoLayer.layer),
     Layer.provide(Layer.succeed(EnvironmentLinks.EnvironmentLinks, options?.links ?? makeLinks())),
     Layer.provide(
@@ -203,7 +205,6 @@ function makeAllocations(
     claimRelease: () => Effect.die("unused"),
     withClaimedTunnel: () => Effect.die("unused"),
     claimDeprovision: () => Effect.die("unused"),
-    remove: () => Effect.die("unused"),
     removeClaimed: () => Effect.die("unused"),
   };
 }
@@ -230,6 +231,7 @@ function makeLinks(
         ...overrides,
       }),
     findActiveManagedForEnvironment: () => Effect.succeed([]),
+    updateLiveActivityPreference: () => Effect.die("unexpected Live Activity preference update"),
     setHoldWebhooksWhileOffline: () => Effect.void,
     revokeForUser: () => Effect.succeed(false),
   };

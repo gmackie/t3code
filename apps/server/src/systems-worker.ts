@@ -1,6 +1,8 @@
 import * as NodeWorkerThreads from "node:worker_threads";
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
 
 import {
   commandInbox,
@@ -22,7 +24,9 @@ if (job.kind === "run") {
   await driveRun(job, { post, next: inbox.next });
 } else {
   const exit = await Effect.runPromiseExit(
-    conformanceOf(job.files).pipe(Effect.provide(NodeServices.layer)),
+    conformanceOf(job.files).pipe(
+      Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
+    ),
   );
   post(
     exit._tag === "Success"

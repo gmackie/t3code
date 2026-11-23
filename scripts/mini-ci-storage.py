@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate SSD-bound Mini jobs before installers or compilers allocate storage."""
+"""Validate Mini job storage before installers or compilers allocate it."""
 import argparse
 import json
 import os
@@ -8,10 +8,16 @@ import shutil
 import tempfile
 
 GIB = 1024 ** 3
-DEFAULT_ROOT = '/Volumes/FleetNativeFast-20261009/t3-ci'
+DEFAULT_ROOT = '/Users/mackieg/t3-ci'
+# Mini jobs run one at a time, and the largest, iOS, peaked near 10 GiB in run 1441
+# (macOS arm64 6-7 GiB, x64 5 GiB). The guard was 37 GiB (the fleet's 25 GiB native
+# headroom from GMA-730 plus 12 GiB per job), but gmacko-mini sits near 29 GiB free,
+# which stopped every nightly macOS and iOS job (run 1614). Owner decision
+# (T3CODE-112): 28 GiB, which still leaves about 16-18 GiB free at a job's peak.
+MINIMUM_FREE = 28 * GIB
 
 
-def prepare(root, workspace, internal_device, minimum_free=30 * GIB):
+def prepare(root, workspace, minimum_free=MINIMUM_FREE):
     root = Path(root)
     workspace = Path(workspace).resolve(strict=True)
     if '\n' in str(root) or '\r' in str(root):
@@ -21,17 +27,13 @@ def prepare(root, workspace, internal_device, minimum_free=30 * GIB):
     parent = root
     while not parent.exists():
         parent = parent.parent
-    if parent.stat().st_dev == internal_device:
-        raise ValueError('CI SSD is unavailable; refusing internal-storage fallback')
     root = root.resolve()
-    if workspace.stat().st_dev == internal_device:
-        raise ValueError('Runner workspace is internal; drain the runner and configure host.workdir_parent on the SSD before restarting')
     if workspace.stat().st_dev != parent.stat().st_dev:
-        raise ValueError('Runner workspace and CI caches must use the same SSD volume')
+        raise ValueError('Runner workspace and CI caches must use the same volume')
     if shutil.disk_usage(parent).free < minimum_free:
-        raise ValueError('CI SSD has less than the required free capacity')
+        raise ValueError('CI storage has less than the required free capacity')
     if not os.access(parent, os.W_OK) or not parent.stat().st_mode & 0o200:
-        raise PermissionError('CI SSD directory is not writable by the runner')
+        raise PermissionError('CI storage directory is not writable by the runner')
     root.mkdir(parents=True, exist_ok=True)
     variables = {
         'TMPDIR': root / 'tmp',
@@ -52,7 +54,7 @@ def prepare(root, workspace, internal_device, minimum_free=30 * GIB):
             os.fsync(probe.fileno())
             probe.seek(0)
             if probe.read() != b't3-ci-storage-readback':
-                raise OSError('CI SSD write/read verification failed')
+                raise OSError('CI storage write/read verification failed')
     return {key: str(value) for key, value in variables.items()}
 
 
@@ -63,11 +65,7 @@ def main():
     parser.add_argument('--github-env', default=os.environ.get('GITHUB_ENV'))
     args = parser.parse_args()
     try:
-        # macOS separates the sealed system snapshot from writable internal data.
-        internal_volume = Path('/System/Volumes/Data')
-        if not internal_volume.exists():
-            internal_volume = Path('/')
-        variables = prepare(args.root, args.workspace, internal_volume.stat().st_dev)
+        variables = prepare(args.root, args.workspace)
     except (OSError, ValueError) as error:
         parser.exit(1, f'Mini CI storage guard: {error}\n')
     if args.github_env:

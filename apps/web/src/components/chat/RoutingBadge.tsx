@@ -1,3 +1,4 @@
+import { msg, useMessages } from "gt-react";
 import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { ArrowDownRightIcon, WaypointsIcon } from "lucide-react";
 
@@ -28,6 +29,8 @@ export function RoutingBadge({
   readonly environmentId: EnvironmentId;
   readonly threadId: ThreadId;
 }) {
+  const m = useMessages();
+
   const decision = latestRoutingDecision(useRoutingThreadHistory(environmentId, threadId));
   if (decision === null) return null;
   const advice = formatRoutingAdvice(decision.advice);
@@ -64,17 +67,17 @@ export function RoutingBadge({
         className="text-left whitespace-normal"
       >
         <div className="flex flex-col gap-2 p-(--floating-content-inset)">
-          <div className="font-medium text-muted-foreground text-xs">Routing</div>
+          <div className="font-medium text-muted-foreground text-xs">{m(msg("Routing"))}</div>
           <div className="text-xs text-foreground">{summary}</div>
           <div className="flex items-center justify-between gap-3 text-2xs leading-4">
-            <span className="text-secondary-label">Classified by</span>
+            <span className="text-secondary-label">{m(msg("Classified by"))}</span>
             <span className="font-medium text-secondary-label">
               {formatRoutingSource(decision)}
             </span>
           </div>
           {decision.downgraded ? (
             <div className="text-pretty text-warning-foreground text-2xs font-medium">
-              Downgraded below the strongest tier.
+              {m(msg("Downgraded below the strongest tier."))}
             </div>
           ) : null}
           {advice ? (

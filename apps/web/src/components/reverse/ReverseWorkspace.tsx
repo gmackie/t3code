@@ -1,3 +1,5 @@
+import { m } from "~/i18n/messages";
+import { msg, useMessages } from "gt-react";
 import { useEffect, useRef, useState } from "react";
 import type { ScopedThreadRef } from "@t3tools/contracts";
 import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
@@ -20,10 +22,10 @@ import { DiffPanel } from "./DiffPanel";
 import { FindingsPanel, type FindingSeed } from "./FindingsPanel";
 
 const FIRMWARE_SOURCES = [
-  { value: "imported", label: "Imported file" },
-  { value: "vendor", label: "Vendor image" },
-  { value: "flash-read", label: "Flash acquisition" },
-  { value: "build", label: "Build output" },
+  { value: "imported", label: m(msg("Imported file")) },
+  { value: "vendor", label: m(msg("Vendor image")) },
+  { value: "flash-read", label: m(msg("Flash acquisition")) },
+  { value: "build", label: m(msg("Build output")) },
 ] as const;
 type FirmwareSource = (typeof FIRMWARE_SOURCES)[number]["value"];
 
@@ -34,8 +36,14 @@ export function ReverseWorkspace({
   readonly threadRef: ScopedThreadRef;
   readonly projectId: string | null;
 }) {
+  const m = useMessages();
+
   if (!projectId)
-    return <p className="p-4 text-sm">Open a project thread to begin a firmware investigation.</p>;
+    return (
+      <p className="p-4 text-sm">
+        {m(msg("Open a project thread to begin a firmware investigation."))}
+      </p>
+    );
   return (
     <ProjectWorkspace
       key={`${threadRef.environmentId}:${projectId}`}
@@ -51,6 +59,8 @@ function ProjectWorkspace({
   threadRef: ScopedThreadRef;
   projectId: string;
 }) {
+  const m = useMessages();
+
   const [path, setPath] = useState(""),
     [selected, setSelected] = useState<string | null>(null);
   const [filter, setFilter] = useState("");
@@ -65,6 +75,7 @@ function ProjectWorkspace({
       null,
     );
   const alive = useRef(true);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Invalidate outstanding workspace operations on teardown so late completions cannot update a different project.
   useEffect(() => {
     alive.current = true;
     return () => {
@@ -200,18 +211,25 @@ function ProjectWorkspace({
   }
   return (
     <section
-      aria-label="Reverse engineering workspace"
+      aria-label={m(msg("Reverse engineering workspace"))}
       className="flex h-full min-h-0 flex-col bg-background text-foreground"
     >
       <header className="border-b border-border p-3">
-        <h2 className="text-sm font-semibold">Reverse Workbench</h2>
-        <p className="text-xs text-muted-foreground">Firmware · code · hardware · evidence</p>
+        <h2 className="text-sm font-semibold">{m(msg("Reverse Workbench"))}</h2>
+        <p className="text-xs text-muted-foreground">
+          {m(msg("Firmware · code · hardware · evidence"))}
+        </p>
         {toolchain.data && (
           <details className="mt-2 text-xs">
             <summary className="cursor-pointer text-muted-foreground">
               {toolsNeedingSetup.length
-                ? `Toolchain: ${toolsNeedingSetup.length} of ${toolchain.data.tools.length} tools need setup`
-                : "Toolchain: everything is ready"}
+                ? m(
+                    msg("Toolchain: {value0} of {value1} tools need setup", {
+                      value0: toolsNeedingSetup.length,
+                      value1: toolchain.data.tools.length,
+                    }),
+                  )
+                : m(msg("Toolchain: everything is ready"))}
             </summary>
             <ul className="mt-2 space-y-2">
               {toolchain.data.tools.map((tool) => (
@@ -222,7 +240,8 @@ function ProjectWorkspace({
                   </span>
                   <span className="text-muted-foreground">
                     {" "}
-                    · needed for {tool.requiredFor.join(", ")}
+                    {m(msg("· needed for "))}
+                    {tool.requiredFor.join(", ")}
                   </span>
                   <p className="break-all text-muted-foreground">{tool.detail}</p>
                   {tool.status !== "ready" && <p>{tool.hint}</p>}
@@ -240,13 +259,13 @@ function ProjectWorkspace({
         }}
       >
         <Input
-          aria-label="Firmware path relative to the project"
-          placeholder="Firmware path relative to this environment’s project"
+          aria-label={m(msg("Firmware path relative to the project"))}
+          placeholder={m(msg("Firmware path relative to this environment’s project"))}
           value={path}
           onChange={(event) => setPath(event.target.value)}
         />
         <Button type="submit" size="sm" disabled={busy || !path.trim()}>
-          Import firmware
+          {m(msg("Import firmware"))}
         </Button>
       </form>
       {(error || list.error) && (
@@ -256,12 +275,12 @@ function ProjectWorkspace({
       )}
       <div className="flex min-h-0 flex-1 overflow-hidden">
         <aside
-          aria-label="Firmware investigations"
+          aria-label={m(msg("Firmware investigations"))}
           className="w-44 shrink-0 overflow-auto border-r border-border p-2"
         >
           {!investigations.length && (
             <p className="text-xs text-muted-foreground">
-              Import an ELF, PE or raw firmware image.
+              {m(msg("Import an ELF, PE or raw firmware image."))}
             </p>
           )}
           {investigations.map((item) => (
@@ -290,10 +309,13 @@ function ProjectWorkspace({
             <>
               <div className="flex items-center gap-2 border-b border-border p-3">
                 <div className="min-w-0 flex-1 text-xs">
-                  <p className="break-all font-mono">SHA-256 {active.artifactSha256}</p>
+                  <p className="break-all font-mono">
+                    {m(msg("SHA-256 "))}
+                    {active.artifactSha256}
+                  </p>
                   {parent && (
                     <p className="text-muted-foreground">
-                      Extracted from{" "}
+                      {m(msg("Extracted from"))}{" "}
                       <Button size="xs" variant="link" onClick={() => setSelected(parent.id)}>
                         {artifacts.find((a) => a.sha256 === parent.artifactSha256)?.filename ??
                           parent.artifactSha256.slice(0, 12)}
@@ -317,7 +339,7 @@ function ProjectWorkspace({
                       disabled={busy}
                       onClick={() => setConfirmDelete(null)}
                     >
-                      Keep
+                      {m(msg("Keep"))}
                     </Button>
                   </>
                 ) : (
@@ -327,7 +349,7 @@ function ProjectWorkspace({
                     disabled={busy}
                     onClick={() => setConfirmDelete(active.id)}
                   >
-                    Delete investigation
+                    {m(msg("Delete investigation"))}
                   </Button>
                 )}
               </div>
@@ -381,18 +403,22 @@ function ProjectWorkspace({
                 onToggle={(event) => setStringsOpen(event.currentTarget.open)}
               >
                 <summary className="cursor-pointer text-xs font-medium">
-                  Strings and file offsets
+                  {m(msg("Strings and file offsets"))}
                 </summary>
                 <Input
-                  aria-label="Filter extracted strings"
+                  aria-label={m(msg("Filter extracted strings"))}
                   className="my-2"
-                  placeholder="Find URLs, log messages, protocol names…"
+                  placeholder={m(msg("Find URLs, log messages, protocol names…"))}
                   value={filter}
                   onChange={(e) => setFilter(e.target.value)}
                 />
                 <p className="text-xs text-muted-foreground">
-                  ASCII scan, first 32 MiB, at most 2,000 matches; showing at most 500 filtered
-                  rows. {strings.data?.truncated ? "Scan truncated." : ""}
+                  {m(
+                    msg(
+                      "ASCII scan, first 32 MiB, at most 2,000 matches; showing at most 500 filtered rows. ",
+                    ),
+                  )}
+                  {strings.data?.truncated ? m(msg("Scan truncated.")) : ""}
                 </p>
                 {strings.error && <p role="alert">{strings.error}</p>}
                 <div className="max-h-64 overflow-auto font-mono text-xs">
@@ -414,32 +440,34 @@ function ProjectWorkspace({
                   void saveLink();
                 }}
               >
-                <h3 className="text-xs font-medium">Veritas linkage</h3>
+                <h3 className="text-xs font-medium">{m(msg("Veritas linkage"))}</h3>
                 <Input
-                  aria-label="Veritas project id"
-                  placeholder="Veritas project ID"
+                  aria-label={m(msg("Veritas project id"))}
+                  placeholder={m(msg("Veritas project ID"))}
                   value={veritas}
                   onChange={(e) => editLink({ veritas: e.target.value })}
                 />
                 <Input
-                  aria-label="Board revision id"
-                  placeholder="Board revision ID"
+                  aria-label={m(msg("Board revision id"))}
+                  placeholder={m(msg("Board revision ID"))}
                   value={board}
                   onChange={(e) => editLink({ board: e.target.value })}
                 />
                 <Button type="submit" size="sm" variant="outline" disabled={busy}>
-                  Save linkage
+                  {m(msg("Save linkage"))}
                 </Button>
                 <p className="text-xs text-muted-foreground">
-                  Linking identifiers does not publish firmware or qualify hardware.
+                  {m(msg("Linking identifiers does not publish firmware or qualify hardware."))}
                 </p>
               </form>
               <div className="space-y-2 p-3">
-                <h3 className="text-xs font-medium">Veritas registration</h3>
+                <h3 className="text-xs font-medium">{m(msg("Veritas registration"))}</h3>
                 <div className="flex items-center gap-2">
                   {activeArtifact?.parentSha256 ? (
                     <p className="text-xs text-muted-foreground">
-                      Registered as extracted from its parent; register the parent first.
+                      {m(
+                        msg("Registered as extracted from its parent; register the parent first."),
+                      )}
                     </p>
                   ) : (
                     <Select
@@ -449,7 +477,11 @@ function ProjectWorkspace({
                         if (value !== null) setSource(value);
                       }}
                     >
-                      <SelectTrigger size="xs" className="w-40" aria-label="Firmware source">
+                      <SelectTrigger
+                        size="xs"
+                        className="w-40"
+                        aria-label={m(msg("Firmware source"))}
+                      >
                         <SelectValue>
                           {FIRMWARE_SOURCES.find((option) => option.value === source)?.label}
                         </SelectValue>
@@ -469,17 +501,21 @@ function ProjectWorkspace({
                     disabled={busy}
                     onClick={() => void publishFirmware()}
                   >
-                    Register in Veritas
+                    {m(msg("Register in Veritas"))}
                   </Button>
                 </div>
                 {published?.investigationId === active.id && (
                   <p role="status" className="text-xs text-muted-foreground">
-                    Registered artifact {published.artifactId}
+                    {m(msg("Registered artifact "))}
+                    {published.artifactId}
                   </p>
                 )}
                 <p className="text-xs text-muted-foreground">
-                  Publishes the digest, size, provenance and saved board revision; firmware bytes
-                  stay on this environment.
+                  {m(
+                    msg(
+                      "Publishes the digest, size, provenance and saved board revision; firmware bytes stay on this environment.",
+                    ),
+                  )}
                 </p>
               </div>
             </>

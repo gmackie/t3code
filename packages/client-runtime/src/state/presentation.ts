@@ -1,3 +1,4 @@
+import type { MarkedText } from "../errors/translatable.ts";
 import {
   resolveEnvironmentMachineKind,
   type EnvironmentMachineKind,
@@ -11,7 +12,7 @@ import { AsyncResult, Atom } from "effect/reactivity";
 import { AVAILABLE_CONNECTION_STATE, type SupervisorConnectionState } from "../connection/model.ts";
 import {
   connectionCatalogDisplayUrl,
-  presentEnvironmentConnection,
+  presentConnectionState,
   type EnvironmentConnectionPhase,
   type EnvironmentConnectionPresentation,
   type EnvironmentPresentation,
@@ -37,6 +38,10 @@ function sameConnection(
   right: EnvironmentConnectionPresentation,
 ): boolean {
   return left.phase === right.phase && left.error === right.error && left.traceId === right.traceId;
+}
+
+function sameRouteIds(left: ReadonlyArray<string>, right: ReadonlyArray<string>): boolean {
+  return left.length === right.length && left.every((routeId, index) => right[index] === routeId);
 }
 
 function withoutProviders(
@@ -77,8 +82,8 @@ export function createEnvironmentPresentationAtoms<E>(input: {
       if (entry === undefined) {
         return null;
       }
-      const state = Option.getOrElse(
-        AsyncResult.value(get(input.stateAtom(environmentId))),
+      const state = AsyncResult.getOrElse(
+        get(input.stateAtom(environmentId)),
         () => AVAILABLE_CONNECTION_STATE,
       );
       const previous = Option.getOrNull(get.self<EnvironmentPresentation | null>());
@@ -88,7 +93,7 @@ export function createEnvironmentPresentationAtoms<E>(input: {
           ? { phase: "unsupported", error: entry.unsupportedReason, traceId: null }
           : state === AVAILABLE_CONNECTION_STATE && entry.enabled
             ? { phase: "connecting", error: null, traceId: null }
-            : presentEnvironmentConnection(state);
+            : presentConnectionState(state);
       const next = {
         entry,
         connection:
@@ -99,11 +104,16 @@ export function createEnvironmentPresentationAtoms<E>(input: {
           get(input.serverConfigValueAtom(environmentId)),
           previous?.serverConfig ?? null,
         ),
+        refusedRouteIds:
+          previous !== null && sameRouteIds(previous.refusedRouteIds, state.refusedRouteIds)
+            ? previous.refusedRouteIds
+            : state.refusedRouteIds,
       } satisfies EnvironmentPresentation;
       return previous !== null &&
         previous.entry === next.entry &&
         previous.connection === next.connection &&
-        previous.serverConfig === next.serverConfig
+        previous.serverConfig === next.serverConfig &&
+        previous.refusedRouteIds === next.refusedRouteIds
         ? previous
         : next;
     }).pipe(Atom.withLabel(`environment-presentation:${environmentId}`)),
@@ -173,6 +183,7 @@ export function createEnvironmentPresentationAtoms<E>(input: {
         prior !== undefined &&
           prior.entry === presentation.entry &&
           prior.connection === presentation.connection &&
+          prior.refusedRouteIds === presentation.refusedRouteIds &&
           prior.serverConfig === serverConfig
           ? prior
           : { ...presentation, serverConfig },
@@ -198,6 +209,8 @@ export interface EnvironmentConnectionSummary {
   readonly isEnabled: boolean;
   readonly connectionState: EnvironmentConnectionPhase;
   readonly connectionError: string | null;
+  /** `connectionError` as marked text; display sites resolve it with `resolveMarkedText`. */
+  readonly i18nConnectionError?: MarkedText;
   readonly connectionErrorTraceId: string | null;
 }
 
@@ -213,6 +226,9 @@ export function projectEnvironmentConnectionSummary(
     isEnabled: environment.entry.enabled,
     connectionState: environment.connection.phase,
     connectionError: environment.connection.error,
+    ...(environment.connection.i18nError === undefined
+      ? {}
+      : { i18nConnectionError: environment.connection.i18nError }),
     connectionErrorTraceId: environment.connection.traceId,
   };
 }
@@ -315,8 +331,14 @@ export function createEnvironmentSummaryAtoms(input: {
   const pullRequestsSupportedAtom = Atom.make((get) =>
     get(environmentIdsAtom).some(
       (environmentId) =>
+        (get(input.presentationAtom(environmentId))?.serverConfig ?? null) !== null,
+    ),
+  );
+  const issuesSupportedAtom = Atom.make((get) =>
+    get(environmentIdsAtom).some(
+      (environmentId) =>
         get(input.presentationAtom(environmentId))?.serverConfig?.environment.capabilities
-          .pullRequests === true,
+          .issues === true,
     ),
   );
   return {
@@ -326,5 +348,6 @@ export function createEnvironmentSummaryAtoms(input: {
     environmentsAtom,
     machineByIdAtom,
     pullRequestsSupportedAtom,
+    issuesSupportedAtom,
   };
 }

@@ -29,6 +29,7 @@ export const SUPPORTED_BLOCKS: ReadonlyArray<string> = [
 ].toSorted();
 
 /** A run error raised while evaluating; the scheduler turns it into the run's diagnostic. */
+// @effect-diagnostics-next-line extendsNativeError:off -- Synchronous interpreter fault, converted to a model diagnostic by the scheduler.
 export class RunFault extends Error {
   readonly diagnostic: ModelDiagnostic;
   constructor(diagnostic: ModelDiagnostic) {

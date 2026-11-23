@@ -1,3 +1,4 @@
+import { msg, useMessages } from "gt-react-native";
 import { bobOperationSchemas } from "@t3tools/contracts/bobContract";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { useNavigation, type StaticScreenProps } from "@react-navigation/native";
@@ -14,7 +15,7 @@ import { settlePromise, squashAtomCommandFailure } from "@t3tools/client-runtime
 import * as Cause from "effect/Cause";
 import { AsyncResult } from "effect/reactivity";
 import * as Schema from "effect/Schema";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { ScrollView, View } from "react-native";
 import { AppText } from "../../components/ui/AppText";
 import { Button } from "../../components/ui/Button";
@@ -126,20 +127,30 @@ function WorkScreen({
   threadId: ThreadId;
   connection: ReturnType<typeof useBobConnection>;
 }) {
+  const m = useMessages();
+
   const navigation = useNavigation();
   const openLinkedThread = useOpenLinkedThread();
   const thread = useThreadShell(scopeThreadRef(environmentId, threadId));
+  const overview = useEnvironmentQuery(
+    connection.data?.configured && thread
+      ? bobCoordination.overview({ environmentId, input: { projectId: thread.projectId } })
+      : null,
+  );
   const call = useAtomCommand(bobCoordination.call, { reportFailure: false });
-  const [plans, setPlans] = useState<ListPlansOutput["plans"]>([]);
-  const [next, setNext] = useState<string | null>(null);
+  const [localPlans, setPlans] = useState<ListPlansOutput["plans"] | null>(null);
+  const plans = localPlans ?? overview.data?.plans ?? [];
+  const [localNext, setNext] = useState<string | null | undefined>(undefined);
+  const next = localNext === undefined ? (overview.data?.nextPlanId ?? null) : localNext;
   const [plan, setPlan] = useState<GetPlanOutput | null>(null);
   const [items, setItems] = useState<ReadonlyArray<GetItemOutput["item"]>>([]);
-  const [capabilities, setCapabilities] = useState<GetCapabilitiesOutput | null>(null);
+  const [localCapabilities, setCapabilities] = useState<GetCapabilitiesOutput | null>(null);
+  const capabilities = localCapabilities ?? overview.data?.caps;
   const [pending, setPending] = useState<BobOperationInput | null>(null);
-  const configured = connection.data?.configured === true;
-  // A configured view starts loading as soon as it mounts.
-  const [busy, setBusy] = useState(configured);
-  const [error, setError] = useState<string | null>(null);
+  const [localBusy, setBusy] = useState(false);
+  const busy = localBusy || overview.isPending;
+  const [localError, setError] = useState<string | null>(null);
+  const error = localError ?? overview.error;
   const generation = useRef(0);
   const binding = thread && connection.data?.projects[thread.projectId];
   const request = useCallback(
@@ -163,14 +174,16 @@ function WorkScreen({
       setError(null);
       const { caps, visible, nextPlanId, detail, children } = loaded.value;
       setCapabilities(caps);
-      setPlans((previous) => (afterPlanId ? [...previous, ...visible] : visible));
+      setPlans((previous) =>
+        afterPlanId ? [...(previous ?? overview.data?.plans ?? []), ...visible] : visible,
+      );
       setNext(nextPlanId);
       if (detail) {
         setPlan(detail);
         setItems(children);
       }
     },
-    [binding, request],
+    [binding, request, overview.data?.plans],
   );
   const refresh = (planId?: string, afterPlanId?: string) => {
     const current = ++generation.current;
@@ -178,12 +191,6 @@ function WorkScreen({
     setError(null);
     return load(current, planId, afterPlanId);
   };
-  useEffect(() => {
-    if (configured) void load(++generation.current);
-    return () => {
-      generation.current++;
-    };
-  }, [configured, load]);
   const mutate = async (command: BobOperationInput) => {
     setPending(command);
     setBusy(true);
@@ -210,34 +217,44 @@ function WorkScreen({
           : [];
   return (
     <View className="flex-1 bg-background">
-      <AppBar title="Work" onBack={() => navigation.goBack()} />
+      <AppBar title={m(msg("Work"))} onBack={() => navigation.goBack()} />
       <ScrollView contentContainerClassName="gap-4 p-4">
-        <AppText>Plans and execution coordinated by Bob</AppText>
+        <AppText>{m(msg("Plans and execution coordinated by Bob"))}</AppText>
         {(error || connection.error) && (
           <AppText accessibilityRole="alert">{error ?? connection.error}</AppText>
         )}
         {!connection.data?.configured && (
-          <AppText>Connect this environment to Bob to manage work.</AppText>
+          <AppText>{m(msg("Connect this environment to Bob to manage work."))}</AppText>
         )}
         <Button
-          label="Refresh"
+          label={m(msg("Refresh"))}
           disabled={busy || !connection.data?.configured}
           onPress={() => void refresh(plan?.planId)}
         />
         {pending && (
-          <Button label="Retry same request" disabled={busy} onPress={() => void mutate(pending)} />
+          <Button
+            label={m(msg("Retry same request"))}
+            disabled={busy}
+            onPress={() => void mutate(pending)}
+          />
         )}
         {plans.map((entry) => (
           <Button
             key={entry.planId}
-            label={`${entry.itemCount} issues · ${entry.state} · ${entry.planId.slice(0, 8)}`}
+            label={m(
+              msg("{value0} issues · {value1} · {value2}", {
+                value0: entry.itemCount,
+                value1: entry.state,
+                value2: entry.planId.slice(0, 8),
+              }),
+            )}
             disabled={busy}
             onPress={() => void refresh(entry.planId)}
           />
         ))}
         {next && (
           <Button
-            label="More plans"
+            label={m(msg("More plans"))}
             disabled={busy}
             onPress={() => void refresh(plan?.planId, next)}
           />
@@ -245,7 +262,9 @@ function WorkScreen({
         {plan && (
           <>
             <AppText>
-              {plan.state} · version {plan.resourceVersion}
+              {plan.state}
+              {m(msg(" · version "))}
+              {plan.resourceVersion}
             </AppText>
             {capabilities?.operations.includes("ControlPlan") &&
               actions.map((action) => (
@@ -287,10 +306,12 @@ function WorkScreen({
                   }{" "}
                   · {item.state}
                 </AppText>
-                <AppText>{item.achievedMilestones.join(" → ") || "No milestone confirmed"}</AppText>
+                <AppText>
+                  {item.achievedMilestones.join(" → ") || m(msg("No milestone confirmed"))}
+                </AppText>
                 {item.execution && (
                   <Button
-                    label="Open execution thread"
+                    label={m(msg("Open execution thread"))}
                     onPress={() =>
                       openLinkedThread({
                         environmentId: EnvironmentId.make(item.execution!.thread.environmentId),
@@ -303,7 +324,11 @@ function WorkScreen({
               </View>
             ))}
             <AppText>
-              Execution success keeps production work open until deployment and health are verified.
+              {m(
+                msg(
+                  "Execution success keeps production work open until deployment and health are verified.",
+                ),
+              )}
             </AppText>
           </>
         )}

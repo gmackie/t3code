@@ -1,3 +1,4 @@
+import { msg, useMessages } from "gt-react";
 import { useState } from "react";
 import type { EnvironmentId, ProjectId, SystemsModelPatchResult } from "@t3tools/contracts";
 import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
@@ -30,6 +31,8 @@ export function SystemsParameterEditor({
   readonly file: string;
   readonly onSaved: () => void;
 }) {
+  const m = useMessages();
+
   const model = useEnvironmentQuery(
     systemsEnvironment.model({ environmentId, input: { projectId, path, file } }),
   );
@@ -40,7 +43,13 @@ export function SystemsParameterEditor({
   const [busy, setBusy] = useState(false);
 
   if (model.error) return <p className="text-destructive">{model.error}</p>;
-  if (!model.data) return <p className="text-muted-foreground">Loading {file}…</p>;
+  if (!model.data)
+    return (
+      <p className="text-muted-foreground">
+        {m(msg("Loading "))}
+        {file}…
+      </p>
+    );
   const { revision } = model.data;
   const nodes = systemParameters(model.data.document);
   const parameters = nodes.flatMap((node) => node.editable);
@@ -78,7 +87,8 @@ export function SystemsParameterEditor({
     }
   }
 
-  if (nodes.length === 0) return <p className="text-muted-foreground">No node parameters.</p>;
+  if (nodes.length === 0)
+    return <p className="text-muted-foreground">{m(msg("No node parameters."))}</p>;
   return (
     <div className="mt-2 space-y-2">
       {nodes.map((node) => (
@@ -116,18 +126,19 @@ export function SystemsParameterEditor({
           disabled={busy || operations.length === 0 || invalid.size > 0}
           onClick={() => void submit(true)}
         >
-          Check
+          {m(msg("Check"))}
         </Button>
         <Button
           size="xs"
           disabled={busy || operations.length === 0 || invalid.size > 0}
           onClick={() => void submit(false)}
         >
-          Save {operations.length > 0 ? `(${operations.length})` : ""}
+          {m(msg("Save "))}
+          {operations.length > 0 ? `(${operations.length})` : ""}
         </Button>
         {operations.length > 0 && (
           <Button size="xs" variant="ghost" disabled={busy} onClick={() => setTexts(new Map())}>
-            Revert
+            {m(msg("Revert"))}
           </Button>
         )}
       </div>
@@ -135,7 +146,7 @@ export function SystemsParameterEditor({
       {result && (
         <div>
           <Badge variant={result.status === "rejected" ? "error" : "success"}>
-            {result.status === "dry_run" ? "checks pass" : result.status}
+            {result.status === "dry_run" ? m(msg("checks pass")) : result.status}
           </Badge>
           {semanticChangeSummary(result.semanticDiff).map((line) => (
             <p key={line} className="text-muted-foreground">

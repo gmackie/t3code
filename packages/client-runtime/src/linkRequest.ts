@@ -1,27 +1,80 @@
+import { errorDisplayMessage } from "./errors/translatable.ts";
 import {
   type AuthMcpClientAccess,
   type EnvironmentId,
   type EnvironmentMachineKind,
   type OrchestrationV2TurnItem,
   type PeerLinkRequestAnswerInput,
+  type PeerLinkName,
+  type PeerLinkSummary,
   resolveEnvironmentMachineKind,
+  type ServerConfig,
 } from "@t3tools/contracts";
+import { isLocalLoopbackHost } from "@t3tools/shared/hostClassification";
 import * as Option from "effect/Option";
 
 import type { EnvironmentPresentation } from "./connection/presentation.ts";
 import { connectionRoutes, routeHttpBaseUrl } from "./connection/routes.ts";
 import type { RelayDiscoveredEnvironment } from "./relay/discovery.ts";
+import { mFallback, msg } from "gt-i18n";
+import type { MFunctionType } from "gt-i18n/types";
 
 export type LinkRequestItem = Extract<OrchestrationV2TurnItem, { readonly type: "link_request" }>;
+
+/** Whether an environment offers links: it supports them and its Linked environments beta is on. */
+export const offersLinkedEnvironments = (
+  config: Pick<ServerConfig, "environment" | "settings"> | null | undefined,
+): boolean =>
+  config?.environment.capabilities.peerLinks === true && config.settings.linkedEnvironmentsEnabled;
+
+/**
+ * The machines an environment's agents can work on, by name: its unexpired links (the server
+ * leaves out expired ones), named as this client names them, else as the link does.
+ */
+export function linkedEnvironmentNames(input: {
+  readonly links: ReadonlyArray<PeerLinkName>;
+  readonly environments: ReadonlyArray<{
+    readonly environmentId: EnvironmentId;
+    readonly label: string;
+  }>;
+}): ReadonlyMap<EnvironmentId, string> {
+  const names = new Map(
+    input.environments.map((environment) => [environment.environmentId, environment.label]),
+  );
+  return new Map(
+    input.links.map(
+      (link) => [link.environmentId, names.get(link.environmentId) ?? link.label] as const,
+    ),
+  );
+}
 
 /** The access a request opens with: the agent's suggestion, else supervised. */
 export const linkRequestDefaultAccess = (
   item: Pick<LinkRequestItem, "requestedAccess">,
 ): AuthMcpClientAccess => item.requestedAccess ?? "approval-required";
 
-/** What the card calls the other environment: its own name, else the address asked for. */
-export const linkRequestTargetName = (item: Pick<LinkRequestItem, "label" | "url">): string =>
-  item.label?.trim() || item.url || "a machine";
+const parsedUrl = (url: string) => {
+  try {
+    return new URL(url);
+  } catch {
+    return undefined;
+  }
+};
+
+/** The http or https origin of an address: what the server links, and nothing else in it. */
+const originOf = (url: string) => {
+  const parsed = parsedUrl(url);
+  return parsed?.protocol === "http:" || parsed?.protocol === "https:" ? parsed.origin : undefined;
+};
+
+/** Where a link to `address` sends its pairing code, which a username or path in it can hide. */
+export const linkDestination = (address: string): string => originOf(address) ?? address.trim();
+
+/** What the card calls the other environment: where the address asked for leads, never a name it answers with. */
+export const linkRequestTargetName = (
+  item: Pick<LinkRequestItem, "url">,
+  resolve: MFunctionType = mFallback,
+): string => (item.url === undefined ? resolve(msg("a machine")) : linkDestination(item.url));
 
 /** A machine the user could link a thread's environment to. */
 export interface LinkableMachine {
@@ -35,48 +88,62 @@ export interface LinkableMachine {
   readonly linked: boolean;
   /**
    * Where the client knows it answers, most preferred first: the addresses it
-   * reports, then its saved routes, a T3 Connect route by its Connect address.
-   * The server keeps only those that answer as this machine. Empty for a
-   * machine reached only over SSH, whose forward lives in this client.
+   * reports, then its saved routes, then its T3 Connect address. The server
+   * keeps only those that answer as this machine. Empty for a machine reached
+   * only over SSH or loopback, which name this client's device.
    */
   readonly urls: ReadonlyArray<string>;
 }
 
+/** A loopback address names whichever machine opens it: the linking server, not this one. */
+const isLoopbackUrl = (url: string) => {
+  const hostname = parsedUrl(url)?.hostname;
+  return hostname !== undefined && isLocalLoopbackHost(hostname);
+};
+
 /**
- * Catalog machines other than the thread's own environment, in catalog order, then those only T3
- * Connect knows. `linkedIds` are environments already linked; `connect` is relay discovery by
- * environment id, a usable address since a server reaches a machine there as a browser does.
+ * The catalog's machines other than the thread's own, in catalog order, then those only T3
+ * Connect knows. `links` are the thread environment's; an expired one no longer counts as
+ * linked. `connect` is what relay discovery found, and a server reaches a machine there as a
+ * browser does, so its Connect address is usable.
  */
 export function linkableMachines(input: {
   readonly environments: ReadonlyArray<
     EnvironmentPresentation & { readonly environmentId: EnvironmentId }
   >;
-  readonly threadEnvironmentId: EnvironmentId;
-  readonly linkedIds: ReadonlySet<EnvironmentId>;
+  /** Null lists every machine, for a view that is not about one environment. */
+  readonly threadEnvironmentId: EnvironmentId | null;
+  readonly links: ReadonlyArray<Pick<PeerLinkSummary, "environmentId" | "status">>;
   readonly connect: ReadonlyMap<string, RelayDiscoveredEnvironment>;
 }): ReadonlyArray<LinkableMachine> {
+  const linkedIds = new Set(
+    input.links.flatMap((link) => (link.status === "expired" ? [] : [link.environmentId])),
+  );
   const saved = input.environments
     .filter((environment) => environment.environmentId !== input.threadEnvironmentId)
     .map((environment) => {
       const reported = (environment.serverConfig?.directEndpoints ?? []).map(
         (endpoint) => endpoint.httpBaseUrl,
       );
-      const connect = input.connect.get(environment.environmentId)?.environment.endpoint;
       const routes = connectionRoutes(environment.entry).flatMap((route) => {
-        const url =
-          route.target._tag === "RelayConnectionTarget"
-            ? connect?.httpBaseUrl
-            : routeHttpBaseUrl(route);
-        return url === null || url === undefined ? [] : [url];
+        const url = route.target._tag === "RelayConnectionTarget" ? null : routeHttpBaseUrl(route);
+        return url === null ? [] : [url];
       });
+      const connect = input.connect.get(environment.environmentId)?.environment.endpoint;
       return {
         environmentId: environment.environmentId,
         label: environment.entry.target.label,
         machine: resolveEnvironmentMachineKind(environment.serverConfig),
         connected: environment.connection.phase === "connected",
         connectOnly: false,
-        linked: input.linkedIds.has(environment.environmentId),
-        urls: [...new Set([...reported, ...routes])],
+        linked: linkedIds.has(environment.environmentId),
+        urls: [
+          ...new Set([
+            ...reported,
+            ...routes,
+            ...(connect === undefined ? [] : [connect.httpBaseUrl]),
+          ]),
+        ].filter((url) => !isLoopbackUrl(url)),
       };
     });
   const savedIds = new Set<string>(saved.map((machine) => machine.environmentId));
@@ -96,8 +163,8 @@ export function linkableMachines(input: {
         ),
         connected: false,
         connectOnly: true,
-        linked: input.linkedIds.has(environment.environmentId),
-        urls: [environment.endpoint.httpBaseUrl],
+        linked: linkedIds.has(environment.environmentId),
+        urls: [environment.endpoint.httpBaseUrl].filter((url) => !isLoopbackUrl(url)),
       };
     });
   return [...saved, ...connectOnly];
@@ -154,6 +221,60 @@ export function linkRequestInitialMachine(
     : null;
 }
 
+/** The machine choice for linking by an address typed in. */
+export const ANOTHER_ADDRESS = "another-address";
+
+/**
+ * What a link request links: a machine from the client's catalog, or an address.
+ * `urls` is empty when the client knows no direct address for the machine,
+ * so the user types one.
+ */
+export type LinkRequestTarget =
+  | { readonly kind: "none" }
+  | {
+      readonly kind: "machine";
+      readonly environmentId: EnvironmentId;
+      readonly label: string;
+      readonly urls: ReadonlyArray<string>;
+      readonly linked: boolean;
+    }
+  | { readonly kind: "address" };
+
+/**
+ * Anything can answer at an address as any machine, so an address the agent
+ * gave is a machine only where this client already reaches that machine. Its
+ * pairing code is minted for, and sent to, the client's own addresses alone.
+ */
+export function linkRequestTarget(
+  item: Pick<LinkRequestItem, "environmentId" | "url">,
+  machines: ReadonlyArray<LinkableMachine>,
+  choice: string | null,
+  resolve: MFunctionType = mFallback,
+): LinkRequestTarget {
+  const asked = item.url === undefined ? undefined : originOf(item.url);
+  // Two machines on separate networks can share a private address.
+  const [reached, ...others] =
+    asked === undefined
+      ? []
+      : machines.filter((machine) => machine.urls.some((url) => originOf(url) === asked));
+  const chosen =
+    item.url === undefined
+      ? (item.environmentId ?? choice)
+      : reached !== undefined && others.length === 0
+        ? reached.environmentId
+        : ANOTHER_ADDRESS;
+  if (chosen === null) return { kind: "none" };
+  if (chosen === ANOTHER_ADDRESS) return { kind: "address" };
+  const machine = machines.find((candidate) => candidate.environmentId === chosen);
+  return {
+    kind: "machine",
+    environmentId: machine?.environmentId ?? (chosen as EnvironmentId),
+    label: machine?.label ?? linkRequestTargetName(item, resolve),
+    urls: machine?.urls ?? [],
+    linked: machine?.linked ?? false,
+  };
+}
+
 /** What a link request card shows: the actions while pending, otherwise a one-line outcome. */
 export type LinkRequestDisplay =
   | { readonly kind: "pending" }
@@ -170,36 +291,49 @@ export type LinkRequestDisplay =
  * names an access level the way the client's access picker does.
  */
 export function linkRequestDisplay(
-  item: Pick<
-    LinkRequestItem,
-    "linkStatus" | "label" | "url" | "linkedLabel" | "linkedAccess" | "failure"
-  >,
+  item: Pick<LinkRequestItem, "linkStatus" | "url" | "linkedLabel" | "linkedAccess" | "failure">,
   visibility: "local" | "inherited" | "synthetic",
   accessLabel: (access: AuthMcpClientAccess) => string,
+  resolve: MFunctionType = mFallback,
 ): LinkRequestDisplay {
   switch (item.linkStatus) {
     case "pending":
       return visibility === "local"
         ? { kind: "pending" }
-        : { kind: "pending-elsewhere", label: "Waiting for an answer in the original thread" };
-    case "linked":
+        : {
+            kind: "pending-elsewhere",
+            label: resolve(msg("Waiting for an answer in the original thread")),
+          };
+    case "linked": {
+      const target =
+        item.linkedLabel ?? (item.url === undefined ? undefined : linkDestination(item.url));
+      const access = item.linkedAccess === undefined ? undefined : accessLabel(item.linkedAccess);
       return {
         kind: "answered",
         outcome: "linked",
-        label: `Linked ${item.linkedLabel ?? linkRequestTargetName(item)}${
-          item.linkedAccess === undefined ? "" : ` · ${accessLabel(item.linkedAccess)}`
-        }`,
+        label:
+          access === undefined
+            ? target === undefined
+              ? resolve(msg("Linked a machine"))
+              : resolve(msg("Linked {target}", { target }))
+            : target === undefined
+              ? resolve(msg("Linked a machine · {access}", { access }))
+              : resolve(msg("Linked {target} · {access}", { target, access })),
       };
+    }
     case "declined":
-      return { kind: "answered", outcome: "declined", label: "Declined" };
+      return { kind: "answered", outcome: "declined", label: resolve(msg("Declined")) };
     case "failed":
       return {
         kind: "answered",
         outcome: "failed",
-        label: `Could not link: ${item.failure ?? "the other environment refused"}`,
+        label:
+          item.failure === undefined
+            ? resolve(msg("Could not link: the other environment refused"))
+            : resolve(msg("Could not link: {failure}", { failure: item.failure })),
       };
     case "cancelled":
-      return { kind: "answered", outcome: "ended", label: "Request ended" };
+      return { kind: "answered", outcome: "ended", label: resolve(msg("Request ended")) };
   }
 }
 
@@ -259,7 +393,10 @@ const USER_FACING_FAILURE_TAGS = new Set([
  * through: anything else (transport or encoding failures) gets the generic
  * copy, so the pairing code can never surface in the UI.
  */
-export function linkRequestFailureMessage(failure: unknown): string {
+export function linkRequestFailureMessage(
+  failure: unknown,
+  resolve: MFunctionType = mFallback,
+): string {
   if (
     typeof failure === "object" &&
     failure !== null &&
@@ -270,7 +407,7 @@ export function linkRequestFailureMessage(failure: unknown): string {
     typeof failure.message === "string" &&
     failure.message.trim().length > 0
   ) {
-    return failure.message;
+    return errorDisplayMessage(failure, resolve) ?? failure.message;
   }
-  return "Could not answer the request. Try again.";
+  return resolve(msg("Could not answer the request. Try again."));
 }

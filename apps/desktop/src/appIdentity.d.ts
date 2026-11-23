@@ -9,10 +9,6 @@ export interface DesktopRuntimeIdentity {
   readonly userDataDirName: string;
 }
 
-export function isGmackoDesktopAppDisplayName(appDisplayName: string | undefined | null): boolean;
-export function isGmackoDesktopPackageName(packageName: string | undefined | null): boolean;
-export function isGmackoDesktopAppId(appId: string | undefined | null): boolean;
-
 export function getDesktopRuntimeIdentity(input: {
   readonly isDevelopment: boolean;
   readonly appDisplayName: string | undefined | null;

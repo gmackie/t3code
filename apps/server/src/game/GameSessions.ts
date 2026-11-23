@@ -1,4 +1,5 @@
-import * as Crypto from "effect/Crypto";
+import * as Digest from "effect/crypto/Digest";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import {
   CommandId,
   MessageId,
@@ -90,7 +91,8 @@ const invalid = () =>
     reason: "Unity returned incompatible game data.",
   });
 const make = Effect.gen(function* () {
-  const crypto = yield* Crypto.Crypto;
+  const digest = yield* Digest.Digest;
+  const random = yield* SecureRandom.SecureRandom;
   const scope = yield* Effect.scope;
   const threads = yield* ThreadManagement.ThreadManagementService;
   const hooks = yield* UnityHooks.UnityHooks;
@@ -186,9 +188,7 @@ const make = Effect.gen(function* () {
         code: "viewer_limit",
         reason: "Too many open game viewers.",
       });
-    const token = Buffer.from(yield* crypto.randomBytes(32).pipe(Effect.orDie)).toString(
-      "base64url",
-    );
+    const token = Buffer.from(yield* random.randomBytes(32)).toString("base64url");
     viewers.set(token, { ...input, expiresAt });
     return { token, expiresAt, canOperate: input.canOperate };
   });
@@ -230,7 +230,7 @@ const make = Effect.gen(function* () {
         );
       if (catalog.generation !== bridge.generation || catalog.target !== input.target.kind)
         return yield* invalid();
-      const sessionId = yield* crypto.randomUUIDv4().pipe(Effect.orDie);
+      const sessionId = yield* random.uuidV4();
       sessions.set(sessionId, { viewer: token, bridge, catalog });
       return { sessionId, catalog };
     }
@@ -278,9 +278,10 @@ const make = Effect.gen(function* () {
       const result = yield* command({
         action: "acquire",
         owner: Buffer.from(
-          yield* crypto
-            .digest("SHA-256", new TextEncoder().encode(`${token}:${input.sessionId}`))
-            .pipe(Effect.orDie),
+          yield* digest.digest(
+            Digest.sha256,
+            new TextEncoder().encode(`${token}:${input.sessionId}`),
+          ),
         ).toString("hex"),
         role: caller.role,
         takeover: caller.role === "human" && input.takeover,

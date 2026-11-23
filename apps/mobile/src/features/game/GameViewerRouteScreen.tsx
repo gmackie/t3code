@@ -1,3 +1,4 @@
+import { msg, useMessages } from "gt-react-native";
 import { useAtomQueryRunner } from "../../state/use-atom-query-runner";
 import { gameState } from "../../state/game";
 import { EnvironmentId, ThreadId } from "@t3tools/contracts";
@@ -61,6 +62,8 @@ type GameWebViewProps = {
 const GameWebView = WebView as unknown as ComponentType<GameWebViewProps>;
 
 export function GameViewerRouteScreen({ route }: Props) {
+  const m = useMessages();
+
   const navigation = useNavigation();
   const { themeId, themeAppearance, themeVariables, systemColorsActive } =
     useAppearancePreferences();
@@ -130,8 +133,10 @@ export function GameViewerRouteScreen({ route }: Props) {
       `window.dispatchEvent(new CustomEvent('t3-game-theme', { detail: ${JSON.stringify(theme)} })); true;`,
     );
   }, [theme]);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Send palette updates into the mounted native Game WebView.
   useEffect(postTheme, [postTheme]);
 
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Forward native foreground events to the Game runtime while its WebView is mounted.
   useEffect(() => {
     const subscription = AppState.addEventListener("change", (state) => {
       webViewRef.current?.injectJavaScript(
@@ -142,6 +147,7 @@ export function GameViewerRouteScreen({ route }: Props) {
   }, []);
 
   const retry = useCallback(() => setRefreshKey((key) => key + 1), []);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Acquire the mounted WebView's scoped HTTP ticket for this target; keep it across WebSocket wakeups and ignore completions after teardown.
   useEffect(() => {
     const endpoint = sessionRequest.viewerEndpoint;
     if (!endpoint) return;
@@ -166,12 +172,14 @@ export function GameViewerRouteScreen({ route }: Props) {
           setViewer({
             request: sessionRequest,
             session: null,
-            error: cause instanceof Error ? cause.message : "Unable to open the Game viewer.",
+            error:
+              cause instanceof Error ? cause.message : m(msg("Unable to open the Game viewer.")),
           });
       });
     return () => controller.abort();
-  }, [sessionRequest]);
+  }, [sessionRequest, m]);
 
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Own the mounted Game viewer's ticket-renewal timer, cancelling it when the ticket changes or the viewer unmounts.
   useEffect(() => {
     if (!session) return;
     const remaining = session.expiresAt - Date.now() - 60_000;
@@ -191,22 +199,22 @@ export function GameViewerRouteScreen({ route }: Props) {
   const viewerOrigin = useMemo(() => (viewerUrl ? new URL(viewerUrl).origin : null), [viewerUrl]);
   return (
     <View className="flex-1 bg-sheet">
-      <NativeStackScreenOptions options={{ title: "Unity game" }} />
+      <NativeStackScreenOptions options={{ title: m(msg("Unity game")) }} />
       <View className="flex-row items-center gap-1 border-b border-border px-3 py-2">
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="Switch to Code mode"
+          accessibilityLabel={m(msg("Switch to Code mode"))}
           onPress={() => navigation.goBack()}
           className="rounded-md px-4 py-2"
         >
-          <Text className="text-foreground-muted">Code</Text>
+          <Text className="text-foreground-muted">{m(msg("Code"))}</Text>
         </Pressable>
         <View
           className="rounded-md bg-subtle-strong px-4 py-2"
           accessibilityRole="text"
-          accessibilityLabel="Game mode, selected"
+          accessibilityLabel={m(msg("Game mode, selected"))}
         >
-          <Text>Game</Text>
+          <Text>{m(msg("Game"))}</Text>
         </View>
       </View>
       {progress > 0 && progress < 1 ? <LoadingStrip progress={progress} /> : null}
@@ -229,7 +237,7 @@ export function GameViewerRouteScreen({ route }: Props) {
             setViewer((previous) => ({
               request: sessionRequest,
               session: previous?.request === sessionRequest ? previous.session : null,
-              error: "Navigation outside the Game viewer was blocked.",
+              error: m(msg("Navigation outside the Game viewer was blocked.")),
             }));
             return false;
           }}
@@ -267,16 +275,18 @@ export function GameViewerRouteScreen({ route }: Props) {
             <>
               <Text className="text-center text-sm text-foreground-muted">{error}</Text>
               <Pressable className="rounded-md bg-accent px-4 py-2" onPress={retry}>
-                <Text className="text-sm font-t3-bold text-foreground">Retry</Text>
+                <Text className="text-sm font-t3-bold text-foreground">{m(msg("Retry"))}</Text>
               </Pressable>
               <Text className="text-sm text-foreground-muted">
-                Use the back button to leave the viewer.
+                {m(msg("Use the back button to leave the viewer."))}
               </Text>
             </>
           ) : (
             <>
               <ActivityIndicator />
-              <Text className="text-sm text-foreground-muted">Opening Game viewer…</Text>
+              <Text className="text-sm text-foreground-muted">
+                {m(msg("Opening Game viewer…"))}
+              </Text>
             </>
           )}
         </View>

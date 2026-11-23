@@ -1,3 +1,4 @@
+import type { SelectableMarkdownModel } from "./SelectableMarkdownText.types";
 import type { OrchestrationMessageContext, ServerProviderSkill } from "@t3tools/contracts";
 import type { Ref } from "react";
 import type { StyleProp, TextStyle, ViewStyle } from "react-native";
@@ -22,8 +23,10 @@ export interface ComposerEditorHandle {
   focus: () => void;
   blur: () => void;
   /** iOS: commit pending keyboard corrections and synchronize the draft before sending. */
-  prepareForSubmit?: () => Promise<void>;
+  prepareForSubmit?: (isCurrent: () => boolean) => Promise<boolean>;
   setSelection: (selection: ComposerEditorSelection) => void;
+  /** iOS: resolves once a native edit still in flight has reached `onChangeText`. */
+  flushPendingInput: () => Promise<void>;
 }
 
 export interface ComposerEditorProps {
@@ -44,6 +47,7 @@ export interface ComposerEditorProps {
     > &
       Partial<Pick<ServerProviderSkill, "path">>
   >;
+  readonly models?: ReadonlyArray<SelectableMarkdownModel>;
   readonly selection?: ComposerEditorSelection;
   readonly placeholder?: string;
   readonly autoFocus?: boolean;
@@ -60,8 +64,15 @@ export interface ComposerEditorProps {
   readonly style?: StyleProp<ViewStyle>;
   readonly textStyle?: StyleProp<TextStyle>;
   readonly onChangeText: (value: string) => void;
+  /**
+   * iOS: the owner's reset generation, raised synchronously when it replaces the text outright
+   * (send, discard). Native edits the editor made before applying that reset are dropped.
+   */
+  readonly readResetGeneration?: () => number;
   readonly onSelectionChange?: (selection: ComposerEditorSelection) => void;
   readonly onPasteImages?: (uris: ReadonlyArray<string>) => void;
+  /** iOS: change in pasted images still loading natively, +n on paste and -n once they settle. */
+  readonly onPasteImagesPending?: (delta: number) => void;
   readonly onContextPress?: (reference: {
     readonly source: string;
     readonly start: number;
@@ -78,13 +89,10 @@ export interface ComposerEditorProps {
     readonly width: number;
     readonly height: number;
   }) => void;
-  /**
-   * Hardware-keyboard Return behavior on iOS. No-op on Android, which has no
-   * hardware Return handling.
-   */
+  /** Hardware-keyboard Return behavior. Soft keyboards always insert a newline. */
   readonly enterBehavior?: ComposerEnterBehavior;
   readonly submitTitle?: string;
   readonly alternateSubmitTitle?: string;
-  /** Command chords set alternate to reverse follow-up behavior; Android always passes false. */
+  /** Command chords (Ctrl on Android) reverse the configured follow-up behavior. */
   readonly onSubmit?: (alternate: boolean) => void;
 }

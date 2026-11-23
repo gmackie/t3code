@@ -4,8 +4,6 @@ import * as NodeURL from "node:url";
 import { remoteCacheUrl } from "./infra/task-cache/src/remoteCache.ts";
 import { cachedTestTasks } from "./scripts/lib/cached-tests.ts";
 
-const DOM_TEST_ENVIRONMENT_ALLOWLIST: Array<string> = [];
-
 const TEST_EXCLUDE = [
   "**/.repos/**",
   "**/.t3/**",
@@ -32,6 +30,12 @@ const isRepoRootTestRun = process.cwd() === import.meta.dirname;
 
 const RESTRICTED_IMPORT_PATHS = [
   {
+    name: "react-native",
+    importNames: ["FlatList"],
+    message:
+      "Use LegendList from @legendapp/list/react-native, with renderScrollComponent={NativeScrollView} in a screen. Pass whatever renderItem reads through extraData: rows only re-render when their item or extraData changes.",
+  },
+  {
     name: "@t3tools/client-runtime",
     message:
       "Import from an explicit @t3tools/client-runtime/* subpath. The package has no root export.",
@@ -46,6 +50,12 @@ const RESTRICTED_IMPORT_PATHS = [
     importNames: ["ScrollViewMarker"],
     message:
       "Use NativeScrollViewMarker or NativeScrollView (src/native/NativeScrollViewMarker.tsx): they carry the header's scroll-edge blur under the Duo's vertical bar.",
+  },
+  {
+    name: "react-native",
+    importNames: ["RefreshControl"],
+    message:
+      "Use RefreshControl from src/components/ui/RefreshControl: Android bottom sheets own the pull at the top, so it steps aside there.",
   },
 ];
 
@@ -110,7 +120,16 @@ const taskCacheConfig = {
 export default defineConfig({
   run: {
     cache: taskCacheConfig,
-    tasks: cachedTestTasks(process.env.T3_CACHED_TESTS),
+    tasks: {
+      ...cachedTestTasks(process.env.T3_CACHED_TESTS),
+      // The two knip passes read the same files and write nothing, so they run side by side.
+      // The `knip:check` script runs this task, so `vp run knip:check` and `pnpm run knip:check` both use it.
+      "knip:check:all": {
+        command: 'node -e ""',
+        dependsOn: ["knip:check:files", "knip:check:exports"],
+        cache: false,
+      },
+    },
   },
   resolve: {
     alias: {
@@ -150,6 +169,7 @@ export default defineConfig({
       NodeURL.fileURLToPath(
         new URL("./packages/shared/src/testing/providerEnv.ts", import.meta.url),
       ),
+      NodeURL.fileURLToPath(new URL("./packages/shared/src/testing/gitEnv.ts", import.meta.url)),
     ],
     ...(isRepoRootTestRun
       ? {
@@ -171,7 +191,11 @@ export default defineConfig({
       : {}),
   },
   staged: {
-    "*": "vp fmt --no-error-on-unmatched-pattern",
+    // In order, so lint reads the formatted file. CI lint failures cost a full round trip.
+    "*": ["vp fmt --no-error-on-unmatched-pattern", "vp lint --no-error-on-unmatched-pattern"],
+    // knip checks the whole repo, so it takes no file list. Any code or manifest change can leave
+    // a file, export, or dependency unused.
+    "{*.{js,jsx,ts,tsx,mjs,cjs,mts,cts},package.json,knip.jsonc}": () => "vp run knip:check",
   },
   fmt: {
     ignorePatterns: [
@@ -201,6 +225,7 @@ export default defineConfig({
       // Vendored and generated C.
       "apps/mobile/modules/t3-highlights/Vendor/**",
       "apps/mobile/modules/t3-highlights/cpp/generated/**",
+      "apps/mobile/modules/t3-highlights/nitrogen/generated/**",
       "*.icon/**",
     ],
     sortPackageJson: {},
@@ -337,6 +362,12 @@ export default defineConfig({
         rules: { "t3code/prefer-effect-fn": "off" },
       },
       {
+        files: ["apps/web/src/**", "apps/mobile/src/**", "apps/desktop/src/**"],
+        // Users still pick their own project icon from the full Lucide set.
+        excludeFiles: ["apps/web/src/projectIconOptions.ts"],
+        rules: { "t3code/no-sparkles-icon": "error" },
+      },
+      {
         files: ["apps/web/**/*.test.{ts,tsx}"],
         rules: { "t3code/require-disposable-render": "error" },
       },
@@ -346,7 +377,6 @@ export default defineConfig({
       },
       {
         files: ["apps/**/src/**", "packages/**/src/**"],
-        excludeFiles: DOM_TEST_ENVIRONMENT_ALLOWLIST,
         rules: { "t3code/no-dom-test-environment": "error" },
       },
       {
@@ -368,7 +398,6 @@ export default defineConfig({
       {
         files: [
           "apps/web/src/components/settings/AuthorizedClientsSettings.tsx",
-          "apps/web/src/components/settings/ConnectionsSettings.tsx",
           "apps/mobile/src/features/updates/app-updates.ts",
           "apps/web/src/components/device/DevicePhoneViewport.tsx",
           "apps/web/src/components/device/DeviceDuoViewport.tsx",
@@ -499,7 +528,7 @@ export default defineConfig({
         files: ["apps/mobile/src/**"],
         excludeFiles: [
           "apps/mobile/src/components/ui/AppSymbol.tsx",
-          "apps/mobile/src/components/ui/AppSymbol.ios.tsx",
+          "apps/mobile/src/components/ui/AppSymbol.android.tsx",
           "apps/mobile/src/features/pull-requests/pullRequestGlyphs.ts",
         ],
         rules: { "t3code/no-mobile-pull-request-glyph-literals": "error" },
@@ -525,6 +554,10 @@ export default defineConfig({
       {
         files: ["apps/web/src/**"],
         rules: { "t3code/no-outset-state-indicators": "error" },
+      },
+      {
+        files: ["apps/web/src/**"],
+        rules: { "t3code/max-settings-description-length": "error" },
       },
       {
         files: ["apps/*/src/**", "packages/*/src/**"],
@@ -559,9 +592,9 @@ export default defineConfig({
                 "transition",
                 "rounded-[inherit]",
                 "gap-[0.33em]",
-                "px-[0.5em]",
-                "rounded-[0.5em]",
-                "text-[0.86em]",
+                "gap-[0.2em]",
+                "leading-[normal]",
+                "underline-offset-[0.2em]",
                 "rounded-[25%]",
                 "text-[length:80cqh]",
                 "bg-[Highlight]",
@@ -588,6 +621,20 @@ export default defineConfig({
             },
           ],
         },
+      },
+      // Registered always so a disable comment for intentional English counts as used.
+      // `vp run i18n:untranslated` counts what it flags.
+      {
+        files: ["apps/web/src/**", "apps/mobile/src/**", "packages/client-runtime/src/**"],
+        excludeFiles: [
+          "**/*.{test,spec,bench}.{ts,tsx}",
+          "**/{test,testkit,testing,fixtures}/**",
+          "**/*.test-fixtures.ts",
+          "**/{test-fixtures,*TestFixtures}.ts",
+          "apps/mobile/src/features/development/**",
+          "packages/client-runtime/src/rpc/**",
+        ],
+        rules: { "t3code/no-untranslated-copy": "error" },
       },
       {
         // GMACKO fork UI written before upstream's theme-token rules. Warnings, not errors,
@@ -702,7 +749,7 @@ export default defineConfig({
       },
       {
         files: ["apps/web/src/**", "apps/mobile/src/**", "packages/*/src/**"],
-        rules: { "t3code/react-effect-budget": "error" },
+        rules: { "t3code/no-unreasoned-state-sync": "error" },
       },
       {
         // React Compiler caches use* functions only if they call a hook.
@@ -719,22 +766,18 @@ export default defineConfig({
           "apps/mobile/src/features/files/AttachmentFileScreen.tsx",
           "apps/mobile/src/features/files/ThreadFilesRouteScreen.tsx",
           "apps/mobile/src/features/files/thread-file-navigator-pane.tsx",
-          "apps/mobile/src/features/home/HomeHeader.tsx",
+          "apps/mobile/src/features/layout/nested-stacks.tsx",
           "apps/mobile/src/features/review/ReviewSheet.tsx",
           "apps/mobile/src/features/review/useNativeReviewDiffBridge.ts",
           "apps/mobile/src/features/kicad/KiCadViewerRouteScreen.tsx",
           "apps/mobile/src/features/settings/SettingsEnvironmentsRouteScreen.tsx",
-          "apps/mobile/src/features/threads/GitActionProgressOverlay.tsx",
-          "apps/mobile/src/features/threads/NewTaskDraftScreen.tsx",
           "apps/mobile/src/features/threads/ThreadComposer.tsx",
+          "apps/mobile/src/components/ComposerSurface.tsx",
           "apps/mobile/src/features/threads/ThreadFeed.tsx",
-          "apps/mobile/src/features/settings/appearance/components/FontSizeSliderRow.tsx",
-          "apps/mobile/src/features/threads/NewTaskContextPickerScreens.tsx",
           "apps/mobile/src/features/threads/ThreadQueueControl.tsx",
           "apps/mobile/src/features/review/ReviewCommentCard.tsx",
-          "apps/mobile/src/features/threads/ThreadSettingsSheet.tsx",
-          "apps/mobile/src/features/threads/thread-list-items.tsx",
           "apps/mobile/src/features/threads/thread-list-v2-items.tsx",
+          "apps/mobile/src/components/ui/SecretTextInput.android.tsx",
           "apps/mobile/src/lib/useMobileNavigationTheme.ts",
           "apps/mobile/src/native/T3ComposerEditor.ios.tsx",
           "apps/mobile/src/native/T3ComposerEditor.native.tsx",

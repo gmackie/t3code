@@ -1,3 +1,5 @@
+import { m } from "~/i18n/messages";
+import { msg, useMessages } from "gt-react";
 import { useEffect, useRef, useState } from "react";
 import type { ReverseFindingRecord, ScopedThreadRef } from "@t3tools/contracts";
 import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
@@ -14,13 +16,13 @@ import {
 } from "~/components/ui/select";
 
 const KINDS = [
-  { value: "memory-corruption", label: "Memory corruption" },
-  { value: "attack-surface", label: "Attack surface" },
-  { value: "boot-chain", label: "Boot chain" },
-  { value: "crypto", label: "Crypto" },
-  { value: "protocol", label: "Protocol" },
-  { value: "gadget", label: "Gadget" },
-  { value: "other", label: "Other" },
+  { value: "memory-corruption", label: m(msg("Memory corruption")) },
+  { value: "attack-surface", label: m(msg("Attack surface")) },
+  { value: "boot-chain", label: m(msg("Boot chain")) },
+  { value: "crypto", label: m(msg("Crypto")) },
+  { value: "protocol", label: m(msg("Protocol")) },
+  { value: "gadget", label: m(msg("Gadget")) },
+  { value: "other", label: m(msg("Other")) },
 ] as const;
 type Kind = (typeof KINDS)[number]["value"];
 type Status = ReverseFindingRecord["status"];
@@ -28,20 +30,20 @@ type Status = ReverseFindingRecord["status"];
 // What a person can move a finding to from each status. Every closed state can be reopened.
 const NEXT: Record<Status, ReadonlyArray<{ status: Status; label: string }>> = {
   candidate: [
-    { status: "probable", label: "Probable" },
-    { status: "confirmed", label: "Confirm" },
-    { status: "rejected", label: "Reject" },
+    { status: "probable", label: m(msg("Probable")) },
+    { status: "confirmed", label: m(msg("Confirm")) },
+    { status: "rejected", label: m(msg("Reject")) },
   ],
   probable: [
-    { status: "confirmed", label: "Confirm" },
-    { status: "rejected", label: "Reject" },
+    { status: "confirmed", label: m(msg("Confirm")) },
+    { status: "rejected", label: m(msg("Reject")) },
   ],
   confirmed: [
-    { status: "superseded", label: "Supersede" },
-    { status: "candidate", label: "Reopen" },
+    { status: "superseded", label: m(msg("Supersede")) },
+    { status: "candidate", label: m(msg("Reopen")) },
   ],
-  rejected: [{ status: "candidate", label: "Reopen" }],
-  superseded: [{ status: "candidate", label: "Reopen" }],
+  rejected: [{ status: "candidate", label: m(msg("Reopen")) }],
+  superseded: [{ status: "candidate", label: m(msg("Reopen")) }],
 };
 
 /** A draft handed over from elsewhere in the workspace, such as the selected function. */
@@ -81,6 +83,8 @@ export function FindingsPanel({
   registered: boolean;
   onChanged: () => void;
 }) {
+  const m = useMessages();
+
   const publish = useAtomCommand(reverseEnvironment.publishFinding, { reportFailure: false });
   const create = useAtomCommand(reverseEnvironment.createFinding, { reportFailure: false });
   const update = useAtomCommand(reverseEnvironment.updateFinding, { reportFailure: false });
@@ -91,6 +95,7 @@ export function FindingsPanel({
   const [busy, setBusy] = useState(false),
     [error, setError] = useState<string | null>(null);
   const alive = useRef(true);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Invalidate outstanding finding operations on teardown so late completions cannot update the closed panel.
   useEffect(() => {
     alive.current = true;
     return () => {
@@ -184,11 +189,11 @@ export function FindingsPanel({
     });
 
   return (
-    <section aria-label="Findings" className="space-y-2 border-b border-border p-3">
-      <h3 className="text-xs font-medium">Findings</h3>
+    <section aria-label={m(msg("Findings"))} className="space-y-2 border-b border-border p-3">
+      <h3 className="text-xs font-medium">{m(msg("Findings"))}</h3>
       {findings.length === 0 && (
         <p className="text-xs text-muted-foreground">
-          No findings yet. Record what you or an agent suspect; a person confirms them.
+          {m(msg("No findings yet. Record what you or an agent suspect; a person confirms them."))}
         </p>
       )}
       <ul className="space-y-2">
@@ -197,15 +202,28 @@ export function FindingsPanel({
             <p>
               <span className="font-medium">{finding.title}</span>{" "}
               <span className="text-muted-foreground">
-                · {finding.kind} · {finding.status} · by {finding.authorKind}
-                {finding.statusChangedBy ? ` · status set by ${finding.statusChangedBy}` : ""}
+                {m(
+                  msg("· {kind} · {status} · by {author}", {
+                    kind: finding.kind,
+                    status: finding.status,
+                    author: finding.authorKind,
+                  }),
+                )}
+                {finding.statusChangedBy
+                  ? m(msg(" · status set by {value0}", { value0: finding.statusChangedBy }))
+                  : ""}
               </span>
             </p>
             {finding.evidence.map((ref, index) => (
               // oxlint-disable-next-line react/no-array-index-key -- evidence is an ordered, immutable list.
               <p key={index} className="font-mono text-muted-foreground">
                 {ref.kind === "code"
-                  ? `code ${ref.location.addressSpace}:${ref.location.address}`
+                  ? m(
+                      msg("code {value0}:{value1}", {
+                        value0: ref.location.addressSpace,
+                        value1: ref.location.address,
+                      }),
+                    )
                   : ref.kind === "execution"
                     ? `${ref.source} run ${ref.runId}`
                     : `capture ${ref.captureId}${ref.signal ? ` · ${ref.signal}` : ""}`}
@@ -213,7 +231,9 @@ export function FindingsPanel({
             ))}
             {finding.veritasFindingId && (
               <p className="text-muted-foreground">
-                In Veritas as {finding.veritasFindingId}; people review and confirm it there.
+                {m(msg("In Veritas as "))}
+                {finding.veritasFindingId}
+                {m(msg("; people review and confirm it there."))}
               </p>
             )}
             <div className="mt-1 flex flex-wrap gap-1">
@@ -224,10 +244,12 @@ export function FindingsPanel({
                     size="xs"
                     variant="outline"
                     disabled={busy || !registered}
-                    title={registered ? undefined : "Register this firmware in Veritas first"}
+                    title={
+                      registered ? undefined : m(msg("Register this firmware in Veritas first"))
+                    }
                     onClick={() => void publishFinding(finding.id)}
                   >
-                    Publish to Veritas
+                    {m(msg("Publish to Veritas"))}
                   </Button>
                 )}
               {NEXT[finding.status].map((next) => (
@@ -253,8 +275,8 @@ export function FindingsPanel({
         }}
       >
         <Input
-          aria-label="Finding title"
-          placeholder="What you suspect"
+          aria-label={m(msg("Finding title"))}
+          placeholder={m(msg("What you suspect"))}
           value={title}
           onChange={(event) => setTitle(event.target.value)}
         />
@@ -266,7 +288,7 @@ export function FindingsPanel({
               if (value !== null) setKind(value);
             }}
           >
-            <SelectTrigger size="xs" className="w-40" aria-label="Finding kind">
+            <SelectTrigger size="xs" className="w-40" aria-label={m(msg("Finding kind"))}>
               <SelectValue>{KINDS.find((option) => option.value === kind)?.label}</SelectValue>
             </SelectTrigger>
             <SelectPopup>
@@ -278,15 +300,16 @@ export function FindingsPanel({
             </SelectPopup>
           </Select>
           <Input
-            aria-label="Code address evidence"
-            placeholder="0x… (optional)"
+            aria-label={m(msg("Code address evidence"))}
+            placeholder={m(msg("0x… (optional)"))}
             value={address}
             onChange={(event) => setAddress(event.target.value)}
           />
         </div>
         {capture && (
           <p className="text-muted-foreground">
-            Cites {capture.label} · {capture.signal} ·{" "}
+            {m(msg("Cites "))}
+            {capture.label} · {capture.signal} ·{" "}
             <Button size="xs" variant="link" onClick={() => setCapture(null)}>
               remove
             </Button>
@@ -298,7 +321,7 @@ export function FindingsPanel({
           variant="outline"
           disabled={busy || !title.trim() || !addressValid}
         >
-          Record finding
+          {m(msg("Record finding"))}
         </Button>
         {error && (
           <p role="alert" className="text-destructive">

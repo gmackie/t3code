@@ -7,6 +7,7 @@ import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import type * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 
 /**
@@ -22,6 +23,8 @@ export class ThreadViewers extends Context.Service<
     readonly track: (
       threadId: string,
     ) => <A, E, R>(stream: Stream.Stream<A, E, R>) => Stream.Stream<A, E, R>;
+    readonly view: (threadId: string) => Effect.Effect<void, never, Scope.Scope>;
+    readonly isViewed: (threadId: string) => boolean;
     /** The threads shown now, or within the last couple of minutes. */
     readonly viewed: Effect.Effect<ReadonlySet<string>>;
   }
@@ -63,7 +66,14 @@ export const make = Effect.sync(() => {
     }),
   );
 
-  return ThreadViewers.of({ track, viewed });
+  return ThreadViewers.of({
+    track,
+    viewed,
+    view: Effect.fn("ThreadViewers.view")((threadId: string) =>
+      Effect.asVoid(Effect.acquireRelease(arrive(threadId), () => leave(threadId))),
+    ),
+    isViewed: (threadId) => open.has(threadId),
+  });
 });
 
 export const layer = Layer.effect(ThreadViewers, make);

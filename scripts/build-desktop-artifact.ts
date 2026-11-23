@@ -23,7 +23,6 @@ import rootPackageJson from "../package.json" with { type: "json" };
 import desktopPackageJson from "../apps/desktop/package.json" with { type: "json" };
 import gnomeCaptureBundle from "../apps/desktop/gnome-extension/bundle.json" with { type: "json" };
 import serverPackageJson from "../apps/server/package.json" with { type: "json" };
-import { getDesktopRuntimeIdentity } from "../apps/desktop/src/appIdentity.js";
 
 import {
   ReleasePackageManifestError,
@@ -38,13 +37,27 @@ import {
 } from "./lib/brand-assets.ts";
 import { getDefaultBuildArch } from "./lib/build-target-arch.ts";
 import {
+  createDesktopElectronBuilderConfig,
+  type GitHubPublishConfig,
+  WINDOWS_PACKAGED_PAYLOAD_FILE_LIMIT,
+  WINDOWS_SERVER_ASAR_RESOURCE,
+  WINDOWS_SERVER_ASAR_UNPACK_GLOBS,
+  WINDOWS_SERVER_RESOURCE_SOURCE_DIR,
+  WSL_RUNTIME_ARCHIVE_EXTRA_RESOURCE,
+  WSL_RUNTIME_ARCHIVE_HASH_EXTRA_RESOURCE,
+  WSL_RUNTIME_ARCHIVE_HASH_NAME,
+  WSL_RUNTIME_ARCHIVE_NAME,
+  bundlesWslRuntime,
+  resolveWindowsServerAsarIgnoreGlobs,
+} from "./lib/desktopElectronBuilderConfig.ts";
+import {
   findInlinedExternalPackages,
   selectCliRuntimeExternalDependencies,
 } from "./lib/cli-external-packages.ts";
 import { loadRepoEnv } from "./lib/public-config.ts";
 import { selectDesktopRuntimeExternalDependencies } from "./lib/desktop-external-packages.ts";
 import { resolveCatalogDependencies } from "./lib/resolve-catalog.ts";
-import { stagePluginReleaseCatalog } from "./plugin-release-catalog.ts";
+import { resolveTaggedSourceVersion } from "./lib/tagged-source-version.ts";
 
 import * as NodeRuntime from "@effect/platform-node/NodeRuntime";
 import * as NodeServices from "@effect/platform-node/NodeServices";
@@ -385,7 +398,7 @@ export class LinuxDesktopBuildPrerequisitesMissingError extends Schema.TaggedErr
         ? ["Add the requested Rust target with:", `  rustup target add ${this.rustTarget}`]
         : []),
       "",
-      "For other distributions, see docs/operations/development.md#linux-appimage-prerequisites.",
+      "For other distributions, see docs/operations/00_development.md#linux-appimage-prerequisites.",
       "Then rerun `vp run dist:desktop:linux`.",
     ].join("\n");
   }
@@ -457,7 +470,7 @@ export class WindowsDesktopBuildPrerequisitesMissingError extends Schema.TaggedE
       "Install Rust from https://rustup.rs and add the requested target:",
       `  rustup target add ${this.rustTarget}`,
       "Install Python 3 and the Visual Studio Build Tools components listed in",
-      "docs/operations/development.md#windows-installer-prerequisites.",
+      "docs/operations/00_development.md#windows-installer-prerequisites.",
       "",
       "Then rerun the desktop artifact command.",
     ].join("\n");
@@ -685,6 +698,15 @@ export class DesktopBuildDistDirectoryMissingError extends Schema.TaggedError<De
 ) {
   override get message(): string {
     return `Build completed but dist directory was not found at ${this.distPath}`;
+  }
+}
+
+export class DesktopBuildArtifactCopyError extends Schema.TaggedError<DesktopBuildArtifactCopyError>()(
+  "DesktopBuildArtifactCopyError",
+  { from: Schema.String, to: Schema.String, cause: Schema.Defect() },
+) {
+  override get message(): string {
+    return `Failed to copy build artifact ${this.from} to ${this.to}.`;
   }
 }
 
@@ -976,146 +998,6 @@ interface StagePackageJson {
 }
 
 export const STAGE_INSTALL_ARGS = ["install", "--prod"] as const;
-export const DESKTOP_ELECTRON_LANGUAGES = ["en-US"] as const;
-export const DESKTOP_FILE_EXCLUSIONS = [
-  // Cursor walks from argv[1] to platform assets; helpers and native addons need real paths outside ASAR.
-  "!**/node_modules/@cursor/sdk-*/**/*",
-  "!apps/desktop/prod-resources/cursor-sdk",
-  "!apps/desktop/prod-resources/cursor-sdk/**/*",
-  // The installed Claude CLI is supplied explicitly; exclude optional bundled executables, retaining SDK JavaScript.
-  "!**/node_modules/@anthropic-ai/claude-agent-sdk-*/**/*",
-  "!**/*.map",
-  "!**/*.d.cts",
-  "!apps/desktop/resources/browser-secret",
-  "!apps/desktop/resources/browser-secret/**/*",
-  "!apps/desktop/prod-resources/browser-secret",
-  "!apps/desktop/prod-resources/browser-secret/**/*",
-  "!apps/desktop/prod-resources/windows-server",
-  "!apps/desktop/prod-resources/windows-server/**/*",
-  "!apps/desktop/prod-resources/wsl-runtime.tar.gz",
-  "!apps/desktop/prod-resources/wsl-runtime.tar.gz.sha256",
-  "!apps/desktop/gnome-extension",
-  "!apps/desktop/gnome-extension/**/*",
-] as const;
-// Windows terminal helpers cannot run on macOS and slow signing and notarization.
-export const MAC_FILE_EXCLUSIONS = [
-  "!**/node_modules/node-pty/prebuilds/win32-*/**/*",
-  "!**/node_modules/node-pty/third_party/conpty/**/*",
-] as const;
-// Linux builds node-pty from source; its prebuilds target other platforms.
-export const LINUX_FILE_EXCLUSIONS = [
-  ...MAC_FILE_EXCLUSIONS,
-  "!**/node_modules/node-pty/prebuilds/darwin-*/**/*",
-] as const;
-
-// node-pty bundles both Darwin architectures; only universal apps need both.
-export function resolveMacFileExclusions(arch?: typeof BuildArch.Type) {
-  if (arch === undefined || arch === "universal") {
-    return [...MAC_FILE_EXCLUSIONS];
-  }
-
-  const unusedArch = arch === "arm64" ? "x64" : "arm64";
-  return [...MAC_FILE_EXCLUSIONS, `!**/node_modules/node-pty/prebuilds/darwin-${unusedArch}/**/*`];
-}
-// Large ASAR sidecars avoid NSIS extracting thousands of loose files during installs and updates.
-export const WINDOWS_SERVER_ASAR_RESOURCE = "server.asar";
-// Native modules and executables need real paths, so place them in ASAR's .unpacked sibling.
-export const WINDOWS_NATIVE_ASAR_UNPACK_GLOB =
-  "{**/*.node,**/*.dll,**/*.exe,**/*.so,**/*.so.*,**/*.dylib}";
-export const WINDOWS_SERVER_ASAR_UNPACK_GLOBS = [
-  "**/*.dll",
-  "**/*.exe",
-  "**/*.so",
-  "**/*.so.*",
-  "**/*.dylib",
-] as const;
-// Keep sidecar exclusions aligned with the app; .bin symlinks are unused and unsupported by ASAR extraction.
-export const WINDOWS_SERVER_ASAR_IGNORE_GLOBS = [
-  "**/node_modules/@cursor/sdk-*",
-  "**/node_modules/@cursor/sdk-*/**",
-  "**/node_modules/@anthropic-ai/claude-agent-sdk-*",
-  "**/node_modules/@anthropic-ai/claude-agent-sdk-*/**",
-  "**/node_modules/.bin",
-  "**/node_modules/.bin/**",
-  "**/*.map",
-] as const;
-
-export function resolveWindowsServerAsarIgnoreGlobs(arch: typeof BuildArch.Type) {
-  const unusedArch = arch === "arm64" ? "x64" : "arm64";
-  const unusedPrebuild = `**/node_modules/node-pty/prebuilds/win32-${unusedArch}`;
-  const unusedConpty = `**/node_modules/node-pty/third_party/conpty/*/win10-${unusedArch}`;
-
-  return [
-    ...WINDOWS_SERVER_ASAR_IGNORE_GLOBS,
-    unusedPrebuild,
-    `${unusedPrebuild}/**`,
-    unusedConpty,
-    `${unusedConpty}/**`,
-  ];
-}
-
-export const WINDOWS_PACKAGED_PAYLOAD_FILE_LIMIT = 80;
-export const WINDOWS_SERVER_RESOURCE_SOURCE_DIR = "apps/desktop/prod-resources/windows-server";
-export const WINDOWS_SERVER_EXTRA_RESOURCES = [
-  {
-    from: WINDOWS_SERVER_RESOURCE_SOURCE_DIR,
-    to: ".",
-    filter: [WINDOWS_SERVER_ASAR_RESOURCE, `${WINDOWS_SERVER_ASAR_RESOURCE}.unpacked/**/*`],
-  },
-] as const;
-export const WSL_RUNTIME_ARCHIVE_NAME = "wsl-runtime.tar.gz";
-export const WSL_RUNTIME_ARCHIVE_HASH_NAME = `${WSL_RUNTIME_ARCHIVE_NAME}.sha256`;
-export const WSL_RUNTIME_ARCHIVE_EXTRA_RESOURCE = {
-  from: `apps/desktop/prod-resources/${WSL_RUNTIME_ARCHIVE_NAME}`,
-  to: WSL_RUNTIME_ARCHIVE_NAME,
-} as const;
-export const WSL_RUNTIME_ARCHIVE_HASH_EXTRA_RESOURCE = {
-  from: `apps/desktop/prod-resources/${WSL_RUNTIME_ARCHIVE_HASH_NAME}`,
-  to: WSL_RUNTIME_ARCHIVE_HASH_NAME,
-} as const;
-
-export const bundlesWslRuntime = (input: {
-  readonly platform: typeof BuildPlatform.Type;
-  readonly runtimeArchivePath: string | undefined;
-}): boolean => input.platform === "win" && input.runtimeArchivePath !== undefined;
-
-export const WSL_RUNTIME_EXTRA_RESOURCES = [
-  WSL_RUNTIME_ARCHIVE_EXTRA_RESOURCE,
-  WSL_RUNTIME_ARCHIVE_HASH_EXTRA_RESOURCE,
-] as const;
-export const DESKTOP_EXTRA_RESOURCES = [
-  {
-    from: "apps/desktop/prod-resources/cursor-sdk",
-    to: "node_modules/@cursor",
-  },
-  {
-    from: "apps/desktop/prod-resources/resource-monitor",
-    to: "resource-monitor",
-  },
-  {
-    from: "apps/desktop/prod-resources/plugins",
-    to: "plugins",
-  },
-] as const;
-export const LINUX_CAPTURE_EXTRA_RESOURCES = [
-  {
-    from: "apps/desktop/prod-resources/hyprland-capture",
-    to: "hyprland-capture",
-  },
-  {
-    from: "apps/desktop/prod-resources/kde-capture",
-    to: "kde-capture",
-  },
-  {
-    from: "apps/desktop/gnome-extension",
-    to: "gnome-extension",
-    filter: gnomeCaptureBundle.files,
-  },
-] as const;
-export const LINUX_BROWSER_SECRET_EXTRA_RESOURCES = [
-  { from: "apps/desktop/prod-resources/browser-secret", to: "browser-secret" },
-] as const;
-
 export interface MacPasskeySigningConfiguration {
   readonly appId: string;
   readonly teamId: string;
@@ -1385,6 +1267,8 @@ ${associatedDomains}
     <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
     <true/>
     <key>com.apple.security.cs.disable-library-validation</key>
+    <true/>
+    <key>com.apple.security.automation.apple-events</key>
     <true/>
     <!-- The hardened runtime denies camera and microphone to the app and every
          child process, with no prompt, unless the app claims these. Terminals
@@ -2106,7 +1990,7 @@ const NativeMarkerManifest = Schema.Struct({
   dependencies: Schema.optional(Schema.Record(Schema.String, Schema.String)),
   optionalDependencies: Schema.optional(Schema.Record(Schema.String, Schema.String)),
 });
-const decodeNativeMarkerManifest = Schema.decodeUnknownSync(
+const decodeNativeMarkerManifest = Schema.decodeUnknownOption(
   Schema.fromJsonString(NativeMarkerManifest),
 );
 
@@ -2146,13 +2030,12 @@ const hasNativeLoaderMarkers = Effect.fn("hasNativeLoaderMarkers")(function* (pa
   if (!(yield* exists(manifestPath))) return false;
   const source = yield* fs.readFileString(manifestPath).pipe(Effect.orElseSucceed(() => ""));
   if (source === "") return false;
-  const manifest = yield* Effect.try(() => decodeNativeMarkerManifest(source)).pipe(
-    Effect.orElseSucceed(() => null),
-  );
-  if (manifest === null) return false;
-  return Object.keys({ ...manifest.dependencies, ...manifest.optionalDependencies }).some(
-    (dependency) => dependency.startsWith("node-gyp-build"),
-  );
+  const manifest = decodeNativeMarkerManifest(source);
+  if (Option.isNone(manifest)) return false;
+  return Object.keys({
+    ...manifest.value.dependencies,
+    ...manifest.value.optionalDependencies,
+  }).some((dependency) => dependency.startsWith("node-gyp-build"));
 });
 
 export const copyDirectoryPreservingSymlinks = Effect.fn("copyDirectoryPreservingSymlinks")(
@@ -2213,6 +2096,13 @@ export const copyDirectoryPreservingSymlinks = Effect.fn("copyDirectoryPreservin
 
 export const verifyPackagedBundleIsSelfContained = Effect.fn("verifyPackagedBundleIsSelfContained")(
   function* (input: { readonly asarPath: string; readonly verbose: boolean }) {
+    // A PR preview's bundle is untrusted and this job may hold signing secrets, so never run it.
+    if (yield* Config.Boolean("T3CODE_DESKTOP_UNTRUSTED_BUNDLE").pipe(Config.withDefault(false))) {
+      yield* Effect.log(
+        "[desktop-artifact] Skipped the bundle self-check for an untrusted bundle.",
+      );
+      return;
+    }
     const fs = yield* FileSystem.FileSystem;
     const path = yield* Path.Path;
 
@@ -2459,6 +2349,31 @@ export const stageBrowserSecret = Effect.fn("stageBrowserSecret")(function* (inp
       { cwd: input.repoRoot },
     ),
     { label: "build Linux browser secret helper", verbose: input.verbose },
+  );
+});
+
+export const stageAppleSpeech = Effect.fn("stageAppleSpeech")(function* (input: {
+  readonly repoRoot: string;
+  readonly stageResourcesDir: string;
+  readonly platform: typeof BuildPlatform.Type;
+  readonly arch: typeof BuildArch.Type;
+  readonly verbose: boolean;
+}) {
+  if (input.platform !== "mac") return;
+  const path = yield* Path.Path;
+  yield* runCommand(
+    ChildProcess.make(
+      "node",
+      [
+        path.join(input.repoRoot, "apps/desktop/scripts/build-apple-speech.mjs"),
+        "--arch",
+        input.arch,
+        "--output",
+        path.join(input.stageResourcesDir, "apple-speech", "t3-apple-speech"),
+      ],
+      { cwd: input.repoRoot },
+    ),
+    { label: "build macOS Apple Speech helper", verbose: input.verbose },
   );
 });
 
@@ -2713,7 +2628,7 @@ export const resolveGitHubPublishConfig = Effect.fn("resolveGitHubPublishConfig"
     repo,
     releaseType: updateChannel === "latest" ? "release" : "prerelease",
     ...(updateChannel !== "latest" ? { channel: updateChannel } : {}),
-  };
+  } satisfies GitHubPublishConfig;
 });
 
 export function resolveDesktopUpdateChannel(version: string): "latest" | "nightly" | "gmacko" {
@@ -2794,207 +2709,45 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
   wslRuntimeBundled = false,
   arch?: typeof BuildArch.Type,
 ) {
-  const productName = resolveDesktopProductName(version);
-  const appIdentity = getDesktopRuntimeIdentity({
-    isDevelopment: false,
-    appDisplayName: productName,
-  });
-  const buildConfig: Record<string, unknown> = {
-    appId: appIdentity.appId,
-    productName,
-    artifactName: "T3-Code-${version}-${arch}.${ext}",
-    electronLanguages: [...DESKTOP_ELECTRON_LANGUAGES],
-    files: [
-      ...DESKTOP_FILE_EXCLUSIONS,
-      ...(platform === "mac"
-        ? resolveMacFileExclusions(arch)
-        : platform === "linux"
-          ? LINUX_FILE_EXCLUSIONS
-          : []),
-    ],
-    directories: {
-      buildResources: "apps/desktop/resources",
-    },
-    // Disable smart unpack so native packages' JS/metadata stay archived and avoid slowing NSIS with loose files.
-    ...(platform === "win"
-      ? { asar: { smartUnpack: false }, asarUnpack: [WINDOWS_NATIVE_ASAR_UNPACK_GLOB] }
-      : {}),
-    extraResources: [
-      ...DESKTOP_EXTRA_RESOURCES,
-      ...(platform === "linux" ? LINUX_CAPTURE_EXTRA_RESOURCES : []),
-      ...(platform === "linux" ? LINUX_BROWSER_SECRET_EXTRA_RESOURCES : []),
-      ...(platform === "win" ? WINDOWS_SERVER_EXTRA_RESOURCES : []),
-      ...(platform === "win" && wslRuntimeBundled ? WSL_RUNTIME_EXTRA_RESOURCES : []),
-    ],
-  };
+  const path = yield* Path.Path;
+  const repoRoot = yield* RepoRoot;
   const updateChannel = resolveDesktopUpdateChannel(version);
-  // Missing publish config infers a GitHub feed from tokens; staging has no repository, so manifest generation would crash.
-  buildConfig.publish = null;
-  if (!isDesktopPreviewVersion(version)) {
-    const publishConfig = yield* resolveGitHubPublishConfig(updateChannel);
-    if (publishConfig) {
-      buildConfig.publish = [
-        updateChannel === "gmacko"
-          ? { ...publishConfig, updaterCacheDirName: appIdentity.updaterCacheDirName }
-          : publishConfig,
-      ];
-    } else if (mockUpdates) {
-      buildConfig.publish = [
-        {
-          provider: "generic",
-          url: resolveMockUpdateServerUrl(mockUpdateServerPort),
-          ...(updateChannel === "gmacko"
-            ? { updaterCacheDirName: appIdentity.updaterCacheDirName }
-            : {}),
-        },
-      ];
-    }
-  }
-
-  if (platform === "mac") {
-    const path = yield* Path.Path;
-    const repoRoot = yield* RepoRoot;
-    buildConfig.mac = {
-      target: target === "dmg" ? [target, "zip"] : [target],
-      icon: "icon.icns",
-      category: "public.app-category.developer-tools",
-      extendInfo: {
-        // macOS 26 offers Messages/Mail codes in every text field unless opted out.
-        NSAutoFillRequiresTextContentTypeForOneTimeCodeOnMac: true,
-        NSLocalNetworkUsageDescription:
-          "T3 Code connects to devices on your local network for remote environments and commands run by terminals and coding agents.",
-        NSScreenCaptureUsageDescription:
-          "T3 Code captures the active window when you use the window capture shortcut.",
-        NSCameraUsageDescription:
-          "T3 Code lets commands run by terminals and coding agents use the camera.",
-        NSMicrophoneUsageDescription:
-          "T3 Code lets commands run by terminals and coding agents use the microphone.",
-        // macOS lists an app under Default web browser only when it opens web
-        // pages as documents as well as http and https links (see protocols).
-        CFBundleDocumentTypes: [
-          {
-            CFBundleTypeName: "Web page",
-            CFBundleTypeRole: "Viewer",
-            LSHandlerRank: "Alternate",
-            LSItemContentTypes: ["public.html", "public.xhtml"],
-          },
-        ],
-      },
-      protocols: [
-        {
-          name: "T3 Code",
-          schemes: ["t3code", "t3code-dev"],
-        },
-        {
-          name: "Web site URL",
-          schemes: ["http", "https"],
-          role: "Viewer",
-        },
-      ],
-      ...(signed ? { sign: path.join(repoRoot, "scripts/sign-macos.ts") } : {}),
-      ...(macPasskeySigning
-        ? {
-            entitlements: macPasskeySigning.entitlementsPath,
-            provisioningProfile: macPasskeySigning.provisioningProfilePath,
-          }
-        : {}),
-    };
-  }
-
-  if (platform === "mac" && target === "dmg") {
-    buildConfig.dmg = {
-      // Finder caches DMG backgrounds by volume name; give each installer its own.
-      title: `${resolveDesktopProductName(version)} ${version} Installer`,
-      background: `dmg/dmg-background-${updateChannel === "gmacko" ? "latest" : updateChannel}.png`,
-      window: {
-        width: 640,
-        // DMG bounds include Finder's 32px title bar; keep that artwork strip clear.
-        height: 432,
-      },
-      contents: [
-        { x: 166, y: 214, type: "file" },
-        { x: 474, y: 214, type: "link", path: "/Applications" },
-      ],
-      iconSize: 120,
-      iconTextSize: 12,
-    };
-  }
-
-  if (platform === "linux") {
-    // Pin the static AppImage runtime so hosts with only FUSE 3 do not need libfuse2.
-    buildConfig.toolsets = { appimage: "1.0.3" };
-    const path = yield* Path.Path;
-    const repoRoot = yield* RepoRoot;
-    buildConfig.linux = {
-      target: target === "AppImage" ? [target, "deb"] : [target],
-      executableName: "t3code",
-      icon: "icons",
-      category: "Development",
-      synopsis: "Desktop GUI for coding agents",
-      maintainer: "T3 Tools <hello@t3.codes>",
-      protocols: [
-        {
-          name: "T3 Code",
-          schemes: ["t3code", "t3code-dev"],
-        },
-      ],
-      desktop: {
-        entry: {
-          StartupWMClass: "t3code",
-        },
-      },
-    };
-    buildConfig.deb = {
-      // FPM runs outside the staged app directory, so source paths must be absolute.
-      fpm: [
-        `${path.join(repoRoot, "apps/desktop/resources/linux/com.t3tools.t3code.metainfo.xml")}=/usr/share/metainfo/com.t3tools.t3code.metainfo.xml`,
-        `${path.join(repoRoot, "LICENSE")}=/usr/share/doc/t3code/copyright`,
-      ],
-      // Debian 13 and Ubuntu 24.04 use 64-bit-time names; retain old-name fallbacks.
-      depends: [
-        "libasound2t64 | libasound2",
-        "libatspi2.0-0t64 | libatspi2.0-0",
-        "libgbm1",
-        "libgtk-3-0t64 | libgtk-3-0",
-        "libnotify4",
-        "libnss3",
-        "libsecret-1-0",
-        "libuuid1",
-        "libxss1",
-        "libxtst6",
-        "xdg-utils",
-      ],
-    };
-  }
-
-  if (platform === "win") {
-    buildConfig.npmRebuild = false;
-    buildConfig.nsis = {
-      differentialPackage: true,
-      include: "apps/desktop/resources/installer.nsh",
-    };
-    const winConfig: Record<string, unknown> = {
-      target: [target],
-      icon: "icon.ico",
-      // Smart App Control validates unpacked native libraries independently; sign them too.
-      signExts: [".node", ".dll"],
-      // Resource editing sets product icons even when code signing is disabled.
-      signAndEditExecutable: true,
-    };
-    if (signed && (yield* HostProcess.Platform) === "win32") {
-      winConfig.azureSignOptions = yield* AzureTrustedSigningOptionsConfig;
-    } else if (signed) {
-      const path = yield* Path.Path;
-      const { publisherName } = yield* AzureTrustedSigningOptionsConfig;
-      winConfig.signtoolOptions = {
+  const isPreview = isDesktopPreviewVersion(version);
+  let windowsSigning: Record<string, unknown> | undefined;
+  if (platform === "win" && signed && (yield* HostProcess.Platform) === "win32") {
+    windowsSigning = { azureSignOptions: yield* AzureTrustedSigningOptionsConfig };
+  } else if (platform === "win" && signed) {
+    const { publisherName } = yield* AzureTrustedSigningOptionsConfig;
+    windowsSigning = {
+      signtoolOptions: {
         sign: yield* path.fromFileUrl(new URL("./lib/windows-jsign.ts", import.meta.url)),
         signingHashAlgorithms: ["sha256"],
         publisherName: [publisherName],
-      };
-    }
-    buildConfig.win = winConfig;
+      },
+    };
   }
-
+  const buildConfig = createDesktopElectronBuilderConfig({
+    platform,
+    target,
+    version,
+    arch,
+    productName: resolveDesktopProductName(version),
+    updateChannel,
+    isPreview,
+    githubPublishConfig: isPreview ? undefined : yield* resolveGitHubPublishConfig(updateChannel),
+    mockUpdates,
+    mockUpdateServerUrl: resolveMockUpdateServerUrl(mockUpdateServerPort),
+    wslRuntimeBundled,
+    repoRoot,
+    macSignScriptPath:
+      platform === "mac" && signed ? path.join(repoRoot, "scripts/sign-macos.ts") : undefined,
+    macPasskeySigning,
+    windowsSigning,
+  });
+  // linux-after-pack runs the server compile cache, then drops world-writable modes.
+  if (platform === "linux") {
+    buildConfig.afterPack = path.join(repoRoot, "scripts/linux-after-pack.ts");
+  }
   return buildConfig;
 });
 
@@ -3593,6 +3346,34 @@ export const validateMacPackagedPayload = Effect.fn("desktopArtifact.validateMac
   },
 );
 
+export class LinuxPackagedAppMissingError extends Schema.TaggedError<LinuxPackagedAppMissingError>()(
+  "LinuxPackagedAppMissingError",
+  { stageDistDir: Schema.String },
+) {
+  override get message(): string {
+    return `Expected electron-builder to leave resources/app.asar under ${this.stageDistDir}/linux*-unpacked.`;
+  }
+}
+
+export const validateLinuxPackagedPayload = Effect.fn(
+  "desktopArtifact.validateLinuxPackagedPayload",
+)(function* (input: { readonly stageDistDir: string; readonly verbose?: boolean }) {
+  const fs = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
+  const asarPaths = (yield* fs.readDirectory(input.stageDistDir))
+    .filter((entry) => entry.startsWith("linux") && entry.endsWith("-unpacked"))
+    .map((entry) => path.join(input.stageDistDir, entry, "resources/app.asar"));
+  if (asarPaths.length === 0) {
+    return yield* new LinuxPackagedAppMissingError({ stageDistDir: input.stageDistDir });
+  }
+  for (const asarPath of asarPaths) {
+    yield* verifyPackagedBundleIsSelfContained({ asarPath, verbose: input.verbose ?? false });
+  }
+  yield* Effect.log(
+    `[desktop-artifact] Validated Linux payload (${String(asarPaths.length)} app bundle(s)).`,
+  );
+});
+
 const buildDesktopArtifactUnlocked = Effect.fn("buildDesktopArtifactUnlocked")(function* (
   options: ResolvedBuildOptions,
 ) {
@@ -3669,7 +3450,8 @@ const buildDesktopArtifactUnlocked = Effect.fn("buildDesktopArtifactUnlocked")(f
       }),
   });
 
-  const appVersion = options.version ?? serverPackageJson.version;
+  const appVersion =
+    options.version ?? resolveTaggedSourceVersion(repoRoot, serverPackageJson.version);
   const iconAssets = resolveDesktopBuildIconAssets(appVersion);
   const commitHash = yield* resolveGitCommitHash(repoRoot);
   const mkdir = options.keepStage ? fs.makeTempDirectory : fs.makeTempDirectoryScoped;
@@ -3815,9 +3597,12 @@ const buildDesktopArtifactUnlocked = Effect.fn("buildDesktopArtifactUnlocked")(f
     arch: options.arch,
     verbose: options.verbose,
   });
-  stagePluginReleaseCatalog({
+  yield* stageAppleSpeech({
     repoRoot,
     stageResourcesDir,
+    platform: options.platform,
+    arch: options.arch,
+    verbose: options.verbose,
   });
 
   yield* assertPlatformBuildResources(
@@ -4093,24 +3878,24 @@ const buildDesktopArtifactUnlocked = Effect.fn("buildDesktopArtifactUnlocked")(f
       verbose: options.verbose,
     });
   }
+  // The probe runs on the host Node, so a cross-arch build skips it.
+  if (
+    options.platform === "linux" &&
+    hostPlatform === "linux" &&
+    options.arch === (yield* HostProcess.Architecture)
+  ) {
+    yield* validateLinuxPackagedPayload({ stageDistDir, verbose: options.verbose });
+  }
   // x64 builds on arm64 runners; the arm64 check covers the shared JS bundle.
   if (options.platform === "mac" && options.arch === "arm64" && hostPlatform === "darwin") {
     yield* validateMacPackagedPayload({ stageDistDir, verbose: options.verbose });
   }
 
-  const stageEntries = yield* fs.readDirectory(stageDistDir);
-  yield* fs.makeDirectory(options.outputDir, { recursive: true });
-
-  const copiedArtifacts: string[] = [];
-  for (const entry of stageEntries) {
-    const from = path.join(stageDistDir, entry);
-    const stat = yield* fs.stat(from).pipe(Effect.orElseSucceed(() => null));
-    if (!stat || stat.type !== "File") continue;
-
-    const to = path.join(options.outputDir, entry);
-    yield* fs.copyFile(from, to);
-    copiedArtifacts.push(to);
-  }
+  const copiedArtifacts = yield* copyDesktopBuildArtifacts(
+    stageDistDir,
+    options.outputDir,
+    options.target === "dir",
+  );
 
   if (copiedArtifacts.length === 0) {
     return yield* new DesktopBuildNoArtifactsProducedError({
@@ -4130,6 +3915,43 @@ const buildDesktopArtifact = Effect.fn("buildDesktopArtifact")(function* (
 ) {
   const repoRoot = yield* RepoRoot;
   return yield* withDesktopBuildLock(repoRoot, buildDesktopArtifactUnlocked(options));
+});
+
+export const copyDesktopBuildArtifacts = Effect.fn("copyDesktopBuildArtifacts")(function* (
+  stageDistDir: string,
+  outputDir: string,
+  includeDirectories = false,
+) {
+  const fs = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
+  const stageEntries = yield* fs.readDirectory(stageDistDir);
+  yield* fs.makeDirectory(outputDir, { recursive: true });
+
+  const copiedArtifacts: string[] = [];
+  for (const entry of stageEntries) {
+    const from = path.join(stageDistDir, entry);
+    const stat = yield* fs.stat(from).pipe(Effect.orElseSucceed(() => null));
+    if (!stat || (stat.type !== "File" && !(includeDirectories && stat.type === "Directory")))
+      continue;
+
+    const to = path.join(outputDir, entry);
+    // Replace whatever a reused output dir already holds at this path. fs.cp refuses to
+    // overwrite a directory with a file or a file with a directory, and only merges into
+    // an existing directory, so a stale entry of either type must go first.
+    yield* fs.remove(to, { recursive: true, force: true });
+    yield* Effect.tryPromise({
+      try: () =>
+        NodeFSP.cp(from, to, {
+          recursive: true,
+          force: true,
+          verbatimSymlinks: true,
+        }),
+      catch: (cause) => new DesktopBuildArtifactCopyError({ from, to, cause }),
+    });
+    copiedArtifacts.push(to);
+  }
+
+  return copiedArtifacts;
 });
 
 const buildDesktopArtifactCli = Command.make("build-desktop-artifact", {

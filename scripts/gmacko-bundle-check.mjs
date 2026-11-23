@@ -31,10 +31,21 @@ try {
           // xmlbuilder has a latent undefined `children` in insertBefore.
           // Its vendored desktop code is unrelated to application imports.
           ...(desktop ? ["children"] : []),
+          // node-gyp-build reads this only when its Webpack runtime guard succeeds.
+          ...(desktop ? ["__non_webpack_require__"] : []),
         ].map((name) => [name, "readonly"]),
       ),
       categories: { correctness: "off" },
       rules: { "no-undef": "error" },
+      overrides: desktop
+        ? []
+        : [
+            {
+              // Loaded through audioWorklet.addModule, not the window or worker runtime.
+              files: ["**/pcmWorklet-*.js"],
+              env: { audioworklet: true },
+            },
+          ],
     }),
   );
   const result = NodeChildProcess.spawnSync(

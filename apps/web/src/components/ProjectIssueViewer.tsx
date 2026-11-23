@@ -1,8 +1,10 @@
+import { msg, useMessages } from "gt-react";
 import { scopeProjectRef } from "@t3tools/client-runtime/environment";
+import { inferProjectTitleFromPath } from "@t3tools/client-runtime/state/projects";
 import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
 import type { EnvironmentId, IssueItem, ProjectId, ProjectIssueStatus } from "@t3tools/contracts";
 import { ClipboardListIcon, KanbanIcon, ListIcon, PlusIcon, RefreshCwIcon } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 
 import { Button } from "./ui/button";
 import {
@@ -20,7 +22,6 @@ import { SidebarInset, SidebarTrigger } from "./ui/sidebar";
 import { Textarea } from "./ui/textarea";
 import { useComposerDraftStore } from "../composerDraftStore";
 import { useNewThreadHandler } from "../hooks/useHandleNewThread";
-import { inferProjectTitleFromPath } from "../lib/projectPaths";
 import { cn } from "../lib/utils";
 import {
   groupIssuesByStatus,
@@ -35,6 +36,7 @@ import {
 import { useEnvironmentSettings } from "../hooks/useSettings";
 import { useProjects } from "../state/entities";
 import { serverEnvironment } from "../state/server";
+import { useEnvironmentQuery } from "../state/query";
 import { useAtomCommand } from "../state/use-atom-command";
 
 interface ProjectIssueViewerProps {
@@ -51,6 +53,8 @@ function IssueCard(props: {
   readonly onStartThread: (issue: IssueItem) => void;
   readonly onUpdateStatus: (issue: IssueItem, status: ProjectIssueStatus) => void;
 }) {
+  const m = useMessages();
+
   const { issue, onStartThread, onUpdateStatus, statusOptions, updatingIssueId } = props;
   const currentStatus = issue.statusName ?? issue.state;
   const currentStatusId = issue.statusId ?? currentStatus;
@@ -65,7 +69,12 @@ function IssueCard(props: {
           </div>
           <h3 className="line-clamp-2 font-semibold text-sm text-foreground">{issue.title}</h3>
           <div className="flex flex-wrap items-center gap-2 text-muted-foreground text-xs">
-            {issue.assigneeName ? <span>Assigned to {issue.assigneeName}</span> : null}
+            {issue.assigneeName ? (
+              <span>
+                {m(msg("Assigned to "))}
+                {issue.assigneeName}
+              </span>
+            ) : null}
             {issue.labels.length > 0 ? <span>{issue.labels.join(", ")}</span> : null}
           </div>
           {issue.descriptionMarkdown ? (
@@ -77,7 +86,7 @@ function IssueCard(props: {
       </div>
       <div className="mt-4 flex flex-wrap items-center gap-2">
         <select
-          aria-label={`Update status for ${issue.key}`}
+          aria-label={m(msg("Update status for {value0}", { value0: issue.key }))}
           className="h-8 rounded-md border border-input bg-background px-2 text-xs text-foreground"
           value={currentStatusId}
           disabled={updatingIssueId === issue.id}
@@ -97,7 +106,7 @@ function IssueCard(props: {
           ))}
         </select>
         <Button size="sm" variant="outline" onClick={() => onStartThread(issue)}>
-          Start thread
+          {m(msg("Start thread"))}
         </Button>
       </div>
     </article>
@@ -105,6 +114,8 @@ function IssueCard(props: {
 }
 
 export function ProjectIssueViewer({ environmentId, projectId }: ProjectIssueViewerProps) {
+  const m = useMessages();
+
   const projectRef = useMemo(
     () => scopeProjectRef(environmentId, projectId),
     [environmentId, projectId],
@@ -122,17 +133,26 @@ export function ProjectIssueViewer({ environmentId, projectId }: ProjectIssueVie
   const mapping = linearSettings.projectMappings[projectId] ?? null;
   const handleNewThread = useNewThreadHandler();
   const [viewMode, setViewMode] = useState<ProjectIssueViewMode>("list");
-  const [issues, setIssues] = useState<readonly IssueItem[]>([]);
-  const [statuses, setStatuses] = useState<readonly ProjectIssueStatus[]>([]);
   const [query, setQuery] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const listProjectIssues = useAtomCommand(serverEnvironment.listProjectIssues, {
-    reportFailure: false,
-  });
-  const listProjectIssueStatuses = useAtomCommand(serverEnvironment.listProjectIssueStatuses, {
-    reportFailure: false,
-  });
+  const [submittedQuery, setSubmittedQuery] = useState("");
+  const [mutationError, setError] = useState<string | null>(null);
+  const issueQuery = useEnvironmentQuery(
+    mapping
+      ? serverEnvironment.projectIssues({
+          environmentId,
+          input: { projectId, ...(submittedQuery ? { query: submittedQuery } : {}), limit: 100 },
+        })
+      : null,
+  );
+  const statusQuery = useEnvironmentQuery(
+    mapping
+      ? serverEnvironment.projectIssueStatuses({ environmentId, input: { projectId } })
+      : null,
+  );
+  const issues = issueQuery.data?.issues ?? [];
+  const statuses = statusQuery.data?.statuses ?? [];
+  const loading = issueQuery.isPending;
+  const error = mutationError ?? issueQuery.error ?? statusQuery.error;
   const createProjectIssue = useAtomCommand(serverEnvironment.createProjectIssue, {
     reportFailure: false,
   });
@@ -151,62 +171,27 @@ export function ProjectIssueViewer({ environmentId, projectId }: ProjectIssueVie
   }, [issues, statuses]);
   const statusGroups = useMemo(() => groupIssuesByStatus(issues), [issues]);
 
-  useEffect(() => {
-    if (!statusOptions.some((status) => status.id === newStatusId)) {
-      setNewStatusId(statusOptions[0]?.id ?? DEFAULT_CREATE_STATUS);
-    }
-  }, [newStatusId, statusOptions]);
+  const selectedStatusId = statusOptions.some((status) => status.id === newStatusId)
+    ? newStatusId
+    : (statusOptions[0]?.id ?? DEFAULT_CREATE_STATUS);
 
   const loadIssues = useCallback(
     (nextQuery: string) => {
-      setLoading(true);
       setError(null);
-      void listProjectIssues({
-        environmentId,
-        input: {
-          projectId,
-          ...(nextQuery.trim().length > 0 ? { query: nextQuery.trim() } : {}),
-          limit: 100,
-        },
-      }).then((result) => {
-        if (result._tag === "Success") {
-          setIssues(result.value.issues);
-        } else {
-          setIssues([]);
-          const failure = squashAtomCommandFailure(result);
-          setError(failure instanceof Error ? failure.message : "Unable to load issues.");
-        }
-        setLoading(false);
-      });
+      const normalizedQuery = nextQuery.trim();
+      if (normalizedQuery === submittedQuery) issueQuery.refresh();
+      else setSubmittedQuery(normalizedQuery);
+      statusQuery.refresh();
     },
-    [environmentId, listProjectIssues, projectId],
+    [issueQuery, statusQuery, submittedQuery],
   );
-
-  const loadStatuses = useCallback(() => {
-    setError(null);
-    void listProjectIssueStatuses({ environmentId, input: { projectId } }).then((result) => {
-      if (result._tag === "Success") {
-        setStatuses(result.value.statuses);
-      } else {
-        setStatuses([]);
-        const failure = squashAtomCommandFailure(result);
-        setError(failure instanceof Error ? failure.message : "Unable to load issue statuses.");
-      }
-    });
-  }, [environmentId, listProjectIssueStatuses, projectId]);
-
-  useEffect(() => {
-    if (!mapping) return;
-    loadIssues("");
-    loadStatuses();
-  }, [loadIssues, loadStatuses, mapping]);
 
   const createIssue = useCallback(() => {
     const title = newTitle.trim();
     if (!title) return;
     setCreating(true);
     setError(null);
-    const selectedStatus = statusOptions.find((status) => status.id === newStatusId);
+    const selectedStatus = statusOptions.find((status) => status.id === selectedStatusId);
     void (async () => {
       const result = await createProjectIssue({
         environmentId,
@@ -222,27 +207,26 @@ export function ProjectIssueViewer({ environmentId, projectId }: ProjectIssueVie
         },
       });
       if (result._tag === "Success") {
-        setIssues((current) => [
-          result.value.issue,
-          ...current.filter((issue) => issue.id !== result.value.issue.id),
-        ]);
+        issueQuery.refresh();
         setNewTitle("");
         setNewDescription("");
         setCreateIssueOpen(false);
       } else {
         const failure = squashAtomCommandFailure(result);
-        setError(failure instanceof Error ? failure.message : "Unable to create issue.");
+        setError(failure instanceof Error ? failure.message : m(msg("Unable to create issue.")));
       }
       setCreating(false);
     })();
   }, [
+    m,
     createProjectIssue,
     environmentId,
     newDescription,
-    newStatusId,
+    selectedStatusId,
     newTitle,
     projectId,
     statusOptions,
+    issueQuery,
   ]);
 
   const updateIssueStatus = useCallback(
@@ -261,19 +245,15 @@ export function ProjectIssueViewer({ environmentId, projectId }: ProjectIssueVie
           },
         });
         if (result._tag === "Success") {
-          setIssues((current) =>
-            current.map((candidate) =>
-              candidate.id === result.value.issue.id ? result.value.issue : candidate,
-            ),
-          );
+          issueQuery.refresh();
         } else {
           const failure = squashAtomCommandFailure(result);
-          setError(failure instanceof Error ? failure.message : "Unable to update issue.");
+          setError(failure instanceof Error ? failure.message : m(msg("Unable to update issue.")));
         }
         setUpdatingIssueId(null);
       })();
     },
-    [environmentId, projectId, updateProjectIssueStatus],
+    [environmentId, projectId, updateProjectIssueStatus, issueQuery, m],
   );
 
   const startThreadForIssue = useCallback(
@@ -298,9 +278,9 @@ export function ProjectIssueViewer({ environmentId, projectId }: ProjectIssueVie
       <SidebarInset className="h-dvh min-h-0 bg-background text-foreground">
         <Empty>
           <EmptyHeader>
-            <EmptyTitle>Project not found</EmptyTitle>
+            <EmptyTitle>{m(msg("Project not found"))}</EmptyTitle>
             <EmptyDescription>
-              This project is no longer available in the current environment.
+              {m(msg("This project is no longer available in the current environment."))}
             </EmptyDescription>
           </EmptyHeader>
         </Empty>
@@ -313,9 +293,9 @@ export function ProjectIssueViewer({ environmentId, projectId }: ProjectIssueVie
       <SidebarInset className="h-dvh min-h-0 bg-background text-foreground">
         <Empty>
           <EmptyHeader>
-            <EmptyTitle>No linked issue project</EmptyTitle>
+            <EmptyTitle>{m(msg("No linked issue project"))}</EmptyTitle>
             <EmptyDescription>
-              Assign this project to a Linear project before viewing issues.
+              {m(msg("Assign this project to a Linear project before viewing issues."))}
             </EmptyDescription>
           </EmptyHeader>
         </Empty>
@@ -352,7 +332,7 @@ export function ProjectIssueViewer({ environmentId, projectId }: ProjectIssueVie
                 onClick={() => setViewMode("list")}
               >
                 <ListIcon className="size-3.5" />
-                List
+                {m(msg("List"))}
               </Button>
               <Button
                 size="sm"
@@ -360,11 +340,11 @@ export function ProjectIssueViewer({ environmentId, projectId }: ProjectIssueVie
                 onClick={() => setViewMode("kanban")}
               >
                 <KanbanIcon className="size-3.5" />
-                Kanban
+                {m(msg("Kanban"))}
               </Button>
               <Button size="sm" onClick={() => setCreateIssueOpen(true)}>
                 <PlusIcon className="size-3.5" />
-                Create issue
+                {m(msg("Create issue"))}
               </Button>
             </div>
           </div>
@@ -375,8 +355,8 @@ export function ProjectIssueViewer({ environmentId, projectId }: ProjectIssueVie
             <Input
               nativeInput
               value={query}
-              placeholder="Search issues"
-              aria-label="Search project issues"
+              placeholder={m(msg("Search issues"))}
+              aria-label={m(msg("Search project issues"))}
               className="max-w-sm"
               onChange={(event) => setQuery(event.currentTarget.value)}
               onKeyDown={(event) => {
@@ -385,7 +365,7 @@ export function ProjectIssueViewer({ environmentId, projectId }: ProjectIssueVie
             />
             <Button variant="outline" onClick={() => loadIssues(query)} disabled={loading}>
               <RefreshCwIcon className={cn("size-4", loading ? "animate-spin" : "")} />
-              Refresh
+              {m(msg("Refresh"))}
             </Button>
           </section>
 
@@ -397,11 +377,11 @@ export function ProjectIssueViewer({ environmentId, projectId }: ProjectIssueVie
 
           {loading && issues.length === 0 ? (
             <div className="rounded-xl border border-border/70 px-4 py-8 text-center text-muted-foreground text-sm">
-              Loading issues...
+              {m(msg("Loading issues..."))}
             </div>
           ) : issues.length === 0 ? (
             <div className="rounded-xl border border-border/70 px-4 py-8 text-center text-muted-foreground text-sm">
-              No linked issues found.
+              {m(msg("No linked issues found."))}
             </div>
           ) : viewMode === "list" ? (
             <div className="grid gap-3">
@@ -453,23 +433,25 @@ export function ProjectIssueViewer({ environmentId, projectId }: ProjectIssueVie
       >
         <DialogPopup className="max-w-xl">
           <DialogHeader>
-            <DialogTitle>Create Linear issue</DialogTitle>
+            <DialogTitle>{m(msg("Create Linear issue"))}</DialogTitle>
             <DialogDescription>
-              Add a new issue to {mapping.linearProjectName} and choose its initial workflow status.
+              {m(msg("Add a new issue to "))}
+              {mapping.linearProjectName}
+              {m(msg(" and choose its initial workflow status."))}
             </DialogDescription>
           </DialogHeader>
           <DialogPanel className="space-y-3">
             <Input
               nativeInput
               value={newTitle}
-              placeholder="New issue title"
-              aria-label="New issue title"
+              placeholder={m(msg("New issue title"))}
+              aria-label={m(msg("New issue title"))}
               onChange={(event) => setNewTitle(event.currentTarget.value)}
             />
             <select
-              aria-label="New issue status"
+              aria-label={m(msg("New issue status"))}
               className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground"
-              value={newStatusId}
+              value={selectedStatusId}
               onChange={(event) => setNewStatusId(event.currentTarget.value)}
             >
               {statusOptions.map((status) => (
@@ -480,18 +462,18 @@ export function ProjectIssueViewer({ environmentId, projectId }: ProjectIssueVie
             </select>
             <Textarea
               value={newDescription}
-              placeholder="Optional issue description"
-              aria-label="New issue description"
+              placeholder={m(msg("Optional issue description"))}
+              aria-label={m(msg("New issue description"))}
               onChange={(event) => setNewDescription(event.currentTarget.value)}
             />
           </DialogPanel>
           <DialogFooter>
             <Button variant="outline" onClick={() => setCreateIssueOpen(false)}>
-              Cancel
+              {m(msg("Cancel"))}
             </Button>
             <Button disabled={creating || !newTitle.trim()} onClick={createIssue}>
               <PlusIcon className="size-4" />
-              Create issue
+              {m(msg("Create issue"))}
             </Button>
           </DialogFooter>
         </DialogPopup>

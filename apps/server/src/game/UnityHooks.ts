@@ -11,7 +11,8 @@ import {
   UnityHookSample,
   UnityHookWatch,
 } from "@t3tools/contracts";
-import * as Crypto from "effect/Crypto";
+import * as Digest from "effect/crypto/Digest";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as ServerConfig from "../config.ts";
 import * as Config from "effect/Config";
 import * as Context from "effect/Context";
@@ -78,7 +79,8 @@ const decodeCommandResult = Schema.decodeUnknownEffect(UnityCommandResult);
 const decodeReceipt = Schema.decodeUnknownEffect(Schema.fromJsonString(UnityCommandResult));
 
 const make = Effect.gen(function* () {
-  const crypto = yield* Crypto.Crypto;
+  const digest = yield* Digest.Digest;
+  const random = yield* SecureRandom.SecureRandom;
   const runner = yield* ProcessRunner.ProcessRunner;
   const executable = yield* Config.String("T3CODE_UNITY_CLI").pipe(Config.withDefault("unity"));
   const fs = yield* FileSystem.FileSystem;
@@ -103,9 +105,10 @@ const make = Effect.gen(function* () {
       stateDir,
       "unity-jobs",
       Buffer.from(
-        yield* crypto
-          .digest("SHA-256", new TextEncoder().encode(`${target.kind}:${canonical}`))
-          .pipe(Effect.orDie),
+        yield* digest.digest(
+          Digest.sha256,
+          new TextEncoder().encode(`${target.kind}:${canonical}`),
+        ),
       ).toString("hex"),
       `${jobId}.json`,
     );
@@ -544,7 +547,7 @@ const make = Effect.gen(function* () {
     if (result.action === "job" && ["completed", "failed", "canceled"].includes(result.state)) {
       const file = yield* receiptPath(canonical, request.target, result.jobId);
       const directory = path.dirname(file);
-      const temporary = `${file}.${yield* crypto.randomUUIDv4().pipe(Effect.orDie)}.tmp`;
+      const temporary = `${file}.${yield* random.uuidV4()}.tmp`;
       // Only persist observed terminal results; interrupted/queued work is never replayed.
       yield* Effect.gen(function* () {
         yield* fs.makeDirectory(directory, { recursive: true });

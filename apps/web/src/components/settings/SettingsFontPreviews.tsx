@@ -2,9 +2,13 @@ import type { ServerProviderSkill } from "@t3tools/contracts";
 import { preloadPatchFile } from "@pierre/diffs/ssr";
 import { useAtomValue } from "@effect/atom-react";
 import * as Effect from "effect/Effect";
+import { useGT } from "gt-react";
 import { AsyncResult, Atom } from "effect/reactivity";
 import { useEffect, useRef, useState } from "react";
-import { ComposerPromptEditor, type ComposerPromptEditorHandle } from "../ComposerPromptEditor";
+import {
+  ComposerPromptEditorTiptap as ComposerPromptEditor,
+  type ComposerPromptEditorHandle,
+} from "../ComposerPromptEditorTiptap";
 import { EMPTY_COMPOSER_CONTEXT_RECORDS } from "../composerContextPresentation";
 import { terminalThemeFromApp } from "../ThreadTerminalDrawer";
 import { useRenderedAppearance, useTheme } from "../../hooks/useTheme";
@@ -25,6 +29,7 @@ const PROMPT_PREVIEW_TEXT =
 function noop() {}
 
 export function PromptFontPreview() {
+  const gt = useGT();
   const editorRef = useRef<ComposerPromptEditorHandle>(null);
   const [prompt, setPrompt] = useState(PROMPT_PREVIEW_TEXT);
   const [cursor, setCursor] = useState(PROMPT_PREVIEW_TEXT.length);
@@ -35,7 +40,7 @@ export function PromptFontPreview() {
   return (
     <div className="mt-1 mb-2 rounded-lg border border-border bg-background px-3 py-2">
       <ComposerPromptEditor
-        ariaLabel="Prompt font preview"
+        ariaLabel={gt("Prompt font preview")}
         editorRef={editorRef}
         value={prompt}
         cursor={cursor}
@@ -150,12 +155,14 @@ function previewTerminalFont(family: string, size: number): { family?: string; s
 }
 
 export function TerminalFontPreview({ family, size }: { family: string; size: number }) {
+  const gt = useGT();
   const mountRef = useRef<HTMLDivElement>(null);
   const [surface, setSurface] = useState<GhosttyTerminalSurface | null>(null);
   const [initialFont] = useState(() => previewTerminalFont(family, size));
   const { theme, resolvedTheme } = useTheme();
 
   // The box grows with the font so the whole transcript shows without scrolling.
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- applies the font to the Ghostty preview surface and resizes its DOM box to fit the rows
   useEffect(() => {
     if (!surface) return;
     void surface.setFont(previewTerminalFont(family, size)).then(() => {
@@ -169,6 +176,7 @@ export function TerminalFontPreview({ family, size }: { family: string; size: nu
   }, [surface, family, size]);
 
   // Palette changes may preserve light/dark mode; re-read terminal tokens for every theme change.
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- pushes theme tokens read from the DOM's computed styles into the Ghostty preview surface
   useEffect(() => {
     const mount = mountRef.current;
     if (!mount || !surface) return;
@@ -209,6 +217,8 @@ export function TerminalFontPreview({ family, size }: { family: string; size: nu
       theme: terminalThemeFromApp(mount),
       font: initialFont,
       onData: echo,
+      onBinary: noop,
+      onReply: noop,
       onResize: noop,
       onSelectionChange: noop,
       beforeKey: (event) => event.key !== "Tab",
@@ -235,7 +245,7 @@ export function TerminalFontPreview({ family, size }: { family: string; size: nu
     <div
       ref={mountSurface}
       className="relative mt-1 mb-2 h-52 overflow-hidden rounded-lg border border-border"
-      aria-label="Terminal font preview"
+      aria-label={gt("Terminal font preview")}
     />
   );
 }

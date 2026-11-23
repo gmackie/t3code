@@ -1,5 +1,5 @@
 // Generated from ForgeC OpenAPI by scripts/sync-bob-contract.mjs. Do not edit.
-// SHA256: 2bd7537a2f41ba3c346d7f4ab5687060d633862a847651d5d0156c5eec0cc552
+// SHA256: 44ae034f09b6b4234895f813356f54a2d6608a99cab6f21ac925f3e8ba6ece75
 export type CancelExecutionInput = {
   readonly contractVersion: string;
   readonly commandId: string;
@@ -108,6 +108,7 @@ export type CreatePlanInput = {
         | "production-verified";
     }>;
     readonly concurrencyLimit: number;
+    readonly autoMerge?: boolean | null;
   };
 };
 export type CreatePlanOutput = {
@@ -193,6 +194,49 @@ export type GetItemOutput = {
         readonly turnId?: string | null;
       };
     } | null;
+    readonly pendingInput?: {
+      readonly attemptId: string;
+      readonly promptId: string;
+      readonly kind: "user_input";
+      readonly questions: ReadonlyArray<{
+        readonly id: string;
+        readonly header?: string | null;
+        readonly question: string;
+        readonly options: ReadonlyArray<{
+          readonly label: string;
+          readonly value?: string | null;
+          readonly description?: string | null;
+        }>;
+        readonly multiSelect: boolean;
+      }>;
+      readonly createdAt: string;
+    } | null;
+    readonly release?: {
+      readonly attemptId: string;
+      readonly stage:
+        | "awaiting-publish"
+        | "checks-running"
+        | "checks-failed"
+        | "review-ready"
+        | "merged"
+        | "deploying"
+        | "production-verified"
+        | "blocked";
+      readonly autoMerge: boolean;
+      readonly branch?: string | null;
+      readonly headSha?: string | null;
+      readonly pullRequest?: {
+        readonly repository: { readonly integrationId: string; readonly repositoryId: string };
+        readonly number: number;
+        readonly url?: string | null;
+      } | null;
+      readonly approvedSha?: string | null;
+      readonly mergeSha?: string | null;
+      readonly appSlug?: string | null;
+      readonly deploymentId?: string | null;
+      readonly note?: string | null;
+      readonly updatedAt: string;
+    } | null;
     readonly achievedMilestones: ReadonlyArray<
       "execution-succeeded" | "review-ready" | "merged" | "production-verified"
     >;
@@ -251,6 +295,7 @@ export type GetPlanOutput = {
         | "production-verified";
     }>;
     readonly concurrencyLimit: number;
+    readonly autoMerge?: boolean | null;
   };
   readonly items: ReadonlyArray<{
     readonly itemId: string;
@@ -350,6 +395,16 @@ export type RecordExecutionReceiptInput = {
     readonly checkProfileDigest?: string | null;
   };
   readonly evidenceRefs: ReadonlyArray<string>;
+  readonly publishedHead?: {
+    readonly branch: string;
+    readonly commitSha: string;
+    readonly pullRequest?: {
+      readonly repository: { readonly integrationId: string; readonly repositoryId: string };
+      readonly number: number;
+      readonly url?: string | null;
+    } | null;
+  } | null;
+  readonly publishSkippedReason?: string | null;
 };
 export type RecordExecutionReceiptOutput = {
   readonly contractVersion: string;
@@ -660,6 +715,7 @@ export type UpdatePlanInput = {
         | "production-verified";
     }>;
     readonly concurrencyLimit: number;
+    readonly autoMerge?: boolean | null;
   };
 };
 export type UpdatePlanOutput = {

@@ -37,6 +37,8 @@ apps/mobile/.android-cache/
 /.generated/
 artifacts/app-store/screenshots/
 artifacts/mobile-e2e/
+artifacts/mobile-behavior/
+scripts/.e2e/
 .github/pr-assets/
 native/**/target/
 node_modules/
@@ -50,3 +52,4 @@ node_modules/
 
 # Python bytecode from repo scripts.
 __pycache__/
+/packages/ssh/.ssh-launcher-test-*/

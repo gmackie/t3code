@@ -30,6 +30,8 @@ const empty = (): ProjectRecord => ({
 });
 const MAX_CAPTURE_BYTES = 256 * 1024 * 1024;
 const PARSED_CAPTURE_CACHE = 4;
+const isCaptureFormatError = Schema.is(CaptureFormatError);
+
 const decode = Schema.decodeUnknownSync(
   Schema.Struct({
     investigations: Schema.Array(
@@ -585,7 +587,7 @@ export class ReverseInvestigationStore {
     const parsing = NodeFSP.readFile(NodePath.join(this.stateDir, "reverse", "captures", sha256))
       .then((bytes) => parseCapture(new Uint8Array(bytes), filename))
       .catch((error: unknown) => {
-        throw error instanceof CaptureFormatError ? err("invalid_file", error.message) : error;
+        throw isCaptureFormatError(error) ? err("invalid_file", error.message) : error;
       });
     this.parsedCaptures.set(key, parsing);
     parsing.catch(() => this.parsedCaptures.delete(key));

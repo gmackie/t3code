@@ -1,4 +1,4 @@
-import { createContext, startTransition, use, useCallback, useMemo, type ReactNode } from "react";
+import { createContext, startTransition, use, useMemo, type ReactNode } from "react";
 import { AppState, Appearance, Platform, useColorScheme } from "react-native";
 
 import { manufacturer } from "expo-device";
@@ -7,7 +7,7 @@ import {
   type AndroidNavigationStyle,
 } from "../../../lib/androidNavigationStyle";
 
-import { useAtomSet, useAtomValue } from "@effect/atom-react";
+import { useAtomValue } from "@effect/atom-react";
 import { Atom, AsyncResult } from "effect/reactivity";
 
 import { ScopedTheme, ScopedVariables, Uniwind } from "uniwind";
@@ -18,7 +18,8 @@ import {
   type ResolvedAppearance,
 } from "../../../lib/appearancePreferences";
 import { appAtomRegistry } from "../../../state/atom-registry";
-import { mobilePreferencesAtom, updateMobilePreferencesAtom } from "../../../state/preferences";
+import { mobilePreferencesAtom, saveMobilePreferences } from "../../../state/preferences";
+import { useAtomCommand } from "../../../state/use-atom-command";
 import type { Preferences } from "../../../persistence/mobile-preferences";
 import {
   isSystemColorsAvailable,
@@ -187,7 +188,7 @@ export function installAppearanceRuntime(): () => void {
 
 export function AppearancePreferencesProvider(props: { readonly children: ReactNode }) {
   const preferencesResult = useAtomValue(mobilePreferencesAtom);
-  const savePreferences = useAtomSet(updateMobilePreferencesAtom);
+  const savePreferences = useAtomCommand(saveMobilePreferences);
   const systemColorScheme = useColorScheme() === "dark" ? "dark" : "light";
   const storedPreferences = AsyncResult.isSuccess(preferencesResult)
     ? preferencesResult.value
@@ -223,106 +224,77 @@ export function AppearancePreferencesProvider(props: { readonly children: ReactN
     [baseFontSize, codeFontSize, codeWordBreak, terminalFontSize],
   );
   const isReady = AsyncResult.isSuccess(preferencesResult);
-  const updatePreferences = useCallback(
-    (patch: Partial<Preferences>) => {
-      startTransition(() => savePreferences(patch));
-    },
-    [savePreferences],
-  );
+  const updatePreferences = (patch: Partial<Preferences>) => {
+    startTransition(() => {
+      void savePreferences(patch);
+    });
+  };
 
-  const updateThemePreferences = useCallback(
-    (patch: Partial<Preferences>) => {
-      savePreferences(patch);
-    },
-    [savePreferences],
-  );
+  const updateThemePreferences = (patch: Partial<Preferences>) => {
+    void savePreferences(patch);
+  };
 
-  const setThemeIdForAppearance = useCallback(
-    (appearance: MobileThemeAppearance, value: MobileThemeId) => {
-      // Read at call time: a second pick before the next render must build on
-      // the first one's optimistic write.
-      const selected = resolveMobileThemeIds(
-        storedPreferencesOf(appAtomRegistry.get(mobilePreferencesAtom)) ?? {},
-      );
-      updateThemePreferences(
-        createMobileThemeSelectionPatch(selected, themeAppearance, appearance, value),
-      );
-    },
-    [themeAppearance, updateThemePreferences],
-  );
+  const setThemeIdForAppearance = (appearance: MobileThemeAppearance, value: MobileThemeId) => {
+    // Read at call time: a second pick before the next render must build on
+    // the first one's optimistic write.
+    const selected = resolveMobileThemeIds(
+      storedPreferencesOf(appAtomRegistry.get(mobilePreferencesAtom)) ?? {},
+    );
+    updateThemePreferences(
+      createMobileThemeSelectionPatch(selected, themeAppearance, appearance, value),
+    );
+  };
 
-  const setThemeIdForBothAppearances = useCallback(
-    (value: MobileThemeId) => {
-      updateThemePreferences(createMobileThemePairPatch(value));
-    },
-    [updateThemePreferences],
-  );
+  const setThemeIdForBothAppearances = (value: MobileThemeId) => {
+    updateThemePreferences(createMobileThemePairPatch(value));
+  };
 
-  const setThemeMode = useCallback(
-    (value: MobileThemeMode) => {
-      const current = currentRuntimeState();
+  const setThemeMode = (value: MobileThemeMode) => {
+    const current = currentRuntimeState();
 
-      // Clear forced appearance before publishing System so useColorScheme batches the system palette into the preference commit.
-      if (value === "system") {
-        Appearance.setColorScheme("unspecified");
-      }
-      const nextAppearance =
-        value === "system" ? (Appearance.getColorScheme() === "dark" ? "dark" : "light") : value;
-      const next = {
-        ...current,
-        themeAppearance: nextAppearance,
-        themeMode: value,
-      };
+    // Clear forced appearance before publishing System so useColorScheme batches the system palette into the preference commit.
+    if (value === "system") {
+      Appearance.setColorScheme("unspecified");
+    }
+    const nextAppearance =
+      value === "system" ? (Appearance.getColorScheme() === "dark" ? "dark" : "light") : value;
+    const next = {
+      ...current,
+      themeAppearance: nextAppearance,
+      themeMode: value,
+    };
 
-      if (value === "system") {
-        appliedRuntimeState = next;
-      } else {
-        applyThemeRuntime(next);
-      }
-      updateThemePreferences({ themeMode: value });
-    },
-    [updateThemePreferences],
-  );
+    if (value === "system") {
+      appliedRuntimeState = next;
+    } else {
+      applyThemeRuntime(next);
+    }
+    updateThemePreferences({ themeMode: value });
+  };
 
-  const setAndroidNavigationStyle = useCallback(
-    (value: AndroidNavigationStyle) => updatePreferences({ androidNavigationStyle: value }),
-    [updatePreferences],
-  );
+  const setAndroidNavigationStyle = (value: AndroidNavigationStyle) =>
+    updatePreferences({ androidNavigationStyle: value });
 
-  const setBaseFontSize = useCallback(
-    (value: number) => {
-      applyThemeRuntime({ ...currentRuntimeState(), baseFontSize: value });
-      updatePreferences({ baseFontSize: value });
-    },
-    [updatePreferences],
-  );
+  const setBaseFontSize = (value: number) => {
+    applyThemeRuntime({ ...currentRuntimeState(), baseFontSize: value });
+    updatePreferences({ baseFontSize: value });
+  };
 
-  const setTerminalFontSize = useCallback(
-    (value: number | null) => {
-      updatePreferences({ terminalFontSize: value });
-    },
-    [updatePreferences],
-  );
+  const setTerminalFontSize = (value: number | null) => {
+    updatePreferences({ terminalFontSize: value });
+  };
 
-  const setCodeFontSize = useCallback(
-    (value: number | null) => {
-      updatePreferences({ codeFontSize: value });
-    },
-    [updatePreferences],
-  );
+  const setCodeFontSize = (value: number | null) => {
+    updatePreferences({ codeFontSize: value });
+  };
 
-  const setCodeWordBreak = useCallback(
-    (value: boolean) => {
-      updatePreferences({ codeWordBreak: value });
-    },
-    [updatePreferences],
-  );
+  const setCodeWordBreak = (value: boolean) => {
+    updatePreferences({ codeWordBreak: value });
+  };
 
   const mathRenderingEnabled = storedPreferences?.mathRenderingEnabled === true;
-  const setMathRenderingEnabled = useCallback(
-    (value: boolean) => updatePreferences({ mathRenderingEnabled: value }),
-    [updatePreferences],
-  );
+  const setMathRenderingEnabled = (value: boolean) =>
+    updatePreferences({ mathRenderingEnabled: value });
 
   const value = useMemo(
     (): AppearancePreferencesContextValue => ({

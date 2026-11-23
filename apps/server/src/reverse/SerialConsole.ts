@@ -8,7 +8,7 @@ import * as NodeTty from "node:tty";
 import { ReverseStoreError } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
 
-export const SERIAL_BAUD_RATES = [
+const SERIAL_BAUD_RATES = [
   1200, 2400, 4800, 9600, 19200, 38400, 57600, 115200, 230400, 460800, 921600,
 ] as const;
 

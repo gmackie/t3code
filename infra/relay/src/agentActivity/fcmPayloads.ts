@@ -2,8 +2,8 @@ import type { RelayAgentActivityAggregateState } from "@t3tools/contracts/relay"
 import {
   activityPhasePriority,
   TERMINAL_AGENT_ACTIVITY_DISPLAY_TTL_MS,
-} from "./agentActivityAggregate.ts";
-import { agentActivityExpiresAt } from "./agentActivityPayloads.ts";
+} from "@t3tools/shared/agentActivityAggregate";
+import { agentActivityExpiresAt } from "@t3tools/shared/agentActivityPayloads";
 
 export function androidActivityData(aggregate: RelayAgentActivityAggregateState | null) {
   const rows = [...(aggregate?.activities ?? [])].sort(

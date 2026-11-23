@@ -1,3 +1,4 @@
+import { msg, useMessages } from "gt-react";
 import { useAtomValue } from "@effect/atom-react";
 import type {
   EnvironmentId,
@@ -12,10 +13,11 @@ import {
 import { readForgeGraphSettings } from "@t3tools/client-runtime/source-control-clients";
 import * as Option from "effect/Option";
 import { ExternalLinkIcon } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useState } from "react";
 
 import { useEnvironmentSettings } from "../../hooks/useSettings";
 import { sourceControlEnvironment } from "../../state/sourceControl";
+import { useEnvironmentQuery } from "../../state/query";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { Button, InlineButton } from "../ui/button";
 
@@ -33,6 +35,8 @@ export function ForgeGraphSignInSettings({
   /** Rescans discovery, so the signed-in account shows once the token is saved or removed. */
   readonly onChanged: () => void;
 }) {
+  const m = useMessages();
+
   const { token } = useEnvironmentSettings(environmentId, readForgeGraphSettings);
   const canSignIn = useAtomValue(
     sourceControlEnvironment.forgeGraphSignInStart.permissionAtom(environmentId),
@@ -49,14 +53,14 @@ export function ForgeGraphSignInSettings({
   const signOut = useAtomCommand(sourceControlEnvironment.forgeGraphSignOut, {
     label: "sign out of ForgeGraph",
   });
-  const [state, setState] = useState<ForgeGraphSignInState | null>(null);
+  const initialStatus = useEnvironmentQuery(
+    canSignIn ? sourceControlEnvironment.forgeGraphSignInState({ environmentId, input: {} }) : null,
+  );
+  const [localState, setState] = useState<ForgeGraphSignInState | null>(null);
+  const state = localState ?? initialStatus.data;
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // Held so a parent re-render does not restart the status interval.
-  const onChangedRef = useRef(onChanged);
-  useEffect(() => {
-    onChangedRef.current = onChanged;
-  }, [onChanged]);
+  const notifyChanged = useEffectEvent(onChanged);
 
   const run = async (command: typeof start) => {
     setBusy(true);
@@ -71,22 +75,15 @@ export function ForgeGraphSignInSettings({
     }
   };
 
-  // An attempt started from another client, or before a reload, is picked up where it stands.
-  useEffect(() => {
-    if (!canSignIn) return;
-    void status({ environmentId, input: {} }).then((result) => {
-      if (result._tag === "Success") setState(result.value);
-    });
-  }, [canSignIn, environmentId, status]);
-
   const waiting = state?.phase === "waiting";
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Poll the external device-flow attempt while pending, and release its timer when it ends or the view unmounts.
   useEffect(() => {
     if (!waiting) return;
     const timer = setInterval(() => {
       void status({ environmentId, input: {} }).then((result) => {
         if (result._tag !== "Success") return;
         setState(result.value);
-        if (result.value.phase === "succeeded") onChangedRef.current();
+        if (result.value.phase === "succeeded") notifyChanged();
       });
     }, FORGEGRAPH_SIGN_IN_STATUS_INTERVAL_MS);
     return () => clearInterval(timer);
@@ -110,7 +107,7 @@ export function ForgeGraphSignInSettings({
       {view.pending ? (
         <div className="grid gap-2 rounded-md border border-border p-3">
           <p className="text-xs text-muted-foreground">
-            Approve this code in ForgeGraph. This page updates once you do.
+            {m(msg("Approve this code in ForgeGraph. This page updates once you do."))}
           </p>
           <code className="font-mono text-base tracking-widest">{view.pending.userCode}</code>
           <InlineButton
@@ -118,7 +115,8 @@ export function ForgeGraphSignInSettings({
               <a href={view.pending.verificationUrl} target="_blank" rel="noreferrer noopener" />
             }
           >
-            Open {view.pending.verificationUrl}
+            {m(msg("Open "))}
+            {view.pending.verificationUrl}
             <ExternalLinkIcon aria-hidden className="size-3" />
           </InlineButton>
         </div>
@@ -137,7 +135,7 @@ export function ForgeGraphSignInSettings({
       <div className="flex justify-end gap-2">
         {view.canCancel ? (
           <Button size="xs" variant="outline" disabled={busy} onClick={() => void run(cancel)}>
-            Cancel
+            {m(msg("Cancel"))}
           </Button>
         ) : (
           <>
@@ -152,7 +150,7 @@ export function ForgeGraphSignInSettings({
                   })
                 }
               >
-                Sign out
+                {m(msg("Sign out"))}
               </Button>
             ) : null}
             <Button size="xs" disabled={busy || !canSignIn} onClick={() => void run(start)}>

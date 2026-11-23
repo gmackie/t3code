@@ -5,8 +5,8 @@
 #
 # Runs on ForgeGraph CI (Forgejo Actions at git.forgegraf.com) instead of
 # GitHub Actions. Runner topology:
-#   - ubuntu-24.04 / forgegraph-ci → labnuc (docker): sync, preflight, Linux, publish
-#   - gmacko-mini → host runner for macOS arm64/x64 and the iOS TestFlight
+#   - ubuntu-24.04 / forgegraph-ci → Linux runners: preflight, Linux, publish
+#   - gmacko-mini → host runner for sync, macOS arm64/x64 and the iOS TestFlight
 #     upload (needs Xcode + CocoaPods). Do not use the generic
 #     `macos` label; labtop also advertises it and cannot mkdir its workdir.
 #
@@ -21,9 +21,11 @@
 #   APPLE_API_KEY / APPLE_API_KEY_ID /   App Store Connect API key (.p8 contents, id, issuer)
 #     APPLE_API_ISSUER
 #   MACOS_PROVISIONING_PROFILE           base64 .provisionprofile
+#   T3_CONFLICT_MCP_TOKEN                gmacko-mini MCP session credential
 #   CLOUDFLARE_API_TOKEN (optional)      relay tracing config; empty → skipped
 #   RELAY_CLIENT_OTLP_TRACES_TOKEN (optional)
 # Variables:
+#   T3_CONFLICT_MCP_URL, T3_CONFLICT_PROJECT_ID: gmacko-mini MCP endpoint and T3 Code project
 #   APPLE_TEAM_ID, CLERK_PASSKEY_RP_DOMAINS, and optionally CLOUDFLARE_ACCOUNT_ID,
 #   RELAY_DOMAIN, RELAY_API_ZONE_NAME, T3CODE_CLERK_PUBLISHABLE_KEY,
 #   T3CODE_CLERK_JWT_TEMPLATE, T3CODE_CLERK_CLI_OAUTH_CLIENT_ID
@@ -75,7 +77,8 @@ jobs:
     concurrency:
       group: gmacko-nightly
       cancel-in-progress: true
-    runs-on: forgegraph-ci
+    # The handoff endpoint is tailnet-only; shared Linux runners may have no Tailscale.
+    runs-on: gmacko-mini
     timeout-minutes: 40
     outputs:
       ref: ${{ steps.lane.outputs.head_sha }}
@@ -96,6 +99,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          if ! command -v corepack >/dev/null 2>&1; then
+            npm install --global corepack@0.34.6
+          fi
           corepack enable
           corepack prepare "pnpm@${PNPM_VERSION}" --activate
           pnpm --version
@@ -111,11 +117,20 @@ jobs:
             echo "GMACKO_GITHUB_TOKEN secret is required to read and publish the release lane." >&2
             exit 1
           fi
-          github_url="https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_FORK}.git"
-          forgejo_url="${FORGEJO_REPO_URL/https:\/\//https://x-access-token:${FORGEJO_TOKEN}@}"
+          # Credentials reach git through the environment only (T3CODE-125):
+          # argv is readable by every local user in `ps`, and a URL given to
+          # `git clone` is saved in .git/config. printf and export are shell
+          # builtins, so the token is never any process's argument.
+          git_auth() { # git_auth <repository URL> <token>
+            local i="${GIT_CONFIG_COUNT:-0}"
+            export "GIT_CONFIG_KEY_${i}=http.$1.extraheader"
+            export "GIT_CONFIG_VALUE_${i}=AUTHORIZATION: basic $(printf 'x-access-token:%s' "$2" | base64 | tr -d '\n')"
+            export GIT_CONFIG_COUNT=$((i + 1)) GIT_TERMINAL_PROMPT=0
+          }
+          git_auth "$FORGEJO_REPO_URL" "$FORGEJO_TOKEN"
           # Always sync the ForgeGraph lane. Cloning GitHub on schedule
           # overwrites Forgejo with a stale tip that never got promoted.
-          git clone --branch custom-local --tags "$forgejo_url" lane
+          git clone --branch custom-local --tags "$FORGEJO_REPO_URL" lane
           cd lane
           git config user.name "gmacko-nightly[bot]"
           git config user.email "gmacko-nightly@users.noreply.forgegraf.com"
@@ -130,9 +145,24 @@ jobs:
         working-directory: lane
         env:
           GITHUB_TOKEN: ${{ secrets.GMACKO_GITHUB_TOKEN }}
+          T3_CONFLICT_MCP_URL: ${{ vars.T3_CONFLICT_MCP_URL }}
+          T3_CONFLICT_PROJECT_ID: ${{ vars.T3_CONFLICT_PROJECT_ID }}
+          T3_CONFLICT_MCP_TOKEN: ${{ secrets.T3_CONFLICT_MCP_TOKEN }}
+          CONFLICT_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_number }}
         run: |
           set -euo pipefail
-          github_url="https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_FORK}.git"
+          # Credentials reach git through the environment only (T3CODE-125):
+          # argv is readable by every local user in `ps`, and a URL given to
+          # `git clone` is saved in .git/config. printf and export are shell
+          # builtins, so the token is never any process's argument.
+          git_auth() { # git_auth <repository URL> <token>
+            local i="${GIT_CONFIG_COUNT:-0}"
+            export "GIT_CONFIG_KEY_${i}=http.$1.extraheader"
+            export "GIT_CONFIG_VALUE_${i}=AUTHORIZATION: basic $(printf 'x-access-token:%s' "$2" | base64 | tr -d '\n')"
+            export GIT_CONFIG_COUNT=$((i + 1)) GIT_TERMINAL_PROMPT=0
+          }
+          github_url="https://github.com/${GITHUB_FORK}.git"
+          git_auth "$github_url" "$GITHUB_TOKEN"
           START_SHA="$(git ls-remote "$github_url" refs/heads/custom-local | cut -f1)"
           lane_differs_from_github="$([[ "$START_SHA" == "$(git rev-parse HEAD)" ]] && echo false || echo true)"
           if [[ "${GITHUB_EVENT_NAME}" == "push" ]]; then
@@ -157,11 +187,21 @@ jobs:
           # .jjconflict-side-* trees from resolved historical conflicts and
           # fails rename detection. Conflicts stop the sync before anything is
           # mirrored: `-X ours` settled them hunk by hunk and shipped files that
-          # no longer parsed, so they need a person to resolve them in a PR.
+          # no longer parsed. Start an isolated T3 session to resolve them in a PR.
           if ! git merge --no-edit upstream/main; then
             echo "::error::Merging upstream/main conflicts with custom-local; resolve it in a PR to custom-local."
+            export CONFLICT_LANE_SHA="$(git rev-parse HEAD)"
+            export CONFLICT_UPSTREAM_SHA="$(git rev-parse upstream/main)"
+            export CONFLICT_FILES_PATH="$(mktemp)"
+            git diff --name-only --diff-filter=U -z > "$CONFLICT_FILES_PATH"
             git diff --name-only --diff-filter=U | sed 's/^/  conflict: /'
             git merge --abort
+            if [[ ! -s "$CONFLICT_FILES_PATH" ]]; then
+              echo "::error::Upstream merge failed without file conflicts; inspect the git error above."
+              exit 1
+            fi
+            # The script comes from the lane after abort, never the conflicted tree.
+            node scripts/nightly-conflict-session.mjs
             exit 1
           fi
           echo "has_changes=true" >> "$GITHUB_OUTPUT"
@@ -203,11 +243,21 @@ jobs:
           # mirrored here so downstream jobs can check it out, but the GitHub
           # lane is advanced by the promote job after preflight. The scheduled
           # workflow definition itself also lives on this branch here.
-          mirror_url="${FORGEJO_REPO_URL/https:\/\//https://x-access-token:${FORGEJO_TOKEN}@}"
+          # Credentials reach git through the environment only (T3CODE-125):
+          # argv is readable by every local user in `ps`, and a URL given to
+          # `git clone` is saved in .git/config. printf and export are shell
+          # builtins, so the token is never any process's argument.
+          git_auth() { # git_auth <repository URL> <token>
+            local i="${GIT_CONFIG_COUNT:-0}"
+            export "GIT_CONFIG_KEY_${i}=http.$1.extraheader"
+            export "GIT_CONFIG_VALUE_${i}=AUTHORIZATION: basic $(printf 'x-access-token:%s' "$2" | base64 | tr -d '\n')"
+            export GIT_CONFIG_COUNT=$((i + 1)) GIT_TERMINAL_PROMPT=0
+          }
+          git_auth "$FORGEJO_REPO_URL" "$FORGEJO_TOKEN"
           # Branch only: historical tags point at commits without
           # .forgejo/workflows, where Forgejo would fall back to the GitHub
           # workflow files and fire their tag-triggered release jobs.
-          git push "$mirror_url" "HEAD:refs/heads/custom-local"
+          git push "$FORGEJO_REPO_URL" "HEAD:refs/heads/custom-local"
           echo "head_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       - id: release_meta
@@ -251,8 +301,7 @@ jobs:
             echo "should_release=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          # Nightly idempotence: skip when a GMACKO prerelease already targets
-          # this exact lane tip (no upstream movement since the last cut).
+          # Skip only a release with a receipt for desktop, CLI, and TestFlight.
           existing="$(
             curl -fsSL -H "Authorization: Bearer ${GH_TOKEN}" \
               "https://api.github.com/repos/${GITHUB_FORK}/releases?per_page=100" \
@@ -261,14 +310,15 @@ jobs:
                 process.stdin.on("data", (c) => (raw += c)).on("end", () => {
                   const sha = process.env.HEAD_SHA;
                   const hit = JSON.parse(raw).find(
-                    (r) => r.target_commitish === sha && !r.draft && r.prerelease && /^v\d+\.\d+\.\d+-gmacko\.\d+$/.test(r.tag_name),
+                    (r) => r.target_commitish === sha && !r.draft && r.prerelease &&
+                      r.assets.some((asset) => asset.name === "nightly-delivery.json" && asset.state === "uploaded") && /^v\d+\.\d+\.\d+-gmacko\.\d+$/.test(r.tag_name),
                   );
                   process.stdout.write(hit ? hit.tag_name : "");
                 });
               '
           )"
           if [[ -n "$existing" ]]; then
-            echo "Release already published for ${HEAD_SHA}: ${existing}; nothing to do."
+            echo "Release delivery already verified for ${HEAD_SHA}: ${existing}; nothing to do."
             echo "should_release=false" >> "$GITHUB_OUTPUT"
           else
             echo "should_release=true" >> "$GITHUB_OUTPUT"
@@ -322,12 +372,15 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 24.14.0
+          node-version-file: package.json
 
       - name: Setup pnpm and install
         shell: bash
         run: |
           set -euo pipefail
+          if ! command -v corepack >/dev/null 2>&1; then
+            npm install --global corepack@0.34.6
+          fi
           corepack enable
           corepack prepare "pnpm@${PNPM_VERSION}" --activate
           pnpm install --frozen-lockfile
@@ -409,10 +462,34 @@ jobs:
           # A broken upstream sync must never land on the GitHub lane: this only
           # runs after checks, focused runtime tests, and bundle validation passed on the
           # candidate, and the lease guarantees nobody moved the lane meanwhile.
-          git clone --branch custom-local \
-            "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_FORK}.git" lane
+          # Credentials reach git through the environment only (T3CODE-125):
+          # argv is readable by every local user in `ps`, and a URL given to
+          # `git clone` is saved in .git/config. printf and export are shell
+          # builtins, so the token is never any process's argument.
+          git_auth() { # git_auth <repository URL> <token>
+            local i="${GIT_CONFIG_COUNT:-0}"
+            export "GIT_CONFIG_KEY_${i}=http.$1.extraheader"
+            export "GIT_CONFIG_VALUE_${i}=AUTHORIZATION: basic $(printf 'x-access-token:%s' "$2" | base64 | tr -d '\n')"
+            export GIT_CONFIG_COUNT=$((i + 1)) GIT_TERMINAL_PROMPT=0
+          }
+          git_auth "https://github.com/${GITHUB_FORK}.git" "$GITHUB_TOKEN"
+          git_auth "$FORGEJO_REPO_URL" "$FORGEJO_TOKEN"
+          retry_transfer() {
+            local attempt
+            for attempt in 1 2 3; do
+              if "$@"; then return 0; fi
+              if (( attempt < 3 )); then sleep 5; fi
+            done
+            return 1
+          }
+          clone_lane() {
+            rm -rf lane
+            git -c http.version=HTTP/1.1 clone --single-branch --no-tags --branch custom-local \
+              "https://github.com/${GITHUB_FORK}.git" lane
+          }
+          retry_transfer clone_lane
           cd lane
-          git fetch "${FORGEJO_REPO_URL/https:\/\//https://x-access-token:${FORGEJO_TOKEN}@}" "$HEAD_SHA"
+          retry_transfer git -c http.version=HTTP/1.1 fetch "$FORGEJO_REPO_URL" "$HEAD_SHA"
           git push --force-with-lease="refs/heads/custom-local:${START_SHA}" origin "${HEAD_SHA}:refs/heads/custom-local"
           echo "Promoted ${HEAD_SHA} to GitHub custom-local."
 
@@ -478,7 +555,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 24.14.0
+          node-version-file: package.json
 
       - id: relay_state
         name: Read production relay tracing config
@@ -490,6 +567,9 @@ jobs:
             echo "Cloudflare relay config is unavailable; writing an empty relay client tracing config."
             : > relay-config/relay-client-tracing.env
           else
+            if ! command -v corepack >/dev/null 2>&1; then
+              npm install --global corepack@0.34.6
+            fi
             corepack enable
             corepack prepare "pnpm@${PNPM_VERSION}" --activate
             pnpm install --frozen-lockfile --filter=t3code-relay...
@@ -500,13 +580,16 @@ jobs:
               --github-env-file "$PWD/relay-config/relay-client-tracing.env"
           fi
 
+      # Forgejo's midnight cleanup expires a 1-day artifact at the next UTC
+      # midnight, and build_macos_x64 queues behind the Mini's other jobs, so it
+      # can start hours after this upload.
       - name: Upload relay client tracing config
         uses: https://code.forgejo.org/forgejo/upload-artifact@v4
         with:
           name: relay-client-tracing-config
           path: relay-config/relay-client-tracing.env
           if-no-files-found: error
-          retention-days: 1
+          retention-days: 7
 
       - id: public_config
         name: Resolve production relay public config
@@ -531,7 +614,11 @@ jobs:
     needs: [sync, preflight, relay_public_config]
     if: ${{ !cancelled() && needs.sync.outputs.should_release == 'true' && needs.preflight.result == 'success' && needs.relay_public_config.result == 'success' }}
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 90
+    # The Mini's host runner does not enforce job timeouts (runs 1275 and 1294
+    # went 116 and 98 minutes under a 90-minute limit); its own 2h limit kills
+    # a task without a final status. Step timeouts and ci-deadline keep each
+    # Mini job inside that window.
+    timeout-minutes: 115
     env:
       T3CODE_CLERK_PUBLISHABLE_KEY: ${{ needs.relay_public_config.outputs.clerk_publishable_key }}
       T3CODE_CLERK_JWT_TEMPLATE: ${{ needs.relay_public_config.outputs.clerk_jwt_template }}
@@ -557,32 +644,40 @@ jobs:
             resource_key: linux-x64
     steps:
       - name: Checkout lane
+        timeout-minutes: 20
         uses: actions/checkout@v4
         with:
           ref: ${{ needs.sync.outputs.ref }}
 
-      - name: Require SSD-backed Mini build storage
+      - name: Require Mini build storage
+        timeout-minutes: 5
         if: matrix.runner == 'gmacko-mini'
         shell: bash
         env:
-          T3CODE_MINI_CI_ROOT: ${{ vars.MINI_CI_STORAGE_ROOT || '/Volumes/FleetNativeFast-20261009/t3-ci' }}
+          T3CODE_MINI_CI_ROOT: ${{ vars.MINI_CI_STORAGE_ROOT || '/Users/mackieg/t3-ci' }}
         run: python3 scripts/mini-ci-storage.py
 
       - name: Setup Node
+        timeout-minutes: 10
         uses: actions/setup-node@v4
         with:
-          node-version: 24.14.0
+          node-version-file: package.json
 
       - name: Align package versions to release version
+        timeout-minutes: 5
         run: node scripts/bootstrap-release-package-versions.mjs "${{ needs.sync.outputs.version }}"
 
       - name: Setup pnpm and install
+        timeout-minutes: 45
         shell: bash
         run: |
           set -euo pipefail
+          if ! command -v corepack >/dev/null 2>&1; then
+            npm install --global corepack@0.34.6
+          fi
           corepack enable
           corepack prepare "pnpm@${PNPM_VERSION}" --activate
-          pnpm install --frozen-lockfile \
+          node scripts/ci-deadline.mjs 40 -- pnpm install --frozen-lockfile \
             --filter=@t3tools/desktop... \
             --filter=t3... \
             --filter=@t3tools/scripts...
@@ -590,6 +685,7 @@ jobs:
           echo "$PWD/node_modules/.bin" >> "$GITHUB_PATH"
 
       - name: Setup Rust
+        timeout-minutes: 15
         shell: bash
         run: |
           set -euo pipefail
@@ -611,7 +707,9 @@ jobs:
             -o Acquire::Retries=3 \
             -o Acquire::http::Timeout=30 \
             -o Acquire::https::Timeout=30
-          sudo apt-get install -y --no-install-recommends libsecret-1-dev pkg-config
+          sudo apt-get install -y --no-install-recommends \
+            libsecret-1-dev pkg-config patchelf \
+            libgtk-3-0t64 libnspr4 libnss3 libasound2t64 libgbm1
           if ! command -v magick >/dev/null 2>&1 && ! command -v convert >/dev/null 2>&1; then
             sudo apt-get install -y imagemagick || {
               sudo apt-get update \
@@ -625,6 +723,7 @@ jobs:
           echo "APPIMAGE_EXTRACT_AND_RUN=1" >> "$GITHUB_ENV"
 
       - name: Download relay client tracing config
+        timeout-minutes: 10
         id: relay_config_download
         continue-on-error: true
         uses: https://code.forgejo.org/forgejo/download-artifact@v4
@@ -633,6 +732,7 @@ jobs:
           path: relay-config
 
       - name: Retry relay client tracing config download
+        timeout-minutes: 10
         if: steps.relay_config_download.outcome == 'failure'
         uses: https://code.forgejo.org/forgejo/download-artifact@v4
         with:
@@ -640,6 +740,7 @@ jobs:
           path: relay-config
 
       - name: Load relay client tracing config
+        timeout-minutes: 5
         shell: bash
         run: |
           set -euo pipefail
@@ -651,6 +752,7 @@ jobs:
           cat "$config_path" >> "$GITHUB_ENV"
 
       - name: Build desktop artifact
+        timeout-minutes: 60
         shell: bash
         env:
           CSC_LINK: ${{ secrets.CSC_LINK }}
@@ -707,7 +809,7 @@ jobs:
             echo "Signing disabled for ${{ matrix.platform }}."
           fi
 
-          pnpm vp run dist:desktop:artifact "${args[@]}"
+          node scripts/ci-deadline.mjs 55 -- pnpm vp run dist:desktop:artifact "${args[@]}"
 
       # SSH environments install the remote runtime from this archive (see
       # REMOTE_RUNNER_SCRIPT in packages/ssh/src/tunnel.ts), downloaded from
@@ -719,15 +821,18 @@ jobs:
       # build above stays on 24. Upstream gets this Node through Setup Vite+,
       # which a node_modules vp does not honor.
       - name: Setup Node for the CLI single-executable
+        timeout-minutes: 10
         uses: actions/setup-node@v4
         with:
           node-version-file: package.json
 
       - name: Build CLI single-executable
+        timeout-minutes: 20
         shell: bash
         run: node apps/server/scripts/cli.ts build-exe --verbose
 
       - name: Build CLI archive
+        timeout-minutes: 10
         shell: bash
         run: |
           set -euo pipefail
@@ -745,16 +850,18 @@ jobs:
             --output-dir release-cli
 
       - name: Smoke-test CLI archive
+        timeout-minutes: 10
         shell: bash
         run: node scripts/smoke-cli-archive.ts --archive release-cli/* --expect-version "${{ needs.sync.outputs.version }}"
 
       - name: Collect release assets
+        timeout-minutes: 10
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p release-publish
           shopt -s nullglob
-          for pattern in "release/*.dmg" "release/*.zip" "release/*.AppImage" "release/*.exe" "release/*.blockmap" "release/*.yml" "release-cli/t3-*"; do
+          for pattern in "release/*.dmg" "release/*.zip" "release/*.AppImage" "release/*.deb" "release/*.exe" "release/*.blockmap" "release/*.yml" "release-cli/t3-*"; do
             for file in $pattern; do
               cp "$file" release-publish/
             done
@@ -770,6 +877,7 @@ jobs:
       # under a fresh name: an interrupted upload never finalizes, and the
       # release job merges every desktop-* artifact.
       - name: Upload build artifacts
+        timeout-minutes: 35
         id: upload
         continue-on-error: true
         env:
@@ -782,10 +890,12 @@ jobs:
           if-no-files-found: error
 
       - name: Wait before retrying artifact upload
+        timeout-minutes: 5
         if: steps.upload.outcome == 'failure'
         run: sleep 90
 
       - name: Upload build artifacts (retry)
+        timeout-minutes: 35
         id: upload_retry
         if: steps.upload.outcome == 'failure'
         continue-on-error: true
@@ -799,10 +909,12 @@ jobs:
           if-no-files-found: error
 
       - name: Wait before retrying artifact upload
+        timeout-minutes: 5
         if: steps.upload_retry.outcome == 'failure'
         run: sleep 90
 
       - name: Upload build artifacts (retry)
+        timeout-minutes: 35
         id: upload_retry2
         if: steps.upload_retry.outcome == 'failure'
         env:
@@ -822,7 +934,7 @@ jobs:
     needs: [sync, preflight, relay_public_config, build]
     if: ${{ !cancelled() && needs.sync.outputs.should_release == 'true' && needs.preflight.result == 'success' && needs.relay_public_config.result == 'success' && needs.build.result == 'success' }}
     runs-on: gmacko-mini
-    timeout-minutes: 90
+    timeout-minutes: 115
     env:
       T3CODE_CLERK_PUBLISHABLE_KEY: ${{ needs.relay_public_config.outputs.clerk_publishable_key }}
       T3CODE_CLERK_JWT_TEMPLATE: ${{ needs.relay_public_config.outputs.clerk_jwt_template }}
@@ -830,37 +942,46 @@ jobs:
       T3CODE_RELAY_URL: ${{ needs.relay_public_config.outputs.relay_url }}
     steps:
       - name: Checkout lane
+        timeout-minutes: 20
         uses: actions/checkout@v4
         with:
           ref: ${{ needs.sync.outputs.ref }}
 
-      - name: Require SSD-backed Mini build storage
+      - name: Require Mini build storage
+        timeout-minutes: 5
         shell: bash
         env:
-          T3CODE_MINI_CI_ROOT: ${{ vars.MINI_CI_STORAGE_ROOT || '/Volumes/FleetNativeFast-20261009/t3-ci' }}
+          T3CODE_MINI_CI_ROOT: ${{ vars.MINI_CI_STORAGE_ROOT || '/Users/mackieg/t3-ci' }}
         run: python3 scripts/mini-ci-storage.py
 
       - name: Setup Node
+        timeout-minutes: 10
         uses: actions/setup-node@v4
         with:
-          node-version: 24.14.0
+          node-version-file: package.json
 
       - name: Align package versions to release version
+        timeout-minutes: 5
         run: node scripts/bootstrap-release-package-versions.mjs "${{ needs.sync.outputs.version }}"
 
       - name: Setup pnpm and install
+        timeout-minutes: 45
         shell: bash
         run: |
           set -euo pipefail
+          if ! command -v corepack >/dev/null 2>&1; then
+            npm install --global corepack@0.34.6
+          fi
           corepack enable
           corepack prepare "pnpm@${PNPM_VERSION}" --activate
-          pnpm install --frozen-lockfile \
+          node scripts/ci-deadline.mjs 40 -- pnpm install --frozen-lockfile \
             --filter=@t3tools/desktop... \
             --filter=t3... \
             --filter=@t3tools/scripts...
           echo "$PWD/node_modules/.bin" >> "$GITHUB_PATH"
 
       - name: Setup Rust
+        timeout-minutes: 15
         shell: bash
         run: |
           set -euo pipefail
@@ -873,6 +994,7 @@ jobs:
           "$HOME/.cargo/bin/rustc" --version
 
       - name: Download relay client tracing config
+        timeout-minutes: 10
         id: relay_config_download
         continue-on-error: true
         uses: https://code.forgejo.org/forgejo/download-artifact@v4
@@ -881,6 +1003,7 @@ jobs:
           path: relay-config
 
       - name: Retry relay client tracing config download
+        timeout-minutes: 10
         if: steps.relay_config_download.outcome == 'failure'
         uses: https://code.forgejo.org/forgejo/download-artifact@v4
         with:
@@ -888,6 +1011,7 @@ jobs:
           path: relay-config
 
       - name: Load relay client tracing config
+        timeout-minutes: 5
         shell: bash
         run: |
           set -euo pipefail
@@ -899,6 +1023,7 @@ jobs:
           cat "$config_path" >> "$GITHUB_ENV"
 
       - name: Build desktop artifact
+        timeout-minutes: 60
         shell: bash
         env:
           CSC_LINK: ${{ secrets.CSC_LINK }}
@@ -931,15 +1056,19 @@ jobs:
           export T3CODE_MACOS_PROVISIONING_PROFILE="$profile_path"
           export CSC_IDENTITY_AUTO_DISCOVERY=true
 
-          pnpm vp run dist:desktop:artifact \
+          # Forgejo job logs are unreadable with API tokens, so keep a copy in
+          # the Mini's CI storage for diagnosing x64-only failures.
+          build_log="$TMPDIR/gmacko-mac-x64-build-${{ github.run_number }}.log"
+          node scripts/ci-deadline.mjs 55 -- pnpm vp run dist:desktop:artifact \
             --platform mac \
             --target dmg \
             --arch x64 \
             --build-version "${{ needs.sync.outputs.version }}" \
             --verbose \
-            --signed
+            --signed 2>&1 | tee "$build_log"
 
       - name: Collect release assets
+        timeout-minutes: 10
         shell: bash
         run: |
           set -euo pipefail
@@ -959,6 +1088,7 @@ jobs:
       # under a fresh name: an interrupted upload never finalizes, and the
       # release job merges every desktop-* artifact.
       - name: Upload build artifacts
+        timeout-minutes: 35
         id: upload
         continue-on-error: true
         env:
@@ -971,10 +1101,12 @@ jobs:
           if-no-files-found: error
 
       - name: Wait before retrying artifact upload
+        timeout-minutes: 5
         if: steps.upload.outcome == 'failure'
         run: sleep 90
 
       - name: Upload build artifacts (retry)
+        timeout-minutes: 35
         id: upload_retry
         if: steps.upload.outcome == 'failure'
         continue-on-error: true
@@ -988,10 +1120,12 @@ jobs:
           if-no-files-found: error
 
       - name: Wait before retrying artifact upload
+        timeout-minutes: 5
         if: steps.upload_retry.outcome == 'failure'
         run: sleep 90
 
       - name: Upload build artifacts (retry)
+        timeout-minutes: 35
         id: upload_retry2
         if: steps.upload_retry.outcome == 'failure'
         env:
@@ -1003,42 +1137,56 @@ jobs:
           path: release-publish/*
           if-no-files-found: error
 
-  # TestFlight for the GMACKO iOS app. Independent of the desktop builds in
-  # both directions: gmacko-mini runs one job at a time (runner capacity 1),
-  # so it cannot share the host workspace with a macOS build, and a desktop
-  # failure does not cost the phone its nightly.
+  # TestFlight for the GMACKO iOS app. gmacko-mini runs one job at a time
+  # (runner capacity 1), so iOS waits for macOS x64: the release needs x64 and
+  # not iOS, and an iOS job queued first used to delay Publish by hours. It
+  # still runs when a desktop build fails, so the phone keeps its nightly.
   ios_testflight:
     name: Upload iOS to TestFlight
-    needs: [sync, preflight]
-    if: ${{ !cancelled() && needs.sync.outputs.should_release == 'true' && needs.preflight.result == 'success' }}
+    needs: [sync, preflight, relay_public_config, build_macos_x64]
+    if: ${{ !cancelled() && needs.sync.outputs.should_release == 'true' && needs.preflight.result == 'success' && needs.relay_public_config.result == 'success' }}
     runs-on: gmacko-mini
-    timeout-minutes: 90
+    timeout-minutes: 210
+    outputs:
+      delivery: ${{ steps.verify_testflight.outputs.delivery }}
+    env:
+      T3CODE_CLERK_PUBLISHABLE_KEY: ${{ needs.relay_public_config.outputs.clerk_publishable_key }}
+      T3CODE_CLERK_JWT_TEMPLATE: ${{ needs.relay_public_config.outputs.clerk_jwt_template }}
+      T3CODE_RELAY_URL: ${{ needs.relay_public_config.outputs.relay_url }}
     steps:
       - name: Checkout lane
+        timeout-minutes: 20
         uses: actions/checkout@v4
         with:
           ref: ${{ needs.sync.outputs.ref }}
 
-      - name: Require SSD-backed Mini build storage
+      - name: Require Mini build storage
+        timeout-minutes: 5
         shell: bash
         env:
-          T3CODE_MINI_CI_ROOT: ${{ vars.MINI_CI_STORAGE_ROOT || '/Volumes/FleetNativeFast-20261009/t3-ci' }}
+          T3CODE_MINI_CI_ROOT: ${{ vars.MINI_CI_STORAGE_ROOT || '/Users/mackieg/t3-ci' }}
         run: python3 scripts/mini-ci-storage.py
 
       - name: Setup Node
+        timeout-minutes: 10
         uses: actions/setup-node@v4
         with:
-          node-version: 24.14.0
+          node-version-file: package.json
 
       - name: Setup pnpm and install
+        timeout-minutes: 45
         shell: bash
         run: |
           set -euo pipefail
+          if ! command -v corepack >/dev/null 2>&1; then
+            npm install --global corepack@0.34.6
+          fi
           corepack enable
           corepack prepare "pnpm@${PNPM_VERSION}" --activate
-          pnpm install --frozen-lockfile --filter=@t3tools/mobile...
+          node scripts/ci-deadline.mjs 40 -- pnpm install --frozen-lockfile --filter=@t3tools/mobile...
 
       - name: Build and upload
+        timeout-minutes: 75
         shell: bash
         env:
           APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
@@ -1053,7 +1201,27 @@ jobs:
           trap 'rm -f "$key_path"' EXIT
           # 0.0.45-gmacko.202610010733 -> 202610010733: increases every release.
           APPLE_API_KEY_PATH="$key_path" BUILD_NUMBER="${RELEASE_VERSION##*.}" \
-            scripts/gmacko-ios-testflight.sh
+            node scripts/ci-deadline.mjs 70 -- scripts/gmacko-ios-testflight.sh
+
+      - id: verify_testflight
+        name: Wait for TestFlight processing
+        timeout-minutes: 50
+        shell: bash
+        env:
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          RELEASE_VERSION: ${{ needs.sync.outputs.version }}
+        run: |
+          set -euo pipefail
+          umask 077
+          key_path="$(mktemp "$RUNNER_TEMP/testflight-key.XXXXXX")"
+          trap 'rm -f "$key_path"' EXIT
+          printf '%s' "$APPLE_API_KEY" > "$key_path"
+          delivery="$(APPLE_API_KEY_PATH="$key_path" BUILD_NUMBER="${RELEASE_VERSION##*.}" \
+            node scripts/verify-gmacko-testflight.mjs)"
+          echo "delivery=$delivery" >> "$GITHUB_OUTPUT"
+          echo "TestFlight ready: $delivery"
 
   release:
     name: Publish GitHub Release
@@ -1061,6 +1229,8 @@ jobs:
     if: ${{ !failure() && !cancelled() && needs.sync.outputs.should_release == 'true' && needs.promote.result == 'success' && needs.build.result == 'success' && needs.build_macos_x64.result == 'success' }}
     runs-on: forgegraph-ci
     timeout-minutes: 60
+    outputs:
+      verified_assets: ${{ steps.publish.outputs.verified_assets }}
     env:
       GH_TOKEN: ${{ secrets.GMACKO_GITHUB_TOKEN }}
     steps:
@@ -1072,12 +1242,15 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 24.14.0
+          node-version-file: package.json
 
       - name: Setup pnpm and install scripts
         shell: bash
         run: |
           set -euo pipefail
+          if ! command -v corepack >/dev/null 2>&1; then
+            npm install --global corepack@0.34.6
+          fi
           corepack enable
           corepack prepare "pnpm@${PNPM_VERSION}" --activate
           pnpm install --frozen-lockfile --filter=@t3tools/scripts...
@@ -1090,7 +1263,7 @@ jobs:
             gh --version
             exit 0
           fi
-          gh_version="$(curl -fsSL https://api.github.com/repos/cli/cli/releases/latest | node -e 'let r="";process.stdin.on("data",c=>r+=c).on("end",()=>process.stdout.write(JSON.parse(r).tag_name.replace(/^v/,"")))')"
+          gh_version="$(curl -fsSL -H "Authorization: Bearer ${GH_TOKEN}" https://api.github.com/repos/cli/cli/releases/latest | node -e 'let r="";process.stdin.on("data",c=>r+=c).on("end",()=>process.stdout.write(JSON.parse(r).tag_name.replace(/^v/,"")))')"
           curl -fsSL "https://github.com/cli/cli/releases/download/v${gh_version}/gh_${gh_version}_linux_amd64.tar.gz" -o /tmp/gh.tgz
           tar -xzf /tmp/gh.tgz -C /tmp
           sudo install "/tmp/gh_${gh_version}_linux_amd64/bin/gh" /usr/local/bin/gh
@@ -1138,7 +1311,8 @@ jobs:
           sha256sum "${archives[@]}" > SHA256SUMS
           cat SHA256SUMS
 
-      - name: Publish release
+      - id: publish
+        name: Publish and verify desktop and CLI assets
         shell: bash
         env:
           TAG: ${{ needs.sync.outputs.tag }}
@@ -1147,7 +1321,7 @@ jobs:
         run: |
           set -euo pipefail
           shopt -s nullglob
-          for pattern in "*.dmg" "*.zip" "*.AppImage" "*.blockmap" "*.yml"; do
+          for pattern in "*.dmg" "*.zip" "*.AppImage" "*.deb" "*.blockmap" "*.yml"; do
             matches=(release-assets/$pattern)
             if (( ${#matches[@]} == 0 )); then
               echo "Missing expected release asset pattern: $pattern" >&2
@@ -1155,12 +1329,92 @@ jobs:
             fi
           done
           notes_args=(--notes-file release-notes/release-notes.md)
-          assets=(release-assets/*.dmg release-assets/*.zip release-assets/*.AppImage release-assets/*.exe release-assets/*.blockmap release-assets/*.yml release-assets/t3-*.tar.gz release-assets/SHA256SUMS)
-          gh release create "$TAG" "${assets[@]}" \
-            --repo "$GITHUB_FORK" \
-            --target "$TARGET" \
-            --title "$RELEASE_NAME" \
-            --prerelease \
-            --latest=false \
-            "${notes_args[@]}"
-          echo "Published https://github.com/${GITHUB_FORK}/releases/tag/${TAG}"
+          assets=(release-assets/*.dmg release-assets/*.zip release-assets/*.AppImage release-assets/*.deb release-assets/*.exe release-assets/*.blockmap release-assets/*.yml release-assets/t3-*.tar.gz release-assets/SHA256SUMS)
+          release_json="$RUNNER_TEMP/gmacko-release.json"
+          release_api="repos/$GITHUB_FORK/releases/tags/$TAG"
+          if ! gh api "$release_api" > "$release_json"; then
+            gh release create "$TAG" "${assets[@]}" \
+              --repo "$GITHUB_FORK" \
+              --target "$TARGET" \
+              --title "$RELEASE_NAME" \
+              --prerelease \
+              --latest=false \
+              "${notes_args[@]}"
+            gh api "$release_api" > "$release_json"
+          fi
+          verified_assets="$(node --input-type=module - "$RUNNER_TEMP/gmacko-release.json" "${assets[@]}" <<'JS'
+          import { readFileSync, statSync } from "node:fs";
+          import { basename } from "node:path";
+
+          const [manifest, ...files] = process.argv.slice(2);
+          const release = JSON.parse(readFileSync(manifest, "utf8"));
+          if (release.draft || !release.prerelease || release.target_commitish !== process.env.TARGET) {
+            throw new Error("Published release does not match the nightly commit.");
+          }
+          const names = files.map((file) => {
+            const name = basename(file);
+            const asset = release.assets.find((asset) => asset.name === name);
+            if (asset?.state !== "uploaded" || asset.size !== statSync(file).size || asset.size === 0) {
+              throw new Error(`Published asset is missing or has the wrong size: ${name}`);
+            }
+            return name;
+          });
+          console.log(JSON.stringify(names));
+          JS
+          )"
+          echo "verified_assets=$verified_assets" >> "$GITHUB_OUTPUT"
+          echo "Verified desktop and CLI assets at https://github.com/$GITHUB_FORK/releases/tag/$TAG"
+
+  verify_delivery:
+    name: Verify nightly delivery
+    needs: [sync, release, ios_testflight]
+    if: ${{ always() && needs.sync.outputs.should_release == 'true' }}
+    runs-on: forgegraph-ci
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ secrets.GMACKO_GITHUB_TOKEN }}
+      TAG: ${{ needs.sync.outputs.tag }}
+      TARGET: ${{ needs.sync.outputs.ref }}
+      RELEASE_RESULT: ${{ needs.release.result }}
+      IOS_RESULT: ${{ needs.ios_testflight.result }}
+      VERIFIED_ASSETS: ${{ needs.release.outputs.verified_assets }}
+      TESTFLIGHT_DELIVERY: ${{ needs.ios_testflight.outputs.delivery }}
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.14.0
+
+      - name: Record verified delivery
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$RELEASE_RESULT" != success || "$IOS_RESULT" != success ]]; then
+            echo "::error::Nightly delivery incomplete for $TARGET (desktop and CLI: $RELEASE_RESULT, TestFlight: $IOS_RESULT)."
+            exit 1
+          fi
+          node --input-type=module > "$RUNNER_TEMP/nightly-delivery.json" <<'JS'
+          const { TAG, TARGET, VERIFIED_ASSETS, TESTFLIGHT_DELIVERY } = process.env;
+          const assets = JSON.parse(VERIFIED_ASSETS);
+          const testFlight = JSON.parse(TESTFLIGHT_DELIVERY);
+          if (testFlight.buildNumber !== TAG.split(".").at(-1) || !testFlight.buildId || !assets.length) {
+            throw new Error("Delivery evidence does not match the nightly.");
+          }
+          console.log(JSON.stringify({ tag: TAG, commit: TARGET, assets, testFlight }, null, 2));
+          JS
+          release_json="$(curl -fsS --retry 3 -H "Authorization: Bearer $GH_TOKEN" \
+            "https://api.github.com/repos/$GITHUB_FORK/releases/tags/$TAG")"
+          upload_url="$(node -e '
+            const release = JSON.parse(process.argv[1]);
+            if (release.draft || !release.prerelease || release.target_commitish !== process.env.TARGET) {
+              throw new Error("Published release does not match the nightly commit.");
+            }
+            if (!release.assets.some((asset) => asset.name === "nightly-delivery.json" && asset.state === "uploaded")) {
+              process.stdout.write(release.upload_url.split("{")[0]);
+            }
+          ' "$release_json")"
+          if [[ -n "$upload_url" ]]; then
+            curl -fsS -H "Authorization: Bearer $GH_TOKEN" -H "Content-Type: application/json" \
+              --data-binary "@$RUNNER_TEMP/nightly-delivery.json" "$upload_url?name=nightly-delivery.json" >/dev/null
+          fi
+          cat "$RUNNER_TEMP/nightly-delivery.json"
+          echo "Verified https://github.com/$GITHUB_FORK/releases/tag/$TAG"

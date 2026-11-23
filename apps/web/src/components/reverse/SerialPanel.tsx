@@ -1,3 +1,4 @@
+import { msg, useMessages } from "gt-react";
 import { useLayoutEffect, useRef, useState } from "react";
 import type { ScopedThreadRef } from "@t3tools/contracts";
 import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
@@ -41,6 +42,8 @@ function SerialSessionView({
   label: string;
   onClosed: () => void;
 }) {
+  const m = useMessages();
+
   const output = useEnvironmentQuery(
     reverseEnvironment.serialOutput({
       environmentId: threadRef.environmentId,
@@ -57,6 +60,7 @@ function SerialSessionView({
   const text = output.data?.text ?? "";
   // Follow new output while the reader stays at the bottom; scrolling up pauses it.
   const stickToBottom = useRef(true);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Keep the serial log DOM scrolled to new output only while the reader remains at the bottom.
   useLayoutEffect(() => {
     const element = log.current;
     if (text && element && stickToBottom.current) element.scrollTop = element.scrollHeight;
@@ -103,12 +107,12 @@ function SerialSessionView({
             })
           }
         >
-          Close
+          {m(msg("Close"))}
         </Button>
       </div>
       <pre
         ref={log}
-        aria-label={`Serial output of ${label}`}
+        aria-label={m(msg("Serial output of {value0}", { value0: label }))}
         onScroll={(event) => {
           const element = event.currentTarget;
           stickToBottom.current =
@@ -131,8 +135,8 @@ function SerialSessionView({
         }}
       >
         <Input
-          aria-label="Text to send"
-          placeholder="Text to send"
+          aria-label={m(msg("Text to send"))}
+          placeholder={m(msg("Text to send"))}
           value={line}
           onChange={(event) => setLine(event.target.value)}
         />
@@ -142,13 +146,15 @@ function SerialSessionView({
             if (value !== null) setEnding(value);
           }}
         >
-          <SelectTrigger size="xs" className="w-24" aria-label="Line ending">
-            <SelectValue>{ending === "none" ? "No ending" : ending.toUpperCase()}</SelectValue>
+          <SelectTrigger size="xs" className="w-24" aria-label={m(msg("Line ending"))}>
+            <SelectValue>
+              {ending === "none" ? m(msg("No ending")) : ending.toUpperCase()}
+            </SelectValue>
           </SelectTrigger>
           <SelectPopup>
             {(Object.keys(LINE_ENDINGS) as LineEnding[]).map((key) => (
               <SelectItem key={key} value={key}>
-                {key === "none" ? "No ending" : key.toUpperCase()}
+                {key === "none" ? m(msg("No ending")) : key.toUpperCase()}
               </SelectItem>
             ))}
           </SelectPopup>
@@ -159,7 +165,7 @@ function SerialSessionView({
           variant="outline"
           disabled={busy || (!line && ending === "none")}
         >
-          Send
+          {m(msg("Send"))}
         </Button>
       </form>
       {error && (
@@ -179,6 +185,8 @@ export function SerialPanel({
   threadRef: ScopedThreadRef;
   projectId: string;
 }) {
+  const m = useMessages();
+
   const ports = useEnvironmentQuery(
     reverseEnvironment.serialPorts({
       environmentId: threadRef.environmentId,
@@ -194,13 +202,14 @@ export function SerialPanel({
   const sessions = ports.data?.sessions ?? [];
 
   return (
-    <section aria-label="Serial" className="space-y-2 border-t border-border p-3">
-      <h3 className="text-xs font-medium">Serial</h3>
+    <section aria-label={m(msg("Serial"))} className="space-y-2 border-t border-border p-3">
+      <h3 className="text-xs font-medium">{m(msg("Serial"))}</h3>
       <div className="flex flex-wrap items-center gap-2">
         <Select value={port} onValueChange={setPort}>
-          <SelectTrigger size="xs" className="w-56" aria-label="Serial port">
+          <SelectTrigger size="xs" className="w-56" aria-label={m(msg("Serial port"))}>
             <SelectValue>
-              {port ?? (available.length ? "Choose a port" : "No serial ports found")}
+              {port ??
+                (available.length ? m(msg("Choose a port")) : m(msg("No serial ports found")))}
             </SelectValue>
           </SelectTrigger>
           <SelectPopup>
@@ -217,7 +226,7 @@ export function SerialPanel({
             if (value !== null) setBaud(value);
           }}
         >
-          <SelectTrigger size="xs" className="w-24" aria-label="Baud rate">
+          <SelectTrigger size="xs" className="w-24" aria-label={m(msg("Baud rate"))}>
             <SelectValue>{baud}</SelectValue>
           </SelectTrigger>
           <SelectPopup>
@@ -250,10 +259,10 @@ export function SerialPanel({
             }
           }}
         >
-          Open
+          {m(msg("Open"))}
         </Button>
         <Button size="xs" variant="ghost" onClick={() => ports.refresh()}>
-          Refresh ports
+          {m(msg("Refresh ports"))}
         </Button>
       </div>
       {error && (
@@ -267,7 +276,7 @@ export function SerialPanel({
           threadRef={threadRef}
           projectId={projectId}
           sessionId={session.id}
-          label={`${session.port} · ${session.baud} baud`}
+          label={m(msg("{value0} · {value1} baud", { value0: session.port, value1: session.baud }))}
           onClosed={() => ports.refresh()}
         />
       ))}

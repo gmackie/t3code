@@ -1,33 +1,48 @@
 import { Toolbar } from "@base-ui/react/toolbar";
 import { type ProviderInstanceId } from "@t3tools/contracts";
 import { memo, useLayoutEffect, useRef, useState } from "react";
-import { SparklesIcon, StarIcon } from "lucide-react";
+import { msg, T, useMessages } from "gt-react";
+import { StarIcon } from "lucide-react";
 import { ProviderInstanceIcon } from "./ProviderInstanceIcon";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { cn } from "~/lib/utils";
+import type { MessageResolver } from "../../i18n/messages";
 import {
   isProviderInstancePickerReady,
   shouldShowInstanceBadge,
   type ProviderInstanceEntry,
 } from "../../providerInstances";
 
-function describeUnavailableInstance(entry: ProviderInstanceEntry): string {
+function describeUnavailableInstance(
+  entry: ProviderInstanceEntry,
+  resolve: MessageResolver,
+): string {
   const label = entry.displayName;
-  if (!entry.enabled || entry.status === "disabled") {
-    return `${label}: Disabled in settings.`;
+  // An unavailable instance (a driver this build lacks or the policy leaves out) says why instead.
+  if ((!entry.enabled && entry.isAvailable) || entry.status === "disabled") {
+    return resolve(msg("{label}: Disabled in settings.", { label }));
   }
   if (entry.status === "ready" && entry.isAvailable) {
     return label;
   }
-  const kind =
-    entry.status === "error" ? "Unavailable" : entry.status === "warning" ? "Limited" : "Not ready";
-  const msg = entry.snapshot.message?.trim();
-  return msg ? `${label}: ${kind}. ${msg}` : `${label}: ${kind}.`;
+  const message = entry.snapshot.message?.trim();
+  if (message) {
+    return resolve(
+      entry.status === "error"
+        ? msg("{label}: Unavailable. {message}", { label, message })
+        : entry.status === "warning"
+          ? msg("{label}: Limited. {message}", { label, message })
+          : msg("{label}: Not ready. {message}", { label, message }),
+    );
+  }
+  return resolve(
+    entry.status === "error"
+      ? msg("{label}: Unavailable.", { label })
+      : entry.status === "warning"
+        ? msg("{label}: Limited.", { label })
+        : msg("{label}: Not ready.", { label }),
+  );
 }
-
-const BADGE_BASE_CLASS =
-  "pointer-events-none absolute -right-0.5 top-0.5 z-10 flex size-3.5 items-center justify-center rounded-full bg-transparent shadow-sm ";
-const NEW_BADGE_CLASS = `${BADGE_BASE_CLASS} text-update-foreground `;
 
 const PICKER_TOOLTIP_SIDE = "left" as const;
 const PICKER_TOOLTIP_SIDE_OFFSET = 8;
@@ -41,8 +56,8 @@ export const ModelPickerSidebar = memo(function ModelPickerSidebar(props: {
   disabledInstanceIds?: ReadonlySet<ProviderInstanceId>;
   selectableUnavailableInstanceIds?: ReadonlySet<ProviderInstanceId>;
   getDisabledInstanceTooltip?: (entry: ProviderInstanceEntry) => string;
-  newBadgeInstanceIds?: ReadonlySet<ProviderInstanceId>;
 }) {
+  const m = useMessages();
   const handleSelect = (instanceId: ProviderInstanceId | "favorites") => {
     props.onSelectInstance(instanceId);
   };
@@ -50,6 +65,7 @@ export const ModelPickerSidebar = memo(function ModelPickerSidebar(props: {
   const [hoveredInstanceId, setHoveredInstanceId] = useState<ProviderInstanceId | null>(null);
   const sidebarContentRef = useRef<HTMLDivElement>(null);
   const [selectedIndicatorTop, setSelectedIndicatorTop] = useState<number | null>(null);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- reads the selected provider item's DOM offset to position the selection indicator
   useLayoutEffect(() => {
     const content = sidebarContentRef.current;
     if (!content) {
@@ -74,7 +90,7 @@ export const ModelPickerSidebar = memo(function ModelPickerSidebar(props: {
     <Toolbar.Root
       className="w-11 shrink-0 overflow-hidden bg-muted/30"
       data-model-picker-sidebar="true"
-      aria-label="Providers"
+      aria-label={m(msg("Providers"))}
       orientation="vertical"
       onKeyDown={(event) => {
         if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
@@ -106,7 +122,7 @@ export const ModelPickerSidebar = memo(function ModelPickerSidebar(props: {
                         )}
                         onClick={() => handleSelect("favorites")}
                         type="button"
-                        aria-label="Favorites"
+                        aria-label={m(msg("Favorites"))}
                         aria-pressed={props.selectedInstanceId === "favorites"}
                       >
                         <StarIcon className="size-5 fill-current shrink-0" aria-hidden />
@@ -118,7 +134,7 @@ export const ModelPickerSidebar = memo(function ModelPickerSidebar(props: {
                     sideOffset={PICKER_TOOLTIP_SIDE_OFFSET}
                     align="center"
                   >
-                    Favorites
+                    <T>Favorites</T>
                   </TooltipPopup>
                 </Tooltip>
               </div>
@@ -135,16 +151,13 @@ export const ModelPickerSidebar = memo(function ModelPickerSidebar(props: {
               (isUnavailable && !unavailableSelectionIsReachable) || isContextDisabled;
             const isSelected = props.selectedInstanceId === entry.instanceId;
             const isHovered = hoveredInstanceId === entry.instanceId;
-            const showNewBadge = props.newBadgeInstanceIds?.has(entry.instanceId) ?? false;
             const showInstanceBadge = shouldShowInstanceBadge(entry, props.instanceEntries);
 
             const tooltip = isUnavailable
-              ? describeUnavailableInstance(entry)
+              ? describeUnavailableInstance(entry, m)
               : isContextDisabled
                 ? (props.getDisabledInstanceTooltip?.(entry) ?? entry.displayName)
-                : showNewBadge
-                  ? `${entry.displayName} (New)`
-                  : entry.displayName;
+                : entry.displayName;
 
             const button = (
               <Toolbar.Button
@@ -166,13 +179,7 @@ export const ModelPickerSidebar = memo(function ModelPickerSidebar(props: {
                 focusableWhenDisabled={!isDisabled}
                 aria-pressed={isSelected}
                 type="button"
-                aria-label={
-                  isUnavailable || isContextDisabled
-                    ? tooltip
-                    : showNewBadge
-                      ? `${entry.displayName}, new`
-                      : entry.displayName
-                }
+                aria-label={isUnavailable || isContextDisabled ? tooltip : entry.displayName}
               >
                 <ProviderInstanceIcon
                   driverKind={entry.driverKind}
@@ -192,11 +199,6 @@ export const ModelPickerSidebar = memo(function ModelPickerSidebar(props: {
                   }
                   {...(entry.accentColor ? { badgeClassName: "h-3 min-w-3 px-0.5 text-5xs" } : {})}
                 />
-                {showNewBadge ? (
-                  <span className={NEW_BADGE_CLASS} aria-hidden>
-                    <SparklesIcon className="size-2" />
-                  </span>
-                ) : null}
               </Toolbar.Button>
             );
 

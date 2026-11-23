@@ -85,7 +85,10 @@ interface ResolveDesktopAppDisplayNameInput extends DesktopAppIdentityOptions {
   readonly baseDisplayName: string;
 }
 
+/** Dev apps from linked worktrees carry the worktree name, so each one is distinguishable in the Dock. */
 export function resolveDesktopAppDisplayName(input: ResolveDesktopAppDisplayNameInput): string {
-  void input;
-  return input.baseDisplayName;
+  const worktreeName = resolveGitWorktreeName(input.cwd, input);
+  return worktreeName === null
+    ? input.baseDisplayName
+    : `${input.baseDisplayName} - ${worktreeName}`;
 }

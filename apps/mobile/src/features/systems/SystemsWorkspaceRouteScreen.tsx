@@ -1,4 +1,5 @@
-import { useAtomSet, useAtomValue } from "@effect/atom-react";
+import { msg, useMessages } from "gt-react-native";
+import { useAtomValue } from "@effect/atom-react";
 import { useNavigation, type StaticScreenProps } from "@react-navigation/native";
 import { EnvironmentId, ProjectId, type SystemsCompileResult } from "@t3tools/contracts";
 import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
@@ -14,7 +15,7 @@ import { ErrorBanner } from "../../components/ui/ErrorBanner";
 import { ListSection } from "../../components/ui/ListSection";
 import { uuidv4 } from "../../lib/uuid";
 import { NativeStackScreenOptions } from "../../native/StackHeader";
-import { mobilePreferencesAtom, updateMobilePreferencesAtom } from "../../state/preferences";
+import { mobilePreferencesAtom, saveMobilePreferences } from "../../state/preferences";
 import { useEnvironmentQuery } from "../../state/query";
 import { systemsEnvironment } from "../../state/systems";
 import { useAtomCommand } from "../../state/use-atom-command";
@@ -29,12 +30,14 @@ type Props = StaticScreenProps<{
 }>;
 
 export function SystemsWorkspaceRouteScreen({ route }: Props) {
+  const m = useMessages();
+
   const { environmentId, threadId, projectId } = route.params;
   const preferences = useAtomValue(mobilePreferencesAtom);
   const key = systemsPathKey(environmentId, projectId);
   return (
     <View className="flex-1 bg-screen">
-      <NativeStackScreenOptions options={{ title: "Systems" }} />
+      <NativeStackScreenOptions options={{ title: m(msg("Systems")) }} />
       {AsyncResult.isInitial(preferences) ? null : (
         <ProjectSystems
           key={key}
@@ -56,9 +59,11 @@ function ProjectSystems(props: {
   readonly projectId: ProjectId;
   readonly storedPath: string;
 }) {
+  const m = useMessages();
+
   const { environmentId, projectId } = props;
   const navigation = useNavigation();
-  const updatePreferences = useAtomSet(updateMobilePreferencesAtom);
+  const updatePreferences = useAtomCommand(saveMobilePreferences);
   const [draft, setDraft] = useState(props.storedPath);
   const [path, setPath] = useState(props.storedPath);
   const [editing, setEditing] = useState<string | null>(null);
@@ -122,12 +127,12 @@ function ProjectSystems(props: {
     >
       <View className="gap-2">
         <Text textRole="footnote" className="text-foreground-muted">
-          Models · experiments · runs · traces
+          {m(msg("Models · experiments · runs · traces"))}
         </Text>
         <View className="flex-row items-center gap-2">
           <AppTextInput
-            accessibilityLabel="Systems project folder relative to the project"
-            placeholder="Folder with systems.project.json (empty for the root)"
+            accessibilityLabel={m(msg("Systems project folder relative to the project"))}
+            placeholder={m(msg("Folder with systems.project.json (empty for the root)"))}
             autoCapitalize="none"
             autoCorrect={false}
             returnKeyType="go"
@@ -136,14 +141,14 @@ function ProjectSystems(props: {
             onSubmitEditing={open}
             className="min-h-11 min-w-0 flex-1 rounded-xl border-continuous bg-card px-3 text-base text-foreground"
           />
-          <Button label="Open" onPress={open} />
+          <Button label={m(msg("Open"))} onPress={open} />
         </View>
       </View>
 
       {problem ? <ErrorBanner message={problem} /> : null}
       {validation.isPending && !validation.data ? (
         <Text textRole="footnote" className="text-foreground-muted">
-          Validating…
+          {m(msg("Validating…"))}
         </Text>
       ) : null}
 
@@ -156,7 +161,7 @@ function ProjectSystems(props: {
             />
           </Section>
 
-          <Section title="Compiled entrypoints">
+          <Section title={m(msg("Compiled entrypoints"))}>
             {compiled.error ? (
               <Text textRole="footnote" className="text-danger-foreground">
                 {compiled.error}
@@ -164,7 +169,7 @@ function ProjectSystems(props: {
             ) : null}
             {compiled.data?.entries.length === 0 ? (
               <Text textRole="footnote" className="text-foreground-muted">
-                No entrypoints.
+                {m(msg("No entrypoints."))}
               </Text>
             ) : null}
             {compiled.data?.entries.map((entry) => (
@@ -188,10 +193,10 @@ function ProjectSystems(props: {
             ))}
           </Section>
 
-          <Section title="Experiments">
+          <Section title={m(msg("Experiments"))}>
             {validation.data.experiments.length === 0 ? (
               <Text textRole="footnote" className="text-foreground-muted">
-                No *.run.json under experiments/.
+                {m(msg("No *.run.json under experiments/."))}
               </Text>
             ) : null}
             {validation.data.experiments.map((experimentRef) => (
@@ -200,9 +205,9 @@ function ProjectSystems(props: {
                   {experimentRef}
                 </Text>
                 <Button
-                  label="Run"
+                  label={m(msg("Run"))}
                   tone="primary"
-                  accessibilityLabel={`Run ${experimentRef}`}
+                  accessibilityLabel={m(msg("Run {value0}", { value0: experimentRef }))}
                   disabled={busy}
                   onPress={() => void run(experimentRef)}
                 />
@@ -210,7 +215,7 @@ function ProjectSystems(props: {
             ))}
           </Section>
 
-          <Section title="Runs">
+          <Section title={m(msg("Runs"))}>
             {live.error ? (
               <Text textRole="footnote" className="text-danger-foreground">
                 {live.error}
@@ -218,14 +223,19 @@ function ProjectSystems(props: {
             ) : null}
             {runs.length === 0 ? (
               <Text textRole="footnote" className="text-foreground-muted">
-                No runs yet.
+                {m(msg("No runs yet."))}
               </Text>
             ) : null}
             {runs.map((item) => (
               <Pressable
                 key={item.runId}
                 accessibilityRole="button"
-                accessibilityLabel={`Open run ${item.experimentId}, ${item.status}`}
+                accessibilityLabel={m(
+                  msg("Open run {value0}, {value1}", {
+                    value0: item.experimentId,
+                    value1: item.status,
+                  }),
+                )}
                 onPress={() => openRun(item.runId)}
                 className="gap-1 active:opacity-60"
               >
@@ -262,6 +272,8 @@ function Entrypoint(props: {
   readonly onToggleEditing: () => void;
   readonly children: ReactNode;
 }) {
+  const m = useMessages();
+
   const { entry } = props;
   return (
     <View className="gap-1.5">
@@ -271,13 +283,18 @@ function Entrypoint(props: {
         </Text>
         <Chip
           size="small"
-          label="Edit parameters"
+          label={m(msg("Edit parameters"))}
           selected={props.editing}
-          accessibilityLabel={`Edit parameters of ${entry.entry}`}
+          accessibilityLabel={m(msg("Edit parameters of {value0}", { value0: entry.entry }))}
           onPress={props.onToggleEditing}
         />
       </View>
-      {entry.systemId ? <Text textRole="footnote">System {entry.systemId}</Text> : null}
+      {entry.systemId ? (
+        <Text textRole="footnote">
+          {m(msg("System "))}
+          {entry.systemId}
+        </Text>
+      ) : null}
       {entry.semanticDigest ? (
         <Text selectable textRole="caption" className="font-mono text-foreground-muted">
           semantic {entry.semanticDigest}
@@ -290,14 +307,18 @@ function Entrypoint(props: {
       ) : null}
       {entry.schedule ? (
         <Text textRole="caption" className="text-foreground-muted">
-          {entry.schedule.nodes} nodes · {entry.schedule.charts} charts ·{" "}
+          {entry.schedule.nodes}
+          {m(msg(" nodes · "))}
+          {entry.schedule.charts}
+          {m(msg(" charts · "))}{" "}
           {entry.schedule.clocks
             .map(
               (clock) =>
                 `${clock.id} every ${formatTime(clock.period)} s (${clock.steps.length} steps)`,
             )
-            .join(", ") || "no clocks"}{" "}
-          · continuous {entry.schedule.continuousOrder.join(" → ") || "none"}
+            .join(", ") || m(msg("no clocks"))}{" "}
+          {m(msg("· continuous "))}
+          {entry.schedule.continuousOrder.join(" → ") || "none"}
         </Text>
       ) : null}
       <SystemsDiagnostics diagnostics={entry.diagnostics} empty="Compiles cleanly." />

@@ -1,7 +1,7 @@
 import { OrchestratorMcpFailure } from "@t3tools/contracts";
 import { BobOperationInput } from "@t3tools/contracts/bobCoordination";
 import * as Schema from "effect/Schema";
-import { Tool, Toolkit } from "effect/ai";
+import { McpSchema, Tool, Toolkit } from "effect/ai";
 import * as Bob from "../../../coordination/BobCoordination.ts";
 import * as ThreadManagement from "../../../orchestration-v2/ThreadManagementService.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
@@ -22,5 +22,6 @@ export const CoordinationToolkit = Toolkit.make(
     ],
   })
     .annotate(Tool.Destructive, true)
-    .annotate(Tool.OpenWorld, true),
+    .annotate(Tool.OpenWorld, true)
+    .annotate(McpSchema.EnabledWhen, McpInvocationContext.hiddenFromOutsideClients),
 );

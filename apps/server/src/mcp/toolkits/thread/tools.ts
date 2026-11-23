@@ -19,10 +19,11 @@ import {
   RunId,
   NonNegativeInt,
   ProjectId,
+  clampedPositiveInt,
 } from "@t3tools/contracts";
-import * as Crypto from "effect/Crypto";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as Schema from "effect/Schema";
-import { Tool, Toolkit } from "effect/ai";
+import { McpSchema, Tool, Toolkit } from "effect/ai";
 
 import * as ThreadSearch from "../../../orchestration-v2/ThreadSearch.ts";
 import * as ScheduledTaskService from "../../../scheduledTasks/ScheduledTaskService.ts";
@@ -57,10 +58,11 @@ const ThreadOrganizeTool = Tool.make("t3_thread_organize", {
   dependencies: [
     McpInvocationContext.McpInvocationContext,
     ThreadManagementService.ThreadManagementService,
-    Crypto.Crypto,
+    SecureRandom.SecureRandom,
   ],
 })
   .annotate(Tool.Title, "Organize a thread")
+  .annotate(Tool.Strict, true)
   .annotate(Tool.Destructive, true);
 
 const commandTool = {
@@ -70,7 +72,7 @@ const commandTool = {
   dependencies: [
     McpInvocationContext.McpInvocationContext,
     ThreadManagementService.ThreadManagementService,
-    Crypto.Crypto,
+    SecureRandom.SecureRandom,
   ],
 };
 const queueEntry = Schema.Struct({
@@ -84,7 +86,6 @@ const QueueTool = Tool.make("t3_queue", {
   description:
     "Manage a thread's queued messages. Omit `threadId` for this thread. list: send order, paged by `cursor` and `limit`. read: up to 16,000 chars of one. edit: replace its `text`; attachments stay. cancel. reorder: before `beforeRunId`, or to the end with null. promote_to_steer: send it now as steering to active `targetRunId`. Writes fail once the run is no longer queued.",
   parameters: Schema.Struct({
-    environmentId: OrchestratorMcpEnvironmentTarget,
     action: Schema.Literals([
       ...QUEUE_READ_ACTIONS,
       "edit",
@@ -92,13 +93,14 @@ const QueueTool = Tool.make("t3_queue", {
       "reorder",
       "promote_to_steer",
     ]),
+    environmentId: OrchestratorMcpEnvironmentTarget,
     threadId: Schema.optional(ThreadId),
     queuedRunId: Schema.optional(RunId),
     text: Schema.optional(Schema.String.check(Schema.isMaxLength(100000))),
     beforeRunId: Schema.optional(Schema.NullOr(RunId)),
     targetRunId: Schema.optional(RunId),
     cursor: Schema.optional(NonNegativeInt),
-    limit: Schema.optional(Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 100 }))),
+    limit: Schema.optional(clampedPositiveInt(100)),
   }),
   success: Schema.Union([
     Schema.Struct({ items: Schema.Array(queueEntry), nextCursor: Schema.NullOr(NonNegativeInt) }),
@@ -116,6 +118,7 @@ const question = Schema.Struct({
       label: Schema.String,
       description: Schema.String,
       value: Schema.optional(Schema.String),
+      preview: Schema.optional(Schema.String),
     }),
   ),
   multiSelect: Schema.optional(Schema.Boolean),
@@ -128,8 +131,8 @@ const PendingRequestTool = Tool.make("t3_pending_request", {
   description:
     "Pending user questions in a thread. Omit `threadId` for this thread. list: their ids; approvals are not listed. read: one by `requestId`. respond: answer one with `answers`; this cannot approve a permission request.",
   parameters: Schema.Struct({
-    environmentId: OrchestratorMcpEnvironmentTarget,
     action: Schema.Literals(["list", "read", "respond"]),
+    environmentId: OrchestratorMcpEnvironmentTarget,
     threadId: Schema.optional(ThreadId),
     requestId: Schema.optional(RuntimeRequestId),
     answers: Schema.optional(ProviderUserInputAnswers),
@@ -166,8 +169,8 @@ const ThreadTransferTool = Tool.make("t3_thread_transfer", {
   description:
     "Move context between threads. Omit `threadId` for this thread. fork: copy it from `sourcePoint` (default latest stable run) into a new thread with the same setup; no turn runs yet. merge_back: merge it from `sourcePoint` into a related `targetThreadId` in the same project. status: its context transfers.",
   parameters: Schema.Struct({
-    environmentId: OrchestratorMcpEnvironmentTarget,
     action: Schema.Literals(["fork", "merge_back", "status"]),
+    environmentId: OrchestratorMcpEnvironmentTarget,
     threadId: Schema.optional(ThreadId),
     sourcePoint: Schema.optional(OrchestrationV2ThreadForkSourcePoint),
     targetThreadId: Schema.optional(ThreadId),
@@ -198,6 +201,7 @@ const ThreadSearchTool = Tool.make("t3_thread_search", {
     projectId: Schema.optional(ProjectId),
   }),
   success: Schema.Struct({
+    currentThreadId: Schema.optional(Schema.NullOr(ThreadId)),
     matches: Schema.Array(
       Schema.Struct({
         threadId: OrchestrationThreadSearchMatch.fields.threadId,
@@ -226,7 +230,9 @@ const ScheduledTaskRunTool = Tool.make("run_scheduled_task_now", {
   success: Schema.Struct({
     taskId: ScheduledTaskId,
     threadId: ScheduledTask.fields.threadId,
+    link: Schema.optional(Schema.String),
     lastRunStatus: ScheduledTask.fields.lastRunStatus,
+    lastRunError: ScheduledTask.fields.lastRunError,
     runCount: NonNegativeInt,
     nextRunAt: ScheduledTask.fields.nextRunAt,
   }),
@@ -234,6 +240,19 @@ const ScheduledTaskRunTool = Tool.make("run_scheduled_task_now", {
 })
   .annotate(Tool.Destructive, true)
   .annotate(Tool.OpenWorld, true);
+
+const SubmitOutputTool = Tool.make("t3_submit_output", {
+  ...commandTool,
+  description:
+    "Return this turn's result as data, when the message asked for one. `json`: JSON text matching the schema it gave. A rejection says what did not fit; fix it and call again.",
+  // Stored on the run, which every client of the thread holds.
+  parameters: Schema.Struct({ json: Schema.String.check(Schema.isMaxLength(200000)) }),
+  success: Schema.Struct({ runId: RunId }),
+})
+  // It writes only the caller's own run, so a read-only or plan-mode agent can still answer.
+  .annotate(Tool.Readonly, true)
+  .annotate(Tool.Destructive, false)
+  .annotate(McpSchema.EnabledWhen, McpInvocationContext.hiddenFromOutsideClients);
 
 export const ThreadToolkit = Toolkit.make(
   ScheduledTaskRunTool,
@@ -243,4 +262,5 @@ export const ThreadToolkit = Toolkit.make(
   ThreadOrganizeTool,
   PendingRequestTool,
   QueueTool,
+  SubmitOutputTool,
 );

@@ -1,5 +1,8 @@
-import { useEffect, useRef, useState } from "react";
+import { msg, useMessages } from "gt-react";
+import { useMemo, useState } from "react";
 import { Maximize, Minus, Plus } from "lucide-react";
+import { useEnvironmentQuery } from "../state/query";
+import { cadQuery } from "./query";
 
 export type LibraryKind = "footprint" | "symbol";
 import type { KiCadLibraryMember as LibraryMember } from "@t3tools/contracts";
@@ -33,25 +36,27 @@ export function LibraryView({
   revision: string;
   read: LibraryRead;
 }) {
-  const [members, setMembers] = useState<LibraryMember[]>([]);
+  return <LibraryContent key={`${kind}:${path}:${revision}`} kind={kind} path={path} read={read} />;
+}
+
+function LibraryContent({
+  kind,
+  path,
+  read,
+}: {
+  kind: LibraryKind;
+  path: string;
+  read: LibraryRead;
+}) {
+  const m = useMessages();
+
+  const result = useEnvironmentQuery(
+    useMemo(() => cadQuery(async (signal) => payload(await read(path, signal))), [path, read]),
+  );
+  const members = result.data ?? [];
+  const error = result.error;
   const [selected, setSelected] = useState(0);
-  const [error, setError] = useState("");
   const [zoom, setZoom] = useState(1);
-  const readRef = useRef(read);
-  readRef.current = read;
-  useEffect(() => {
-    const controller = new AbortController();
-    setMembers([]);
-    setSelected(0);
-    setError("");
-    readRef
-      .current(path, controller.signal)
-      .then((text) => setMembers(payload(text)))
-      .catch((cause) => {
-        if (!controller.signal.aborted) setError(String(cause));
-      });
-    return () => controller.abort();
-  }, [path, revision]);
   const item = members[selected] ?? members[0];
   const src = item ? `data:image/svg+xml;charset=utf-8,${encodeURIComponent(item.svg)}` : "";
   return (
@@ -75,7 +80,7 @@ export function LibraryView({
         <button
           type="button"
           className="kicad-icon-button"
-          aria-label="Zoom out"
+          aria-label={m(msg("Zoom out"))}
           onClick={() => setZoom((z) => z / 1.4)}
         >
           <Minus size={14} />
@@ -83,7 +88,7 @@ export function LibraryView({
         <button
           type="button"
           className="kicad-icon-button"
-          aria-label={`Fit ${kind}`}
+          aria-label={m(msg("Fit {value0}", { value0: kind }))}
           onClick={() => setZoom(1)}
         >
           <Maximize size={14} />
@@ -91,7 +96,7 @@ export function LibraryView({
         <button
           type="button"
           className="kicad-icon-button"
-          aria-label="Zoom in"
+          aria-label={m(msg("Zoom in"))}
           onClick={() => setZoom((z) => z * 1.4)}
         >
           <Plus size={14} />
@@ -112,8 +117,8 @@ export function LibraryView({
           >
             {error ||
               (members.length === 0 && path
-                ? "No exported preview available."
-                : "Loading library preview…")}
+                ? m(msg("No exported preview available."))
+                : m(msg("Loading library preview…")))}
           </div>
         )}
       </div>

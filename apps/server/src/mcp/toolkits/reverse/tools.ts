@@ -32,7 +32,7 @@ import {
   ReverseFindingRecord,
   ReverseFindingUpdateInput,
 } from "@t3tools/contracts";
-import { Tool, Toolkit } from "effect/ai";
+import { McpSchema, Tool, Toolkit } from "effect/ai";
 
 import * as ThreadManagementService from "../../../orchestration-v2/ThreadManagementService.ts";
 import * as ReverseWorkbench from "../../../reverse/ReverseWorkbench.ts";
@@ -135,7 +135,8 @@ const VeritasReQueryTool = Tool.make("t3_veritas_re_query", {
 })
   .annotate(Tool.Readonly, true)
   .annotate(Tool.Destructive, false)
-  .annotate(Tool.OpenWorld, true);
+  .annotate(Tool.OpenWorld, true)
+  .annotate(McpSchema.EnabledWhen, McpInvocationContext.hiddenFromOutsideClients);
 
 const ReverseCaptureImportTool = Tool.make("t3_reverse_capture_import", {
   ...shared,
@@ -173,7 +174,8 @@ const ReverseSerialPortsTool = Tool.make("t3_reverse_serial_ports", {
   success: ReverseSerialPortsResult,
 })
   .annotate(Tool.Readonly, true)
-  .annotate(Tool.Destructive, false);
+  .annotate(Tool.Destructive, false)
+  .annotate(McpSchema.EnabledWhen, McpInvocationContext.hiddenFromOutsideClients);
 
 const ReverseSerialReadTool = Tool.make("t3_reverse_serial_read", {
   ...shared,
@@ -183,7 +185,8 @@ const ReverseSerialReadTool = Tool.make("t3_reverse_serial_read", {
   success: ReverseSerialRecentResult,
 })
   .annotate(Tool.Readonly, true)
-  .annotate(Tool.Destructive, false);
+  .annotate(Tool.Destructive, false)
+  .annotate(McpSchema.EnabledWhen, McpInvocationContext.hiddenFromOutsideClients);
 
 const ReverseFindingCreateTool = Tool.make("t3_reverse_finding_create", {
   ...shared,

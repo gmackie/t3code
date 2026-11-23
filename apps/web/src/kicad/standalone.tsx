@@ -1,6 +1,8 @@
+import { m } from "~/i18n/messages";
+import { msg, useMessages } from "gt-react";
 /* eslint-disable react/iframe-missing-sandbox -- The bundled CAD runtime needs same-origin module and worker access. */
 import { createRoot } from "react-dom/client";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import {
   Box,
   CircuitBoard,
@@ -39,23 +41,28 @@ type Manifest = KiCadProjectManifest & {
   warnings?: string[];
 };
 const tabs = [
-  { id: "veritas", label: "Veritas", icon: Cpu },
-  { id: "gerbers", label: "GERBERs", icon: Layers3 },
+  { id: "veritas", label: m(msg("Veritas")), icon: Cpu },
+  { id: "gerbers", label: m(msg("GERBERs")), icon: Layers3 },
   { id: "pcb", label: "PCB", icon: CircuitBoard },
-  { id: "schematic", label: "Schematic", icon: FileText },
-  { id: "3d", label: "3D model", icon: Box },
+  { id: "schematic", label: m(msg("Schematic")), icon: FileText },
+  { id: "3d", label: m(msg("3D model")), icon: Box },
 ] as const;
 const optionalTabs = [
   { id: "bom", label: "BOM", icon: List },
-  { id: "footprint", label: "Footprints", icon: Shapes },
-  { id: "symbol", label: "Symbols", icon: Cpu },
-  { id: "analysis", label: "EMerge / Analysis", icon: Radio },
+  { id: "footprint", label: m(msg("Footprints")), icon: Shapes },
+  { id: "symbol", label: m(msg("Symbols")), icon: Cpu },
+  { id: "analysis", label: m(msg("EMerge / Analysis")), icon: Radio },
 ] as const;
 const allTabs = [...tabs, ...optionalTabs];
 const params = new URLSearchParams(location.hash.slice(1));
 const apiBase = params.get("api") || location.origin;
 const token = params.get("token") || "";
 const messageOrigin = location.origin === "null" ? "*" : location.origin;
+const subscribeVisibility = (notify: () => void) => {
+  document.addEventListener("visibilitychange", notify);
+  return () => document.removeEventListener("visibilitychange", notify);
+};
+const isVisible = () => !document.hidden;
 function apiUrl(route: string, path?: string, revision?: string) {
   const url = new URL(`${apiBase.replace(/\/$/, "")}/api/kicad/${route}`);
   url.searchParams.set("token", token);
@@ -99,9 +106,12 @@ function RuntimeView({
     | { kind: "native"; sources: KiCadViewerSource[]; revision: string }
     | { kind: "model"; url: string };
 }) {
+  const m = useMessages();
+
   const ref = useRef<HTMLIFrameElement>(null);
   const snapshotRef = useRef(snapshot);
   snapshotRef.current = snapshot;
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Send the current snapshot when this mounted runtime iframe reports readiness; remove the message listener on teardown.
   useEffect(() => {
     const send = (event: MessageEvent) => {
       if (
@@ -118,6 +128,7 @@ function RuntimeView({
     window.addEventListener("message", send);
     return () => window.removeEventListener("message", send);
   }, []);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Forward snapshot updates to the mounted model runtime through its postMessage boundary.
   useEffect(() => {
     ref.current?.contentWindow?.postMessage({ type: "k3eda-snapshot", ...snapshot }, messageOrigin);
   }, [snapshot]);
@@ -125,7 +136,7 @@ function RuntimeView({
     <iframe
       sandbox="allow-scripts allow-same-origin allow-downloads allow-popups allow-forms"
       ref={ref}
-      title={snapshot.kind === "model" ? "Prism 3D viewer" : "Prism ECAD viewer"}
+      title={snapshot.kind === "model" ? m(msg("Prism 3D viewer")) : m(msg("Prism ECAD viewer"))}
       src="/kicad-viewer/runtime.html"
       className="block h-full w-full border-0"
     />
@@ -143,6 +154,8 @@ function Notice({ text }: { text: string }) {
 }
 
 function App() {
+  const m = useMessages();
+
   const [view, setView] = useState<View>(
     allTabs.some((tab) => tab.id === params.get("view")) ? (params.get("view") as View) : "pcb",
   );
@@ -158,12 +171,8 @@ function App() {
     !params.get("view") || params.get("view") === "pcb" || params.get("view") === "schematic",
   );
   const [refresh, setRefresh] = useState(0);
-  const [visible, setVisible] = useState(!document.hidden);
-  useEffect(() => {
-    const change = () => setVisible(!document.hidden);
-    document.addEventListener("visibilitychange", change);
-    return () => document.removeEventListener("visibilitychange", change);
-  }, []);
+  const visible = useSyncExternalStore(subscribeVisibility, isVisible);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Own the standalone viewer's saved-file polling connection only while visible, cancelling its HTTP request and timer on teardown.
   useEffect(() => {
     if (!token || !visible) return;
     const controller = new AbortController();
@@ -221,6 +230,21 @@ function App() {
       : undefined) ??
     files[0];
   const revision = manifest?.revision ?? "";
+  const readAsset = useCallback(
+    async (path: string, signal: AbortSignal) =>
+      (await readResponse(apiUrl("assets", path, revision), signal)).text(),
+    [revision],
+  );
+  const readLibrary = useCallback(
+    async (path: string, signal: AbortSignal) =>
+      (await readResponse(apiUrl("library", path, revision), signal)).text(),
+    [revision],
+  );
+  const readBom = useCallback(
+    async (path: string, signal: AbortSignal) =>
+      (await readResponse(apiUrl("bom", path, revision), signal)).text(),
+    [revision],
+  );
   const boards = manifest?.files.filter((item) => item.kind === "pcb") ?? [];
   const schematics = manifest?.files.filter((item) => item.kind === "schematic") ?? [];
   const pcb =
@@ -246,7 +270,7 @@ function App() {
       <div
         className="flex shrink-0 items-center gap-1 overflow-x-auto border-b border-border px-2 py-1"
         role="tablist"
-        aria-label="KiCad views"
+        aria-label={m(msg("KiCad views"))}
       >
         {allTabs
           .filter((tab) => tabs.some((base) => base.id === tab.id) || openTabs.includes(tab.id))
@@ -268,7 +292,7 @@ function App() {
                 <button
                   type="button"
                   className="kicad-icon-button"
-                  aria-label={`Close ${label}`}
+                  aria-label={m(msg("Close {value0}", { value0: label }))}
                   onClick={() => {
                     setOpenTabs((old) => old.filter((tab) => tab !== id));
                     if (view === id) chooseView("pcb");
@@ -280,7 +304,7 @@ function App() {
             </div>
           ))}
         <select
-          aria-label="Open optional viewer tab"
+          aria-label={m(msg("Open optional viewer tab"))}
           value=""
           className="max-w-40 shrink-0 rounded border border-border bg-background px-1 py-1 text-xs"
           onChange={(event) => {
@@ -290,7 +314,7 @@ function App() {
             chooseView(next);
           }}
         >
-          <option value="">+ Open view</option>
+          <option value="">{m(msg("+ Open view"))}</option>
           {optionalTabs.map((tab) => (
             <option key={tab.id} value={tab.id}>
               {tab.label}
@@ -300,7 +324,7 @@ function App() {
         <button
           type="button"
           className="kicad-icon-button ml-auto shrink-0"
-          aria-label="Refresh saved files"
+          aria-label={m(msg("Refresh saved files"))}
           onClick={() => {
             setError(null);
             setRefresh((n) => n + 1);
@@ -312,19 +336,21 @@ function App() {
       {view !== "analysis" && view !== "veritas" && (
         <div className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-1.5 text-xs">
           <select
-            aria-label={view === "gerbers" ? "Gerber layer" : "KiCad file"}
+            aria-label={view === "gerbers" ? m(msg("Gerber layer")) : m(msg("KiCad file"))}
             value={file?.path ?? ""}
             onChange={(event) => setSelected((old) => ({ ...old, [view]: event.target.value }))}
             className="min-w-0 flex-1 rounded border border-border bg-background px-1.5 py-1 text-xs"
           >
-            {!selectableFiles.length && <option value="">No files found</option>}
+            {!selectableFiles.length && <option value="">{m(msg("No files found"))}</option>}
             {selectableFiles.map((item) => (
               <option key={item.path} value={item.path}>
                 {item.path}
               </option>
             ))}
           </select>
-          <span className="shrink-0 text-[10px] text-muted-foreground">Saved files</span>
+          <span className="shrink-0 text-[10px] text-muted-foreground">
+            {m(msg("Saved files"))}
+          </span>
         </div>
       )}
       {!!manifest?.warnings?.length && (
@@ -336,7 +362,7 @@ function App() {
         {error ? (
           <Notice text={error} />
         ) : !manifest ? (
-          <Notice text="Loading saved project…" />
+          <Notice text={m(msg("Loading saved project…"))} />
         ) : (
           <>
             {view === "veritas" && (
@@ -355,9 +381,7 @@ function App() {
                   sheets={schematics.map((item) => item.path)}
                   revision={`${revision}:${refresh}`}
                   onView={chooseView}
-                  read={async (path, signal) =>
-                    (await readResponse(apiUrl("assets", path, revision), signal)).text()
-                  }
+                  read={readAsset}
                 />
               </div>
             )}
@@ -367,13 +391,18 @@ function App() {
                   kind={libraryView}
                   path={file.path}
                   revision={`${revision}:${refresh}`}
-                  read={async (path, signal) =>
-                    (await readResponse(apiUrl("library", path, revision), signal)).text()
-                  }
+                  read={readLibrary}
                 />
               ) : (
                 <Notice
-                  text={`No ${libraryView === "footprint" ? ".kicad_mod footprints" : ".kicad_sym symbol libraries"} found in this workspace.`}
+                  text={m(
+                    msg("No {value0} found in this workspace.", {
+                      value0:
+                        libraryView === "footprint"
+                          ? ".kicad_mod footprints"
+                          : ".kicad_sym symbol libraries",
+                    }),
+                  )}
                 />
               ))}
             {openTabs.includes("analysis") && (
@@ -386,15 +415,15 @@ function App() {
             )}
             {view === "bom" &&
               (file ? (
-                <BomView
-                  path={file.path}
-                  revision={`${revision}:${refresh}`}
-                  read={async (path, signal) =>
-                    (await readResponse(apiUrl("bom", path, revision), signal)).text()
-                  }
-                />
+                <BomView path={file.path} revision={`${revision}:${refresh}`} read={readBom} />
               ) : (
-                <Notice text="No schematic found for the BOM. Select the project's root schematic in .k3eda.json." />
+                <Notice
+                  text={m(
+                    msg(
+                      "No schematic found for the BOM. Select the project's root schematic in .k3eda.json.",
+                    ),
+                  )}
+                />
               ))}
             {view === "gerbers" &&
               (file ? (
@@ -411,7 +440,13 @@ function App() {
                   }}
                 />
               ) : (
-                <Notice text="No Gerber layers found. Point gerbers in .k3eda.json at your generated output directory." />
+                <Notice
+                  text={m(
+                    msg(
+                      "No Gerber layers found. Point gerbers in .k3eda.json at your generated output directory.",
+                    ),
+                  )}
+                />
               ))}
             {view === "3d" &&
               (file ? (
@@ -420,7 +455,7 @@ function App() {
                   snapshot={{ kind: "model", url: apiUrl("model", file.path, revision) }}
                 />
               ) : (
-                <Notice text="No PCB found. Set pcb in .k3eda.json." />
+                <Notice text={m(msg("No PCB found. Set pcb in .k3eda.json."))} />
               ))}
           </>
         )}

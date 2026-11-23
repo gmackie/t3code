@@ -1,6 +1,6 @@
 /** Keep bundler externals and staged runtime dependency roots aligned. */
 // Filesystem-loaded externals need dependencies outside the bundle.
-export const CLI_RUNTIME_EXTERNAL_PREFIXES = [
+const CLI_RUNTIME_EXTERNAL_PREFIXES = [
   // Cursor ships computed Webpack imports and platform helper packages.
   "@cursor/sdk",
   // Playwright reads package.json and browsers.json beside its runtime modules.
@@ -9,6 +9,10 @@ export const CLI_RUNTIME_EXTERNAL_PREFIXES = [
   "ffi-rs",
   "@yuuang/",
   "@ff-labs/",
+  "transcribe-cpp",
+  "@transcribe-cpp/",
+  "koffi",
+  "@koromix/",
   "@napi-rs/keyring",
   "@clerk/electron-passkeys",
   "node-gyp-build",
@@ -37,9 +41,16 @@ export function isRuntimeExternalCliDependency(id: string): boolean {
   );
 }
 
+// Staged for Cursor, which loads them from disk, but bundled code may inline its own copy:
+// the MCP SDK imports zod/v4, and a single executable cannot resolve a file-backed import.
+const BUNDLEABLE_RUNTIME_DEPENDENCIES = ["zod"] as const;
+
 /** Use neverBundle: false from alwaysBundle means no opinion and leaves transitive packages bundled. */
 export function isExternalCliDependency(id: string): boolean {
-  return isRuntimeExternalCliDependency(id);
+  return (
+    isRuntimeExternalCliDependency(id) &&
+    !BUNDLEABLE_RUNTIME_DEPENDENCIES.some((name) => id === name || id.startsWith(`${name}/`))
+  );
 }
 
 export function shouldBundleCliDependency(id: string): boolean {

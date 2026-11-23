@@ -1,5 +1,8 @@
 // @effect-diagnostics nodeBuiltinImport:off - This test validates repository workflow policy.
 import * as NodeFS from "node:fs";
+import * as NodeChildProcess from "node:child_process";
+import * as NodeOS from "node:os";
+import * as NodePath from "node:path";
 import * as NodeURL from "node:url";
 import { describe, expect, it } from "vite-plus/test";
 
@@ -8,19 +11,99 @@ const workflowPath = NodeURL.fileURLToPath(
 );
 
 describe("ForgeGraph GMACKO release workflow", () => {
+  it("carries Debian packages through collection and publication and rejects their absence", () => {
+    const workflow = NodeFS.readFileSync(workflowPath, "utf8");
+    const runStep = (name: string) => {
+      const step = workflow.slice(workflow.indexOf(`      - name: ${name}\n`));
+      const body = step.match(/        run: \|\n((?:          .*\n|\n)+)/)?.[1];
+      if (!body) throw new Error(`Missing run step: ${name}`);
+      return body
+        .replace(/^ {10}/gm, "")
+        .replaceAll("${{ matrix.platform }}", "linux")
+        .replaceAll("${{ matrix.arch }}", "x64");
+    };
+    const scratch = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "gmacko-release-assets-"));
+    try {
+      NodeFS.mkdirSync(NodePath.join(scratch, "release"));
+      for (const name of [
+        "t3.AppImage",
+        "t3.deb",
+        "t3.dmg",
+        "t3.zip",
+        "t3.blockmap",
+        "gmacko-linux.yml",
+      ]) {
+        NodeFS.writeFileSync(NodePath.join(scratch, "release", name), name);
+      }
+      NodeChildProcess.execFileSync("bash", ["-c", runStep("Collect release assets")], {
+        cwd: scratch,
+      });
+      expect(NodeFS.readFileSync(NodePath.join(scratch, "release-publish/t3.deb"), "utf8")).toBe(
+        "t3.deb",
+      );
+      NodeFS.renameSync(
+        NodePath.join(scratch, "release-publish"),
+        NodePath.join(scratch, "release-assets"),
+      );
+      NodeFS.writeFileSync(NodePath.join(scratch, "release-assets/SHA256SUMS"), "checksums");
+      const publish = 'gh() { printf "%s\\n" "$@" > "$ARGUMENTS"; }\n' + runStep("Publish release");
+      const options = {
+        cwd: scratch,
+        env: {
+          ...process.env,
+          ARGUMENTS: NodePath.join(scratch, "arguments"),
+          TAG: "test",
+          TARGET: "test",
+          GITHUB_FORK: "test/test",
+          RELEASE_NAME: "test",
+        },
+        encoding: "utf8" as const,
+      };
+      expect(NodeChildProcess.spawnSync("bash", ["-c", publish], options).status).toBe(0);
+      expect(
+        NodeFS.readFileSync(NodePath.join(scratch, "arguments"), "utf8").split("\n"),
+      ).toContain("release-assets/t3.deb");
+      NodeFS.unlinkSync(NodePath.join(scratch, "release-assets/t3.deb"));
+      const missing = NodeChildProcess.spawnSync("bash", ["-c", publish], options);
+      expect(missing.status).not.toBe(0);
+      expect(missing.stderr).toContain("Missing expected release asset pattern: *.deb");
+    } finally {
+      NodeFS.rmSync(scratch, { recursive: true, force: true });
+    }
+  });
+
   it("pins the Node runtime used by every release job", () => {
     const workflow = NodeFS.readFileSync(workflowPath, "utf8");
 
-    expect(workflow.match(/node-version: 24\.14\.0/g) ?? []).toHaveLength(7);
+    expect(workflow.match(/node-version: 24\.14\.0/g) ?? []).toHaveLength(1);
+    expect(workflow.match(/node-version-file: package\.json/g) ?? []).toHaveLength(7);
     expect(workflow).not.toContain("node-version: 24\n");
+    const corepackSetups =
+      workflow.match(/if ! command -v corepack[^]*?fi\n\s+corepack enable/g) ?? [];
+    expect(corepackSetups).toHaveLength(7);
+    for (const setup of corepackSetups) {
+      expect(setup).toContain("npm install --global corepack@0.34.6");
+    }
   });
 
   it("uploads iOS to TestFlight without gating the desktop release", () => {
     const workflow = NodeFS.readFileSync(workflowPath, "utf8");
     const release = workflow.slice(workflow.indexOf("  release:\n"));
+    const ios = workflow.slice(
+      workflow.indexOf("  ios_testflight:\n"),
+      workflow.indexOf("  release:\n"),
+    );
 
     expect(workflow).toContain("scripts/gmacko-ios-testflight.sh");
     expect(release.slice(0, release.indexOf("steps:"))).not.toContain("ios_testflight");
+    expect(ios).toContain("needs: [sync, preflight, relay_public_config, build_macos_x64]");
+    for (const [name, output] of [
+      ["T3CODE_CLERK_PUBLISHABLE_KEY", "clerk_publishable_key"],
+      ["T3CODE_CLERK_JWT_TEMPLATE", "clerk_jwt_template"],
+      ["T3CODE_RELAY_URL", "relay_url"],
+    ]) {
+      expect(ios).toContain(`${name}: \u0024{{ needs.relay_public_config.outputs.${output} }}`);
+    }
   });
 
   it("cuts a release for every custom-local push", () => {
@@ -28,7 +111,7 @@ describe("ForgeGraph GMACKO release workflow", () => {
 
     expect(workflow).toContain("push:\n    branches:\n      - custom-local");
     expect(workflow).toContain('if [[ "${GITHUB_EVENT_NAME}" == "push" ]]');
-    expect(workflow).toContain('git clone --branch custom-local --tags "$forgejo_url" lane');
+    expect(workflow).toContain('git clone --branch custom-local --tags "$FORGEJO_REPO_URL" lane');
     expect(workflow).toContain(
       'START_SHA="$(git ls-remote "$github_url" refs/heads/custom-local | cut -f1)"',
     );
@@ -56,7 +139,7 @@ describe("ForgeGraph GMACKO release workflow", () => {
   it("retries the current ForgeGraph lane on manual dispatch", () => {
     const workflow = NodeFS.readFileSync(workflowPath, "utf8");
 
-    expect(workflow).toContain('git clone --branch custom-local --tags "$forgejo_url" lane');
+    expect(workflow).toContain('git clone --branch custom-local --tags "$FORGEJO_REPO_URL" lane');
     expect(workflow).not.toContain(
       'if [[ "${GITHUB_EVENT_NAME}" == "schedule" && "$HAS_CHANGES" == "true" ]]',
     );
@@ -74,6 +157,13 @@ describe("ForgeGraph GMACKO release workflow", () => {
 
     expect(preflightJob).toContain("node scripts/gmacko-bundle-check.mjs");
     expect(preflightJob).toContain("rm -rf /var/lib/apt/lists/*");
+    const linuxPackaging = workflow.slice(
+      workflow.indexOf("      - name: Install Linux packaging dependencies"),
+      workflow.indexOf("      - name: Install Linux packaging dependencies") + 1300,
+    );
+    for (const dependency of ["libgtk-3-0t64", "libnspr4", "libnss3", "libasound2t64", "libgbm1"]) {
+      expect(linuxPackaging).toContain(dependency);
+    }
   });
 
   it("keeps GitHub promotion lease-protected", () => {

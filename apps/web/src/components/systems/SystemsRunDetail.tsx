@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { msg, useMessages } from "gt-react";
+import { useState } from "react";
 import type { EnvironmentId, SystemsRun } from "@t3tools/contracts";
 import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
 import { systemsEnvironment } from "~/state/systems";
@@ -38,6 +39,8 @@ export function SystemsRunDetail({
   readonly environmentId: EnvironmentId;
   readonly run: SystemsRun;
 }) {
+  const m = useMessages();
+
   const ref = { projectId: run.projectId, runId: run.runId };
   const cancelRun = useAtomCommand(systemsEnvironment.cancelRun, { reportFailure: false });
   const [error, setError] = useState<string | null>(null);
@@ -70,24 +73,34 @@ export function SystemsRunDetail({
         <Badge variant={statusTone(run.status)}>{run.status}</Badge>
         {!terminal && (
           <Button size="xs" variant="destructive-outline" onClick={() => void cancel()}>
-            Cancel
+            {m(msg("Cancel"))}
           </Button>
         )}
       </div>
       {error && <p className="text-destructive">{error}</p>}
       <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5">
-        <dt className="text-muted-foreground">Experiment</dt>
+        <dt className="text-muted-foreground">{m(msg("Experiment"))}</dt>
         <dd className="font-mono">{run.experimentRef}</dd>
-        <dt className="text-muted-foreground">Solver · seed</dt>
+        <dt className="text-muted-foreground">{m(msg("Solver · seed"))}</dt>
         <dd>
           {run.solver} · {run.seed}
         </dd>
-        <dt className="text-muted-foreground">Runtime</dt>
+        <dt className="text-muted-foreground">{m(msg("Runtime"))}</dt>
         <dd>{runtimeLabel(run)}</dd>
-        <dt className="text-muted-foreground">Progress</dt>
+        <dt className="text-muted-foreground">{m(msg("Progress"))}</dt>
         <dd>
-          t={formatTime(run.lastCommittedTime)} of {formatTime(run.stop)} s · {run.boundaries}{" "}
-          boundaries · {run.eventCount} events · {run.sampleCount} samples
+          {m(
+            msg(
+              "t={time} of {stop} s · {boundaries} boundaries · {events} events · {samples} samples",
+              {
+                time: formatTime(run.lastCommittedTime),
+                stop: formatTime(run.stop),
+                boundaries: run.boundaries,
+                events: run.eventCount,
+                samples: run.sampleCount,
+              },
+            ),
+          )}
         </dd>
         {digests.map(([label, digest]) => (
           <DigestRow key={label} label={label} digest={digest} />
@@ -122,6 +135,8 @@ function SignalPlot({
   readonly environmentId: EnvironmentId;
   readonly run: SystemsRun;
 }) {
+  const m = useMessages();
+
   const [chosen, setChosen] = useState<ReadonlyArray<string>>(() =>
     run.probes.slice(0, 2).map((probe) => probe.id),
   );
@@ -138,16 +153,11 @@ function SignalPlot({
         })
       : null,
   );
-  // Live runs push progress; refetch the bounded, downsampled view when new samples land.
-  const refresh = signals.refresh;
-  useEffect(() => {
-    if (run.sampleCount > 0) refresh();
-  }, [run.sampleCount, refresh]);
   const plot = signals.data ? plotSignals(signals.data.series, PLOT) : null;
   if (run.probes.length === 0) return null;
   return (
     <div>
-      <h4 className="font-semibold">Signals</h4>
+      <h4 className="font-semibold">{m(msg("Signals"))}</h4>
       <div className="mt-1 flex flex-wrap gap-1">
         {run.probes.map((probe) => {
           const on = chosen.includes(probe.id);
@@ -170,12 +180,15 @@ function SignalPlot({
       {plot?.series.map((series, index) => (
         <figure key={series.signalId} className="mt-2">
           <figcaption className="text-muted-foreground">
-            {series.signalId} [{series.unit}] min {series.min} · max {series.max} · t {plot.t0}–
-            {plot.t1} s
+            {series.signalId} [{series.unit}
+            {m(msg("] min "))}
+            {series.min}
+            {m(msg(" · max "))}
+            {series.max} · t {plot.t0}–{plot.t1} s
           </figcaption>
           <svg
             role="img"
-            aria-label={`${series.signalId} over time`}
+            aria-label={m(msg("{value0} over time", { value0: series.signalId }))}
             viewBox={`-1 -1 ${PLOT.width + 2} ${PLOT.height + 2}`}
             preserveAspectRatio="none"
             className={`h-20 w-full ${LINE_CLASSES[index % LINE_CLASSES.length]}`}
@@ -201,6 +214,8 @@ function Comparison({
   readonly environmentId: EnvironmentId;
   readonly run: SystemsRun;
 }) {
+  const m = useMessages();
+
   const compare = useEnvironmentQuery(
     systemsEnvironment.compare({
       environmentId,
@@ -210,10 +225,12 @@ function Comparison({
   const result = compare.data;
   return (
     <div>
-      <h4 className="font-semibold">Expected trace</h4>
+      <h4 className="font-semibold">{m(msg("Expected trace"))}</h4>
       {compare.error && <p className="text-destructive">{compare.error}</p>}
       {result && result.expectedRef === null && (
-        <p className="text-muted-foreground">No expected trace references this experiment.</p>
+        <p className="text-muted-foreground">
+          {m(msg("No expected trace references this experiment."))}
+        </p>
       )}
       {result && result.expectedRef !== null && (
         <>
@@ -244,6 +261,8 @@ function TraceTable({
   readonly environmentId: EnvironmentId;
   readonly run: SystemsRun;
 }) {
+  const m = useMessages();
+
   const [cursors, setCursors] = useState<ReadonlyArray<string>>(
     () => loadedCursors.get(run.runId) ?? ["0"],
   );
@@ -254,13 +273,13 @@ function TraceTable({
   };
   return (
     <div>
-      <h4 className="font-semibold">Trace</h4>
+      <h4 className="font-semibold">{m(msg("Trace"))}</h4>
       <Table>
         <TableHeader>
           <TableRow>
             <TableHead>#</TableHead>
             <TableHead>time</TableHead>
-            <TableHead>µstep</TableHead>
+            <TableHead>{m(msg("µstep"))}</TableHead>
             <TableHead>phase</TableHead>
             <TableHead>kind</TableHead>
             <TableHead>entity</TableHead>
@@ -294,18 +313,15 @@ function TracePage({
   readonly last: boolean;
   readonly onMore: (next: string) => void;
 }) {
+  const m = useMessages();
+
   const page = useEnvironmentQuery(
     systemsEnvironment.events({
       environmentId,
       input: { projectId: run.projectId, runId: run.runId, fromSequence, limit: PAGE_SIZE },
     }),
   );
-  // Only an unfilled last page can grow while the run is live.
-  const refresh = page.refresh;
   const filled = (page.data?.events.length ?? 0) >= PAGE_SIZE;
-  useEffect(() => {
-    if (last && !filled && run.eventCount > 0) refresh();
-  }, [last, filled, run.eventCount, refresh]);
   return (
     <TableBody>
       {page.error && (
@@ -327,7 +343,7 @@ function TracePage({
         <TableRow>
           <TableCell colSpan={6}>
             <Button size="xs" variant="outline" onClick={() => onMore(page.data!.nextSequence)}>
-              Load more
+              {m(msg("Load more"))}
             </Button>
           </TableCell>
         </TableRow>

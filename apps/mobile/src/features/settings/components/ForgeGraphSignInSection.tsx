@@ -1,3 +1,4 @@
+import { msg, useMessages } from "gt-react-native";
 import { useAtomValue } from "@effect/atom-react";
 import { AsyncResult } from "effect/reactivity";
 import {
@@ -8,7 +9,7 @@ import {
 import { readForgeGraphSettings } from "@t3tools/client-runtime/source-control-clients";
 import { settlePromise, type AtomCommandResult } from "@t3tools/client-runtime/state/runtime";
 import type { ForgeGraphSignInState } from "@t3tools/contracts";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { Linking, View } from "react-native";
 
 import { AppText as Text } from "../../../components/ui/AppText";
@@ -17,7 +18,7 @@ import { sourceControlEnvironment } from "../../../state/sourceControl";
 import { useAtomCommand } from "../../../state/use-atom-command";
 import { forgeGraphDiscoveryAuth } from "../forgegraph-sign-in";
 import type { SettingsTarget } from "../settings-environment-filter";
-import { SettingsActionRow } from "./SettingsActionRow";
+import { ListActionRow as SettingsActionRow } from "../../../components/ui/ListActionRow";
 import { SettingsSection } from "./SettingsSection";
 
 const COMMAND_OPTIONS = { reportFailure: false, reportDefect: false };
@@ -31,6 +32,8 @@ export function ForgeGraphSignInSection(props: {
   /** Names the environment in the title, for when several are selected. */
   readonly showEnvironmentLabel: boolean;
 }) {
+  const m = useMessages();
+
   const environmentId = props.environment.environmentId;
   const discovery = useEnvironmentQuery(
     sourceControlEnvironment.discovery({ environmentId, input: {} }),
@@ -39,7 +42,11 @@ export function ForgeGraphSignInSection(props: {
   if (auth === null) return null;
   return (
     <SettingsSection
-      title={props.showEnvironmentLabel ? `ForgeGraph · ${props.environment.label}` : "ForgeGraph"}
+      title={
+        props.showEnvironmentLabel
+          ? m(msg("ForgeGraph · {value0}", { value0: props.environment.label }))
+          : "ForgeGraph"
+      }
     >
       <ForgeGraphSignIn
         environment={props.environment}
@@ -58,6 +65,8 @@ function ForgeGraphSignIn(props: {
   /** Rescans discovery once a token is saved or removed. */
   readonly onChanged: () => void;
 }) {
+  const m = useMessages();
+
   const environmentId = props.environment.environmentId;
   const savedInT3 =
     readForgeGraphSettings(props.environment.serverConfig.settings).token.length > 0;
@@ -68,15 +77,15 @@ function ForgeGraphSignIn(props: {
   const status = useAtomCommand(sourceControlEnvironment.forgeGraphSignInStatus, COMMAND_OPTIONS);
   const cancel = useAtomCommand(sourceControlEnvironment.forgeGraphSignInCancel, COMMAND_OPTIONS);
   const signOut = useAtomCommand(sourceControlEnvironment.forgeGraphSignOut, COMMAND_OPTIONS);
-  const [state, setState] = useState<ForgeGraphSignInState | null>(null);
+  const initialStatus = useEnvironmentQuery(
+    canSignIn ? sourceControlEnvironment.forgeGraphSignInState({ environmentId, input: {} }) : null,
+  );
+  const [localState, setState] = useState<ForgeGraphSignInState | null>(null);
+  const state = localState ?? initialStatus.data;
   const [busy, setBusy] = useState(false);
   const busyRef = useRef(false);
   const [error, setError] = useState<string | null>(null);
-  // Held so a parent re-render does not restart the status interval.
-  const onChangedRef = useRef(props.onChanged);
-  useEffect(() => {
-    onChangedRef.current = props.onChanged;
-  }, [props.onChanged]);
+  const onChanged = useEffectEvent(() => props.onChanged());
 
   const run = async (command: typeof start, onSuccess?: () => void) => {
     if (busyRef.current) return;
@@ -98,22 +107,15 @@ function ForgeGraphSignIn(props: {
     }
   };
 
-  // An attempt started from another client, or before the app restarted, is picked up as it stands.
-  useEffect(() => {
-    if (!canSignIn) return;
-    void status({ environmentId, input: {} }).then((result) => {
-      if (result._tag === "Success") setState(result.value);
-    });
-  }, [canSignIn, environmentId, status]);
-
   const waiting = state?.phase === "waiting";
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Poll the external device-flow attempt while pending, and release its timer when it ends or the view unmounts.
   useEffect(() => {
     if (!waiting) return;
     const timer = setInterval(() => {
       void status({ environmentId, input: {} }).then((result) => {
         if (result._tag !== "Success") return;
         setState(result.value);
-        if (result.value.phase === "succeeded") onChangedRef.current();
+        if (result.value.phase === "succeeded") onChanged();
       });
     }, FORGEGRAPH_SIGN_IN_STATUS_INTERVAL_MS);
     return () => clearInterval(timer);
@@ -136,7 +138,7 @@ function ForgeGraphSignIn(props: {
         {pending ? (
           <>
             <Text className="text-sm text-foreground-muted">
-              Approve this code in ForgeGraph. This page updates once you do.
+              {m(msg("Approve this code in ForgeGraph. This page updates once you do."))}
             </Text>
             <Text selectable className="font-mono text-2xl tracking-widest text-foreground">
               {pending.userCode}
@@ -158,10 +160,10 @@ function ForgeGraphSignIn(props: {
       {pending ? (
         <SettingsActionRow
           icon="globe"
-          label="Open ForgeGraph to approve"
+          label={m(msg("Open ForgeGraph to approve"))}
           onPress={() => {
             void Linking.openURL(pending.verificationUrl).catch(() =>
-              setError(`Could not open ${pending.verificationUrl}.`),
+              setError(m(msg("Could not open {value0}.", { value0: pending.verificationUrl }))),
             );
           }}
         />
@@ -169,7 +171,7 @@ function ForgeGraphSignIn(props: {
       {view.canCancel ? (
         <SettingsActionRow
           icon="xmark"
-          label="Cancel"
+          label={m(msg("Cancel"))}
           disabled={busy}
           loading={busy}
           onPress={() => void run(cancel)}
@@ -186,10 +188,10 @@ function ForgeGraphSignIn(props: {
           {view.canSignOut ? (
             <SettingsActionRow
               icon="person.crop.circle"
-              label="Sign out"
+              label={m(msg("Sign out"))}
               tone="danger"
               disabled={busy || !canSignIn}
-              onPress={() => void run(signOut, () => onChangedRef.current())}
+              onPress={() => void run(signOut, props.onChanged)}
             />
           ) : null}
         </>

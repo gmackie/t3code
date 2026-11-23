@@ -3,6 +3,8 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   cliArchiveTarCommand,
   cliReleaseDownloadBaseUrl,
+  desktopUpdateChannelOf,
+  acceptsTrackSwitchRelease,
   newestCliReleaseVersion,
   parseChecksums,
 } from "./cliRelease.ts";
@@ -12,6 +14,8 @@ describe("cliRelease", () => {
     expect(cliReleaseDownloadBaseUrl("0.0.45-gmacko.202610031642")).toBe(
       "https://github.com/gmackie/t3code/releases/download/v0.0.45-gmacko.202610031642",
     );
+    expect(desktopUpdateChannelOf("0.1.5-gmacko.202610291800")).toBe("gmacko");
+    expect(acceptsTrackSwitchRelease("0.1.5-gmacko.202610291800", "latest", "0.1.4")).toBe(false);
   });
 
   it("parses sha256sum output including binary-mode markers", () => {
