@@ -23,6 +23,7 @@ import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
 import * as GitManager from "../../../git/GitManager.ts";
+import { pullRequestKey } from "../../../git/linkCreatedPullRequest.ts";
 import * as Orchestrator from "../../../orchestration-v2/Orchestrator.ts";
 import * as ProjectService from "../../../project/ProjectService.ts";
 import * as RepositoryIdentityResolver from "../../../project/RepositoryIdentityResolver.ts";
@@ -611,6 +612,22 @@ const make = Effect.gen(function* () {
     return comments.map((comment) => placed.get(comment)!);
   });
 
+  /** A PR the host reported for the project, whose URL may name no number, as ForgeGraph's do. */
+  const reportedTarget = (
+    pr: { readonly number: number; readonly url: string },
+    project: OrchestrationProjectShell,
+  ) =>
+    resolveTarget({ url: pr.url }, project).pipe(
+      Effect.catchTags({
+        PullRequestUrlInvalidError: (error) => {
+          const key = pullRequestKey(pr, project.repositoryIdentity);
+          return key === null
+            ? Effect.fail(error)
+            : Effect.succeed({ ...normalizeThreadPullRequestKey(key), url: key.url });
+        },
+      }),
+    );
+
   /** The thread's checkout, its project, and the PR the input names (default: the branch's). */
   const locate = Effect.fn("PullRequestsToolkit.locate")(function* (input: ThreadPullRequestInput) {
     const thread = yield* requireThread(PullRequestForgeError, undefined);
@@ -628,19 +645,37 @@ const make = Effect.gen(function* () {
               (link.snapshot === null || link.snapshot.headBranch === thread.branch),
           )
         : undefined;
-    const branchPullRequest = thread.branchPullRequest ?? opened ?? null;
+    // Status sync may not have run since the PR was opened elsewhere, so the host is asked.
+    const detected =
+      input.number !== undefined ||
+      thread.branchPullRequest != null ||
+      opened !== undefined ||
+      thread.branch === null
+        ? null
+        : yield* git
+            .branchPullRequest(
+              { cwd: thread.worktreePath ?? project.workspaceRoot, branch: thread.branch },
+              { refresh: true },
+            )
+            .pipe(Effect.mapError(forgeFailure));
+    const branchPullRequest =
+      input.number !== undefined
+        ? null
+        : (thread.branchPullRequest ?? opened ?? (detected?.state === "open" ? detected : null));
+    if (input.number === undefined && branchPullRequest === null) {
+      return yield* new PullRequestBranchHasNoneError();
+    }
     const branchRepository =
       project.repositoryIdentity == null
         ? undefined
         : (sourceControlDefinitions.repositorySelector(project.repositoryIdentity) ?? undefined);
-    const named =
-      input.number !== undefined
-        ? { number: input.number, repository: input.repository ?? branchRepository }
-        : branchPullRequest === null
-          ? null
-          : { number: branchPullRequest.number, repository: branchPullRequest.repository };
-    if (named === null) return yield* new PullRequestBranchHasNoneError();
-    const target = yield* resolveTarget(named, project);
+    const target =
+      branchPullRequest === null
+        ? yield* resolveTarget(
+            { number: input.number, repository: input.repository ?? branchRepository },
+            project,
+          )
+        : yield* reportedTarget(branchPullRequest, project);
     const ref: PullRequestRef = {
       projectId: project.id,
       host: target.host,
@@ -1211,13 +1246,13 @@ const make = Effect.gen(function* () {
             private: input.private,
           })
           .pipe(Effect.mapError(forgeFailure));
-        if (created.url === undefined) {
+        if (created.url === undefined || created.number === undefined) {
           return yield* new PullRequestForgeError({
             detail:
               "The host accepted the PR but does not list it yet. Find it with pull_request_list.",
           });
         }
-        const target = yield* resolveTarget({ url: created.url }, project);
+        const target = yield* reportedTarget({ number: created.number, url: created.url }, project);
         yield* linkToThread(thread, target);
         return {
           ...identityOf(target),

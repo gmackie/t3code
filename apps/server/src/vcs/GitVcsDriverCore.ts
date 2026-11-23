@@ -3627,6 +3627,24 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
       if (autoSetupRebase === "always" || autoSetupRebase === "remote") {
         yield* writeConfigValue({ cwd, key: `branch.${branch}.rebase`, value: "true" });
       }
+      // A remote that fetches only some branches, e.g. only main, leaves this upstream
+      // unresolvable, and status then reports the branch as never pushed.
+      const mapped = yield* withSharedConfigLock(
+        cwd,
+        Effect.gen(function* () {
+          const upstream = yield* runGitStdout("GitVcsDriver.recordPushedUpstream.upstream", cwd, [
+            "for-each-ref",
+            "--format=%(upstream)",
+            `refs/heads/${branch}`,
+          ]);
+          if (upstream.trim().length > 0) return true;
+          yield* addBranchFetchMapping(cwd, remoteName, publishBranch);
+          return false;
+        }),
+      );
+      if (!mapped) {
+        yield* fetchRemoteTrackingBranch({ cwd, remoteName, remoteBranch: publishBranch });
+      }
       return true;
     },
     Effect.catch((cause) =>
@@ -6558,6 +6576,15 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
       });
     });
 
+  // A glob, because an exact source fails every later fetch once the branch is deleted.
+  const addBranchFetchMapping = (cwd: string, remoteName: string, remoteBranch: string) =>
+    executeGitWithStableDiagnostics("GitVcsDriver.addBranchFetchMapping", cwd, [
+      "config",
+      "--add",
+      `remote.${remoteName}.fetch`,
+      `+refs/heads/${remoteBranch}*:refs/remotes/${remoteName}/${remoteBranch}*`,
+    ]).pipe(retryWhileConfigLocked);
+
   const setBranchUpstream: GitVcsDriver.GitVcsDriver["Service"]["setBranchUpstream"] = Effect.fn(
     "setBranchUpstream",
   )(
@@ -6576,23 +6603,13 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
         { allowNonZeroExit: true },
       );
       if (result.exitCode === 0) return;
-      // Git requires a configured fetch mapping even when the tracking ref already exists. The
-      // mapping is a glob because an exact source fails every later fetch once the branch is deleted.
+      // Git requires a configured fetch mapping even when the tracking ref already exists.
       if (
         /^fatal: cannot set up tracking information; starting point '.+' is not a branch$/m.test(
           result.stderr,
         )
       ) {
-        yield* executeGitWithStableDiagnostics(
-          "GitVcsDriver.setBranchUpstream.addFetchMapping",
-          input.cwd,
-          [
-            "config",
-            "--add",
-            `remote.${input.remoteName}.fetch`,
-            `+refs/heads/${input.remoteBranch}*:refs/remotes/${input.remoteName}/${input.remoteBranch}*`,
-          ],
-        ).pipe(retryWhileConfigLocked);
+        yield* addBranchFetchMapping(input.cwd, input.remoteName, input.remoteBranch);
       }
       yield* executeGitWithStableDiagnostics(
         "GitVcsDriver.setBranchUpstream",

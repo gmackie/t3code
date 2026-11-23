@@ -9843,6 +9843,45 @@ it.layer(layerTest)("GitVcsDriver core integration", (it) => {
         }),
     );
 
+    it.effect.each([false, true])(
+      "publishes to a remote that fetches only main (pushed by hand first=%s)",
+      (pushedByHand) =>
+        Effect.gen(function* () {
+          const cwd = yield* makeTmpDir();
+          const remote = yield* makeTmpDir("git-remote-");
+          const { initialBranch } = yield* initRepoWithCommit(cwd);
+          yield* git(remote, ["init", "--bare"]);
+          yield* git(cwd, ["remote", "add", "origin", remote]);
+          yield* git(cwd, [
+            "config",
+            "remote.origin.fetch",
+            `+refs/heads/${initialBranch}:refs/remotes/origin/${initialBranch}`,
+          ]);
+          yield* git(cwd, ["checkout", "-b", "feature/narrow"]);
+          yield* writeTextFile(cwd, "feature.txt", "feature\n");
+          yield* git(cwd, ["add", "-A"]);
+          yield* git(cwd, ["commit", "-m", "Add feature"]);
+          if (pushedByHand) {
+            yield* git(cwd, ["push", "-u", "origin", "feature/narrow"]);
+          }
+          const driver = yield* GitVcsDriver.GitVcsDriver;
+
+          assert.deepInclude(yield* driver.pushCurrentBranch(cwd, null), {
+            status: "pushed",
+            setUpstream: true,
+          });
+          assert.equal(
+            yield* git(cwd, ["rev-parse", "--abbrev-ref", "@{upstream}"]),
+            "origin/feature/narrow",
+          );
+          assert.deepInclude(yield* driver.statusDetails(cwd), {
+            hasUpstream: true,
+            upstreamRef: "origin/feature/narrow",
+            aheadCount: 0,
+          });
+        }),
+    );
+
     it.effect("publishes a new branch at the same commit as its local upstream", () =>
       Effect.gen(function* () {
         const cwd = yield* makeTmpDir();
