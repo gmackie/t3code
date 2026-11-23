@@ -90,6 +90,9 @@ describe("V2 preview upgrade", () => {
         [108, "TaskFolders"],
         [109, "WorktreePathKeyIndex"],
         [110, "DeferredSlashCommandIndex"],
+        [111, "AgentFeedback"],
+        [112, "IssueTrackerAccounts"],
+        [113, "Workflows"],
       ]);
       assert.deepStrictEqual(yield* runMigrations(), []);
       assert.deepStrictEqual(yield* sql`SELECT * FROM orchestration_v2_legacy_imports`, imports);
@@ -223,6 +226,9 @@ describe("V2 preview upgrade", () => {
         [108, "TaskFolders"],
         [109, "WorktreePathKeyIndex"],
         [110, "DeferredSlashCommandIndex"],
+        [111, "AgentFeedback"],
+        [112, "IssueTrackerAccounts"],
+        [113, "Workflows"],
       ]);
     }).pipe(Effect.provide(NodeSqliteClient.layer({ filename: ":memory:" }))),
   );
