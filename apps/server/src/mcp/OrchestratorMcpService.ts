@@ -1083,6 +1083,13 @@ function threadDetail(
     pendingRequestCount: projection.runtimeRequests.filter(
       (request) => request.status === "pending",
     ).length,
+    pendingRuntimeRequest:
+      shell.pendingRuntimeRequest == null
+        ? null
+        : {
+            ...shell.pendingRuntimeRequest,
+            createdAt: DateTime.formatIso(shell.pendingRuntimeRequest.createdAt),
+          },
     archived: projection.thread.archivedAt !== null,
     ...threadSettlement(projection.thread),
     ...threadSnooze(shell, nowMs),
