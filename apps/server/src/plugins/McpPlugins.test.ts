@@ -124,6 +124,15 @@ it.effect("rejects a directory without a valid v2 manifest", () =>
     const directory = yield* writePluginDir({ ...manifestJson, schemaVersion: 1 });
     const error = yield* Effect.flip(plugins.installFromDirectory({ directory }));
     assert.equal(error.reason, "invalid-manifest");
+    // An Issues tab has no thread to follow.
+    const threadTab = yield* writePluginDir({
+      ...manifestJson,
+      contributes: {
+        panels: [{ ...manifestJson.contributes.panels[0], scope: "thread", issuesTab: true }],
+      },
+    });
+    const tabError = yield* Effect.flip(plugins.installFromDirectory({ directory: threadTab }));
+    assert.equal(tabError.reason, "invalid-manifest");
   }).pipe(Effect.scoped, Effect.provide(layer())),
 );
 

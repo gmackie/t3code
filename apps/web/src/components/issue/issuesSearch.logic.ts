@@ -51,6 +51,7 @@ export const issuesSearchFromUrl = (raw: Record<string, unknown>): IssuesSearch 
   tracker: bounded(raw.tracker),
   scope: bounded(raw.scope),
   key: bounded(raw.key),
+  tab: bounded(raw.tab),
 });
 
 /**

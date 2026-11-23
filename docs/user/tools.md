@@ -77,6 +77,11 @@ its own plugin's tools without asking, because installing the plugin allowed tha
 uninstall the plugin to stop it. If the plugin's server needs you to sign in, the panel says so
 instead of loading.
 
+A project panel whose manifest sets `"issuesTab": true` also shows up as a tab next to **Issues** on
+the Issues page, and as a chip above the issue list on mobile. It opens with the settings of a
+project on that environment, so it is useful for views that are not tied to one repository, such as
+"My issues" from a tracker.
+
 On mobile, open **Plugin panels** from a thread's header, or choose a project in
 **Settings → Projects** to open its project panels without a thread. Panels use the plugins
 installed on that project's connected environment. If a panel asks you to sign in, complete the

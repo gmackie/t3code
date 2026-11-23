@@ -1,5 +1,11 @@
-import { WS_METHODS } from "@t3tools/contracts";
-import type { Atom } from "effect/reactivity";
+import {
+  EnvironmentId,
+  WS_METHODS,
+  type McpPluginEntry,
+  type McpPluginId,
+  type McpPluginPanelId,
+} from "@t3tools/contracts";
+import { AsyncResult, Atom } from "effect/reactivity";
 
 import type { EnvironmentRegistry } from "../connection/registry.ts";
 import { createEnvironmentRpcCommand, createEnvironmentRpcQueryAtomFamily } from "./runtime.ts";
@@ -43,15 +49,71 @@ export function createMcpAppEnvironmentAtoms<R, E>(
   };
 }
 
+export interface IssuesPluginTab {
+  readonly key: string;
+  readonly environmentId: EnvironmentId;
+  readonly pluginId: McpPluginId;
+  readonly panelId: McpPluginPanelId;
+  readonly title: string;
+  readonly pluginName: string;
+}
+
+/** The `issuesTab` panels of enabled plugins, in environment then manifest order. */
+function issuesPluginTabs(
+  lists: ReadonlyArray<{
+    readonly environmentId: EnvironmentId;
+    readonly entries: ReadonlyArray<McpPluginEntry>;
+  }>,
+): ReadonlyArray<IssuesPluginTab> {
+  return lists.flatMap(({ environmentId, entries }) =>
+    entries.flatMap((entry) =>
+      entry.enabled
+        ? entry.manifest.contributes.panels
+            .filter((panel) => panel.issuesTab === true)
+            .map((panel) => ({
+              key: issuesPluginTabKey(environmentId, entry.manifest.id, panel.id),
+              environmentId,
+              pluginId: entry.manifest.id,
+              panelId: panel.id,
+              title: panel.title,
+              pluginName: entry.manifest.displayName,
+            }))
+        : [],
+    ),
+  );
+}
+
+/** Plugin and panel ids cannot hold a space, so the key splits back unambiguously. */
+const issuesPluginTabKey = (environmentId: string, pluginId: string, panelId: string): string =>
+  `${environmentId} ${pluginId} ${panelId}`;
+
 export function createMcpPluginEnvironmentAtoms<R, E>(
   runtime: Atom.AtomRuntime<EnvironmentRegistry | R, E>,
 ) {
+  const list = createEnvironmentRpcQueryAtomFamily(runtime, {
+    label: "environment-data:mcp-plugins:list",
+    tag: WS_METHODS.mcpPluginsList,
+    staleTimeMs: 1_000,
+  });
   return {
-    list: createEnvironmentRpcQueryAtomFamily(runtime, {
-      label: "environment-data:mcp-plugins:list",
-      tag: WS_METHODS.mcpPluginsList,
-      staleTimeMs: 1_000,
-    }),
+    list,
+    /** Keyed by environment ids joined with spaces; an environment still loading adds none. */
+    issuesTabs: Atom.family((environmentKey: string) =>
+      Atom.make((get) =>
+        issuesPluginTabs(
+          environmentKey
+            .split(" ")
+            .filter((id) => id.length > 0)
+            .map((id) => {
+              const environmentId = EnvironmentId.make(id);
+              return {
+                environmentId,
+                entries: AsyncResult.getOrElse(get(list({ environmentId, input: {} })), () => []),
+              };
+            }),
+        ),
+      ).pipe(Atom.withLabel(`environment-data:mcp-plugins:issues-tabs:${environmentKey}`)),
+    ),
     install: createEnvironmentRpcCommand(runtime, {
       label: "environment-command:mcp-plugins:install",
       tag: WS_METHODS.mcpPluginsInstall,
