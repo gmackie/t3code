@@ -298,6 +298,8 @@ const McpToolUseWorld = Schema.StructWithRest(
     devices: Schema.optional(Schema.Array(DeviceSummary)),
     /** Labels of the SSH device hosts in `devices`, by id. The local host always exists. */
     deviceHosts: Schema.optional(Schema.Record(Schema.String, Schema.String)),
+    /** Ids in `deviceHosts` that are Simlock pools rather than SSH hosts. */
+    simlockHosts: Schema.optional(Schema.Array(Schema.String)),
     /**
      * agent-device sessions that prior turns started, by device id, with the app `open` put in
      * each. Otherwise a device's session starts at its launcher's first `open` in the sample.

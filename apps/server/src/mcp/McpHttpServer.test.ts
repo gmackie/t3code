@@ -249,6 +249,7 @@ it.effect.each([
         McpHttpServer.layerDeviceToolkit.pipe(
           Layer.provideMerge(McpHttpServer.layerInProcessMcpServer),
           Layer.provide(McpToolAccessTestkit.liveThreadsLayer),
+          Layer.provide(ServerSettings.layerTest()),
           Layer.provide(
             Layer.mock(DeviceService.DeviceService)({
               locateSession: () => Effect.succeedNone,

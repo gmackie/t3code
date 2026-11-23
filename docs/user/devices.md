@@ -164,6 +164,13 @@ for a lease only from the folder it was opened from, which `device_open`
 names. A device cannot reach development servers on your machine through
 localhost; use an address its worker can reach.
 
+While a Simlock host is on, agents lease from the pool first, then try your SSH
+device hosts, and open this machine's simulators only when you name one or
+every other host fails. Devices outside the pool are invisible to Simlock, so
+this keeps agents from piling simulators onto the machine running T3. To let
+agents pick any device again, turn off **Settings → Labs → Keep agents on the
+Simlock pool**. It does not change what you can open in the Device panel.
+
 ## Device tool updates
 
 The connected T3 server manages the device hub and agent tools on its own machine and configured SSH hosts. Required versions install automatically the next time those tools are used. In Settings → Devices, select a version and choose **Check versions** to read installed versions without installing tools or starting devices.

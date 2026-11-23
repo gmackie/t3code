@@ -3,6 +3,7 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
 import {
   DeviceHostUnavailableError,
   DeviceId,
+  type DeviceServiceState,
   EnvironmentId,
   ProviderInstanceId,
   ThreadId,
@@ -15,6 +16,7 @@ import { McpSchema, McpServer } from "effect/ai";
 import * as ServerConfig from "../config.ts";
 import * as DeviceService from "../device/DeviceService.ts";
 import * as ProjectService from "../project/ProjectService.ts";
+import * as ServerSettings from "../serverSettings.ts";
 import * as McpHttpServer from "./McpHttpServer.ts";
 import * as McpInvocationContext from "./McpInvocationContext.ts";
 import * as McpToolAccessTestkit from "./McpToolAccess.testkit.ts";
@@ -151,6 +153,7 @@ const layerTest = McpHttpServer.layerDeviceToolkit.pipe(
   Layer.provideMerge(McpToolAccessTestkit.liveThreadsLayer),
   Layer.provideMerge(layerDeviceServiceMock),
   Layer.provide(layerProjectsMock),
+  Layer.provide(ServerSettings.ServerSettingsService.layerTest()),
   Layer.provide(ServerConfig.layerTest(process.cwd(), { prefix: "t3-mcp-device-toolkit-test-" })),
   Layer.provide(NodeServices.layer),
 );
@@ -276,6 +279,7 @@ it.effect("rejects unavailable agent access before booting or opening a device",
         Layer.provideMerge(McpToolAccessTestkit.liveThreadsLayer),
         Layer.provide(layerUnavailable),
         Layer.provide(layerProjectsMock),
+        Layer.provide(ServerSettings.ServerSettingsService.layerTest()),
         Layer.provide(
           ServerConfig.layerTest(process.cwd(), { prefix: "t3-mcp-device-toolkit-test-" }),
         ),
@@ -328,6 +332,7 @@ it.effect("device_open reports a failed host's setup error instead of no devices
         Layer.provideMerge(McpToolAccessTestkit.liveThreadsLayer),
         Layer.provide(layerFailed),
         Layer.provide(layerProjectsMock),
+        Layer.provide(ServerSettings.ServerSettingsService.layerTest()),
         Layer.provide(
           ServerConfig.layerTest(process.cwd(), { prefix: "t3-mcp-device-toolkit-test-" }),
         ),
@@ -400,6 +405,7 @@ describe("device targeting across hosts", () => {
       ) => Effect.Effect<McpSchema.CallToolResult, McpSchema.McpErrorBase, McpServer.McpServer>;
     }) => Effect.Effect<A, E, McpServer.McpServer>,
     overrides: Partial<DeviceService.DeviceService["Service"]> = {},
+    settings: { agentDevicesAvoidLocal?: boolean } = {},
   ) => {
     const opened: Array<{ hostId: string; deviceId: string }> = [];
     const closed: Array<{ hostId?: string | undefined; deviceId?: string | undefined }> = [];
@@ -468,6 +474,7 @@ describe("device targeting across hosts", () => {
           Layer.provideMerge(McpToolAccessTestkit.liveThreadsLayer),
           Layer.provide(layerDevices),
           Layer.provide(layerProjectsMock),
+          Layer.provide(ServerSettings.ServerSettingsService.layerTest(settings)),
           Layer.provide(
             ServerConfig.layerTest(process.cwd(), { prefix: "t3-mcp-device-toolkit-test-" }),
           ),
@@ -695,4 +702,206 @@ describe("device targeting across hosts", () => {
       }),
     ),
   );
+
+  describe("with a Simlock pool", () => {
+    const simlockHost = {
+      id: "simlock-fleet",
+      kind: "simlock" as const,
+      label: "Simlock",
+      platforms: [
+        { platform: "ios" as const, available: true },
+        { platform: "android" as const, available: true },
+      ],
+      hubInstalled: true,
+      agentDeviceInstalled: true,
+    };
+    const pooledIphone = { ...device, hostId: "simlock-fleet", id: "simlock:ios:iPhone 17" };
+    const pooledState = {
+      ...multiHostState,
+      // Listed local-first, as DeviceService does.
+      hosts: [...multiHostState.hosts, simlockHost],
+      hostStatuses: {
+        ...multiHostState.hostStatuses,
+        "simlock-fleet": { status: "ready" },
+      } as DeviceServiceState["hostStatuses"],
+      devices: [device, macIphone, pooledIphone],
+    };
+    const pooled = (
+      failOn: ReadonlyArray<string> = [],
+      statePatch: Partial<typeof pooledState> = {},
+    ): Partial<DeviceService.DeviceService["Service"]> => {
+      const current = { ...pooledState, ...statePatch };
+      return {
+        state: Effect.succeed(current),
+        list: Effect.succeed(current),
+        locateDevice: (input) =>
+          Effect.succeed(
+            Option.fromUndefinedOr(
+              current.devices.find(
+                (candidate) =>
+                  candidate.id === input.deviceId &&
+                  (input.hostId === undefined || candidate.hostId === input.hostId),
+              ),
+            ),
+          ),
+        ...(failOn.length === 0
+          ? {}
+          : {
+              open: (input) =>
+                failOn.includes(input.hostId ?? "local")
+                  ? Effect.fail(
+                      new DeviceHostUnavailableError({
+                        hostId: input.hostId ?? "local",
+                        reason: "it is down.",
+                      }),
+                    )
+                  : Effect.succeed(
+                      session(input.hostId ?? "local", input.deviceId, input.platform),
+                    ),
+            }),
+      };
+    };
+
+    it.effect("lists Simlock first and says to use it before this machine", () =>
+      run(
+        [],
+        ({ call }) =>
+          Effect.gen(function* () {
+            const result = yield* call("device_list", {});
+            const listed = result.structuredContent as {
+              hosts: ReadonlyArray<{ id: string }>;
+              devices: ReadonlyArray<{ hostId: string }>;
+              guidance?: string;
+            };
+            expect(listed.hosts.map((host) => host.id)).toEqual([
+              "simlock-fleet",
+              "mac-mini",
+              "local",
+            ]);
+            expect(listed.devices.map((entry) => entry.hostId)).toEqual([
+              "simlock-fleet",
+              "mac-mini",
+              "local",
+            ]);
+            expect(listed.guidance).toBe(
+              "Use device hosts in this order: Simlock (hostId simlock-fleet), then Mac Mini (hostId mac-mini). If device_open fails on one, try the next. Use This machine (hostId local) only when the user names one of its devices or every host above failed; pass useLocal: true to device_open then.",
+            );
+          }),
+        pooled(),
+      ),
+    );
+
+    it.effect("leaves the host order alone when the setting is off", () =>
+      run(
+        [],
+        ({ call }) =>
+          Effect.gen(function* () {
+            const listed = (yield* call("device_list", {})).structuredContent as {
+              hosts: ReadonlyArray<{ id: string }>;
+              guidance?: string;
+            };
+            expect(listed.hosts.map((host) => host.id)).toEqual([
+              "local",
+              "mac-mini",
+              "simlock-fleet",
+            ]);
+            expect(listed.guidance).toBeUndefined();
+          }),
+        pooled(),
+        { agentDevicesAvoidLocal: false },
+      ),
+    );
+
+    it.effect("refuses this machine's device unless the agent passes useLocal", () =>
+      run(
+        [],
+        ({ opened, call }) =>
+          Effect.gen(function* () {
+            const refused = yield* call("device_open", { deviceId: "UDID-1", hostId: "local" });
+            expect(refused.isError).toBe(true);
+            expect(text(refused)).toContain(
+              "Open a device on Simlock (hostId simlock-fleet), then Mac Mini (hostId mac-mini) instead.",
+            );
+            expect(opened).toEqual([]);
+            const allowed = yield* call("device_open", { deviceId: "UDID-1", useLocal: true });
+            expect(allowed.isError).toBe(false);
+            expect(opened).toEqual([{ hostId: "local", deviceId: "UDID-1" }]);
+          }),
+        pooled(),
+      ),
+    );
+
+    it.effect("allows this machine's device once every pooled host has failed", () =>
+      run(
+        [],
+        ({ opened, call }) =>
+          Effect.gen(function* () {
+            const result = yield* call("device_open", { deviceId: "UDID-1" });
+            expect(result.isError).toBe(false);
+            expect(opened).toEqual([{ hostId: "local", deviceId: "UDID-1" }]);
+          }),
+        pooled([], {
+          hostStatuses: {
+            local: { status: "ready" },
+            "mac-mini": { status: "failed" },
+            "simlock-fleet": { status: "failed" },
+          },
+        }),
+      ),
+    );
+
+    it.effect("opens on Simlock by default and falls back host by host", () =>
+      Effect.gen(function* () {
+        yield* run(
+          [],
+          ({ opened, call }) =>
+            Effect.gen(function* () {
+              expect((yield* call("device_open", { platform: "ios" })).isError).toBe(false);
+              expect(opened).toEqual([
+                { hostId: "simlock-fleet", deviceId: "simlock:ios:iPhone 17" },
+              ]);
+            }),
+          pooled(),
+        );
+        yield* run(
+          [],
+          ({ call }) =>
+            Effect.gen(function* () {
+              const result = yield* call("device_open", { platform: "ios" });
+              expect(result.isError).toBe(false);
+              expect(result.structuredContent).toMatchObject({ device: { hostId: "mac-mini" } });
+            }),
+          pooled(["simlock-fleet"]),
+        );
+        yield* run(
+          [],
+          ({ call }) =>
+            Effect.gen(function* () {
+              const result = yield* call("device_open", { platform: "ios" });
+              expect(result.isError).toBe(false);
+              expect(result.structuredContent).toMatchObject({ device: { hostId: "local" } });
+            }),
+          pooled(["simlock-fleet", "mac-mini"]),
+        );
+      }),
+    );
+
+    it.effect("names the next host when an explicit Simlock open fails", () =>
+      run(
+        [],
+        ({ call }) =>
+          Effect.gen(function* () {
+            const result = yield* call("device_open", {
+              deviceId: "simlock:ios:iPhone 17",
+              hostId: "simlock-fleet",
+            });
+            expect(result.isError).toBe(true);
+            expect(text(result)).toContain(
+              "Device host simlock-fleet is unavailable: it is down. Next, call device_open with hostId mac-mini and platform ios.",
+            );
+          }),
+        pooled(["simlock-fleet"]),
+      ),
+    );
+  });
 });
