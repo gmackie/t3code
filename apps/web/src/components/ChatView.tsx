@@ -193,7 +193,10 @@ import {
   useThreadPreviewCanvasSource,
 } from "./preview/ThreadPreviewMiniPlayer";
 import { createChatCanvasStore, resolveChatCanvasModel } from "./chat/canvasStore";
-import { isRunUsingComputer, selectLatestComputerUse } from "@t3tools/client-runtime/state/computerUse";
+import {
+  isRunUsingComputer,
+  selectLatestComputerUse,
+} from "@t3tools/client-runtime/state/computerUse";
 import { usePreviewSession } from "./preview/usePreviewSession";
 import { getConfiguredPreviewUrls } from "./preview/previewEmptyStateLogic";
 
