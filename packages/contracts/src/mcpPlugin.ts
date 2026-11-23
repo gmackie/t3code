@@ -27,6 +27,11 @@ export const McpPluginPanel = Schema.Struct({
   scope: Schema.Literals(["thread", "project"]),
   resourceUri: TrimmedNonEmptyString.check(Schema.isPattern(/^ui:\/\//), Schema.isMaxLength(4096)),
   /**
+   * Also shown as a tab of the Issues view. An optional flag rather than a scope, so
+   * clients that predate it still decode the manifest and keep it a project panel.
+   */
+  issuesTab: Schema.optionalKey(Schema.Boolean),
+  /**
    * Run when the panel opens and delivered as the view's tool input and result,
    * so a view behaves the same in a panel as inline after a tool call.
    */
@@ -73,6 +78,8 @@ export const McpPluginManifest = Schema.Struct({
     const panelIds = new Set<string>();
     for (const panel of manifest.contributes.panels) {
       if (panelIds.has(panel.id)) return `Panel "${panel.id}" is declared twice.`;
+      if (panel.issuesTab === true && panel.scope !== "project")
+        return `Panel "${panel.id}" is an Issues tab, so its scope must be "project".`;
       panelIds.add(panel.id);
     }
     const missing = manifest.contributes.commands.find((command) => !panelIds.has(command.panel));

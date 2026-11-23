@@ -20,6 +20,7 @@ import type {
   IssueTrackerSummary,
   ProjectId,
 } from "@t3tools/contracts";
+import type { IssuesPluginTab } from "@t3tools/client-runtime/state/mcp-apps";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import {
   ArrowDownUpIcon,
@@ -77,6 +78,9 @@ import {
   EmptyTitle,
 } from "~/components/ui/empty";
 import { Menu, MenuPopup, MenuRadioGroup, MenuRadioItem, MenuTrigger } from "~/components/ui/menu";
+import { Toggle, ToggleGroup } from "~/components/ui/toggle-group";
+import { PluginPanelView } from "~/components/plugins/PluginPanelView";
+import { mcpPluginEnvironment } from "~/state/mcpApps";
 import { SidebarInset } from "~/components/ui/sidebar";
 import { isCommandPaletteOpen } from "~/commandPaletteBus";
 import { isElectron } from "~/env";
@@ -109,6 +113,8 @@ export interface IssuesSearch extends IssueListPreferences {
   readonly tracker?: string | undefined;
   readonly scope?: string | undefined;
   readonly key?: string | undefined;
+  /** A plugin's Issues tab, by `issuesPluginTabKey`; absent shows the issue list. */
+  readonly tab?: string | undefined;
 }
 
 const STATE_TABS = [
@@ -210,6 +216,21 @@ export function IssuesPage() {
     environmentLabels,
   );
   const hiddenProjects = issueProjectKeys(search.hideProjects);
+  const pluginTabs = useAtomValue(
+    mcpPluginEnvironment.issuesTabs(environments.map((e) => e.environmentId).join(" ")),
+  );
+  const activeTab = pluginTabs.find((tab) => tab.key === search.tab) ?? null;
+  // A plugin server resolves with a project's overrides; prefer one the list shows.
+  const tabProjects = projects.filter(
+    (project) => project.environmentId === activeTab?.environmentId,
+  );
+  const tabProject =
+    tabProjects.find(
+      (project) =>
+        !hiddenProjects.has(
+          pullRequestProjectKey({ id: project.id, environmentId: project.environmentId }),
+        ),
+    ) ?? tabProjects[0];
 
   const debouncedQuery = useDebouncedValue(search.q ?? "", 300);
   const listInput: IssueListInput = {
@@ -349,6 +370,7 @@ export function IssuesPage() {
       ...(merged.tracker ? { tracker: merged.tracker } : {}),
       ...(merged.scope ? { scope: merged.scope } : {}),
       ...(merged.key ? { key: merged.key } : {}),
+      ...(merged.tab ? { tab: merged.tab } : {}),
     };
     writeIssueListPreferences(issueListPreferences(next));
     void navigate({ search: next });
@@ -674,6 +696,14 @@ export function IssuesPage() {
                 </h1>
               </WorkspaceBreadcrumbItem>
             </WorkspaceBreadcrumb>
+            {pluginTabs.length > 0 ? (
+              <IssuesViewTabs
+                tabs={pluginTabs}
+                active={activeTab?.key ?? null}
+                environmentLabels={environments.length > 1 ? environmentLabels : null}
+                onChange={(tab) => updateSearch({ tab: tab ?? undefined })}
+              />
+            ) : null}
             <div className="min-w-0 flex-1" />
             <div
               className="flex items-center gap-1 [-webkit-app-region:no-drag]"
@@ -699,87 +729,105 @@ export function IssuesPage() {
             </div>
           </WorkspacePageHeader>
 
-          <div className="topbar-scroll-fade scrollbar-gutter-both min-h-0 flex-1 overflow-y-auto">
-            <WorkspacePageContainer width="expanded" className="min-h-full gap-4">
-              <div className="flex flex-wrap items-center gap-2">
-                <div className="min-w-0 basis-full @lg/issue-list:min-w-48 @lg/issue-list:basis-0 @lg/issue-list:flex-1">
-                  <PullRequestSearchInput
-                    value={search.q ?? ""}
-                    label={gt("Search issues")}
-                    placeholder={gt("Search issues")}
-                    busy={
-                      (search.q ?? "") !== debouncedQuery ||
-                      (debouncedQuery.length > 0 && list.isPending)
+          {activeTab !== null ? (
+            <div className="min-h-0 flex-1">
+              {tabProject === undefined ? (
+                <p className="flex size-full items-center justify-center p-4 text-center text-muted-foreground text-sm">
+                  <T>Add a project on this environment to open this tab.</T>
+                </p>
+              ) : (
+                <PluginPanelView
+                  key={`${activeTab.key} ${tabProject.id}`}
+                  environmentId={activeTab.environmentId}
+                  pluginId={activeTab.pluginId}
+                  panelId={activeTab.panelId}
+                  projectId={tabProject.id}
+                />
+              )}
+            </div>
+          ) : (
+            <div className="topbar-scroll-fade scrollbar-gutter-both min-h-0 flex-1 overflow-y-auto">
+              <WorkspacePageContainer width="expanded" className="min-h-full gap-4">
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="min-w-0 basis-full @lg/issue-list:min-w-48 @lg/issue-list:basis-0 @lg/issue-list:flex-1">
+                    <PullRequestSearchInput
+                      value={search.q ?? ""}
+                      label={gt("Search issues")}
+                      placeholder={gt("Search issues")}
+                      busy={
+                        (search.q ?? "") !== debouncedQuery ||
+                        (debouncedQuery.length > 0 && list.isPending)
+                      }
+                      onChange={(q) => updateSearch({ q: q || undefined })}
+                      onSubmit={(q) => updateSearch({ q: q || undefined })}
+                    />
+                  </div>
+                  <PullRequestCompactFilterMenu
+                    label={gt("Sort issues")}
+                    triggerIcon={<ArrowDownUpIcon aria-hidden className="size-4" />}
+                    triggerLabel={gt("Sort", { $context: "verb, button that sorts a list" })}
+                    outlined
+                    value={search.order ?? "updated"}
+                    options={resolveFilterOptions(SORT_OPTIONS, resolve)}
+                    onChange={(order) =>
+                      updateSearch({ order: order === "created" ? "created" : undefined })
                     }
-                    onChange={(q) => updateSearch({ q: q || undefined })}
-                    onSubmit={(q) => updateSearch({ q: q || undefined })}
                   />
+                  <IssueFiltersMenu
+                    state={search.status}
+                    stateOptions={resolveFilterOptions(STATE_TABS, resolve)}
+                    onState={(status) => updateSearch({ status })}
+                    involvement={search.who}
+                    involvementOptions={resolveFilterOptions(INVOLVEMENT_TABS, resolve)}
+                    onInvolvement={(who) => updateSearch({ who })}
+                    scopes={filterScopes}
+                    labels={search.label ?? []}
+                    onLabels={(label) => updateSearch({ label })}
+                    assignee={search.assignee}
+                    onAssignee={(assignee) => updateSearch({ assignee })}
+                    projects={filterProjects}
+                    hiddenProjects={hiddenProjects}
+                    onHiddenProjects={(hideProjects) => updateSearch({ hideProjects })}
+                  />
+                  <SavedViewsMenu
+                    kind={ISSUE_SAVED_VIEWS}
+                    preferences={search}
+                    onApply={(view) =>
+                      // Explicit clears replace the old list scope; the selected issue stays open.
+                      updateSearch({
+                        who: view.who,
+                        status: view.status,
+                        hideProjects: view.hideProjects,
+                        host: view.host,
+                        q: view.q,
+                        label: view.label,
+                        assignee: view.assignee,
+                        order: view.order,
+                      })
+                    }
+                  />
+                  {hostOptions.length > 1 ? (
+                    <FilterMenu
+                      label={gt("Filter by tracker")}
+                      value={search.host ?? ""}
+                      options={hostOptions}
+                      onChange={(host) => updateSearch({ host: host || undefined })}
+                    />
+                  ) : null}
+                  <Button
+                    size="icon"
+                    variant="outline"
+                    aria-label={gt("Refresh issues")}
+                    onClick={list.refresh}
+                    disabled={list.isPending}
+                  >
+                    <RefreshIcon size="md" refreshing={list.isPending} />
+                  </Button>
                 </div>
-                <PullRequestCompactFilterMenu
-                  label={gt("Sort issues")}
-                  triggerIcon={<ArrowDownUpIcon aria-hidden className="size-4" />}
-                  triggerLabel={gt("Sort", { $context: "verb, button that sorts a list" })}
-                  outlined
-                  value={search.order ?? "updated"}
-                  options={resolveFilterOptions(SORT_OPTIONS, resolve)}
-                  onChange={(order) =>
-                    updateSearch({ order: order === "created" ? "created" : undefined })
-                  }
-                />
-                <IssueFiltersMenu
-                  state={search.status}
-                  stateOptions={resolveFilterOptions(STATE_TABS, resolve)}
-                  onState={(status) => updateSearch({ status })}
-                  involvement={search.who}
-                  involvementOptions={resolveFilterOptions(INVOLVEMENT_TABS, resolve)}
-                  onInvolvement={(who) => updateSearch({ who })}
-                  scopes={filterScopes}
-                  labels={search.label ?? []}
-                  onLabels={(label) => updateSearch({ label })}
-                  assignee={search.assignee}
-                  onAssignee={(assignee) => updateSearch({ assignee })}
-                  projects={filterProjects}
-                  hiddenProjects={hiddenProjects}
-                  onHiddenProjects={(hideProjects) => updateSearch({ hideProjects })}
-                />
-                <SavedViewsMenu
-                  kind={ISSUE_SAVED_VIEWS}
-                  preferences={search}
-                  onApply={(view) =>
-                    // Explicit clears replace the old list scope; the selected issue stays open.
-                    updateSearch({
-                      who: view.who,
-                      status: view.status,
-                      hideProjects: view.hideProjects,
-                      host: view.host,
-                      q: view.q,
-                      label: view.label,
-                      assignee: view.assignee,
-                      order: view.order,
-                    })
-                  }
-                />
-                {hostOptions.length > 1 ? (
-                  <FilterMenu
-                    label={gt("Filter by tracker")}
-                    value={search.host ?? ""}
-                    options={hostOptions}
-                    onChange={(host) => updateSearch({ host: host || undefined })}
-                  />
-                ) : null}
-                <Button
-                  size="icon"
-                  variant="outline"
-                  aria-label={gt("Refresh issues")}
-                  onClick={list.refresh}
-                  disabled={list.isPending}
-                >
-                  <RefreshIcon size="md" refreshing={list.isPending} />
-                </Button>
-              </div>
-              {listBody}
-            </WorkspacePageContainer>
-          </div>
+                {listBody}
+              </WorkspacePageContainer>
+            </div>
+          )}
         </div>
 
         {presence.present &&
@@ -893,6 +941,45 @@ export function IssuesPage() {
         ) : null}
       </div>
     </SidebarInset>
+  );
+}
+
+/** "Issues" plus each plugin's Issues tab; `null` is the issue list. */
+function IssuesViewTabs(props: {
+  readonly tabs: ReadonlyArray<IssuesPluginTab>;
+  readonly active: string | null;
+  readonly environmentLabels: ReadonlyMap<EnvironmentId, string> | null;
+  readonly onChange: (tab: string | null) => void;
+}) {
+  const gt = useGT();
+  const LIST = "";
+  return (
+    <ToggleGroup
+      aria-label={gt("Issues view")}
+      className="shrink-0 [-webkit-app-region:no-drag]"
+      variant="segmented"
+      value={[props.active ?? LIST]}
+      onValueChange={(value) => {
+        const next = value[0];
+        if (next !== undefined) props.onChange(next === LIST ? null : next);
+      }}
+    >
+      <Toggle value={LIST}>
+        <T context="tab showing the list of issues">Issues</T>
+      </Toggle>
+      {props.tabs.map((tab) => {
+        const environment = props.environmentLabels?.get(tab.environmentId);
+        return (
+          <Toggle
+            key={tab.key}
+            value={tab.key}
+            title={environment ? `${tab.pluginName} · ${environment}` : tab.pluginName}
+          >
+            {tab.title}
+          </Toggle>
+        );
+      })}
+    </ToggleGroup>
   );
 }
 

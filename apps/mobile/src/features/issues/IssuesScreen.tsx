@@ -38,6 +38,7 @@ import { NativeScrollView } from "../../native/NativeScrollViewMarker";
 import { useNativeColumnLayoutMetrics } from "../../native/native-layout-metrics";
 import { NativePrimaryColumnContext } from "../../native/v5-workspace-context";
 import { useProjects } from "../../state/entities";
+import { mcpPluginEnvironment } from "../../state/mcpApps";
 import { issueEnvironment, useIssueList } from "../../state/issues";
 import { useDebouncedValue } from "../../state/queries";
 import { environmentServerConfigsAtom } from "../../state/server";
@@ -156,6 +157,18 @@ export function IssuesScreen(
     .map((environment) => ({ environmentId: environment.environmentId, input: listInput }))
     .sort((left, right) => left.environmentId.localeCompare(right.environmentId));
   const list = useIssueList(targets);
+  // Plugin Issues tabs open as project panels, resolved with a project of their environment.
+  const pluginTabs = useAtomValue(
+    mcpPluginEnvironment.issuesTabs(
+      environments
+        .filter((environment) => environment.connectionState === "connected")
+        .map((environment) => environment.environmentId)
+        .join(" "),
+    ),
+  ).flatMap((pluginTab) => {
+    const project = projects.find((p) => p.environmentId === pluginTab.environmentId);
+    return project === undefined ? [] : [{ ...pluginTab, projectId: project.id }];
+  });
 
   const [pages, setPages] = useState<ReadonlyMap<EnvironmentId, HeldIssuePage>>(new Map());
   const held = holdIssuePages(list.answers, pages);
@@ -357,6 +370,24 @@ export function IssuesScreen(
                   : FILTER_ROW_STYLE
               }
             >
+              {pluginTabs.map((pluginTab) => (
+                <Chip
+                  key={pluginTab.key}
+                  label={pluginTab.title}
+                  icon="square.grid.2x2"
+                  glass
+                  colorScheme={themeAppearance}
+                  accessibilityLabel={`${pluginTab.pluginName}: ${pluginTab.title}`}
+                  onPress={() =>
+                    navigation.navigate("PluginPanel", {
+                      environmentId: pluginTab.environmentId,
+                      projectId: pluginTab.projectId,
+                      pluginId: pluginTab.pluginId,
+                      panelId: pluginTab.panelId,
+                    })
+                  }
+                />
+              ))}
               <SavedViewsMenu
                 read={(preferences) => preferences.issueSavedViews}
                 write={(issueSavedViews) => ({ issueSavedViews })}
