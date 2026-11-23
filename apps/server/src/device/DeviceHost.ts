@@ -192,6 +192,8 @@ export class DeviceHost extends Context.Service<
     /** The name errors and the Device panel show for this host. */
     readonly label: string;
     readonly summary: Effect.Effect<DeviceHostSummary>;
+    /** The agent-device release that talks to this host's daemons; T3's own when unset. */
+    readonly agentDeviceVersion?: string;
     readonly inspect?: Effect.Effect<DeviceHostSummary, DeviceHostError>;
     readonly platformAvailability: (
       platform: DevicePlatform,

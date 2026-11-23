@@ -35,6 +35,7 @@ import * as ServerConfig from "../config.ts";
 import * as ProcessRunner from "../processRunner.ts";
 import { requireSettingsSecret } from "../secrets/settingsSecretValue.ts";
 import { writeAgentDeviceConfig } from "./AgentDeviceTarget.ts";
+import { SIMLOCK_AGENT_DEVICE_VERSION } from "./DeviceToolchain.ts";
 import * as DeviceHost from "./DeviceHost.ts";
 
 const CATALOG_TTL_MS = 60_000;
@@ -196,7 +197,7 @@ export const simlockIdentity = Effect.fn("SimlockDeviceHost.identity")(function*
     );
 });
 
-/** T3's own agent-device CLI, installed on first use. */
+/** The agent-device CLI for Simlock leases, installed on first use. */
 export type AgentDeviceCli = Effect.Effect<
   { readonly nodePath: string; readonly entryPath: string },
   DeviceHost.DeviceHostError | NodeRuntimeUnavailableError
@@ -699,6 +700,7 @@ export const make = Effect.fn("SimlockDeviceHost.make")(function* (
     id: hostId,
     label: config.label,
     summary,
+    agentDeviceVersion: SIMLOCK_AGENT_DEVICE_VERSION,
     platformAvailability,
     ensureReady,
     ensureAgentReady: Effect.fn("SimlockDeviceHost.ensureAgentReady")(function* (onPhase) {

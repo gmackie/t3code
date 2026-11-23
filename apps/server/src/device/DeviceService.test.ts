@@ -1434,6 +1434,7 @@ it.effect("leaves a session its host leases to every thread open when one thread
         agentDeviceInstalled: true,
       }),
       platformAvailability: (platform) => Effect.succeed({ platform, available: true }),
+      agentDeviceVersion: "0.21.39",
       ensureReady: () => Effect.succeed(ready),
       ensureAgentReady: () => Effect.succeed(ready),
       current: Effect.succeed(ready),
@@ -1441,13 +1442,18 @@ it.effect("leaves a session its host leases to every thread open when one thread
       stop: Effect.void,
     };
     const released: string[] = [];
+    const boundVersions: Array<string | undefined> = [];
     const service = yield* DeviceService.makeWithHosts(
       new Map([[host.id, host]]),
       undefined,
       () => Effect.succeed("agent-device.json"),
       undefined,
       {
-        bind: ({ session }) => Effect.succeed(session),
+        bind: ({ session, agentDeviceVersion }) =>
+          Effect.sync(() => {
+            boundVersions.push(agentDeviceVersion);
+            return session;
+          }),
         prune: () => Effect.void,
         release: (launcher) => Effect.sync(() => void released.push(launcher)),
       },
@@ -1460,6 +1466,8 @@ it.effect("leaves a session its host leases to every thread open when one thread
       expect(agent.session).toBe("lease-session");
       yield* service.agentLauncher({ ...target, targetArgs: agent.args });
     }
+    // The agent's CLI must speak this host's daemon protocol, not T3's newest one.
+    expect(boundVersions).toEqual(["0.21.39", "0.21.39"]);
     yield* service.close({ threadId: threads[0]! });
     expect(released).toEqual([]);
   }).pipe(

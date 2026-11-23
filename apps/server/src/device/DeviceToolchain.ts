@@ -16,6 +16,9 @@ const DEVICE_HUB_PACKAGE = "expo-device-hub";
 export const DEVICE_HUB_VERSION = DEVICE_TOOL_VERSIONS[DEVICE_HUB_PACKAGE];
 const AGENT_DEVICE_PACKAGE = "agent-device";
 export const AGENT_DEVICE_VERSION = DEVICE_TOOL_VERSIONS[AGENT_DEVICE_PACKAGE];
+// Simlock 0.8.0 workers require agent-device RPC protocol 2, and 0.21.39 is the last client
+// that speaks it (callstackincubator/simlock#1800). Drop this once Simlock accepts protocol 3.
+export const SIMLOCK_AGENT_DEVICE_VERSION = "0.21.39";
 
 const INSTALL_TIMEOUT = Duration.minutes(10);
 const installLock = Semaphore.makeUnsafe(1);
@@ -205,8 +208,15 @@ const ensureTool = Effect.fn("DeviceToolchain.ensureTool")(function* (
 export const ensureDeviceHub = (baseDir: string) =>
   ensureTool(baseDir, HUB_SPEC, (paths) => paths.hub);
 
-export const ensureAgentDevice = (baseDir: string) =>
-  ensureTool(baseDir, AGENT_DEVICE_SPEC, (paths) => paths.agentDevice);
+/** Installs T3's agent-device, or `version` for a host whose daemons speak an older RPC protocol. */
+export const ensureAgentDevice = Effect.fn("DeviceToolchain.ensureAgentDevice")(function* (
+  baseDir: string,
+  version: string = AGENT_DEVICE_VERSION,
+) {
+  const path = yield* Path.Path;
+  const spec = { ...AGENT_DEVICE_SPEC, version };
+  return yield* installLock.withPermit(installTool(spec, toolPaths(path, baseDir, spec)));
+});
 
 const isToolInstalled = Effect.fn("DeviceToolchain.isToolInstalled")(function* (
   baseDir: string,
