@@ -45,6 +45,11 @@ accept `https` or `localhost` return addresses, so on a plain-http remote connec
 the desktop app on that machine, or over an `https` address. A project that points the server at a
 different URL signs in separately.
 
+GitHub’s hosted MCP server uses a device code. Use the public client ID of your own device-enabled
+GitHub OAuth app in the server’s OAuth settings. Select **Sign in**, enter the code shown by T3
+on GitHub’s verification page, and approve the requested access. The environment completes sign-in
+when GitHub confirms your decision.
+
 With a project selected, servers you add belong to that project. Giving one the same name as an
 environment server replaces it for the project, which is how to point a project at a different
 account. Inherited servers can be switched off for the project without removing them elsewhere.

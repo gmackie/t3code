@@ -5167,6 +5167,7 @@
   "6f4b0e797341e214": "Background setup",
   "478d840dc88564cb": "The sign-in failed.",
   "ce9168a2fb7e6391": "The sign-in page could not be opened.",
+  "422bb4a8e47d71ac": "Enter this code on the sign-in page.",
   "f64401a4237c8129": "This environment isn't connected.",
   "7dfdfa116c6a9d86": "Could not start triage",
   "ad249f336902fb71": "{message} Run {command} in a terminal on that machine instead.",

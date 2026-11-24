@@ -8,6 +8,7 @@ import * as WebBrowser from "expo-web-browser";
 import { useCallback, useEffect, useRef } from "react";
 import { AppState, Platform } from "react-native";
 
+import * as Dialog from "../../components/ui/Dialog";
 import { appAtomRegistry } from "../../state/atom-registry";
 import { serverEnvironment } from "../../state/server";
 import { usePreparedConnection } from "../../state/session";
@@ -84,27 +85,40 @@ export function signInToMcpServer(input: {
       }
       if (event?.type === "authorize" && !opened) {
         opened = true;
-        if (Platform.OS === "android") {
-          let backgrounded = false;
-          browserListener = AppState.addEventListener("change", (state) => {
-            if (state !== "active") backgrounded = true;
-            else if (backgrounded) browserClosed();
+        const open = () => {
+          if (done) return;
+          if (Platform.OS === "android" && event.userCode === undefined) {
+            let backgrounded = false;
+            browserListener = AppState.addEventListener("change", (state) => {
+              if (state !== "active") backgrounded = true;
+              else if (backgrounded) browserClosed();
+            });
+          }
+          void WebBrowser.openBrowserAsync(event.authorizationUrl).then(
+            (browser) => {
+              // Device grants settle on a server poll, which can follow browser dismissal.
+              if (done || browser.type === "opened" || event.userCode !== undefined) return;
+              browserClosed();
+            },
+            (error: unknown) =>
+              finish({
+                status: "failed",
+                message:
+                  error instanceof Error
+                    ? error.message
+                    : m(msg("The sign-in page could not be opened.")),
+              }),
+          );
+        };
+        if (event.userCode === undefined) open();
+        else
+          Dialog.confirm({
+            title: event.userCode,
+            message: m(msg("Enter this code on the sign-in page.")),
+            confirmText: m(msg("Open sign-in page")),
+            onConfirm: open,
+            onCancel: abort,
           });
-        }
-        void WebBrowser.openBrowserAsync(event.authorizationUrl).then(
-          (browser) => {
-            if (done || browser.type === "opened") return;
-            browserClosed();
-          },
-          (error: unknown) =>
-            finish({
-              status: "failed",
-              message:
-                error instanceof Error
-                  ? error.message
-                  : m(msg("The sign-in page could not be opened.")),
-            }),
-        );
       }
     };
     unsubscribe = appAtomRegistry.subscribe(atom, check, { immediate: true });
