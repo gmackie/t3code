@@ -9,6 +9,8 @@ export interface LaneCommand {
   readonly cwd?: string;
   /** Runs with nothing else beside it, for timing gates. */
   readonly exclusive?: boolean;
+  /** CI installs Chromium unless every selected command opts out. */
+  readonly needsBrowser?: boolean;
 }
 
 export interface Lane {
@@ -237,8 +239,8 @@ export const lanes: ReadonlyArray<Lane> = [
   {
     id: "lane-check",
     commands: [
-      { run: "node --test scripts/nightly-conflict-session.test.mjs" },
-      { run: "pnpm vp check" },
+      { run: "node --test scripts/nightly-conflict-session.test.mjs", needsBrowser: false },
+      { run: "pnpm vp check", needsBrowser: false },
     ],
   },
   // The lane runner itself. Changing it runs every lane as well.

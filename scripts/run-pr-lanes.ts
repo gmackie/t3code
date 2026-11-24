@@ -7,6 +7,7 @@
 //   node scripts/run-pr-lanes.ts --lanes pair,engine    these lanes
 //   node scripts/run-pr-lanes.ts --files a.ts,b.ts --base custom-local   lanes these changed files select
 //   node scripts/run-pr-lanes.ts --list                 print the plan and run nothing
+//   node scripts/run-pr-lanes.ts --github-output <file> also write the plan for later CI steps
 //
 // The changed files come from the Forgejo API (the same merge-base diff that a
 // workflow's `paths:` filter reads). When they cannot be read, every lane runs.
@@ -377,6 +378,15 @@ const main = async () => {
       `${commands.size} distinct command(s), ${concurrency} at a time.`,
   );
   for (const lane of selection.lanes) console.log(`  ${lane.id}`);
+  const outputFile = argument("--github-output");
+  if (outputFile !== undefined) {
+    const ids = selection.lanes.map((lane) => lane.id).join(",");
+    const needsBrowser = selection.lanes.some((lane) =>
+      lane.commands.some((command) => command.needsBrowser !== false),
+    );
+    NodeFS.appendFileSync(outputFile, `lanes=${ids}\nneeds_browser=${needsBrowser}\n`);
+    return;
+  }
   if (process.argv.includes("--list") || selection.lanes.length === 0) return;
 
   const failedCommands: Array<{ command: LaneCommand; result: CommandResult }> = [];
