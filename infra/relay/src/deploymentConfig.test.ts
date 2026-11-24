@@ -3,6 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   managedEndpointHostname,
   isManagedEndpointHostname,
+  relayCreatesEdgeWildcardDns,
   relayOwnsManagedEndpointZone,
 } from "./deploymentConfig.ts";
 
@@ -10,6 +11,12 @@ describe("relayOwnsManagedEndpointZone", () => {
   it("keeps the shared Cloudflare zone owned by production", () => {
     expect(relayOwnsManagedEndpointZone("prod")).toBe(true);
     expect(relayOwnsManagedEndpointZone("dev_julius")).toBe(false);
+  });
+
+  it("skips the zone wildcard when the operator already has that name", () => {
+    expect(relayCreatesEdgeWildcardDns("prod", true)).toBe(true);
+    expect(relayCreatesEdgeWildcardDns("prod", false)).toBe(false);
+    expect(relayCreatesEdgeWildcardDns("dev_julius", true)).toBe(false);
   });
 });
 

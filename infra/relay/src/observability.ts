@@ -153,6 +153,14 @@ const mobileSourceMapsBucketName = (stage: string) =>
  * R2's S3 access key id is the API token's id and the secret the SHA-256 of its value.
  */
 export const MobileSourceMapsUploadCredentials = Effect.gen(function* () {
+  // A user OAuth token can deploy Workers but cannot create account API tokens.
+  // Set this false to keep the source-map bucket without minting upload credentials.
+  const uploadCredentials = yield* Config.Boolean("RELAY_SOURCEMAP_UPLOAD_CREDENTIALS").pipe(
+    Config.withDefault(true),
+  );
+  if (!uploadCredentials) {
+    return Output.literal(Redacted.make(""));
+  }
   const { stage } = yield* Alchemy.Stack;
   const { accountId } = yield* yield* Cloudflare.CloudflareEnvironment;
   const bucketName = mobileSourceMapsBucketName(stage);
