@@ -111,6 +111,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GMACKO_GITHUB_TOKEN }}
           FORGEJO_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          LANE_CACHE: ${{ vars.MINI_CI_STORAGE_ROOT || '/Users/mackieg/t3-ci' }}/git-cache/t3code.git
         run: |
           set -euo pipefail
           if [[ -z "${GITHUB_TOKEN:-}" ]]; then
@@ -130,7 +131,21 @@ jobs:
           git_auth "$FORGEJO_REPO_URL" "$FORGEJO_TOKEN"
           # Always sync the ForgeGraph lane. Cloning GitHub on schedule
           # overwrites Forgejo with a stale tip that never got promoted.
-          git clone --branch custom-local --tags "$FORGEJO_REPO_URL" lane
+          # A full clone from Forgejo runs at ~300 KB/s (run 1767 spent 20+ min
+          # on it); a persistent bare cache makes each run fetch only new objects.
+          refresh_cache() {
+            git -C "$LANE_CACHE" rev-parse --git-dir >/dev/null 2>&1 &&
+              git -C "$LANE_CACHE" fetch --prune --tags origin '+refs/heads/custom-local:refs/heads/custom-local'
+          }
+          if ! refresh_cache; then
+            # A cancelled run can leave the cache half-written; start it over.
+            rm -rf "$LANE_CACHE"
+            mkdir -p "$(dirname "$LANE_CACHE")"
+            git clone --bare --single-branch --branch custom-local --tags "$FORGEJO_REPO_URL" "$LANE_CACHE"
+            # The lane borrows the cache's objects, so gc must never prune them mid-job.
+            git -C "$LANE_CACHE" config gc.auto 0
+          fi
+          git clone --reference "$LANE_CACHE" --branch custom-local --tags "$FORGEJO_REPO_URL" lane
           cd lane
           git config user.name "gmacko-nightly[bot]"
           git config user.email "gmacko-nightly@users.noreply.forgegraf.com"
