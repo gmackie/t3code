@@ -1,6 +1,10 @@
 import type { DesktopUpdateChannel, DesktopUpdateReleaseNote } from "@t3tools/contracts";
 
 import { desktopUpdateChannelOf } from "@t3tools/shared/cliRelease";
+import {
+  parseGmackoChangelogManifest,
+  type GmackoChangelogManifest,
+} from "@t3tools/shared/gmackoChangelog";
 
 interface ElectronReleaseNoteInfo {
   readonly version: string;
@@ -132,8 +136,158 @@ function extractReleaseNoteSummary(summary: string): ExtractedReleaseNoteItems {
   };
 }
 
+function labelGmackoChange(text: string): string {
+  const pullRequest = /^PR (\d+):\s+(.+)$/.exec(text);
+  if (!pullRequest?.[1] || !pullRequest[2]) return text;
+  return `**PR ${pullRequest[1]}** ${pullRequest[2]}`;
+}
+
+function plainReleaseText(value: string): string {
+  return decodeHtmlEntities(value)
+    .replace(/<br\s*\/?>/gi, " ")
+    .replace(/<[^>]*>/g, "")
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+    .replace(/[`*]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function gmackoChangesSection(note: string): string {
+  const heading =
+    /<h[1-6][^>]*>\s*GMACKO changes\s*<\/h[1-6]>|^#{1,6}[ \t]+GMACKO changes[ \t]*$/im.exec(note);
+  const start = heading ? heading.index + heading[0].length : 0;
+  const rest = note.slice(start);
+  const fullChangelog = /\bfull changelog\b/i.exec(rest);
+  return fullChangelog ? rest.slice(0, fullChangelog.index) : rest;
+}
+
+/** Nightly stamps contain dots (`v0.1.12-nightly.…`), so the sentence ends at the period after them. */
+function includesUpstreamLine(section: string): string | undefined {
+  const match = /Includes upstream (?:[^.]+|\.(?=\d))+\./.exec(plainReleaseText(section));
+  return match?.[0].replace(/\s+/g, " ").trim();
+}
+
+/** The outer list only. Nested commit lists belong on the release page, not in the popover. */
+function topLevelHtmlItems(section: string): string[] {
+  const open = /<ul\b[^>]*>/i.exec(section);
+  if (!open) return [];
+  const items: string[] = [];
+  let index = open.index + open[0].length;
+  let depth = 1;
+  while (index < section.length && depth > 0) {
+    const tag = /<\/?ul\b[^>]*>|<li\b[^>]*>|<\/li\s*>/gi.exec(section.slice(index));
+    if (!tag) break;
+    const at = index + tag.index;
+    const token = tag[0].toLowerCase();
+    if (token.startsWith("<ul")) {
+      depth += 1;
+      index = at + tag[0].length;
+      continue;
+    }
+    if (token.startsWith("</ul")) {
+      depth -= 1;
+      index = at + tag[0].length;
+      continue;
+    }
+    if (token.startsWith("<li") && depth === 1) {
+      const bodyStart = at + tag[0].length;
+      const closed = closeHtmlListItem(section, bodyStart);
+      const summary = plainReleaseText(closed.html.split(/<ul\b/i)[0] ?? "");
+      if (summary) items.push(summary);
+      index = closed.end;
+      continue;
+    }
+    index = at + tag[0].length;
+  }
+  return items;
+}
+
+function closeHtmlListItem(html: string, from: number): { readonly html: string; readonly end: number } {
+  let depth = 0;
+  let index = from;
+  while (index < html.length) {
+    const tag = /<\/?ul\b[^>]*>|<\/li\s*>/gi.exec(html.slice(index));
+    if (!tag) break;
+    const at = index + tag.index;
+    const token = tag[0].toLowerCase();
+    if (token.startsWith("<ul")) depth += 1;
+    else if (token.startsWith("</ul")) depth = Math.max(0, depth - 1);
+    else if (depth === 0) return { html: html.slice(from, at), end: at + tag[0].length };
+    index = at + tag[0].length;
+  }
+  return { html: html.slice(from), end: html.length };
+}
+
+function topLevelMarkdownItems(section: string): string[] {
+  const items: string[] = [];
+  for (const rawLine of section.split("\n")) {
+    if (/^\s+[-*]\s+/.test(rawLine)) continue;
+    const line = rawLine.trim();
+    if (!/^[-*]\s+/.test(line)) continue;
+    const text = plainReleaseText(line.replace(/^[-*]\s+/, ""));
+    if (text) items.push(text);
+  }
+  return items;
+}
+
+function notesFromGmackoManifest(manifest: GmackoChangelogManifest): ExtractedReleaseNoteItems {
+  const labels = manifest.changes.map((change) =>
+    change.kind === "pr" ? `**PR ${change.number}** ${change.title}` : change.subject,
+  );
+  const footer = manifest.upstreamNightlyTag
+    ? `Includes upstream nightly ${manifest.upstreamNightlyTag}.`
+    : manifest.upstreamBaseSha
+      ? `Includes upstream main up to ${manifest.upstreamBaseSha.slice(0, 7)}.`
+      : undefined;
+  return finishGmackoNotes(labels, footer, manifest.changes.length === 0);
+}
+
+function notesFromRenderedGmackoChanges(note: string): ExtractedReleaseNoteItems {
+  const section = gmackoChangesSection(note);
+  const labels = (section.includes("<li") ? topLevelHtmlItems(section) : topLevelMarkdownItems(section)).map(
+    labelGmackoChange,
+  );
+  return finishGmackoNotes(
+    labels,
+    includesUpstreamLine(section),
+    /No fork changes since the previous build/i.test(plainReleaseText(section)),
+  );
+}
+
+function finishGmackoNotes(
+  labels: ReadonlyArray<string>,
+  footer: string | undefined,
+  noForkChanges: boolean,
+): ExtractedReleaseNoteItems {
+  const items =
+    labels.length > 0
+      ? labels.slice(0, MAX_RELEASE_NOTE_ITEMS_PER_GROUP).map(truncateReleaseNoteItem)
+      : noForkChanges
+        ? ["No fork changes since the previous build."]
+        : [];
+  return {
+    items,
+    totalItems: labels.length > 0 ? labels.length : items.length,
+    ...(footer ? { footer } : {}),
+  };
+}
+
+/**
+ * GMACKO releases are written by scripts/gmacko-changelog.ts. The updater reads GitHub's rendered
+ * feed, which drops the embedded manifest, so the same notes are recovered from that HTML.
+ */
+function extractGmackoReleaseNotes(note: string): ExtractedReleaseNoteItems | undefined {
+  const decoded = decodeHtmlEntities(note);
+  const manifest = parseGmackoChangelogManifest(note) ?? parseGmackoChangelogManifest(decoded);
+  if (manifest) return notesFromGmackoManifest(manifest);
+  if (!/GMACKO changes/i.test(decoded)) return undefined;
+  return notesFromRenderedGmackoChanges(decoded);
+}
+
 function extractReleaseNoteItems(note: string | null | undefined): ExtractedReleaseNoteItems {
   if (!note) return { items: [], totalItems: 0 };
+  const gmacko = extractGmackoReleaseNotes(note);
+  if (gmacko) return gmacko;
 
   // Generated summaries fold GitHub's full list under this exact <details> block.
   const summaryEnd = note.search(/<details>\s*<summary>\s*Full changelog\s*<\/summary>/i);
@@ -157,12 +311,14 @@ function extractReleaseNoteItems(note: string | null | undefined): ExtractedRele
   return { items: items.toReversed(), totalItems };
 }
 
-// The update feed dates only the offered version; prerelease versions carry their UTC build day.
+// The update feed dates only the offered version. Nightly and preview versions carry their UTC
+// build day; GMACKO stamps are YYYYMMDDHHMM.
 const PRERELEASE_BUILD_DAY = /-(?:nightly|preview)\.(\d{4})(\d{2})(\d{2})\.\d+$/;
+const GMACKO_BUILD_DAY = /-gmacko\.(\d{4})(\d{2})(\d{2})\d{4}$/;
 
 function resolveReleasedAt(version: string, offeredVersion: string, releaseDate?: string) {
   if (version === offeredVersion && releaseDate) return releaseDate;
-  const day = PRERELEASE_BUILD_DAY.exec(version);
+  const day = PRERELEASE_BUILD_DAY.exec(version) ?? GMACKO_BUILD_DAY.exec(version);
   return day ? `${day[1]}-${day[2]}-${day[3]}` : undefined;
 }
 

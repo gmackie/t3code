@@ -1,3 +1,5 @@
+import type { GmackoChangelogManifest } from "@t3tools/contracts";
+import { encodeGmackoChangelogManifest } from "@t3tools/shared/gmackoChangelog";
 import { describe, expect, it } from "vite-plus/test";
 
 import { normalizeDesktopUpdateReleaseNotes } from "./releaseNotes.ts";
@@ -298,5 +300,90 @@ describe("normalizeDesktopUpdateReleaseNotes", () => {
       ],
       omittedReleaseCount: 0,
     });
+  });
+
+  it("shows the newest GMACKO release changes and skips nested commits", () => {
+    const pulls = Array.from({ length: 10 }, (_, index) => {
+      const number = 180 - index;
+      return `<li><a href="https://git.forgegraf.com/gmackie/t3code/pulls/${number}">PR ${number}</a>: change ${number}</li>`;
+    });
+    pulls[1] = `<li><a href="https://git.forgegraf.com/gmackie/t3code/pulls/179">PR 179</a>: change 179
+<ul><li>nested commit (<code>abc1234</code>)</li></ul>
+</li>`;
+    const note = [
+      "<h2>GMACKO changes</h2>",
+      "<ul>",
+      ...pulls,
+      "</ul>",
+      '<p>Includes upstream nightly <a href="https://github.com/pingdotgg/t3code/releases/tag/v0.1.12-nightly.20261123.5138"><code>v0.1.12-nightly.20261123.5138</code></a>.</p>',
+      "<p><strong>Full Changelog</strong>: <a href=\"https://github.com/gmackie/t3code/compare/old...new\">old...new</a></p>",
+    ].join("\n");
+
+    const result = normalizeDesktopUpdateReleaseNotes(
+      note,
+      "0.1.11-gmacko.202611241020",
+      "gmacko",
+    );
+
+    expect(result.releaseNotes).toEqual([
+      {
+        version: "0.1.11-gmacko.202611241020",
+        releasedAt: "2026-11-24",
+        items: [180, 179, 178, 177, 176, 175, 174, 173].map(
+          (number) => `**PR ${number}** change ${number}`,
+        ),
+        totalItems: 10,
+        footer: "Includes upstream nightly v0.1.12-nightly.20261123.5138.",
+      },
+    ]);
+    expect(result.omittedReleaseCount).toBe(0);
+  });
+
+  it("reads a GMACKO manifest when the release body still carries one", () => {
+    const manifest: GmackoChangelogManifest = {
+      schemaVersion: 1,
+      version: "0.1.11-gmacko.202611221423",
+      sha: "abc1234def",
+      previousTag: "v0.1.11-gmacko.202611201200",
+      upstreamBaseSha: "deadbeef",
+      upstreamNightlyTag: null,
+      changes: [
+        { kind: "pr", number: 151, title: "pin a dependency", sha: "a", commits: [], omittedCommits: 0 },
+        { kind: "commit", sha: "b", subject: "fix: direct lane commit" },
+      ],
+    };
+
+    const result = normalizeDesktopUpdateReleaseNotes(
+      `## GMACKO changes\n\n- [PR 151](https://example.com/151): pin a dependency\n\n${encodeGmackoChangelogManifest(manifest)}\n`,
+      "0.1.11-gmacko.202611221423",
+      "gmacko",
+    );
+
+    expect(result.releaseNotes).toEqual([
+      {
+        version: "0.1.11-gmacko.202611221423",
+        releasedAt: "2026-11-22",
+        items: ["**PR 151** pin a dependency", "fix: direct lane commit"],
+        totalItems: 2,
+        footer: "Includes upstream main up to deadbee.",
+      },
+    ]);
+  });
+
+  it("keeps an empty GMACKO release visible", () => {
+    const result = normalizeDesktopUpdateReleaseNotes(
+      "## GMACKO changes\n\nNo fork changes since the previous build.\n",
+      "0.1.11-gmacko.202611010900",
+      "gmacko",
+    );
+
+    expect(result.releaseNotes).toEqual([
+      {
+        version: "0.1.11-gmacko.202611010900",
+        releasedAt: "2026-11-01",
+        items: ["No fork changes since the previous build."],
+        totalItems: 1,
+      },
+    ]);
   });
 });
