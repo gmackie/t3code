@@ -70,8 +70,48 @@ env:
   PNPM_CONFIG_USERCONFIG: /dev/null
 
 jobs:
+  # T3CODE-130: every push to custom-local starts this whole pipeline, and the
+  # sync job clones whatever custom-local is when it runs, not this run's
+  # commit. A push run that only starts after a newer push has landed would
+  # release the same tip as the newer run, so it skips every job instead.
+  # Schedule and manual runs are always current (force_release and skip_sync
+  # keep working). Not a workflow-level concurrency block: Forgejo 15 never
+  # releases a run's later `needs` jobs while the run holds one.
+  superseded:
+    name: Is this push still the custom-local head?
+    runs-on: light
+    # A seconds-long lookup; the limit only catches a hang or a slow container start.
+    timeout-minutes: 5
+    outputs:
+      current: ${{ steps.head.outputs.current }}
+    steps:
+      - name: Compare with the head of custom-local
+        id: head
+        shell: bash
+        env:
+          FORGEJO_TOKEN: ${{ github.token }}
+        run: |
+          current=true
+          if [ "${{ github.event_name }}" = "push" ]; then
+            body="$(curl -fsS --max-time 20 -H "Authorization: token ${FORGEJO_TOKEN}" \
+              "${{ github.server_url }}/api/v1/repos/${{ github.repository }}/branches/custom-local" || true)"
+            head="$(printf '%s' "${body}" | jq -r '.commit.id // empty' 2>/dev/null || true)"
+            if [ -z "${head}" ]; then
+              head="$(printf '%s' "${body}" | grep -o '"commit":{"id":"[0-9a-f]*"' | head -n1 | sed 's/.*"id":"//; s/"$//' || true)"
+            fi
+            if [ -n "${head}" ] && [ "${head}" != "${{ github.sha }}" ]; then
+              current=false
+              echo "::notice::custom-local is at ${head}; ${{ github.sha }} is superseded by a newer run, skipping the release pipeline"
+            elif [ -z "${head}" ]; then
+              echo "::warning::could not read the head of custom-local; running the release pipeline anyway"
+            fi
+          fi
+          echo "current=${current}" >> "${GITHUB_OUTPUT}"
+
   sync:
     name: Sync lane onto upstream
+    needs: superseded
+    if: ${{ needs.superseded.outputs.current == 'true' }}
     # Job-level, not workflow-level: Forgejo 15 never releases a run's later
     # `needs` jobs while the run itself holds a workflow concurrency group.
     concurrency:
@@ -526,8 +566,8 @@ jobs:
 
   relay_public_config:
     name: Resolve T3 Connect public config
-    needs: [sync, preflight, signing_secrets]
-    if: ${{ !failure() && !cancelled() && needs.sync.outputs.should_release == 'true' }}
+    needs: [superseded, sync, preflight, signing_secrets]
+    if: ${{ !failure() && !cancelled() && needs.superseded.outputs.current == 'true' && needs.sync.outputs.should_release == 'true' }}
     runs-on: forgegraph-ci
     timeout-minutes: 10
     outputs:
@@ -611,8 +651,8 @@ jobs:
 
   build:
     name: Build ${{ matrix.label }}
-    needs: [sync, preflight, relay_public_config]
-    if: ${{ !cancelled() && needs.sync.outputs.should_release == 'true' && needs.preflight.result == 'success' && needs.relay_public_config.result == 'success' }}
+    needs: [superseded, sync, preflight, relay_public_config]
+    if: ${{ !cancelled() && needs.superseded.outputs.current == 'true' && needs.sync.outputs.should_release == 'true' && needs.preflight.result == 'success' && needs.relay_public_config.result == 'success' }}
     runs-on: ${{ matrix.runner }}
     # The Mini's host runner does not enforce job timeouts (runs 1275 and 1294
     # went 116 and 98 minutes under a 90-minute limit); its own 2h limit kills
@@ -931,8 +971,8 @@ jobs:
   # one job can never delete the other macOS build's working directory.
   build_macos_x64:
     name: Build macOS x64
-    needs: [sync, preflight, relay_public_config, build]
-    if: ${{ !cancelled() && needs.sync.outputs.should_release == 'true' && needs.preflight.result == 'success' && needs.relay_public_config.result == 'success' && needs.build.result == 'success' }}
+    needs: [superseded, sync, preflight, relay_public_config, build]
+    if: ${{ !cancelled() && needs.superseded.outputs.current == 'true' && needs.sync.outputs.should_release == 'true' && needs.preflight.result == 'success' && needs.relay_public_config.result == 'success' && needs.build.result == 'success' }}
     runs-on: gmacko-mini
     timeout-minutes: 115
     env:
@@ -1143,8 +1183,8 @@ jobs:
   # still runs when a desktop build fails, so the phone keeps its nightly.
   ios_testflight:
     name: Upload iOS to TestFlight
-    needs: [sync, preflight, relay_public_config, build_macos_x64]
-    if: ${{ !cancelled() && needs.sync.outputs.should_release == 'true' && needs.preflight.result == 'success' && needs.relay_public_config.result == 'success' }}
+    needs: [superseded, sync, preflight, relay_public_config, build_macos_x64]
+    if: ${{ !cancelled() && needs.superseded.outputs.current == 'true' && needs.sync.outputs.should_release == 'true' && needs.preflight.result == 'success' && needs.relay_public_config.result == 'success' }}
     runs-on: gmacko-mini
     timeout-minutes: 210
     outputs:
@@ -1225,8 +1265,8 @@ jobs:
 
   release:
     name: Publish GitHub Release
-    needs: [sync, promote, relay_public_config, build, build_macos_x64]
-    if: ${{ !failure() && !cancelled() && needs.sync.outputs.should_release == 'true' && needs.promote.result == 'success' && needs.build.result == 'success' && needs.build_macos_x64.result == 'success' }}
+    needs: [superseded, sync, promote, relay_public_config, build, build_macos_x64]
+    if: ${{ !failure() && !cancelled() && needs.superseded.outputs.current == 'true' && needs.sync.outputs.should_release == 'true' && needs.promote.result == 'success' && needs.build.result == 'success' && needs.build_macos_x64.result == 'success' }}
     runs-on: forgegraph-ci
     timeout-minutes: 60
     outputs:
@@ -1367,8 +1407,8 @@ jobs:
 
   verify_delivery:
     name: Verify nightly delivery
-    needs: [sync, release, ios_testflight]
-    if: ${{ always() && needs.sync.outputs.should_release == 'true' }}
+    needs: [superseded, sync, release, ios_testflight]
+    if: ${{ always() && needs.superseded.outputs.current == 'true' && needs.sync.outputs.should_release == 'true' }}
     runs-on: forgegraph-ci
     timeout-minutes: 5
     env:

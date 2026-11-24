@@ -96,7 +96,9 @@ describe("ForgeGraph GMACKO release workflow", () => {
 
     expect(workflow).toContain("scripts/gmacko-ios-testflight.sh");
     expect(release.slice(0, release.indexOf("steps:"))).not.toContain("ios_testflight");
-    expect(ios).toContain("needs: [sync, preflight, relay_public_config, build_macos_x64]");
+    expect(ios).toContain(
+      "needs: [superseded, sync, preflight, relay_public_config, build_macos_x64]",
+    );
     for (const [name, output] of [
       ["T3CODE_CLERK_PUBLISHABLE_KEY", "clerk_publishable_key"],
       ["T3CODE_CLERK_JWT_TEMPLATE", "clerk_jwt_template"],
@@ -120,6 +122,35 @@ describe("ForgeGraph GMACKO release workflow", () => {
     );
     expect(workflow).toContain("group: gmacko-nightly\n      cancel-in-progress: true");
     expect(workflow).not.toMatch(/^concurrency:/m);
+  });
+
+  it("skips every job of a push run whose commit is no longer the custom-local head", () => {
+    const workflow = NodeFS.readFileSync(workflowPath, "utf8");
+    const gate = "needs.superseded.outputs.current == 'true'";
+    const jobsSection = workflow.slice(workflow.indexOf("\njobs:\n"));
+    const jobs = jobsSection
+      .split(/\n(?=  [a-z0-9_]+:\n)/)
+      .slice(1)
+      .map((block) => ({ name: block.slice(2, block.indexOf(":")), block }));
+    const superseded = jobs.find((job) => job.name === "superseded")?.block ?? "";
+
+    expect(superseded).toContain("runs-on: light");
+    expect(superseded).toContain('if [ "${{ github.event_name }}" = "push" ]; then');
+    expect(superseded).toContain("/branches/custom-local");
+    expect(superseded).toContain('[ "${head}" != "${{ github.sha }}" ]');
+    expect(superseded).not.toContain("needs:");
+    expect(workflow).not.toMatch(/^concurrency:/m);
+
+    const sync = jobs.find((job) => job.name === "sync")?.block ?? "";
+    expect(sync).toContain("needs: superseded\n    if: " + "$" + "{{ " + gate + " }}");
+    for (const { name, block } of jobs) {
+      if (name === "superseded") continue;
+      const condition = block.match(/^ {4}if: (.*)$/m)?.[1] ?? "";
+      expect(block, name).toMatch(/^ {4}needs: /m);
+      if (/always\(\)|cancelled\(\)|failure\(\)/.test(condition)) {
+        expect(condition, name).toContain(gate);
+      }
+    }
   });
 
   it("releases from the scheduled run instead of waiting for a follow-up push", () => {
