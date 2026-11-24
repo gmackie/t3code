@@ -1,4 +1,4 @@
-import { msg, useMessages } from "gt-react";
+import { T, msg, useMessages } from "gt-react";
 import type {
   EnvironmentId,
   McpOAuthSignInEvent,
@@ -9,6 +9,7 @@ import type {
 import { AsyncResult } from "effect/reactivity";
 import { useRef, useState } from "react";
 
+import { useCopyToClipboard } from "~/hooks/useCopyToClipboard";
 import { ensureLocalApi } from "../../localApi";
 import { appAtomRegistry } from "../../rpc/atomRegistry";
 import { useEnvironmentHttpBaseUrl } from "../../state/environments";
@@ -42,6 +43,14 @@ export function McpOAuthSignIn({
 }) {
   const m = useMessages();
 
+  const { copyToClipboard } = useCopyToClipboard({
+    timeout: 1500,
+    target: {
+      target: "sign-in code",
+      unavailableMessage: msg("Clipboard API is unavailable while copying sign-in code."),
+      failureMessage: msg("Failed to copy sign-in code to the clipboard."),
+    },
+  });
   const httpBaseUrl = useEnvironmentHttpBaseUrl(environmentId);
   const [signIn, setSignIn] = useState<McpOAuthSignInInput | null>(null);
   const abort = useRef<AbortController | null>(null);
@@ -51,6 +60,7 @@ export function McpOAuthSignIn({
   const signOut = useAtomCommand(serverEnvironment.mcpOAuthSignOut, { reportFailure: false });
   const event = signInQuery.data;
   const authorizationUrl = event?.type === "authorize" ? event.authorizationUrl : null;
+  const userCode = event?.type === "authorize" ? event.userCode : undefined;
   const scoped = projectId === null ? {} : { projectId };
 
   const cancel = () => {
@@ -70,15 +80,13 @@ export function McpOAuthSignIn({
     const wait = <R,>(settle: (value: McpOAuthSignInEvent | null) => R | undefined) =>
       waitForQuerySettled({ registry: appAtomRegistry, atom, settle, signal: controller.signal });
 
-    const url = await wait((value) =>
-      value?.type === "authorize" ? value.authorizationUrl : undefined,
-    );
-    if (url !== undefined)
+    const prompt = await wait((value) => (value?.type === "authorize" ? value : undefined));
+    if (prompt !== undefined && prompt.userCode === undefined)
       void ensureLocalApi()
-        .shell.openExternal(url)
+        .shell.openExternal(prompt.authorizationUrl)
         .catch(() => undefined);
     const connected =
-      url !== undefined &&
+      prompt !== undefined &&
       (await wait((value) => (value?.type === "connected" ? true : undefined)));
     if (controller.signal.aborted) return;
     const result = appAtomRegistry.get(atom);
@@ -102,14 +110,16 @@ export function McpOAuthSignIn({
   if (signIn !== null) {
     return (
       <span className="flex items-center gap-1.5">
+        {userCode && <code className="select-all font-mono">{userCode}</code>}
         {authorizationUrl ? (
           <a
             className="text-xs text-muted-foreground underline"
             href={authorizationUrl}
             target="_blank"
             rel="noreferrer"
+            onClick={userCode ? () => void copyToClipboard(userCode, undefined) : undefined}
           >
-            {m(msg("Open sign-in page"))}
+            {userCode ? <T>Copy code &amp; open GitHub</T> : m(msg("Open sign-in page"))}
           </a>
         ) : null}
         <Button size="xs" variant="ghost" onClick={cancel}>

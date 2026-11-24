@@ -5237,6 +5237,7 @@
   "6f4b0e797341e214": "Фоновая настройка",
   "478d840dc88564cb": "The sign-in failed.",
   "ce9168a2fb7e6391": "The sign-in page could not be opened.",
+  "422bb4a8e47d71ac": "Введите этот код на странице входа.",
   "f64401a4237c8129": "This environment isn't connected.",
   "7dfdfa116c6a9d86": "Не удалось начать разбор проблемы",
   "ad249f336902fb71": "{message} Вместо этого выполните {command} в терминале на той машине.",

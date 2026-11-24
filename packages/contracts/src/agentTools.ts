@@ -171,9 +171,14 @@ export const McpOAuthSignInInput = Schema.Struct({
 });
 export type McpOAuthSignInInput = typeof McpOAuthSignInInput.Type;
 
-/** A sign-in streams `authorize` once, then `connected` when the browser returns. */
+/** A sign-in streams `authorize` once, then `connected` when the provider approves. */
 export const McpOAuthSignInEvent = Schema.Union([
-  Schema.Struct({ type: Schema.Literal("authorize"), authorizationUrl: TrimmedNonEmptyString }),
+  Schema.Struct({
+    type: Schema.Literal("authorize"),
+    authorizationUrl: TrimmedNonEmptyString,
+    /** RFC 8628 human verification code. The polling credential stays on the server. */
+    userCode: Schema.optionalKey(TrimmedNonEmptyString),
+  }),
   Schema.Struct({ type: Schema.Literal("connected") }),
 ]);
 export type McpOAuthSignInEvent = typeof McpOAuthSignInEvent.Type;

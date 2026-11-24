@@ -37,6 +37,7 @@ import * as Stream from "effect/Stream";
 
 import * as ServerSecretStore from "../auth/ServerSecretStore.ts";
 import { ServerSettingsService } from "../serverSettings.ts";
+import { isGitHubHostedMcp, startGitHubDeviceSignIn } from "./githubMcpDeviceAuth.ts";
 
 /** Where providers send the browser back after sign-in, on whatever origin the client used. */
 export const MCP_OAUTH_CALLBACK_PATH = "/oauth/mcp-client/callback";
@@ -85,6 +86,8 @@ interface StoredSignIn {
   /** Registered clients by redirect URL, since each origin registers its own. */
   clients: Record<string, OAuthClientInformationMixed>;
   discovery?: OAuthDiscoveryState;
+  /** The public client and requested scopes associated with a device grant. */
+  deviceGrant?: string;
 }
 
 interface PendingSignIn {
@@ -103,6 +106,24 @@ const secretName = (server: McpOAuthServer) =>
     .update(`${server.name}\n${server.transport.url}`)
     .digest("hex")
     .slice(0, 32)}`;
+
+const deviceGrantFor = (server: McpOAuthServer) =>
+  JSON.stringify([
+    server.transport.auth.clientId,
+    [...new Set(server.transport.auth.scopes)].sort(),
+  ]);
+
+const needsSignIn = (server: McpOAuthServer, record: StoredSignIn) =>
+  record.needsAuth === true ||
+  (record.deviceGrant !== undefined && record.deviceGrant !== deviceGrantFor(server));
+
+function setTokens(record: StoredSignIn, tokens: OAuthTokens, redirectUrl: string, now: number) {
+  record.tokens = tokens;
+  record.redirectUrl = redirectUrl;
+  record.needsAuth = false;
+  if (tokens.expires_in === undefined) delete record.expiresAt;
+  else record.expiresAt = now + tokens.expires_in * 1_000;
+}
 
 const isOAuthServer = (
   name: string,
@@ -139,6 +160,7 @@ export const make = Effect.fn("McpRemoteAuth.make")(function* (options: McpRemot
   const settingsService = yield* ServerSettingsService;
   const pending = yield* Ref.make(new Map<string, PendingSignIn>());
   const refreshLock = yield* Semaphore.make(1);
+  const deviceAttempts = new Map<string, Deferred.Deferred<never, McpOAuthError>>();
   const fetchFn = options.fetch;
 
   const fail = (server: string, detail: string) => new McpOAuthError({ server, detail });
@@ -201,13 +223,7 @@ export const make = Effect.fn("McpRemoteAuth.make")(function* (options: McpRemot
         record.clients[redirectUrl] = information;
       },
       tokens: () => record.tokens,
-      saveTokens: (tokens) => {
-        record.tokens = tokens;
-        record.redirectUrl = redirectUrl;
-        record.needsAuth = false;
-        if (tokens.expires_in === undefined) delete record.expiresAt;
-        else record.expiresAt = now + tokens.expires_in * 1_000;
-      },
+      saveTokens: (tokens) => setTokens(record, tokens, redirectUrl, now),
       redirectToAuthorization: (url) => {
         hooks.onAuthorize?.(url, verifier);
       },
@@ -265,9 +281,9 @@ export const make = Effect.fn("McpRemoteAuth.make")(function* (options: McpRemot
       }),
     );
 
-  const statusOf = (record: StoredSignIn): McpOAuthStatus => {
+  const statusOf = (server: McpOAuthServer, record: StoredSignIn): McpOAuthStatus => {
     if (record.tokens === undefined) return { status: "signed-out" };
-    if (record.needsAuth === true) return { status: "needs-auth" };
+    if (needsSignIn(server, record)) return { status: "needs-auth" };
     return record.expiresAt === undefined
       ? { status: "connected" }
       : { status: "connected", expiresAt: record.expiresAt };
@@ -278,7 +294,7 @@ export const make = Effect.fn("McpRemoteAuth.make")(function* (options: McpRemot
     const result: Record<string, McpOAuthStatus> = {};
     for (const [name, config] of Object.entries(servers)) {
       const server = isOAuthServer(name, config.transport);
-      if (server !== undefined) result[name] = statusOf(yield* load(server));
+      if (server !== undefined) result[name] = statusOf(server, yield* load(server));
     }
     return result;
   });
@@ -293,11 +309,59 @@ export const make = Effect.fn("McpRemoteAuth.make")(function* (options: McpRemot
       catch: () => fail(server, `${origin} is not an http or https origin.`),
     });
 
+  const signInWithDevice = Effect.fn("McpRemoteAuth.signInWithDevice")(function* (
+    server: McpOAuthServer,
+    projectId: ProjectId | null,
+    redirectUrl: string,
+  ) {
+    const key = secretName(server);
+    const cancelled = yield* Deferred.make<never, McpOAuthError>();
+    yield* Effect.acquireRelease(
+      Effect.gen(function* () {
+        const previous = deviceAttempts.get(key);
+        deviceAttempts.set(key, cancelled);
+        if (previous)
+          yield* Deferred.fail(previous, fail(server.name, "A newer sign-in replaced this one."));
+      }),
+      () =>
+        Effect.sync(() => {
+          if (deviceAttempts.get(key) === cancelled) deviceAttempts.delete(key);
+        }),
+    );
+    const stopped = Deferred.await(cancelled);
+    const challenge = yield* Effect.raceFirst(startGitHubDeviceSignIn(server, fetchFn), stopped);
+    const connected = Effect.gen(function* () {
+      const tokens = yield* Effect.raceFirst(challenge.poll, stopped);
+      yield* refreshLock.withPermits(1)(
+        Effect.gen(function* () {
+          const current = yield* findServer(server.name, projectId, false);
+          if (
+            deviceAttempts.get(key) !== cancelled ||
+            secretName(current) !== key ||
+            deviceGrantFor(current) !== deviceGrantFor(server)
+          ) {
+            return yield* fail(server.name, "This sign-in is no longer active.");
+          }
+          const record = yield* load(server);
+          record.discovery = challenge.discovery;
+          record.deviceGrant = deviceGrantFor(server);
+          setTokens(record, tokens, redirectUrl, yield* Clock.currentTimeMillis);
+          yield* save(server, record);
+        }),
+      );
+      return { type: "connected" } as const;
+    });
+    return Stream.make(challenge.prompt).pipe(Stream.concat(Stream.fromEffect(connected)));
+  });
+
   const signIn: McpRemoteAuthShape["signIn"] = (input) =>
     Stream.unwrap(
       Effect.gen(function* () {
-        const server = yield* findServer(input.server, input.projectId ?? null, false);
+        const projectId = input.projectId ?? null;
+        const server = yield* findServer(input.server, projectId, false);
         const redirectUrl = yield* redirectUrlFor(server.name, input.callbackOrigin);
+        if (isGitHubHostedMcp(server.transport.url))
+          return yield* signInWithDevice(server, projectId, redirectUrl);
         const state = NodeCrypto.randomBytes(24).toString("base64url");
         const record = yield* load(server);
         let authorizeUrl: URL | undefined;
@@ -404,6 +468,13 @@ export const make = Effect.fn("McpRemoteAuth.make")(function* (options: McpRemot
         if (record.tokens === undefined || record.redirectUrl === undefined) {
           return yield* fail(server.name, `Sign in to ${server.name} in Settings → Tools.`);
         }
+        if (
+          isGitHubHostedMcp(server.transport.url) &&
+          (needsSignIn(server, record) || !record.tokens.refresh_token)
+        ) {
+          yield* save(server, { ...record, needsAuth: true });
+          return yield* fail(server.name, `${server.name} needs you to sign in again.`);
+        }
         let needsBrowser = false;
         const provider = makeProvider(
           server,
@@ -436,7 +507,7 @@ export const make = Effect.fn("McpRemoteAuth.make")(function* (options: McpRemot
       if (token === undefined) {
         return yield* fail(server.name, `Sign in to ${server.name} in Settings → Tools.`);
       }
-      if (record.needsAuth === true) {
+      if (needsSignIn(server, record)) {
         return yield* fail(server.name, `${server.name} needs you to sign in again.`);
       }
       const now = yield* Clock.currentTimeMillis;
@@ -446,34 +517,43 @@ export const make = Effect.fn("McpRemoteAuth.make")(function* (options: McpRemot
   );
 
   /** Revokes the grant where the provider supports it, then deletes the stored sign-in. */
-  const forget = Effect.fn("McpRemoteAuth.forget")(function* (server: McpOAuthServer) {
-    const record = yield* load(server);
-    // RFC 8414 lists the revocation endpoint; the SDK's metadata type omits it.
-    const metadata = record.discovery?.authorizationServerMetadata;
-    const revocation =
-      metadata !== undefined && "revocation_endpoint" in metadata
-        ? metadata.revocation_endpoint
-        : undefined;
-    const endpoint = typeof revocation === "string" ? revocation : undefined;
-    const client =
-      record.redirectUrl === undefined ? undefined : record.clients[record.redirectUrl];
-    const token = record.tokens?.refresh_token ?? record.tokens?.access_token;
-    if (endpoint !== undefined && token !== undefined && client !== undefined) {
-      // Best effort (RFC 7009): the local tokens go either way.
-      yield* Effect.tryPromise({
-        try: () =>
-          (fetchFn ?? fetch)(endpoint, {
-            method: "POST",
-            headers: { "content-type": "application/x-www-form-urlencoded" },
-            body: new URLSearchParams({ token, client_id: client.client_id }).toString(),
-          }),
-        catch: () => fail(server.name, "Token revocation request failed."),
-      }).pipe(Effect.ignore);
-    }
-    yield* secrets
-      .remove(secretName(server))
-      .pipe(Effect.mapError(() => fail(server.name, "Could not remove the stored sign-in.")));
-  });
+  const forget = Effect.fn("McpRemoteAuth.forget")(
+    function* (server: McpOAuthServer) {
+      const attempt = deviceAttempts.get(secretName(server));
+      if (attempt) {
+        deviceAttempts.delete(secretName(server));
+        yield* Deferred.fail(attempt, fail(server.name, "The sign-in was cancelled."));
+      }
+      const record = yield* load(server);
+      // RFC 8414 lists the revocation endpoint; the SDK's metadata type omits it.
+      const metadata = record.discovery?.authorizationServerMetadata;
+      const revocation =
+        metadata !== undefined && "revocation_endpoint" in metadata
+          ? metadata.revocation_endpoint
+          : undefined;
+      const endpoint = typeof revocation === "string" ? revocation : undefined;
+      const client =
+        record.redirectUrl === undefined ? undefined : record.clients[record.redirectUrl];
+      const token = record.tokens?.refresh_token ?? record.tokens?.access_token;
+      if (endpoint !== undefined && token !== undefined && client !== undefined) {
+        // Best effort (RFC 7009): the local tokens go either way.
+        yield* Effect.tryPromise({
+          try: () =>
+            (fetchFn ?? fetch)(endpoint, {
+              method: "POST",
+              headers: { "content-type": "application/x-www-form-urlencoded" },
+              body: new URLSearchParams({ token, client_id: client.client_id }).toString(),
+            }),
+          catch: () => fail(server.name, "Token revocation request failed."),
+        }).pipe(Effect.ignore);
+      }
+      yield* secrets
+        .remove(secretName(server))
+        .pipe(Effect.mapError(() => fail(server.name, "Could not remove the stored sign-in.")));
+    },
+    (effect, server) =>
+      isGitHubHostedMcp(server.transport.url) ? refreshLock.withPermits(1)(effect) : effect,
+  );
 
   const signOut: McpRemoteAuthShape["signOut"] = Effect.fn("McpRemoteAuth.signOut")(
     function* (input) {

@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   unsubscribe: vi.fn(),
   signIn: vi.fn(),
   openBrowser: vi.fn(),
+  confirm: vi.fn(),
   dismissBrowser: vi.fn(),
   platform: "android",
   appStateListener: null as null | ((state: string) => void),
@@ -28,6 +29,7 @@ vi.mock("react-native", () => ({
     },
   },
 }));
+vi.mock("../../components/ui/Dialog", () => ({ confirm: mocks.confirm }));
 vi.mock("expo-web-browser", () => ({
   openBrowserAsync: mocks.openBrowser,
   dismissBrowser: mocks.dismissBrowser,
@@ -66,6 +68,26 @@ beforeEach(() => {
 afterEach(() => vi.useRealTimers());
 
 describe("signInToMcpServer", () => {
+  it("shows the device user code before opening the provider and waits after the browser closes", async () => {
+    mocks.openBrowser.mockResolvedValue({ type: "dismiss" });
+    const result = signInToMcpServer(input);
+    emit(
+      AsyncResult.success({
+        type: "authorize",
+        authorizationUrl: "https://github.com/login/device",
+        userCode: "ABCD-EFGH",
+      }),
+    );
+    expect(mocks.confirm).toHaveBeenCalledWith(expect.objectContaining({ title: "ABCD-EFGH" }));
+    expect(mocks.openBrowser).not.toHaveBeenCalled();
+    mocks.confirm.mock.calls[0]![0].onConfirm();
+    expect(mocks.openBrowser).toHaveBeenCalledWith("https://github.com/login/device");
+    await vi.runAllTimersAsync();
+    expect(mocks.unsubscribe).not.toHaveBeenCalled();
+    emit(AsyncResult.success({ type: "connected" }));
+    await expect(result).resolves.toEqual({ status: "connected" });
+  });
+
   it("keeps Android's browser-open receipt subscribed until the server completes sign-in", async () => {
     mocks.openBrowser.mockResolvedValue({ type: "opened" });
     const result = signInToMcpServer(input);

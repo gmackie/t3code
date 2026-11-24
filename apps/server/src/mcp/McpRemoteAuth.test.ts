@@ -84,6 +84,50 @@ const makeProvider = () => {
   return { fetch, seen, control };
 };
 
+const GITHUB_MCP = "https://api.githubcopilot.com/mcp/readonly";
+const GITHUB_ISSUER = "https://github.com/login/oauth";
+const DEVICE_GRANT = "urn:ietf:params:oauth:grant-type:device_code";
+
+const githubProvider = (replies: ReadonlyArray<Record<string, unknown>>) => {
+  const provider = makeProvider();
+  const polls: URLSearchParams[] = [];
+  const deviceForms: URLSearchParams[] = [];
+  const fetch = async (input: string | URL, init?: RequestInit) => {
+    const url = new URL(input);
+    if (url.origin === "https://api.githubcopilot.com") {
+      return Response.json({ resource: GITHUB_MCP, authorization_servers: [GITHUB_ISSUER] });
+    }
+    if (url.pathname === "/.well-known/oauth-authorization-server/login/oauth") {
+      return Response.json({
+        issuer: GITHUB_ISSUER,
+        authorization_endpoint: `${GITHUB_ISSUER}/authorize`,
+        token_endpoint: `${GITHUB_ISSUER}/access_token`,
+        device_authorization_endpoint: "https://github.com/login/device/code",
+        grant_types_supported: ["authorization_code", DEVICE_GRANT],
+        response_types_supported: ["code"],
+        code_challenge_methods_supported: ["S256"],
+      });
+    }
+    const form = new URLSearchParams(String(init?.body));
+    if (url.href === "https://github.com/login/device/code") {
+      deviceForms.push(form);
+      return Response.json({
+        device_code: "device-only",
+        user_code: "ABCD-EFGH",
+        verification_uri: "https://github.com/login/device",
+        interval: 5,
+        expires_in: 60,
+      });
+    }
+    if (url.href === `${GITHUB_ISSUER}/access_token`) {
+      polls.push(form);
+      return Response.json(replies[polls.length - 1] ?? { error: "authorization_pending" });
+    }
+    return provider.fetch(input, init);
+  };
+  return { ...provider, fetch, polls, deviceForms };
+};
+
 const layerMemorySecrets = (onRemove?: (name: string) => Effect.Effect<void>) =>
   Layer.sync(ServerSecretStore.ServerSecretStore, () => {
     const values = new Map<string, Uint8Array>();
@@ -356,4 +400,172 @@ it.effect("revokes and forgets a sign-in once its server is removed from Tools",
       ),
     );
   });
+});
+
+const configureGitHub = Effect.gen(function* () {
+  const settings = yield* ServerSettingsService;
+  yield* settings.updateSettings({
+    mcpServers: {
+      github: {
+        enabled: true,
+        transport: {
+          type: "http",
+          url: GITHUB_MCP,
+          headers: [],
+          auth: { type: "oauth", clientId: "owners-public-client-id", scopes: ["repo"] },
+        },
+      },
+    },
+  });
+  return yield* McpRemoteAuth.McpRemoteAuth;
+});
+
+it.effect("streams the GitHub user code and keeps its device credential on the environment", () => {
+  const provider = githubProvider([]);
+  return Effect.gen(function* () {
+    const remoteAuth = yield* configureGitHub;
+    const prompt = yield* remoteAuth
+      .signIn({ server: "github", callbackOrigin: ORIGIN })
+      .pipe(Stream.runHead);
+    assert.deepEqual(Option.getOrNull(prompt), {
+      type: "authorize",
+      authorizationUrl: "https://github.com/login/device",
+      userCode: "ABCD-EFGH",
+    });
+    assert.equal(provider.deviceForms[0]?.get("client_id"), "owners-public-client-id");
+    assert.equal(provider.deviceForms[0]?.get("scope"), "repo");
+    assert.equal(provider.deviceForms[0]?.get("resource"), GITHUB_MCP);
+    yield* TestClock.adjust("70 seconds");
+    assert.lengthOf(provider.polls, 0);
+    assert.deepEqual((yield* remoteAuth.status({})).github, { status: "signed-out" });
+  }).pipe(Effect.provide(layer(provider)));
+});
+
+it.effect("honors GitHub pending and slow-down responses before saving a device grant", () => {
+  const provider = githubProvider([
+    { error: "authorization_pending" },
+    { error: "slow_down" },
+    { access_token: "test-only", token_type: "bearer" },
+  ]);
+  return Effect.gen(function* () {
+    const remoteAuth = yield* configureGitHub;
+    const events = yield* Queue.unbounded<McpOAuthSignInEvent>();
+    const attempt = yield* remoteAuth.signIn({ server: "github", callbackOrigin: ORIGIN }).pipe(
+      Stream.runForEach((event) => Queue.offer(events, event)),
+      Effect.forkChild({ startImmediately: true }),
+    );
+    assert.equal((yield* Queue.take(events)).type, "authorize");
+    yield* TestClock.adjust("5 seconds");
+    yield* TestClock.adjust("5 seconds");
+    yield* TestClock.adjust("9 seconds");
+    assert.lengthOf(provider.polls, 2);
+    yield* TestClock.adjust("1 second");
+    yield* Fiber.join(attempt);
+    assert.deepEqual(yield* Queue.take(events), { type: "connected" });
+    assert.equal(provider.polls[2]?.get("device_code"), "device-only");
+    assert.equal(provider.polls[2]?.get("grant_type"), DEVICE_GRANT);
+    assert.equal(provider.polls[2]?.get("resource"), GITHUB_MCP);
+    assert.isFalse(provider.polls[2]!.has("client_secret"));
+    const server = yield* remoteAuth.resolveServer("github", null);
+    assert.equal(yield* remoteAuth.accessToken(server), "test-only");
+    assert.isTrue(Result.isFailure(yield* Effect.result(remoteAuth.refresh(server))));
+    assert.deepEqual((yield* remoteAuth.status({})).github, { status: "needs-auth" });
+    yield* remoteAuth.signOut({ server: "github" });
+    assert.deepEqual((yield* remoteAuth.status({})).github, { status: "signed-out" });
+  }).pipe(Effect.provide(layer(provider)));
+});
+
+it.effect("ends a pending GitHub device sign-in as soon as the user signs out", () => {
+  const provider = githubProvider([{ access_token: "too-late", token_type: "bearer" }]);
+  return Effect.gen(function* () {
+    const remoteAuth = yield* configureGitHub;
+    const prompt = yield* Deferred.make<void>();
+    const attempt = yield* remoteAuth.signIn({ server: "github", callbackOrigin: ORIGIN }).pipe(
+      Stream.runForEach(() => Deferred.succeed(prompt, undefined)),
+      Effect.result,
+      Effect.forkChild({ startImmediately: true }),
+    );
+    yield* Deferred.await(prompt);
+    yield* remoteAuth.signOut({ server: "github" });
+    yield* TestClock.adjust("5 seconds");
+    assert.isTrue(Result.isFailure(yield* Fiber.join(attempt)));
+    assert.lengthOf(provider.polls, 0);
+    assert.deepEqual((yield* remoteAuth.status({})).github, { status: "signed-out" });
+  }).pipe(Effect.provide(layer(provider)));
+});
+
+it.effect("keeps GitHub signed out when the owner declines the device prompt", () => {
+  const provider = githubProvider([{ error: "access_denied" }]);
+  return Effect.gen(function* () {
+    const remoteAuth = yield* configureGitHub;
+    const prompt = yield* Deferred.make<void>();
+    const attempt = yield* remoteAuth.signIn({ server: "github", callbackOrigin: ORIGIN }).pipe(
+      Stream.runForEach(() => Deferred.succeed(prompt, undefined)),
+      Effect.result,
+      Effect.forkChild({ startImmediately: true }),
+    );
+    yield* Deferred.await(prompt);
+    yield* TestClock.adjust("5 seconds");
+    const result = yield* Fiber.join(attempt);
+    assert.isTrue(Result.isFailure(result));
+    assert.include(Result.getFailure(result).pipe(Option.getOrThrow).message, "declined");
+    assert.deepEqual((yield* remoteAuth.status({})).github, { status: "signed-out" });
+  }).pipe(Effect.provide(layer(provider)));
+});
+
+it.effect(
+  "requires new consent after a hosted GitHub connection changes its requested access",
+  () => {
+    const provider = githubProvider([
+      { access_token: "before-scope-change", token_type: "bearer" },
+    ]);
+    return Effect.gen(function* () {
+      const remoteAuth = yield* configureGitHub;
+      const prompt = yield* Deferred.make<void>();
+      const attempt = yield* remoteAuth.signIn({ server: "github", callbackOrigin: ORIGIN }).pipe(
+        Stream.runForEach(() => Deferred.succeed(prompt, undefined)),
+        Effect.forkChild({ startImmediately: true }),
+      );
+      yield* Deferred.await(prompt);
+      yield* TestClock.adjust("5 seconds");
+      yield* Fiber.join(attempt);
+      const old = yield* remoteAuth.resolveServer("github", null);
+      const settings = yield* ServerSettingsService;
+      yield* settings.updateSettings({
+        mcpServers: {
+          github: {
+            enabled: true,
+            transport: { ...old.transport, auth: { ...old.transport.auth, scopes: [] } },
+          },
+        },
+      });
+      const restricted = yield* remoteAuth.resolveServer("github", null);
+      assert.deepEqual((yield* remoteAuth.status({})).github, { status: "needs-auth" });
+      assert.isTrue(Result.isFailure(yield* Effect.result(remoteAuth.accessToken(restricted))));
+    }).pipe(Effect.provide(layer(provider)));
+  },
+);
+
+it.effect("expires the GitHub grant from issuance even when the client holds the prompt", () => {
+  const provider = githubProvider([{ access_token: "too-late", token_type: "bearer" }]);
+  return Effect.gen(function* () {
+    const remoteAuth = yield* configureGitHub;
+    const shown = yield* Deferred.make<void>();
+    const resume = yield* Deferred.make<void>();
+    const attempt = yield* remoteAuth.signIn({ server: "github", callbackOrigin: ORIGIN }).pipe(
+      Stream.runForEach((event) =>
+        event.type === "authorize"
+          ? Deferred.succeed(shown, undefined).pipe(Effect.andThen(Deferred.await(resume)))
+          : Effect.void,
+      ),
+      Effect.result,
+      Effect.forkChild({ startImmediately: true }),
+    );
+    yield* Deferred.await(shown);
+    yield* TestClock.adjust("61 seconds");
+    yield* Deferred.succeed(resume, undefined);
+    yield* TestClock.adjust("5 seconds");
+    assert.isTrue(Result.isFailure(yield* Fiber.join(attempt)));
+    assert.lengthOf(provider.polls, 0);
+  }).pipe(Effect.provide(layer(provider)));
 });

@@ -5139,6 +5139,7 @@
   "6f4b0e797341e214": "バックグラウンドのセットアップ",
   "478d840dc88564cb": "The sign-in failed.",
   "ce9168a2fb7e6391": "The sign-in page could not be opened.",
+  "422bb4a8e47d71ac": "サインインページでこのコードを入力してください。",
   "f64401a4237c8129": "This environment isn't connected.",
   "7dfdfa116c6a9d86": "トリアージを開始できませんでした",
   "ad249f336902fb71": "{message} 代わりに、そのマシンのターミナルで {command} を実行してください。",
