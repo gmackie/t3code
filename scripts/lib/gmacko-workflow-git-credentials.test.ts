@@ -66,6 +66,7 @@ const runWithFakeGit = (script: string, env: Record<string, string>) => {
         FORGEJO_REPO_URL: "https://git.forgegraf.com/gmackie/t3code.git",
         GITHUB_TOKEN: GITHUB_SECRET,
         FORGEJO_TOKEN: FORGEJO_SECRET,
+        LANE_CACHE: NodePath.join(scratch, "git-cache", "t3code.git"),
         ...env,
       },
       stdio: "pipe",
@@ -111,6 +112,64 @@ describe("GMACKO nightly git credentials", () => {
     );
     const clone = lines.find((line) => line.startsWith("ARGV clone"));
     expect(clone).toContain("https://git.forgegraf.com/gmackie/t3code.git");
+  });
+
+  it("clones the lane through a persistent cache that it rebuilds when broken", () => {
+    const step = runStep(NodeFS.readFileSync(nightlyPath, "utf8"), "Clone release lane");
+    const scratch = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "gmacko-lane-cache-"));
+    const git = (cwd: string, ...args: string[]) =>
+      NodeChildProcess.execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", ...args], {
+        cwd,
+        encoding: "utf8",
+      }).trim();
+    const commit = (repo: string, message: string) =>
+      git(repo, "commit", "--quiet", "--allow-empty", "-m", message);
+    try {
+      const lane = NodePath.join(scratch, "src");
+      const upstream = NodePath.join(scratch, "up");
+      const cache = NodePath.join(scratch, "ci", "git-cache", "t3code.git");
+      git(scratch, "init", "--quiet", "-b", "custom-local", lane);
+      commit(lane, "one");
+      git(lane, "tag", "v1");
+      git(scratch, "init", "--quiet", "-b", "main", upstream);
+      commit(upstream, "upstream");
+      const run = () => {
+        NodeFS.rmSync(NodePath.join(scratch, "lane"), { recursive: true, force: true });
+        NodeChildProcess.execFileSync("bash", ["-euo", "pipefail", "-c", step], {
+          cwd: scratch,
+          env: {
+            PATH: process.env.PATH,
+            HOME: scratch,
+            GITHUB_TOKEN: GITHUB_SECRET,
+            FORGEJO_TOKEN: FORGEJO_SECRET,
+            UPSTREAM_REPO: "pingdotgg/t3code",
+            FORGEJO_REPO_URL: `file://${lane}`,
+            LANE_CACHE: cache,
+            GIT_CONFIG_COUNT: "1",
+            GIT_CONFIG_KEY_0: `url.file://${upstream}.insteadOf`,
+            GIT_CONFIG_VALUE_0: "https://github.com/pingdotgg/t3code.git",
+          },
+          stdio: "pipe",
+        });
+        return git(NodePath.join(scratch, "lane"), "log", "--format=%s");
+      };
+
+      expect(run()).toBe("one");
+      expect(git(cache, "config", "gc.auto")).toBe("0");
+      commit(lane, "two");
+      expect(run()).toBe("two\none");
+      expect(git(cache, "rev-parse", "custom-local")).toBe(git(lane, "rev-parse", "HEAD"));
+      // The cache outlives the job on a shared host, so it must never hold a token.
+      expect(NodeFS.readFileSync(NodePath.join(cache, "config"), "utf8")).not.toContain(
+        FORGEJO_SECRET,
+      );
+
+      NodeFS.rmSync(NodePath.join(cache, "HEAD"));
+      expect(run()).toBe("two\none");
+      expect(git(NodePath.join(scratch, "lane"), "tag")).toBe("v1");
+    } finally {
+      NodeFS.rmSync(scratch, { recursive: true, force: true });
+    }
   });
 
   it("reads the GitHub lane tip without the PAT in argv", () => {
