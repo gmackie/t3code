@@ -1,4 +1,4 @@
-import { useAuth, useClerk } from "@clerk/react";
+import { useCloudAuth, useCloudSignIn } from "../../cloud/cloudSession";
 import { useAtomValue } from "@effect/atom-react";
 import { managedRelaySessionAtom } from "@t3tools/client-runtime/relay";
 import {
@@ -13,10 +13,7 @@ import { type ReactNode, useEffect, useEffectEvent, useRef, useState } from "rea
 
 import { m } from "../../i18n/messages";
 
-import { isElectron } from "../../env";
 import { runConnectMcpApproval } from "../../state/connectMcpApproval";
-import { resolveClerkSignInProps } from "../clerk/authRedirect";
-import { retryClerkLoad, useClerkLoadFailed } from "../clerk/clerkLoadFailure";
 import { Button } from "../ui/button";
 import { Spinner } from "../ui/spinner";
 import { StandalonePage, StandalonePageHeader } from "../ui/standalone-page";
@@ -89,14 +86,12 @@ export function ApproveAgentSurface() {
   const [transport] = useState(() =>
     environmentId === null ? null : connectTransport(environmentId, setEnvironment),
   );
-  const clerk = useClerk();
-  const { isLoaded, isSignedIn } = useAuth();
-  const loadFailed = useClerkLoadFailed();
+  const { isLoaded, isSignedIn } = useCloudAuth();
+  const { loadFailed, openAuthPrompt, retrySignIn, signOut } = useCloudSignIn();
   const session = useAtomValue(managedRelaySessionAtom);
   const signInOpened = useRef(false);
 
-  const openSignIn = () =>
-    clerk.openSignIn(resolveClerkSignInProps(window.location.href, isElectron));
+  const openSignIn = () => openAuthPrompt();
   const openSignInOnLoad = useEffectEvent(openSignIn);
 
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- opens Clerk sign-in once Clerk has loaded and nobody is signed in
@@ -131,7 +126,7 @@ export function ApproveAgentSurface() {
         description={gt("T3 Connect sign-in did not load. Check your connection, then try again.")}
       >
         <div className="mt-6">
-          <Button type="button" onClick={retryClerkLoad}>
+          <Button type="button" onClick={retrySignIn}>
             <T>Retry sign-in</T>
           </Button>
         </div>
@@ -188,12 +183,7 @@ export function ApproveAgentSurface() {
               <T>Use a sign-in code instead</T>
             </Button>
           ) : null}
-          <Button
-            size="sm"
-            variant="link"
-            onClick={() => void clerk.signOut({ redirectUrl: window.location.href })}
-            type="button"
-          >
+          <Button size="sm" variant="link" onClick={() => void signOut()} type="button">
             <T>Use another account</T>
           </Button>
         </div>

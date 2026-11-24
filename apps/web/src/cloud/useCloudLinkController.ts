@@ -1,5 +1,5 @@
 import { useAtomValue } from "@effect/atom-react";
-import { useAuth } from "@clerk/react";
+import { useCloudAuth } from "./cloudSession";
 import { findErrorTraceId, thrownErrorMessage } from "@t3tools/client-runtime/errors";
 import { AuthRelayReadScope, AuthRelayWriteScope, type EnvironmentId } from "@t3tools/contracts";
 import { ManagedRelay } from "@t3tools/client-runtime/relay";
@@ -54,7 +54,7 @@ function tunnelLimitFromLinkFailure(cause: unknown): number | null {
 }
 
 export function useCloudLinkController(environmentId: EnvironmentId | null) {
-  const { getToken, isSignedIn } = useAuth();
+  const { getToken, isSignedIn } = useCloudAuth();
   const refreshRelayEnvironments = useAtomCommand(relayEnvironmentDiscovery.refresh, {
     reportFailure: false,
   });

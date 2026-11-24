@@ -1,4 +1,4 @@
-import { useAuth } from "@clerk/react";
+import { useCloudAuth, useCloudSignIn } from "../../cloud/cloudSession";
 import { useAtomValue } from "@effect/atom-react";
 import type {
   AgentSessionProjectCandidate,
@@ -49,8 +49,7 @@ import { useCloudLinkState } from "../../cloud/cloudLinkState";
 import { hasCloudPublicConfig } from "../../cloud/publicConfig";
 import { PRIVACY_POLICY_URL } from "../../legalLinks";
 import { workspaceAreaProps } from "../../lib/workspaceFocus";
-import { retryClerkLoad, useClerkLoadFailed } from "../clerk/clerkLoadFailure";
-import { useT3ConnectAuthPrompt } from "../clerk/useT3ConnectAuthPrompt";
+
 import { completeOnboarding } from "../../onboarding/firstRun";
 import {
   groupOnboardingProjects,
@@ -1035,10 +1034,9 @@ function PhoneStep({ step, children }: { readonly step: number; readonly childre
 }
 
 function PhoneConnectLink({ environmentId }: { readonly environmentId: EnvironmentId }) {
-  const { isLoaded, isSignedIn, userId } = useAuth({ treatPendingAsSignedOut: false });
+  const { isLoaded, isSignedIn, userId } = useCloudAuth({ treatPendingAsSignedOut: false });
   const gt = useGT();
-  const loadFailed = useClerkLoadFailed();
-  const { openAuthPrompt } = useT3ConnectAuthPrompt();
+  const { loadFailed, openAuthPrompt, retrySignIn } = useCloudSignIn();
   const linkState = useCloudLinkState(environmentId);
   const refreshLinkState = useEffectEvent(linkState.refresh);
   // The server rechecks the tunnel every 30 s; read its latest result while this panel is open.
@@ -1113,7 +1111,7 @@ function PhoneConnectLink({ environmentId }: { readonly environmentId: Environme
         <T>Sign in to T3 Connect here, then in the app with the same account.</T>
       </p>
       {loadFailed ? (
-        <Button variant="outline" size="xs" onClick={retryClerkLoad}>
+        <Button variant="outline" size="xs" onClick={retrySignIn}>
           <T>Retry sign-in</T>
         </Button>
       ) : (

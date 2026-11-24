@@ -75,8 +75,8 @@ export const headlessFlag = Flag.Boolean("headless").pipe(
 
 /**
  * Inside an SSH session there is no local browser to complete the loopback
- * OAuth callback, so the device authorization grant is the only flow that
- * can work.
+ * OAuth callback. Clerk uses the device authorization grant. Nathan prints an
+ * authorize URL and reads the pasted code, because it has no device grant.
  */
 const headlessSessionConfig = Config.all({
   sshConnection: Config.String("SSH_CONNECTION").pipe(Config.option),

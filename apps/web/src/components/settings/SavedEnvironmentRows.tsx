@@ -70,7 +70,7 @@ import {
   ServerUpdateProgress,
 } from "../ServerUpdateAction";
 import { CloudEnvironmentConnectRows } from "../cloud/CloudEnvironmentConnectList";
-import { useT3ConnectAuthPrompt } from "../clerk/useT3ConnectAuthPrompt";
+import { useCloudSignIn } from "~/cloud/cloudSession";
 
 type SavedBackendListRowProps = {
   environment: EnvironmentPresentation;
@@ -587,7 +587,7 @@ function ConfiguredCloudLinkRow({
     needsRelayConfiguration,
     reconcileCloudState,
   } = useCloudLinkController(environmentId);
-  const { openAuthPrompt } = useT3ConnectAuthPrompt();
+  const { openAuthPrompt } = useCloudSignIn();
   // The server unlinks and refuses relay changes under such a policy; unlinking stays possible.
   const messages = useMessages();
   const connectDenial = managedCapabilityDenial(

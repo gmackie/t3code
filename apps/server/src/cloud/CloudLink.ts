@@ -883,7 +883,7 @@ const make = Effect.gen(function* () {
       const relayUrl = yield* requireRelayUrl;
       const challenge = yield* relayClientRequest({
         url: `${relayUrl}/v1/client/environment-link-challenges`,
-        token: token.accessToken,
+        token: CliTokenManager.relayBearerToken(token),
         payload: {
           notificationsEnabled: true,
           liveActivitiesEnabled: true,
@@ -907,7 +907,7 @@ const make = Effect.gen(function* () {
       });
       const link = yield* relayClientRequest({
         url: `${relayUrl}/v1/client/environment-links`,
-        token: token.accessToken,
+        token: CliTokenManager.relayBearerToken(token),
         payload: {
           proof,
           notificationsEnabled: true,
@@ -1284,7 +1284,7 @@ const make = Effect.gen(function* () {
           )
         : releaseRequest;
     const response = yield* leaseBoundReleaseRequest.pipe(
-      HttpClientRequest.bearerToken(token.value.accessToken),
+      HttpClientRequest.bearerToken(CliTokenManager.relayBearerToken(token.value)),
       httpClient.execute,
       Effect.provideService(FetchHttpClient.RequestInit, { redirect: "error" }),
       Effect.flatMap(filterRelayResponse),

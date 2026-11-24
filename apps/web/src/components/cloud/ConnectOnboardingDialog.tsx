@@ -1,4 +1,4 @@
-import { useAuth } from "@clerk/react";
+import { useCloudAuth } from "~/cloud/cloudSession";
 import { useAtomValue } from "@effect/atom-react";
 import { managedCapabilityDenial } from "@t3tools/client-runtime/contract-labels";
 import {
@@ -70,7 +70,7 @@ function canPublishOnEnvironment(id: EnvironmentId | null): boolean {
 
 function ConfiguredConnectOnboardingDialog() {
   // Pending Clerk sessions must not look signed out or activation would look like a new sign-in.
-  const { isLoaded, isSignedIn, userId } = useAuth({ treatPendingAsSignedOut: false });
+  const { isLoaded, isSignedIn, userId } = useCloudAuth({ treatPendingAsSignedOut: false });
   const gt = useGT();
   const m = useMessages();
   const [optOutState, setOptOutState] = useLocalStorage(

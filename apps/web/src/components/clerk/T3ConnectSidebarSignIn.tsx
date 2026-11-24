@@ -1,8 +1,9 @@
 import { UserButton, useAuth } from "@clerk/react";
 import { T, useMessages } from "gt-react";
-import { LogInIcon, RotateCwIcon } from "lucide-react";
+import { LogInIcon, LogOutIcon, RotateCwIcon } from "lucide-react";
 
-import { hasCloudPublicConfig } from "../../cloud/publicConfig";
+import { useOidcSession } from "../../cloud/NathanAuthShell";
+import { hasCloudPublicConfig, isOidcCloudConfig } from "../../cloud/publicConfig";
 import { SidebarMenu, SidebarMenuButton, SidebarMenuItem } from "../ui/sidebar";
 import { retryClerkLoad, useClerkLoadFailed } from "./clerkLoadFailure";
 import { T3_CONNECT_ACCOUNT_PAGES } from "./T3ConnectAccountPages";
@@ -10,14 +11,50 @@ import { useT3ConnectAuthPrompt } from "./useT3ConnectAuthPrompt";
 
 export function T3ConnectSidebarSignIn() {
   if (!hasCloudPublicConfig()) return null;
+  if (isOidcCloudConfig()) return <OidcSidebarSignIn />;
 
   return <ConfiguredT3ConnectSidebarSignIn />;
 }
 
 export function T3ConnectSidebarAvatar() {
   if (!hasCloudPublicConfig()) return null;
+  if (isOidcCloudConfig()) return <OidcSidebarSignOut />;
 
   return <ConfiguredT3ConnectSidebarAvatar />;
+}
+
+function OidcSidebarSignIn() {
+  const { isLoaded, isSignedIn, openAuthPrompt } = useOidcSession();
+  if (!isLoaded || isSignedIn) return null;
+  return (
+    <SidebarMenu>
+      <SidebarMenuItem>
+        <SidebarMenuButton onClick={openAuthPrompt}>
+          <LogInIcon />
+          <span>
+            <T>Sign in to T3 Connect</T>
+          </span>
+        </SidebarMenuButton>
+      </SidebarMenuItem>
+    </SidebarMenu>
+  );
+}
+
+function OidcSidebarSignOut() {
+  const { isLoaded, isSignedIn, signOut } = useOidcSession();
+  if (!isLoaded || !isSignedIn) return null;
+  return (
+    <SidebarMenu>
+      <SidebarMenuItem>
+        <SidebarMenuButton onClick={signOut}>
+          <LogOutIcon />
+          <span>
+            <T>Sign out</T>
+          </span>
+        </SidebarMenuButton>
+      </SidebarMenuItem>
+    </SidebarMenu>
+  );
 }
 
 function ConfiguredT3ConnectSidebarAvatar() {

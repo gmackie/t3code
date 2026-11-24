@@ -1,4 +1,5 @@
 import { createClerkClient, verifyToken } from "@clerk/backend";
+import { fetchOidcJwks, verifyOidcJwt, type OidcJsonWebKey } from "../auth/OidcJwt.ts";
 import { sql as drizzleSql } from "drizzle-orm";
 import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as Context from "effect/Context";
@@ -20,6 +21,7 @@ import * as HttpServerResponse from "effect/http/HttpServerResponse";
 import * as HttpTraceContext from "effect/http/HttpTraceContext";
 import * as HttpApiBuilder from "effect/http-api/HttpApiBuilder";
 import * as HttpApiError from "effect/http-api/HttpApiError";
+import { oidcReturnTarget } from "@t3tools/shared/oidcAuth";
 import { encodeOAuthScope } from "@t3tools/shared/oauthScope";
 import * as HttpObservability from "@t3tools/shared/httpObservability";
 
@@ -177,6 +179,31 @@ export const layerDocsRedirectRoute = HttpRouter.add(
   "GET",
   "/",
   HttpServerResponse.redirect("/docs"),
+);
+
+export const layerOauthCallbackRoute = HttpRouter.add(
+  "GET",
+  "/oauth/callback",
+  Effect.gen(function* () {
+    const request = yield* HttpServerRequest.HttpServerRequest;
+    const url = new URL(request.url, "https://relay.local");
+    const code = url.searchParams.get("code");
+    const state = url.searchParams.get("state") ?? "";
+    const target = oidcReturnTarget(state);
+    if (target) {
+      const next = new URL(target);
+      if (code) next.searchParams.set("code", code);
+      if (state) next.searchParams.set("state", state);
+      const error = url.searchParams.get("error");
+      if (error) next.searchParams.set("error", error);
+      return HttpServerResponse.redirect(next.toString());
+    }
+    const safeCode = code && /^[A-Za-z0-9._~-]{1,512}$/u.test(code) ? code : "";
+    const body = safeCode
+      ? `<!doctype html><title>T3 Connect</title><p>Paste this code into the terminal that asked you to sign in.</p><pre>${safeCode}</pre>`
+      : `<!doctype html><title>T3 Connect</title><p>Sign-in did not return a code.</p>`;
+    return HttpServerResponse.html(body);
+  }),
 );
 
 // Finish before the mobile client's 10 s timeout so request cancellation cannot discard unexported spans.
@@ -1814,7 +1841,36 @@ function verifyClerkOAuthBearerToken(
 export function verifyRelayClientBearerToken(
   config: RelayConfiguration.RelayConfiguration["Service"],
   token: string,
-) {
+  options?: {
+    readonly jwks?: readonly OidcJsonWebKey[];
+    readonly nowEpochMs?: number;
+  },
+): Effect.Effect<
+  {
+    readonly sub: string;
+    readonly mode: "oidc_bearer" | "clerk_session_bearer" | "clerk_oauth_bearer";
+  },
+  ClerkTokenVerificationFailed
+> {
+  if (config.oidcIssuer && config.oidcAudience) {
+    const issuer = config.oidcIssuer;
+    const audience = config.oidcAudience;
+    return Effect.tryPromise({
+      try: async () => {
+        const keys = options?.jwks ?? (await fetchOidcJwks(issuer));
+        const verified = await verifyOidcJwt({
+          token,
+          issuer,
+          audience,
+          ...(config.oidcAllowedSubject ? { allowedSubject: config.oidcAllowedSubject } : {}),
+          keys,
+          ...(options?.nowEpochMs === undefined ? {} : { nowEpochMs: options.nowEpochMs }),
+        });
+        return { sub: verified.sub, mode: "oidc_bearer" as const };
+      },
+      catch: (cause) => new ClerkTokenVerificationFailed({ cause }),
+    });
+  }
   return verifyClerkBearerToken(config, token).pipe(
     Effect.flatMap((verified) =>
       verified.sub && hasExpectedClerkAudience(verified.aud, config.clerkJwtAudience)

@@ -26,7 +26,12 @@ import * as HttpRouter from "effect/http/HttpRouter";
 import * as HttpServerRequest from "effect/http/HttpServerRequest";
 import * as HttpServerResponse from "effect/http/HttpServerResponse";
 
-import { buildConnectAuthorizeRequestUrl } from "@t3tools/shared/connectAuth";
+import {
+  buildConnectAuthorizeRequestUrl,
+  buildConnectClerkAuthorizeUrl,
+  connectLoopbackRedirectUri,
+} from "@t3tools/shared/connectAuth";
+import { encodeOidcClientState } from "@t3tools/shared/oidcAuth";
 
 import * as ServerSecretStore from "../auth/ServerSecretStore.ts";
 import * as ExternalLauncher from "../process/externalLauncher.ts";
@@ -126,6 +131,7 @@ const PersistedToken = Schema.Struct({
   refreshToken: Schema.String,
   expiresAtEpochMs: Schema.Number,
   identity: Schema.optional(Schema.String),
+  idToken: Schema.optional(Schema.String),
 });
 export type PersistedToken = typeof PersistedToken.Type;
 
@@ -307,6 +313,7 @@ const readTokenResponse = Effect.fn("cloud.cli_token.read_token_response")(funct
       refreshToken: body.refresh_token ?? params.refresh_token ?? "",
       expiresAtEpochMs: now + body.expires_in * 1_000,
       ...(identity === null ? {} : { identity }),
+      ...(body.id_token ? { idToken: body.id_token } : {}),
     } satisfies PersistedToken,
     identity,
   };
@@ -435,9 +442,84 @@ const pollDeviceToken = Effect.fn("cloud.cli_token.poll_device_token")(function*
   }
 });
 
+export function relayBearerToken(token: PersistedToken): string {
+  return token.idToken ?? token.accessToken;
+}
+
+function authorizationCodeFromEntry(value: string): string {
+  const trimmed = value.trim();
+  try {
+    return new URL(trimmed).searchParams.get("code")?.trim() || trimmed;
+  } catch {
+    return trimmed;
+  }
+}
+
+const makeOidcPkce = Effect.fn("cloud.cli_token.oidc_pkce")(function* () {
+  const verifier = Base64Url.encode(crypto.getRandomValues(new Uint8Array(32)));
+  const digest = yield* Effect.tryPromise({
+    try: () => crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier)),
+    catch: (cause) => new CloudCliAuthorizationError({ cause }),
+  });
+  return {
+    verifier,
+    challenge: Base64Url.encode(new Uint8Array(digest)),
+    state: Base64Url.encode(crypto.getRandomValues(new Uint8Array(16))),
+  };
+});
+
+/**
+ * Nathan has no device-code grant. On a machine without a browser, print the
+ * authorize URL and read the code the relay callback displayed.
+ */
+const oidcHeadlessLogin = Effect.fn("cloud.cli_token.oidc_headless_login")(function* (
+  metadata: CloudCliOAuthConfig,
+) {
+  const authorizationEndpoint = metadata.authorizationEndpoint;
+  if (!authorizationEndpoint) {
+    return yield* new CloudCliAuthorizationError({
+      cause: "OIDC authorization endpoint is missing.",
+    });
+  }
+  const { verifier, challenge, state: nonce } = yield* makeOidcPkce();
+  const state = encodeOidcClientState({ nonce });
+  const authorizationUrl = buildConnectClerkAuthorizeUrl({
+    authorizationEndpoint,
+    clientId: metadata.clientId,
+    redirectUri: metadata.redirectUri,
+    scopes: metadata.scopes,
+    state,
+    challenge,
+  });
+  yield* Console.log(
+    [
+      "Open this URL to authorize T3 Connect:",
+      `  ${authorizationUrl}`,
+      "",
+      "After sign-in, paste the code here and press Enter.",
+      "Code:",
+    ].join("\n"),
+  );
+  const terminal = yield* Terminal.Terminal;
+  const code = authorizationCodeFromEntry(yield* terminal.readLine);
+  if (!code) {
+    return yield* new CloudCliAuthorizationError({ cause: "No authorization code was entered." });
+  }
+  return yield* exchangeToken(metadata, {
+    grant_type: "authorization_code",
+    code,
+    redirect_uri: metadata.redirectUri,
+    client_id: metadata.clientId,
+    code_verifier: verifier,
+  });
+});
+
 export const deviceAuthorizationLogin = Effect.fn("cloud.cli_token.device_authorization_login")(
   function* <E, R>(showPrompt: (prompt: DeviceAuthorizationPrompt) => Effect.Effect<void, E, R>) {
     const metadata = yield* cloudCliOAuthConfig;
+    if (metadata.authorizationEndpoint) {
+      return yield* oidcHeadlessLogin(metadata);
+    }
     const httpClient = (yield* HttpClient.HttpClient).pipe(HttpClient.filterStatusOk);
     const authorization = yield* HttpClientRequest.post(metadata.deviceAuthorizationEndpoint).pipe(
       HttpClientRequest.bodyUrlParams({
@@ -504,15 +586,29 @@ export const make = Effect.gen(function* () {
       refresh_token: token.refreshToken,
       client_id: metadata.clientId,
     });
-    return refreshed.identity === undefined && token.identity !== undefined
-      ? { ...refreshed, identity: token.identity }
-      : refreshed;
+    return {
+      ...refreshed,
+      ...(refreshed.identity === undefined && token.identity !== undefined
+        ? { identity: token.identity }
+        : {}),
+      // A refresh that omits the ID token must keep the Nathan bearer.
+      ...(refreshed.idToken === undefined && token.idToken !== undefined
+        ? { idToken: token.idToken }
+        : {}),
+    };
   });
 
   const login = Effect.fn("cloud.cli_token.login")(function* () {
     const metadata = yield* cloudCliOAuthConfig;
-    const hostedAppUrl = yield* hostedAppUrlConfig;
-    const { verifier, challenge, state } = yield* makePkceRequest;
+    const { verifier, challenge, state: nonce } = yield* makePkceRequest;
+    const authorizationEndpoint = metadata.authorizationEndpoint;
+    // Nathan's registered redirect is the relay. The loopback listener is only the second hop.
+    const state = authorizationEndpoint
+      ? encodeOidcClientState({
+          nonce,
+          to: connectLoopbackRedirectUri(metadata.loopbackPort),
+        })
+      : nonce;
     const callback = yield* Deferred.make<string>();
     const layerCallbackRoute = HttpRouter.add(
       "GET",
@@ -544,12 +640,21 @@ export const make = Effect.gen(function* () {
       Layer.build,
     );
     // /connect establishes a Clerk session first; /oauth/authorize loses parameters across sign-in.
-    const authorizationUrl = buildConnectAuthorizeRequestUrl({
-      hostedAppUrl,
-      state,
-      challenge,
-      loopbackPort: metadata.loopbackPort,
-    });
+    const authorizationUrl = authorizationEndpoint
+      ? buildConnectClerkAuthorizeUrl({
+          authorizationEndpoint,
+          clientId: metadata.clientId,
+          redirectUri: metadata.redirectUri,
+          scopes: metadata.scopes,
+          state,
+          challenge,
+        })
+      : buildConnectAuthorizeRequestUrl({
+          hostedAppUrl: yield* hostedAppUrlConfig,
+          state,
+          challenge,
+          loopbackPort: metadata.loopbackPort,
+        });
     yield* Console.log(formatLoopbackAuthorizationPrompt(authorizationUrl));
     const authorization = yield* waitForLoopbackAuthorization({
       authorizationUrl,

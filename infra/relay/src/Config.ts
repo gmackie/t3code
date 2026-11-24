@@ -65,6 +65,10 @@ export class RelayConfiguration extends Context.Service<
     readonly clerkSecretKey: Redacted.Redacted<string>;
     readonly clerkPublishableKey: string;
     readonly clerkJwtAudience: string;
+    /** Nathan issuer. When set, client bearers are EdDSA JWTs and Clerk is unused. */
+    readonly oidcIssuer?: string;
+    readonly oidcAudience?: string;
+    readonly oidcAllowedSubject?: string;
     readonly apnsDeliveryJobSigningSecret: Redacted.Redacted<string>;
     readonly cloudMintPrivateKey: Redacted.Redacted<string>;
     readonly cloudMintPublicKey: string;

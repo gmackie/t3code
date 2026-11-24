@@ -8,6 +8,9 @@ export interface T3CodePublicConfig {
   readonly clerkPublishableKey: string | undefined;
   readonly clerkJwtTemplate: string | undefined;
   readonly clerkCliOAuthClientId: string | undefined;
+  readonly oidcIssuer: string | undefined;
+  readonly oidcClientId: string | undefined;
+  readonly oidcRedirectUri: string | undefined;
   readonly relayUrl: string | undefined;
   readonly mobileOtlpTracesUrl: string | undefined;
   readonly mobileOtlpTracesDataset: string | undefined;
@@ -54,6 +57,24 @@ export function loadRepoEnv({
       ? {
           T3CODE_CLERK_CLI_OAUTH_CLIENT_ID: config.clerkCliOAuthClientId,
           VITE_CLERK_CLI_OAUTH_CLIENT_ID: config.clerkCliOAuthClientId,
+        }
+      : {}),
+    ...(config.oidcIssuer
+      ? {
+          T3CODE_OIDC_ISSUER: config.oidcIssuer,
+          VITE_T3CODE_OIDC_ISSUER: config.oidcIssuer,
+        }
+      : {}),
+    ...(config.oidcClientId
+      ? {
+          T3CODE_OIDC_CLIENT_ID: config.oidcClientId,
+          VITE_T3CODE_OIDC_CLIENT_ID: config.oidcClientId,
+        }
+      : {}),
+    ...(config.oidcRedirectUri
+      ? {
+          T3CODE_OIDC_REDIRECT_URI: config.oidcRedirectUri,
+          VITE_T3CODE_OIDC_REDIRECT_URI: config.oidcRedirectUri,
         }
       : {}),
     ...(config.relayUrl
@@ -119,6 +140,13 @@ function resolvePublicConfig(...sources: readonly Environment[]): T3CodePublicCo
       sources,
       "T3CODE_CLERK_CLI_OAUTH_CLIENT_ID",
       "VITE_CLERK_CLI_OAUTH_CLIENT_ID",
+    ),
+    oidcIssuer: firstNonEmpty(sources, "T3CODE_OIDC_ISSUER", "VITE_T3CODE_OIDC_ISSUER"),
+    oidcClientId: firstNonEmpty(sources, "T3CODE_OIDC_CLIENT_ID", "VITE_T3CODE_OIDC_CLIENT_ID"),
+    oidcRedirectUri: firstNonEmpty(
+      sources,
+      "T3CODE_OIDC_REDIRECT_URI",
+      "VITE_T3CODE_OIDC_REDIRECT_URI",
     ),
     relayUrl: firstNonEmpty(sources, "T3CODE_RELAY_URL", "VITE_T3CODE_RELAY_URL"),
     mobileOtlpTracesUrl: firstNonEmpty(

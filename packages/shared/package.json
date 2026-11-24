@@ -255,6 +255,10 @@
       "types": "./src/connectAuth.ts",
       "import": "./src/connectAuth.ts"
     },
+    "./oidcAuth": {
+      "types": "./src/oidcAuth.ts",
+      "import": "./src/oidcAuth.ts"
+    },
     "./symlink": {
       "types": "./src/symlink.ts",
       "import": "./src/symlink.ts"

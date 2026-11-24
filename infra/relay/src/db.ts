@@ -5,11 +5,15 @@ import * as Planetscale from "@alchemy.run/planetscale";
 import * as Alchemy from "alchemy";
 import * as RemovalPolicy from "alchemy/RemovalPolicy";
 import type { EffectPgDatabase } from "drizzle-orm/effect-postgres";
+import * as Config from "effect/Config";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
+import * as Redacted from "effect/Redacted";
 
 import { relayDatabaseMode } from "./dbConfig.ts";
+import { postgresOriginFromUrl } from "./dbOrigin.ts";
 
 export class RelayDb extends Context.Service<
   RelayDb,
@@ -74,6 +78,17 @@ export const PlanetscaleDatabase = Effect.gen(function* () {
 });
 
 export const RelayHyperdrive = Effect.gen(function* () {
+  const externalUrl = Option.getOrUndefined(
+    yield* Config.option(Config.Redacted("RELAY_DATABASE_URL")),
+  );
+  const url = externalUrl ? Redacted.value(externalUrl).trim() : "";
+  if (url.length > 0) {
+    return yield* Cloudflare.Hyperdrive.Connection("RelayHyperdrive", {
+      origin: postgresOriginFromUrl(url),
+      caching: { disabled: true },
+      originConnectionLimit: 20,
+    });
+  }
   const { runtimeRole } = yield* PlanetscaleDatabase;
   return yield* Cloudflare.Hyperdrive.Connection("RelayHyperdrive", {
     origin: runtimeRole.origin,
