@@ -32,7 +32,11 @@ concurrency:
 
 jobs:
   lanes:
-    runs-on: forgegraph-ci
+    # The small runners can fill their Docker disk during the workspace install.
+    runs-on: [forgegraph-ci, heavy]
+    container:
+      # The 1.64.1 image ships a newer Chromium than playwright-core 1.64.1 downloads.
+      image: mcr.microsoft.com/playwright:v1.64.0-noble@sha256:06a9939e57531807f8d5fd76ce44b53165ffb7d7501d87ab10e285c20b1e971f
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
@@ -41,11 +45,22 @@ jobs:
           node-version-file: package.json
       - name: Install pinned dependencies
         run: |
-          corepack enable
-          corepack prepare pnpm@12.14.0 --activate
+          npm install --global --no-audit --no-fund "$(node -p 'require("./package.json").packageManager')"
           pnpm install --frozen-lockfile
-      - name: Install browser test runtime
-        run: node apps/server/node_modules/playwright-core/cli.js install --with-deps --only-shell chromium
+      - name: Verify preinstalled Chromium
+        working-directory: apps/server
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from "node:assert/strict";
+          import { chromium } from "playwright-core";
+          import registry from "./node_modules/playwright-core/browsers.json" with { type: "json" };
+          const shell = registry.browsers.find(({ name }) => name === "chromium-headless-shell");
+          const browser = await chromium.launch();
+          const actual = browser.version();
+          await browser.close();
+          assert.equal(actual, shell.browserVersion, "Update the PR lane image to match Playwright");
+          console.log("Preinstalled Chromium", actual);
+          NODE
       - name: Run the lanes this pull request touches
         env:
           GITHUB_TOKEN: ${{ github.token }}
