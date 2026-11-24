@@ -12,9 +12,11 @@ DEFAULT_ROOT = '/Users/mackieg/t3-ci'
 # Mini jobs run one at a time, and the largest, iOS, peaked near 10 GiB in run 1441
 # (macOS arm64 6-7 GiB, x64 5 GiB). The guard was 37 GiB (the fleet's 25 GiB native
 # headroom from GMA-730 plus 12 GiB per job), but gmacko-mini sits near 29 GiB free,
-# which stopped every nightly macOS and iOS job (run 1614). Owner decision
-# (T3CODE-112): 28 GiB, which still leaves about 16-18 GiB free at a job's peak.
-MINIMUM_FREE = 28 * GIB
+# which stopped every nightly macOS and iOS job (run 1614), so T3CODE-112 lowered it
+# to 28 GiB. Shared with other agents' builds, the Mini then swung between about 20 and
+# 38 GiB free and still blocked releases. Owner decision (T3CODE-128): 20 GiB, which
+# leaves about 10 GiB free at the iOS job's peak.
+MINIMUM_FREE = 20 * GIB
 
 
 def prepare(root, workspace, minimum_free=MINIMUM_FREE):
