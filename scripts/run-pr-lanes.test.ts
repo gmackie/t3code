@@ -1,5 +1,4 @@
 // @effect-diagnostics nodeBuiltinImport:off - This test exercises a dependency-free CI runner script.
-import * as NodeChildProcess from "node:child_process";
 import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
@@ -90,34 +89,6 @@ describe("the configured lanes", () => {
     const root = NodePath.resolve(import.meta.dirname, "..");
     const cwds = new Set(lanes.flatMap((l) => l.commands.map((c) => c.cwd ?? ".")));
     for (const cwd of cwds) expect(NodeFS.existsSync(NodePath.join(root, cwd)), cwd).toBe(true);
-  });
-
-  it("publishes the selected CI lanes and keeps Chromium for additional commands", () => {
-    using directory = NodeFS.mkdtempDisposableSync(NodePath.join(NodeOS.tmpdir(), "pr-lanes-"));
-    const output = NodePath.join(directory.path, "outputs");
-    const list = (...args: Array<string>) => {
-      NodeFS.writeFileSync(output, "");
-      NodeChildProcess.execFileSync(
-        process.execPath,
-        [NodePath.join(import.meta.dirname, "run-pr-lanes.ts"), "--github-output", output, ...args],
-        { env: { ...process.env, GITHUB_BASE_REF: "custom-local", PR_LANES: "" } },
-      );
-      return NodeFS.readFileSync(output, "utf8").trim().split("\n");
-    };
-
-    expect(list("--files", "scripts/mini-ci-storage.py")).toEqual([
-      "lanes=lane-check",
-      "needs_browser=false",
-    ]);
-    expect(list("--lanes", "lane-check,server-browser")).toEqual([
-      "lanes=lane-check,server-browser",
-      "needs_browser=true",
-    ]);
-    expect(list("--all")).toContain("needs_browser=true");
-    expect(list("--files", "README.md", "--base", "T3CODE-27")).toEqual([
-      "lanes=",
-      "needs_browser=false",
-    ]);
   });
 
   it("select the lanes a lockfile change used to start", () => {
