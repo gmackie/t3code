@@ -270,13 +270,28 @@ export const layer = Api.make(
       },
     });
     const mobileSourceMaps = yield* Cloudflare.R2.ReadBucket(observability.mobileSourceMaps);
-    const mobileTelemetryToken = yield* observability.mobileTelemetryIngestToken.token;
-    const mobileTracesUrl = yield* observability.traces.otelTracesEndpoint;
-    const mobileTracesDataset = yield* observability.traces.name;
-    const mobileLogsUrl = yield* observability.mobileLogs.otelLogsEndpoint;
-    const mobileLogsDataset = yield* observability.mobileLogs.name;
-    const mobileMetricsUrl = yield* observability.mobileMetrics.otelMetricsEndpoint;
-    const mobileMetricsDataset = yield* observability.mobileMetrics.name;
+    // Yielding an Output registers a Worker binding named after the output's
+    // text. Output.literal("") therefore uploads a binding with an empty name,
+    // which the Workers API rejects. Disabled Axiom destinations stay local.
+    const mobileTelemetry = observability.axiomEnabled
+      ? {
+          token: yield* observability.mobileTelemetryIngestToken.token,
+          tracesUrl: yield* observability.traces.otelTracesEndpoint,
+          tracesDataset: yield* observability.traces.name,
+          logsUrl: yield* observability.mobileLogs.otelLogsEndpoint,
+          logsDataset: yield* observability.mobileLogs.name,
+          metricsUrl: yield* observability.mobileMetrics.otelMetricsEndpoint,
+          metricsDataset: yield* observability.mobileMetrics.name,
+        }
+      : {
+          token: Effect.succeed(Redacted.make("")),
+          tracesUrl: Effect.succeed(""),
+          tracesDataset: Effect.succeed(""),
+          logsUrl: Effect.succeed(""),
+          logsDataset: Effect.succeed(""),
+          metricsUrl: Effect.succeed(""),
+          metricsDataset: Effect.succeed(""),
+        };
 
     const alchemyRuntimeContext: Alchemy.BaseRuntimeContext = yield* Cloudflare.Worker;
     const relayEdge = yield* Cloudflare.Workers.bindWorker(Edge);
@@ -470,11 +485,20 @@ export const layer = Api.make(
             MobileTelemetry.MobileTelemetrySettings,
             Effect.gen(function* () {
               return MobileTelemetry.MobileTelemetrySettings.of({
-                axiomToken: yield* mobileTelemetryToken,
+                axiomToken: yield* mobileTelemetry.token,
                 destinations: {
-                  traces: { url: yield* mobileTracesUrl, dataset: yield* mobileTracesDataset },
-                  logs: { url: yield* mobileLogsUrl, dataset: yield* mobileLogsDataset },
-                  metrics: { url: yield* mobileMetricsUrl, dataset: yield* mobileMetricsDataset },
+                  traces: {
+                    url: yield* mobileTelemetry.tracesUrl,
+                    dataset: yield* mobileTelemetry.tracesDataset,
+                  },
+                  logs: {
+                    url: yield* mobileTelemetry.logsUrl,
+                    dataset: yield* mobileTelemetry.logsDataset,
+                  },
+                  metrics: {
+                    url: yield* mobileTelemetry.metricsUrl,
+                    dataset: yield* mobileTelemetry.metricsDataset,
+                  },
                 },
               });
             }),

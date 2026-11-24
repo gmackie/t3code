@@ -69,6 +69,11 @@ export function relayOwnsManagedEndpointZone(stage: string): boolean {
   return stage === MANAGED_ENDPOINT_ZONE_OWNER_STAGE;
 }
 
+/** Prod owns the zone wildcard unless the operator points at a record that already exists. */
+export function relayCreatesEdgeWildcardDns(stage: string, wildcardDns: boolean): boolean {
+  return relayOwnsManagedEndpointZone(stage) && wildcardDns;
+}
+
 export function relayPublicDomainForStage(stage: string, zoneName: string): string {
   const stageSlug = relayStageSlug(stage);
   const relayLabel = stage === "prod" ? "relay" : `relay-${stageSlug}`;

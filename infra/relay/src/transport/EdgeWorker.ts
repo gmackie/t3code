@@ -1,5 +1,6 @@
 import * as Cloudflare from "@alchemy.run/cloudflare";
 import type { RuntimeContext } from "alchemy";
+import * as Config from "effect/Config";
 import * as Effect from "effect/Effect";
 import * as HttpServerRequest from "effect/http/HttpServerRequest";
 import * as HttpServerResponse from "effect/http/HttpServerResponse";
@@ -11,7 +12,7 @@ import RelayEnvironment, {
   relayConnectorTokenHeader,
   relayPublicUrlHeader,
 } from "./RelayEnvironment.ts";
-import { relayOwnsManagedEndpointZone } from "../deploymentConfig.ts";
+import { relayCreatesEdgeWildcardDns } from "../deploymentConfig.ts";
 import { ManagedEndpointZone, RelayDeploymentConfig } from "../zone.ts";
 import { relayEdgeRouteSuffix, resolveRelayEdgeRoute } from "./routing.ts";
 
@@ -107,7 +108,10 @@ export class Edge extends Cloudflare.Worker<Edge, EdgeShape>()("RelayEdge") {}
 export const EdgeLive = Edge.make(
   Effect.gen(function* () {
     const { stage, managedEndpointZoneName } = yield* RelayDeploymentConfig;
-    const zone = yield* ManagedEndpointZone;
+    // Props run before the Worker installs RuntimeContext, so a yielded zone
+    // id cannot resolve. The zone name is already a string; yielding the zone
+    // resource still orders route creation after the zone exists.
+    yield* ManagedEndpointZone;
     const edgeRouteSuffix = relayEdgeRouteSuffix(stage, managedEndpointZoneName);
     return {
       main: import.meta.filename,
@@ -115,7 +119,7 @@ export const EdgeLive = Edge.make(
         date: "2026-05-22",
         flags: ["nodejs_compat"],
       },
-      routes: [{ pattern: `*-${edgeRouteSuffix}/*`, zoneId: yield* zone.zoneId }],
+      routes: [{ pattern: `*-${edgeRouteSuffix}/*`, zoneName: managedEndpointZoneName }],
     };
   }).pipe(Effect.orDie),
   Effect.gen(function* () {
@@ -123,7 +127,14 @@ export const EdgeLive = Edge.make(
     const edgeRouteSuffix = relayEdgeRouteSuffix(stage, managedEndpointZoneName);
     const zone = yield* ManagedEndpointZone;
 
-    if (relayOwnsManagedEndpointZone(stage)) {
+    // Upstream prod creates `*.<zone>` AAAA 100:: so Worker routes resolve.
+    // A shared zone that already has that name (gmacko.com's wildcard CNAME)
+    // sets RELAY_EDGE_WILDCARD_DNS=false. Replacing the record would retarget
+    // every unmatched subdomain.
+    const wildcardDns = yield* Config.Boolean("RELAY_EDGE_WILDCARD_DNS").pipe(
+      Config.withDefault(true),
+    );
+    if (relayCreatesEdgeWildcardDns(stage, wildcardDns)) {
       yield* Cloudflare.DNS.Record("RelayEdgeWildcardDns", {
         zoneId: zone.zoneId,
         name: `*.${managedEndpointZoneName}`,

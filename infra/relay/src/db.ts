@@ -83,8 +83,29 @@ export const RelayHyperdrive = Effect.gen(function* () {
   );
   const url = externalUrl ? Redacted.value(externalUrl).trim() : "";
   if (url.length > 0) {
+    const accessId = Option.getOrUndefined(
+      yield* Config.option(Config.String("RELAY_DATABASE_ACCESS_CLIENT_ID")),
+    );
+    const accessSecret = Option.getOrUndefined(
+      yield* Config.option(Config.Redacted("RELAY_DATABASE_ACCESS_CLIENT_SECRET")),
+    );
+    const accessHost = Option.getOrUndefined(
+      yield* Config.option(Config.String("RELAY_DATABASE_ACCESS_HOST")),
+    );
+    const clientId = accessId?.trim() ?? "";
+    const clientSecret = accessSecret ? Redacted.value(accessSecret).trim() : "";
+    const host = accessHost?.trim() ?? "";
     return yield* Cloudflare.Hyperdrive.Connection("RelayHyperdrive", {
-      origin: postgresOriginFromUrl(url),
+      origin: postgresOriginFromUrl(
+        url,
+        clientId.length > 0 || clientSecret.length > 0
+          ? {
+              clientId,
+              clientSecret,
+              ...(host.length > 0 ? { host } : {}),
+            }
+          : undefined,
+      ),
       caching: { disabled: true },
       originConnectionLimit: 20,
     });
