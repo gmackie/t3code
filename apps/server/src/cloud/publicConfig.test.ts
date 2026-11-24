@@ -37,6 +37,28 @@ it.effect("rejects malformed or insecure hosted app URLs", () =>
   }),
 );
 
+it.effect("derives Nathan endpoints from an OIDC issuer", () =>
+  Effect.gen(function* () {
+    const config = yield* makeCloudCliOAuthConfig().pipe(
+      provideEnv({
+        T3CODE_OIDC_ISSUER: "https://id.example.test/api/auth",
+        T3CODE_OIDC_CLIENT_ID: "t3code-gmacko",
+        T3CODE_OIDC_REDIRECT_URI: "https://relay.example.test/oauth/callback",
+      }),
+    );
+
+    assert.deepEqual(config, {
+      tokenEndpoint: "https://id.example.test/api/auth/oauth2/token",
+      authorizationEndpoint: "https://id.example.test/api/auth/oauth2/authorize",
+      deviceAuthorizationEndpoint: "",
+      clientId: "t3code-gmacko",
+      loopbackPort: 34338,
+      redirectUri: "https://relay.example.test/oauth/callback",
+      scopes: ["openid", "profile", "email", "offline_access"],
+    });
+  }),
+);
+
 it.effect("derives direct Clerk OAuth endpoints from statically injected public config", () =>
   Effect.gen(function* () {
     const config = yield* makeCloudCliOAuthConfig({

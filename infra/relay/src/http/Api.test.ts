@@ -42,6 +42,7 @@ import {
 } from "@t3tools/contracts/relay";
 import { relayProtectedErrorMessage } from "@t3tools/client-runtime/relay";
 import { RELAY_MANAGED_TUNNEL_RECOVERY_TYP, signRelayJwt } from "@t3tools/shared/relayJwt";
+import { verifyOidcJwt, type OidcJsonWebKey } from "../auth/OidcJwt.ts";
 
 import {
   RELAY_HTTP_ROUTER_CONFIG,
@@ -460,7 +461,69 @@ describe("relay client authentication", () => {
       ),
     ),
   );
+
+  it.effect("accepts a Nathan EdDSA token and does not ask Clerk", () =>
+    Effect.gen(function* () {
+      const signed = yield* Effect.promise(() =>
+        signEdDsaToken({
+          iss: "https://id.gmac.io/api/auth",
+          aud: "t3-connect",
+          sub: "nathan-user",
+        }),
+      );
+      const verified = yield* verifyRelayClientBearerToken(
+        {
+          ...relaySettings,
+          oidcIssuer: "https://id.gmac.io/api/auth",
+          oidcAudience: "t3-connect",
+        },
+        signed.token,
+        { jwks: [signed.jwk] },
+      );
+      expect(verified).toEqual({ sub: "nathan-user", mode: "oidc_bearer" });
+      expect(verifyToken).not.toHaveBeenCalled();
+      expect(
+        yield* Effect.promise(() =>
+          verifyOidcJwt({
+            token: signed.token,
+            issuer: "https://id.gmac.io/api/auth",
+            audience: "clerk",
+            keys: [signed.jwk],
+          }),
+        ).pipe(Effect.exit),
+      ).toMatchObject({ _tag: "Failure" });
+    }),
+  );
 });
+
+async function signEdDsaToken(payload: Record<string, unknown>) {
+  const keyPair = await crypto.subtle.generateKey({ name: "Ed25519" }, true, ["sign", "verify"]);
+  // A fixed epoch stays inside the verifier's 60s skew without reading the wall clock.
+  const now = 4_000_000_000;
+  const header = base64Url(JSON.stringify({ alg: "EdDSA", typ: "JWT", kid: "key-1" }));
+  const body = base64Url(JSON.stringify({ iat: now, exp: now + 300, ...payload }));
+  const signature = base64UrlBytes(
+    new Uint8Array(
+      await crypto.subtle.sign(
+        { name: "Ed25519" },
+        keyPair.privateKey,
+        new TextEncoder().encode(`${header}.${body}`),
+      ),
+    ),
+  );
+  const jwk = (await crypto.subtle.exportKey("jwk", keyPair.publicKey)) as OidcJsonWebKey;
+  return { token: `${header}.${body}.${signature}`, jwk: { ...jwk, kid: "key-1", alg: "EdDSA" } };
+}
+
+function base64Url(value: string): string {
+  return base64UrlBytes(new TextEncoder().encode(value));
+}
+
+function base64UrlBytes(bytes: Uint8Array): string {
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary).replaceAll("+", "-").replaceAll("/", "_").replaceAll("=", "");
+}
 
 describe("relay DPoP failure mapping", () => {
   it("maps verifier failures to safe client-facing categories", () => {

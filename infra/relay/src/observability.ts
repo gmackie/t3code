@@ -6,6 +6,7 @@ import * as Axiom from "@alchemy.run/axiom";
 import * as Cloudflare from "@alchemy.run/cloudflare";
 import * as Output from "alchemy/Output";
 import * as Cause from "effect/Cause";
+import * as Config from "effect/Config";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Option from "effect/Option";
@@ -30,6 +31,34 @@ const relayRecentSpansQuery = (dataset: string) =>
 
 export const RelayObservability = Effect.gen(function* () {
   const { stage } = yield* Alchemy.Stack;
+  const axiomToken = yield* Config.option(Config.NonEmptyString("AXIOM_TOKEN"));
+  const axiomKey = yield* Config.option(Config.NonEmptyString("AXIOM_API_KEY"));
+  if (Option.isNone(axiomToken) && Option.isNone(axiomKey)) {
+    const mobileSourceMaps = yield* Cloudflare.R2.Bucket("MobileSourceMapsBucket", {
+      name: mobileSourceMapsBucketName(stage),
+      forceDestroy: stage !== "prod",
+    });
+    const empty = Output.literal("");
+    const emptyToken = Output.literal(Redacted.make(""));
+    const signal = {
+      name: empty,
+      otelTracesEndpoint: empty,
+      otelLogsEndpoint: empty,
+      otelMetricsEndpoint: empty,
+    };
+    const token = { token: emptyToken };
+    return {
+      axiomEnabled: false as const,
+      traces: signal,
+      workerIngestToken: null,
+      mobileIngestToken: token,
+      clientIngestToken: token,
+      mobileLogs: signal,
+      mobileMetrics: signal,
+      mobileTelemetryIngestToken: token,
+      mobileSourceMaps,
+    };
+  }
   const traces = yield* Axiom.Dataset("RelayTracesDataset", {
     name: relayResourceNameForStage("t3-code-relay-traces", stage),
     kind: "otel:traces:v1",
@@ -104,6 +133,7 @@ export const RelayObservability = Effect.gen(function* () {
   yield* MobileMonitoring(mobileLogs, traces);
 
   return {
+    axiomEnabled: true as const,
     traces,
     workerIngestToken,
     mobileIngestToken,

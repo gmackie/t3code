@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
-import { hasCloudPublicConfig } from "./publicConfig.ts";
+import { hasCloudPublicConfig, isOidcCloudConfig } from "./publicConfig.ts";
 
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -67,6 +67,19 @@ describe("hasCloudPublicConfig", () => {
       vi.stubGlobal("window", { location: new URL(origin) });
 
       expect(hasCloudPublicConfig()).toBe(expected);
+    });
+
+    it("enables Nathan auth on a private origin without a Clerk key", () => {
+      vi.stubEnv("VITE_CLERK_PUBLISHABLE_KEY", "");
+      vi.stubEnv("VITE_CLERK_JWT_TEMPLATE", "");
+      vi.stubEnv("VITE_T3CODE_OIDC_ISSUER", "https://id.example.test/api/auth");
+      vi.stubEnv("VITE_T3CODE_OIDC_CLIENT_ID", "t3code-gmacko");
+      vi.stubEnv("VITE_T3CODE_OIDC_REDIRECT_URI", "https://relay.example.test/oauth/callback");
+      vi.stubEnv("VITE_T3CODE_RELAY_URL", "https://relay.example.test");
+      vi.stubGlobal("window", { location: new URL("http://127.0.0.1:3773") });
+
+      expect(isOidcCloudConfig()).toBe(true);
+      expect(hasCloudPublicConfig()).toBe(true);
     });
 
     it("keeps production keys available in the Electron auth shell", () => {

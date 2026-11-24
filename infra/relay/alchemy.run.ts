@@ -17,21 +17,24 @@ import { ManagedEndpointZone, RelayApiZone, RelayDeploymentConfig } from "./src/
 import * as RelayWorker from "./src/worker.ts";
 import EdgeLive, { Edge } from "./src/transport/EdgeWorker.ts";
 
+const externalDatabase = Boolean(process.env.RELAY_DATABASE_URL?.trim());
+const axiomEnabled = Boolean(process.env.AXIOM_TOKEN?.trim() || process.env.AXIOM_API_KEY?.trim());
+
 export default Alchemy.Stack(
   "T3CodeRelay",
   {
     providers: Layer.mergeAll(
-      Axiom.providers(),
       Cloudflare.providers(),
       Drizzle.providers(),
-      Planetscale.providers(),
       PreviewTunnelSweepProvider(),
+      ...(axiomEnabled ? [Axiom.providers()] : []),
+      ...(externalDatabase ? [] : [Planetscale.providers()]),
     ),
     state: Cloudflare.state(),
   },
   Effect.gen(function* () {
     const { stage } = yield* Alchemy.Stack;
-    const db = yield* RelayDb.PlanetscaleDatabase;
+    const db = externalDatabase ? null : yield* RelayDb.PlanetscaleDatabase;
     const hyperdrive = yield* RelayDb.RelayHyperdrive;
     const managedEndpointZone = yield* ManagedEndpointZone.pipe(Effect.orDie);
     const relayApiZone = yield* RelayApiZone.pipe(Effect.orDie);
@@ -62,8 +65,9 @@ export default Alchemy.Stack(
     const edge = yield* Edge;
 
     return {
-      databaseName: db.database.name,
-      databaseBranchName: db.branch?.name ?? "main",
+      databaseName: db?.database.name ?? Output.literal("external"),
+      databaseBranchName:
+        db?.branch?.name ?? Output.literal(externalDatabase ? "external" : "main"),
       hyperdriveName: hyperdrive.name,
       workerName: api.workerName,
       url: api.url,

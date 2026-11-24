@@ -29,6 +29,8 @@
 #   APPLE_TEAM_ID, CLERK_PASSKEY_RP_DOMAINS, and optionally CLOUDFLARE_ACCOUNT_ID,
 #   RELAY_DOMAIN, RELAY_API_ZONE_NAME, T3CODE_CLERK_PUBLISHABLE_KEY,
 #   T3CODE_CLERK_JWT_TEMPLATE, T3CODE_CLERK_CLI_OAUTH_CLIENT_ID
+#   T3CODE_OIDC_ISSUER, T3CODE_OIDC_CLIENT_ID, T3CODE_OIDC_REDIRECT_URI
+#   When the OIDC issuer and client id are set, Clerk values are left empty.
 #
 # Windows builds are omitted until the fleet has an isolated Windows runner.
 
@@ -589,6 +591,9 @@ jobs:
       clerk_publishable_key: ${{ steps.public_config.outputs.clerk_publishable_key }}
       clerk_jwt_template: ${{ steps.public_config.outputs.clerk_jwt_template }}
       clerk_cli_oauth_client_id: ${{ steps.public_config.outputs.clerk_cli_oauth_client_id }}
+      oidc_issuer: ${{ steps.public_config.outputs.oidc_issuer }}
+      oidc_client_id: ${{ steps.public_config.outputs.oidc_client_id }}
+      oidc_redirect_uri: ${{ steps.public_config.outputs.oidc_redirect_uri }}
       relay_url: ${{ steps.public_config.outputs.relay_url }}
     env:
       CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
@@ -601,6 +606,9 @@ jobs:
       T3CODE_CLERK_PUBLISHABLE_KEY: ${{ vars.T3CODE_CLERK_PUBLISHABLE_KEY }}
       T3CODE_CLERK_JWT_TEMPLATE: ${{ vars.T3CODE_CLERK_JWT_TEMPLATE }}
       T3CODE_CLERK_CLI_OAUTH_CLIENT_ID: ${{ vars.T3CODE_CLERK_CLI_OAUTH_CLIENT_ID }}
+      T3CODE_OIDC_ISSUER: ${{ vars.T3CODE_OIDC_ISSUER }}
+      T3CODE_OIDC_CLIENT_ID: ${{ vars.T3CODE_OIDC_CLIENT_ID }}
+      T3CODE_OIDC_REDIRECT_URI: ${{ vars.T3CODE_OIDC_REDIRECT_URI }}
     steps:
       - name: Checkout lane
         uses: actions/checkout@v4
@@ -655,9 +663,21 @@ jobs:
           if [[ -z "$relay_domain" && -n "${RELAY_API_ZONE_NAME:-}" ]]; then
             relay_domain="relay.$RELAY_API_ZONE_NAME"
           fi
-          echo "clerk_publishable_key=${T3CODE_CLERK_PUBLISHABLE_KEY:-}" >> "$GITHUB_OUTPUT"
-          echo "clerk_jwt_template=${T3CODE_CLERK_JWT_TEMPLATE:-}" >> "$GITHUB_OUTPUT"
-          echo "clerk_cli_oauth_client_id=${T3CODE_CLERK_CLI_OAUTH_CLIENT_ID:-}" >> "$GITHUB_OUTPUT"
+          if [[ -n "${T3CODE_OIDC_ISSUER:-}" && -n "${T3CODE_OIDC_CLIENT_ID:-}" ]]; then
+            echo "clerk_publishable_key=" >> "$GITHUB_OUTPUT"
+            echo "clerk_jwt_template=" >> "$GITHUB_OUTPUT"
+            echo "clerk_cli_oauth_client_id=" >> "$GITHUB_OUTPUT"
+            echo "oidc_issuer=${T3CODE_OIDC_ISSUER}" >> "$GITHUB_OUTPUT"
+            echo "oidc_client_id=${T3CODE_OIDC_CLIENT_ID}" >> "$GITHUB_OUTPUT"
+            echo "oidc_redirect_uri=${T3CODE_OIDC_REDIRECT_URI:-}" >> "$GITHUB_OUTPUT"
+          else
+            echo "clerk_publishable_key=${T3CODE_CLERK_PUBLISHABLE_KEY:-}" >> "$GITHUB_OUTPUT"
+            echo "clerk_jwt_template=${T3CODE_CLERK_JWT_TEMPLATE:-}" >> "$GITHUB_OUTPUT"
+            echo "clerk_cli_oauth_client_id=${T3CODE_CLERK_CLI_OAUTH_CLIENT_ID:-}" >> "$GITHUB_OUTPUT"
+            echo "oidc_issuer=" >> "$GITHUB_OUTPUT"
+            echo "oidc_client_id=" >> "$GITHUB_OUTPUT"
+            echo "oidc_redirect_uri=" >> "$GITHUB_OUTPUT"
+          fi
           if [[ -n "$relay_domain" ]]; then
             echo "relay_url=https://$relay_domain" >> "$GITHUB_OUTPUT"
           else
@@ -678,6 +698,9 @@ jobs:
       T3CODE_CLERK_PUBLISHABLE_KEY: ${{ needs.relay_public_config.outputs.clerk_publishable_key }}
       T3CODE_CLERK_JWT_TEMPLATE: ${{ needs.relay_public_config.outputs.clerk_jwt_template }}
       T3CODE_CLERK_CLI_OAUTH_CLIENT_ID: ${{ needs.relay_public_config.outputs.clerk_cli_oauth_client_id }}
+      T3CODE_OIDC_ISSUER: ${{ needs.relay_public_config.outputs.oidc_issuer }}
+      T3CODE_OIDC_CLIENT_ID: ${{ needs.relay_public_config.outputs.oidc_client_id }}
+      T3CODE_OIDC_REDIRECT_URI: ${{ needs.relay_public_config.outputs.oidc_redirect_uri }}
       T3CODE_RELAY_URL: ${{ needs.relay_public_config.outputs.relay_url }}
     strategy:
       fail-fast: false
@@ -994,6 +1017,9 @@ jobs:
       T3CODE_CLERK_PUBLISHABLE_KEY: ${{ needs.relay_public_config.outputs.clerk_publishable_key }}
       T3CODE_CLERK_JWT_TEMPLATE: ${{ needs.relay_public_config.outputs.clerk_jwt_template }}
       T3CODE_CLERK_CLI_OAUTH_CLIENT_ID: ${{ needs.relay_public_config.outputs.clerk_cli_oauth_client_id }}
+      T3CODE_OIDC_ISSUER: ${{ needs.relay_public_config.outputs.oidc_issuer }}
+      T3CODE_OIDC_CLIENT_ID: ${{ needs.relay_public_config.outputs.oidc_client_id }}
+      T3CODE_OIDC_REDIRECT_URI: ${{ needs.relay_public_config.outputs.oidc_redirect_uri }}
       T3CODE_RELAY_URL: ${{ needs.relay_public_config.outputs.relay_url }}
     steps:
       - name: Checkout lane
@@ -1207,6 +1233,9 @@ jobs:
     env:
       T3CODE_CLERK_PUBLISHABLE_KEY: ${{ needs.relay_public_config.outputs.clerk_publishable_key }}
       T3CODE_CLERK_JWT_TEMPLATE: ${{ needs.relay_public_config.outputs.clerk_jwt_template }}
+      T3CODE_OIDC_ISSUER: ${{ needs.relay_public_config.outputs.oidc_issuer }}
+      T3CODE_OIDC_CLIENT_ID: ${{ needs.relay_public_config.outputs.oidc_client_id }}
+      T3CODE_OIDC_REDIRECT_URI: ${{ needs.relay_public_config.outputs.oidc_redirect_uri }}
       T3CODE_RELAY_URL: ${{ needs.relay_public_config.outputs.relay_url }}
     steps:
       - name: Checkout lane

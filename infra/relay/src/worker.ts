@@ -115,6 +115,17 @@ const ApnsDeliveryJobSigningSecret = Alchemy.makeRandom("ApnsDeliveryJobSigningS
 
 export class Api extends Cloudflare.Worker<Api, {}>()("Api") {}
 
+const relayWorkerTelemetry = (
+  observability: Effect.Success<typeof RelayObservability>,
+): Layer.Layer<never> => {
+  if (!observability.axiomEnabled) return Layer.empty;
+  return Axiom.Telemetry({
+    serviceName: "t3code-relay",
+    token: observability.workerIngestToken,
+    traces: observability.traces,
+  });
+};
+
 export const layer = Api.make(
   RelayDeploymentConfig.pipe(
     Effect.map(({ relayPublicDomain }) => ({
@@ -170,9 +181,38 @@ export const layer = Api.make(
     const apnsDeliveryQueueSender = yield* Cloudflare.Queues.WriteQueue(apnsDeliveryQueue);
     const fcmDeliveryQueueSender = yield* Cloudflare.Queues.WriteQueue(fcmDeliveryQueue);
 
-    const clerkSecretKey = yield* Config.Redacted("CLERK_SECRET_KEY");
-    const clerkPublishableKey = yield* Config.String("CLERK_PUBLISHABLE_KEY");
-    const clerkJwtAudience = yield* Config.String("CLERK_JWT_AUDIENCE");
+    const oidcIssuer = Option.getOrUndefined(
+      Option.filter(
+        yield* Config.option(Config.String("OIDC_ISSUER")),
+        (value) => value.trim().length > 0,
+      ),
+    );
+    const oidcAudience = Option.getOrUndefined(
+      Option.filter(
+        yield* Config.option(Config.String("OIDC_AUDIENCE")),
+        (value) => value.trim().length > 0,
+      ),
+    );
+    const oidcAllowedSubject = Option.getOrUndefined(
+      Option.filter(
+        yield* Config.option(Config.String("OIDC_ALLOWED_SUBJECT")),
+        (value) => value.trim().length > 0,
+      ),
+    );
+    const clerkSecretKey =
+      oidcIssuer && oidcAudience
+        ? Option.getOrElse(yield* Config.option(Config.Redacted("CLERK_SECRET_KEY")), () =>
+            Redacted.make(""),
+          )
+        : yield* Config.Redacted("CLERK_SECRET_KEY");
+    const clerkPublishableKey =
+      oidcIssuer && oidcAudience
+        ? Option.getOrElse(yield* Config.option(Config.String("CLERK_PUBLISHABLE_KEY")), () => "")
+        : yield* Config.String("CLERK_PUBLISHABLE_KEY");
+    const clerkJwtAudience =
+      oidcIssuer && oidcAudience
+        ? Option.getOrElse(yield* Config.option(Config.String("CLERK_JWT_AUDIENCE")), () => "")
+        : yield* Config.String("CLERK_JWT_AUDIENCE");
     const t3ChatLinkSecret = Option.getOrUndefined(
       Option.filter(
         yield* Config.option(Config.Redacted("T3CHAT_LINK_SECRET")),
@@ -254,6 +294,13 @@ export const layer = Api.make(
         clerkSecretKey,
         clerkPublishableKey,
         clerkJwtAudience,
+        ...(oidcIssuer && oidcAudience
+          ? {
+              oidcIssuer: oidcIssuer.trim(),
+              oidcAudience: oidcAudience.trim(),
+              ...(oidcAllowedSubject ? { oidcAllowedSubject: oidcAllowedSubject.trim() } : {}),
+            }
+          : {}),
         cloudMintPrivateKey: yield* cloudMintPrivateKey,
         cloudMintPublicKey: yield* cloudMintPublicKey,
         managedEndpointBaseDomain: yield* managedEndpointZoneName,
@@ -551,6 +598,7 @@ export const layer = Api.make(
         ),
         HttpApiScalar.layer(RelayApi, { path: "/docs" }),
         RelayHttpApi.layerDocsRedirectRoute,
+        RelayHttpApi.layerOauthCallbackRoute,
       ).pipe(
         Layer.provide([Etag.layerWeak, layerHttpPlatformNotSupported, RelayHttpApi.layerCors]),
       ),
@@ -583,17 +631,7 @@ export const layer = Api.make(
         Layer.provideMerge(
           Alchemy.Telemetry.layer(Layer.succeed(HttpMiddleware.TracerDisabledWhen)(() => true)),
         ),
-        Layer.provideMerge(
-          Layer.unwrap(
-            Effect.map(RelayObservability, (observability) =>
-              Axiom.Telemetry({
-                serviceName: "t3code-relay",
-                token: observability.workerIngestToken,
-                traces: observability.traces,
-              }),
-            ),
-          ),
-        ),
+        Layer.provideMerge(Layer.unwrap(Effect.map(RelayObservability, relayWorkerTelemetry))),
       ),
     ),
   ),

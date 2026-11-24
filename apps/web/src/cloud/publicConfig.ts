@@ -85,7 +85,33 @@ export function resolveRelayTracingConfig() {
     : null;
 }
 
+export interface OidcPublicConfig {
+  readonly issuer: string;
+  readonly clientId: string;
+  readonly redirectUri: string;
+  readonly relayUrl: string;
+}
+
+export function oidcPublicConfig(): OidcPublicConfig | null {
+  const issuer = trimNonEmpty(import.meta.env.VITE_T3CODE_OIDC_ISSUER);
+  const clientId = trimNonEmpty(import.meta.env.VITE_T3CODE_OIDC_CLIENT_ID);
+  const relayUrl = normalizeSecureRelayUrl(
+    (import.meta.env.VITE_T3CODE_RELAY_URL as string | undefined) ?? "",
+  );
+  const redirectUri =
+    trimNonEmpty(import.meta.env.VITE_T3CODE_OIDC_REDIRECT_URI) ??
+    (relayUrl ? `${relayUrl.replace(/\/$/u, "")}/oauth/callback` : null);
+  if (!issuer || !clientId || !relayUrl || !redirectUri?.startsWith("https://")) return null;
+  return { issuer, clientId, redirectUri, relayUrl };
+}
+
+/** True for a gmacko build that signs in with Nathan. Clerk stays out of that bundle. */
+export function isOidcCloudConfig(): boolean {
+  return oidcPublicConfig() !== null;
+}
+
 export function hasCloudPublicConfig(): boolean {
+  if (isOidcCloudConfig()) return true;
   const config = resolveCloudPublicConfig();
   if (!config.clerkPublishableKey || !config.clerkJwtTemplate || !config.relayUrl) {
     return false;

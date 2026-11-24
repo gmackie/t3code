@@ -4,6 +4,7 @@ import { msg, useMessages } from "gt-react";
 import { type ReactNode, useState } from "react";
 import { createPortal } from "react-dom";
 
+import { isOidcCloudConfig } from "../../cloud/publicConfig";
 import { MobileClientsUserProfilePage } from "./MobileClientsUserProfilePage";
 import { T3ChatUserProfilePage } from "./T3ChatUserProfilePage";
 import { T3ConnectUserProfilePage } from "./T3ConnectUserProfilePage";
@@ -35,6 +36,16 @@ type PortalTargets = Readonly<Record<string, HTMLDivElement | undefined>>;
 
 /** Keep portals rendered while the modal can open; Clerk owns the custom-page DOM nodes. */
 export function useT3ConnectAccountPage(): {
+  readonly open: ((page?: T3ConnectAccountPageUrl) => void) | null;
+  readonly portals: ReactNode;
+} {
+  // OIDC builds have no Clerk provider. The flag does not change during a session.
+  if (isOidcCloudConfig()) return { open: null, portals: null };
+  // oxlint-disable-next-line react/hooks -- isOidcCloudConfig() is fixed for the bundle, so Clerk hooks run only in Clerk builds.
+  return useClerkT3ConnectAccountPage();
+}
+
+function useClerkT3ConnectAccountPage(): {
   readonly open: ((page?: T3ConnectAccountPageUrl) => void) | null;
   readonly portals: ReactNode;
 } {
