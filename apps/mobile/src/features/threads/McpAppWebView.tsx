@@ -47,29 +47,13 @@ import { useEnvironmentQuery } from "../../state/query";
 import { enqueueThreadOutboxMessage } from "../../state/thread-outbox";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { useAppearancePreferences } from "../settings/appearance/AppearancePreferencesProvider";
+import { mcpAppRelayDocument } from "./mcpAppRelayDocument";
 import { MCP_APP_INLINE_MAX_HEIGHT, mcpAppInlineHeight } from "./mcpAppSizing";
 import { mcpAppSourceInput, mcpAppT3Context, type McpAppViewSource } from "./mcpAppSource";
 
 const ROW_BOTTOM_MARGIN = 8;
 const isMcpAppRequestError = Schema.is(McpAppRequestError);
-
-// Android exposes `ReactNativeWebView` to every frame, so a frame nested in the
-// app could post to React Native directly. The outer page therefore wraps what
-// it relays with a secret only it holds, and React Native drops anything else.
-// The relay also attests activation; the sandboxed app cannot set that flag.
-function outerDocument(src: string, allow: string, secret: string) {
-  const attribute = (value: string) =>
-    value.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
-  return `<!doctype html><html><head><meta name="viewport" content="width=device-width, initial-scale=1">
-<style>html,body{margin:0;height:100%;background:transparent}iframe{border:0;display:block;width:100%;height:100%}</style></head>
-<body><iframe id="app" sandbox="allow-scripts allow-forms" allow="${attribute(allow)}"></iframe>
-<script>(function(){var frame=document.getElementById("app"),secret=${JSON.stringify(secret)},loads=0,live=true;
-var send=function(m){var u=navigator.userActivation;window.ReactNativeWebView.postMessage(JSON.stringify({secret:secret,active:!!(u&&u.isActive)&&document.activeElement===frame,message:m}));};
-frame.addEventListener("load",function(){loads+=1;if(loads>1&&live){live=false;send({t3:"navigated"});}});
-window.addEventListener("message",function(e){if(live&&e.source===frame.contentWindow)send(e.data);});
-window.__t3McpAppReceive=function(m){live&&frame.contentWindow&&frame.contentWindow.postMessage(m,"*");};
-frame.src=${JSON.stringify(src).replace(/</g, "\\u003c")};})();</script></body></html>`;
-}
+const PRODUCT_NAME = "T3 Code";
 
 const commandFailure = (
   result: {
@@ -162,6 +146,7 @@ export function McpAppView(props: {
   const [uri, setUri] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [navigatedAway, setNavigatedAway] = useState(false);
+  const [bridgeMissing, setBridgeMissing] = useState(false);
   // Equal app content must retain its reference to preserve the live document host.
   // A different app needs a new document even when its asset URL is unchanged,
   // so the WebView key moves on with the document key, not only the URL.
@@ -172,6 +157,7 @@ export function McpAppView(props: {
     setUri(null);
     setLoaded(false);
     setNavigatedAway(false);
+    setBridgeMissing(false);
     setDocumentKeyState((value) => value + 1);
   }
   const fullscreen = props.displayMode === "fullscreen";
@@ -595,7 +581,7 @@ export function McpAppView(props: {
   const webViewSource =
     uri === null
       ? null
-      : { html: outerDocument(uri, mcpAppAllowAttribute(app.permissions), secret) };
+      : { html: mcpAppRelayDocument(uri, mcpAppAllowAttribute(app.permissions), secret) };
 
   if (presentedFullscreen) {
     return (
@@ -639,7 +625,17 @@ export function McpAppView(props: {
 
   return (
     <View style={fills ? { flex: 1 } : { height, marginBottom: ROW_BOTTOM_MARGIN }}>
-      {navigatedAway ? (
+      {bridgeMissing ? (
+        // Only a server that binds the app to its document gets a bridge; without one the app cannot run.
+        <View className="flex-1 items-center justify-center rounded-lg border border-border px-4">
+          <Text className="text-center text-sm text-foreground-muted">
+            <T>
+              The <Var>{app.server}</Var> app needs a newer <Var>{PRODUCT_NAME}</Var> server on this
+              environment. Update the server to use it.
+            </T>
+          </Text>
+        </View>
+      ) : navigatedAway ? (
         <View className="flex-1 items-center justify-center">
           <Text className="text-sm text-foreground-muted">
             <T>
@@ -683,6 +679,11 @@ export function McpAppView(props: {
               setNavigatedAway(true);
               return;
             }
+            if (Predicate.isObject(message) && message.t3 === "unlinked") {
+              host?.dispose();
+              setBridgeMissing(true);
+              return;
+            }
             userActive.current = envelope.active === true;
             host?.receive(message);
             userActive.current = false;
@@ -697,7 +698,7 @@ export function McpAppView(props: {
           </Text>
         </View>
       ) : null}
-      {uri !== null && !loaded && !crashed && !navigatedAway ? (
+      {uri !== null && !loaded && !crashed && !navigatedAway && !bridgeMissing ? (
         <View pointerEvents="none" className="absolute inset-0 items-center justify-center">
           <AppActivityIndicator />
         </View>

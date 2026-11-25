@@ -63,6 +63,9 @@ import * as McpInvocationContext from "./McpInvocationContext.ts";
 import * as McpToolAccess from "./McpToolAccess.ts";
 import * as McpToolExposure from "./McpToolExposure.ts";
 import * as McpWebhookTransport from "./McpWebhookTransport.ts";
+import { HTML_RENDER_TOOL_NAME } from "@t3tools/shared/htmlRender";
+import { compactT3McpToolOutput } from "@t3tools/shared/toolOutput";
+import * as McpProviderSessions from "@t3tools/provider-core/server/McpProviderSessions";
 import { MCP_TOOL_EXPOSURE_HEADER } from "@t3tools/provider-core/server/mcpSession";
 import * as OrchestratorMcpService from "./OrchestratorMcpService.ts";
 import { PreviewControlsToolkit } from "./toolkits/previewControls/tools.ts";
@@ -1280,6 +1283,67 @@ const withToolAllowlist = Effect.fn("McpHttpServer.withToolAllowlist")(function*
   return yield* registration.pipe(Effect.provideService(McpServer.McpServer, allowlistedServer));
 });
 
+/**
+ * ACP runtimes and Code Mode wrappers can drop or replace structured MCP tool results on
+ * completion. Recording each thread-scoped call's compact result before returning lets adapters
+ * recover sent messages, IDs, counts, and error flags without depending on output passthrough.
+ */
+const withToolResultCapture = Effect.fn("McpHttpServer.withToolResultCapture")(function* <A, E, R>(
+  registration: Effect.Effect<A, E, R>,
+) {
+  const server = yield* McpServer.McpServer;
+  const mcpSessions = yield* Effect.serviceOption(McpProviderSessions.McpProviderSessions);
+  if (Option.isNone(mcpSessions)) {
+    return yield* registration;
+  }
+  const capturingServer = McpServer.McpServer.of({
+    ...server,
+    addTool: Effect.fn("McpServer.addTool")(function (options) {
+      const toolName = options.tool.name;
+      // html_render tracks its own path/hash recovery with publish cleanup in HtmlRender.
+      if (toolName === HTML_RENDER_TOOL_NAME) {
+        return server.addTool(options);
+      }
+      return server.addTool({
+        ...options,
+        // Untraced: withToolSpans already opens a span per tool call.
+        handle: Effect.fnUntraced(function* (payload) {
+          const scopeOption = yield* Effect.serviceOption(
+            McpInvocationContext.McpInvocationContext,
+          );
+          const thread = Option.getOrUndefined(scopeOption)?.thread;
+          const epoch =
+            thread === undefined
+              ? undefined
+              : yield* mcpSessions.value.toolResultEpoch(thread.threadId);
+          return yield* options.handle(payload).pipe(
+            Effect.onExit((exit) => {
+              if (thread === undefined) return Effect.void;
+              if (exit._tag === "Success" && exit.value instanceof McpSchema.InputRequired) {
+                return Effect.void;
+              }
+              if (exit._tag === "Failure" && Cause.hasInterruptsOnly(exit.cause)) {
+                return Effect.void;
+              }
+              const output =
+                exit._tag === "Success"
+                  ? compactT3McpToolOutput(toolName, exit.value)
+                  : { isError: true };
+              return output === undefined
+                ? Effect.void
+                : mcpSessions.value.recordToolResult(thread.threadId, toolName, payload, output, {
+                    providerSessionId: thread.providerSessionId,
+                    epoch,
+                  });
+            }),
+          );
+        }),
+      });
+    }),
+  });
+  return yield* registration.pipe(Effect.provideService(McpServer.McpServer, capturingServer));
+});
+
 /** Each tool call gets a span named for its tool; arguments stay out, as they carry prompts and IDs. */
 const withToolSpans = Effect.fn("McpHttpServer.withToolSpans")(function* <A, E, R>(
   registration: Effect.Effect<A, E, R>,
@@ -1362,10 +1426,12 @@ export const toolkitRegistration = <Tools extends Record<string, Tool.Any>, EX, 
 ) =>
   Layer.effectDiscard(
     withToolAnalytics(
-      withToolSpans(
-        withAdvertisedSchemas(
-          toolkit,
-          withToolAllowlist(McpServer.registerToolkit(decodeAsAdvertised(toolkit))),
+      withToolResultCapture(
+        withToolSpans(
+          withAdvertisedSchemas(
+            toolkit,
+            withToolAllowlist(McpServer.registerToolkit(decodeAsAdvertised(toolkit))),
+          ),
         ),
       ),
     ),
@@ -1402,9 +1468,9 @@ const imageToolRegistration = <Tools extends Record<string, Tool.Any>, A, E, R, 
   register: Effect.Effect<A, E, R>,
   handlers: McpToolAccess.HandlersLayer<Tools, EX, RX>,
 ) =>
-  Layer.effectDiscard(withToolAnalytics(withToolSpans(withToolAllowlist(register)))).pipe(
-    Layer.provide(McpToolAccess.HandlersLayer.layer(handlers)),
-  );
+  Layer.effectDiscard(
+    withToolAnalytics(withToolResultCapture(withToolSpans(withToolAllowlist(register)))),
+  ).pipe(Layer.provide(McpToolAccess.HandlersLayer.layer(handlers)));
 
 export const layerHtmlToolkit = Layer.mergeAll(
   toolkitRegistration(HtmlRenderToolkit, HtmlHandlers.layerRender),
@@ -1434,7 +1500,7 @@ export const layerOrchestratorToolkit = toolkitRegistration(
 export const layerThreadToolkit = toolkitRegistration(ThreadToolkit, ThreadHandlers.layer);
 const layerWorkflowToolkit = toolkitRegistration(WorkflowToolkit, WorkflowHandlers.layer);
 
-const layerMessageToolkit = toolkitRegistration(MessageToolkit, MessageHandlers.layer);
+export const layerMessageToolkit = toolkitRegistration(MessageToolkit, MessageHandlers.layer);
 
 const layerWorktreeToolkitRegistration = toolkitRegistration(
   WorktreeToolkit,
