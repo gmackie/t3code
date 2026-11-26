@@ -74,7 +74,8 @@ describe("forgeGraphSignInView", () => {
 describe("forgeGraphSignInFailure", () => {
   it("passes on the server's words, falls back when there are none, and ignores interruption", () => {
     expect(forgeGraphSignInFailure({ cause: Cause.fail(new Error("Denied.")) })).toBe("Denied.");
-    expect(forgeGraphSignInFailure({ cause: Cause.fail("nope") })).toBe(
+    expect(forgeGraphSignInFailure({ cause: Cause.fail("nope") })).toBe("nope");
+    expect(forgeGraphSignInFailure({ cause: Cause.fail("") })).toBe(
       "ForgeGraph did not answer. Try again.",
     );
     expect(forgeGraphSignInFailure({ cause: Cause.interrupt() })).toBeNull();

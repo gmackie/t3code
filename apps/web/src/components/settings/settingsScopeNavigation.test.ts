@@ -64,8 +64,8 @@ function createSettingsRouter(initialEntry = "/settings/general") {
       });
     },
   });
-  return createRouter({
-    isServer: false,
+  const router = createRouter({
+    isServer: true,
     origin: "http://localhost",
     routeTree: root.addChildren([
       settings.addChildren([
@@ -80,6 +80,9 @@ function createSettingsRouter(initialEntry = "/settings/general") {
     ]),
     history: createMemoryHistory({ initialEntries: [initialEntry] }),
   });
+  // Initialize without DOM scroll listeners, then exercise client navigation and redirects.
+  router.update({ isServer: false });
+  return router;
 }
 
 describe("settings scope navigation", () => {
