@@ -337,6 +337,7 @@ import {
 import { ZoomableImagePressable } from "./ZoomableImagePressable";
 import { openSettings } from "../settings/settings-navigation";
 import { loopbackUrlForDevice } from "../browser/browserTabs";
+import { useOpenThreadReview } from "./thread-inspector-navigation";
 import { useOpenLocalPreview } from "../browser/useOpenLocalPreview";
 import { useSelectWorkspaceDetail } from "../layout/workspace/useSelectWorkspaceDetail";
 import {
@@ -3163,6 +3164,7 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
   const navigation = useNavigation();
   const openThreadLink = useOpenThreadLink(props.environmentId);
   const openLocalPreview = useOpenLocalPreview();
+  const openReview = useOpenThreadReview();
   const previewTunnelOff = useEnvironmentPreviewTunnelOff(props.environmentId);
   // Without the tunnel, loopback links fall through to the system browser like any other link.
   const deviceLoopbackUrl = (href: string) =>
@@ -3177,12 +3179,12 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
         scopedThreadKey(props.environmentId, props.threadId),
         getReviewSectionIdForCheckpoint(checkpoint),
       );
-      navigation.navigate("ThreadReview", {
+      openReview({
         environmentId: props.environmentId,
         threadId: props.threadId,
       });
     },
-    [navigation, props.environmentId, props.threadId],
+    [openReview, props.environmentId, props.threadId],
   );
   const { themeAppearance } = useAppearancePreferences();
   const copyFeedbackTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);

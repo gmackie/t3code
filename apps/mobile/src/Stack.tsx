@@ -1,3 +1,4 @@
+import { ThreadWorkspaceRouteScreen } from "./features/threads/ThreadWorkspaceRouteScreen";
 import { GameViewerRouteScreen } from "./features/game/GameViewerRouteScreen";
 import { isDraftThreadRoute } from "./features/threads/thread-route-state";
 import { ComponentCatalogScreen } from "./features/development/ComponentCatalogScreen";
@@ -78,10 +79,7 @@ import { LinkedThreadSheet } from "./features/threads/LinkedThreadSheet";
 import { ThreadGuestShareSheet } from "./features/threads/ThreadGuestShareSheet";
 import { ThreadBackgroundWorkSheet } from "./features/threads/ThreadBackgroundWorkSheet";
 import { ThreadQueueSheet } from "./features/threads/ThreadQueueControl";
-import {
-  FullscreenThreadRouteScreen,
-  ThreadRouteScreen,
-} from "./features/threads/ThreadRouteScreen";
+import { FullscreenThreadRouteScreen } from "./features/threads/ThreadRouteScreen";
 import { McpAppFullscreenScreen } from "./features/threads/McpAppFullscreenScreen";
 import { PluginPanelScreen } from "./features/plugins/PluginPanelScreen";
 import { ConnectionsRouteScreen } from "./features/connection/ConnectionsRouteScreen";
@@ -663,7 +661,7 @@ const RootStackConfig = createWorkspaceStackNavigator({
       options: SEARCH_SHEET_ROUTE,
     }),
     Thread: createNativeStackScreen({
-      screen: ThreadRouteScreen,
+      screen: ThreadWorkspaceRouteScreen,
       linking: { path: "threads/:environmentId?/:threadId?", alias: ["new/draft"] },
       options: pageRoute({ duoMinimize: "onScrollUp" }),
     }),

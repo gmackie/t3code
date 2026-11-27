@@ -302,7 +302,7 @@ function useBrowserBarLayout(inPane: boolean) {
   const barInset = useBarInset();
   const columnTops = [...(columns?.byColumn.values() ?? [])].map((metrics) => metrics.safeArea.top);
   const paneHeight = Math.max(barInset, ...columnTops);
-  if (inPane) {
+  if (inPane && Platform.OS === "ios") {
     return {
       rowTop: Math.max(0, paneHeight - NAVIGATION_BAR_HEIGHT),
       rowHeight: NAVIGATION_BAR_CONTROLS_HEIGHT,

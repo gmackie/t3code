@@ -63,7 +63,7 @@ export interface PendingUserInputCardProps {
   readonly maxHeight: DerivedValue<number>;
   readonly collapsed: boolean;
   readonly onToggleCollapsed: () => void;
-  /** Renders a stop control on the collapsed bar, which replaces the composer. */
+  /** A stop control where the question owns the input area. */
   readonly onStopThread?: () => void;
   /** 0 collapsed → 1 expanded; the host animates it from the tap handler on the UI thread. */
   readonly cardProgress: SharedValue<number>;
@@ -140,6 +140,31 @@ function QuestionText(props: {
       preserveSoftBreaks={props.preserveSoftBreaks}
     />
   );
+}
+
+/** The question and draft share one input area. A new request starts with the question open. */
+export function usePendingUserInputPresentation(
+  threadKey: string,
+  requestId: RuntimeRequestId | null,
+) {
+  const [toggle, setToggle] = useState<{
+    readonly threadKey: string;
+    readonly requestId: RuntimeRequestId;
+    readonly collapsed: boolean;
+  } | null>(null);
+  const toggled = toggle?.threadKey === threadKey && toggle.requestId === requestId;
+  const collapsed = toggled && toggle.collapsed;
+  const toggleCollapsed = () => {
+    if (!requestId) return;
+    Keyboard.dismiss();
+    setToggle({ threadKey, requestId, collapsed: !collapsed });
+  };
+  return {
+    collapsed,
+    replacesComposer: requestId !== null && !collapsed,
+    motion: !toggled ? "fresh" : collapsed ? "collapsed" : "expanded",
+    toggleCollapsed,
+  } as const;
 }
 
 export function PendingUserInputCard(props: PendingUserInputCardProps) {

@@ -8,6 +8,6 @@ export function useOpenLocalPreview() {
   const openInspector = useOpenThreadInspector();
   return (source: { readonly environmentId: string; readonly threadId: string }, url: string) => {
     if (openInspector(source, { type: "localPreview", ...source, url })) return;
-    navigation.navigate("ThreadLocalPreview", { environmentId: source.environmentId, url });
+    navigation.navigate("ThreadLocalPreview", { ...source, url });
   };
 }

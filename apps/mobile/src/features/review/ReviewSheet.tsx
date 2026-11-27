@@ -3,7 +3,9 @@ import { AsyncResult } from "effect/reactivity";
 import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { formatDiffCount } from "@t3tools/client-runtime/diff-count";
 import { LegendList } from "@legendapp/list/react-native";
-import { useNavigation, type StaticScreenProps } from "@react-navigation/native";
+import { useNavigation, useRoute, type StaticScreenProps } from "@react-navigation/native";
+import { useInspectorOnExpand } from "../threads/thread-inspector-navigation";
+import { usePaneRole } from "../../components/ui/Pane";
 import { AppBar } from "../../components/ui/AppBar";
 import type { AppBarMenuItem } from "../../components/ui/AppBar.types";
 import type { ReviewSectionItem } from "./reviewModel";
@@ -70,7 +72,7 @@ function ReviewHeader(
     readonly onSelectRepository: (key: string | null) => void;
     readonly fileFilter: ReturnType<typeof usePullRequestFileFilter>;
     readonly onSelectSection: (sectionId: string) => void;
-    readonly onReturnToThread: () => void;
+    readonly onReturnToThread?: () => void;
   },
 ) {
   const { toggleAuxiliaryPane } = useAdaptiveWorkspaceLayout();
@@ -92,7 +94,11 @@ function ReviewHeader(
       subtitle={presentation.subtitle}
       onBack={props.onReturnToThread}
       hideBottomBorder
-      backInSplitView={{ accessibilityLabel: gt("Back to chat"), icon: "chevron.left" }}
+      backInSplitView={
+        props.onReturnToThread
+          ? { accessibilityLabel: gt("Back to chat"), icon: "chevron.left" }
+          : undefined
+      }
       actions={
         props.showChangedFilesToggle
           ? [
@@ -210,6 +216,7 @@ function ReviewSelectionActionBar(props: {
   readonly onOpenComment: (() => void) | null;
   readonly onClear: () => void;
 }) {
+  const gt = useGT();
   if (!props.title) {
     return null;
   }
@@ -242,6 +249,8 @@ function ReviewSelectionActionBar(props: {
       {props.onOpenComment ? (
         <Pressable
           className="h-12 flex-1 flex-row items-center justify-center gap-2 rounded-full bg-primary px-5"
+          accessibilityRole="button"
+          accessibilityLabel={props.title}
           onPress={props.onOpenComment}
         >
           {content}
@@ -254,6 +263,8 @@ function ReviewSelectionActionBar(props: {
 
       <Pressable
         className="h-12 w-12 items-center justify-center rounded-full bg-primary"
+        accessibilityRole="button"
+        accessibilityLabel={gt("Clear selection")}
         onPress={props.onClear}
       >
         <SymbolView
@@ -393,10 +404,12 @@ function ReviewFileNavigator({ files, sectionId, onSelectFile, ref }: ReviewFile
 type ReviewSheetProps = StaticScreenProps<{
   readonly environmentId: EnvironmentId;
   readonly threadId: ThreadId;
+  readonly reviewKey?: string;
 }>;
 
 export function ReviewSheet(props: ReviewSheetProps) {
   const gt = useGT();
+  const embedded = usePaneRole() === "inspector";
   const reduceMotion = useReduceMotionEnabled();
   const { nativeReviewDiffStyle } = useAppearanceCodeSurface();
   const { panes } = useWorkspacePaneState();
@@ -405,6 +418,9 @@ export function ReviewSheet(props: ReviewSheetProps) {
   const insets = useSafeAreaInsets();
   const { themeAppearance: selectedTheme } = useAppearancePreferences();
   const { environmentId, threadId } = props.route.params;
+  const route = useRoute();
+  const reviewKey = props.route.params.reviewKey ?? route.key;
+  useInspectorOnExpand(embedded ? null : { type: "review", environmentId, threadId, reviewKey });
   const environment = useEnvironmentPresentation(environmentId);
   const retryEnvironment = useRetryEnvironment();
   const isEnvironmentReady = environment.presentation?.connection.phase === "connected";
@@ -503,6 +519,7 @@ export function ReviewSheet(props: ReviewSheetProps) {
   });
   const { collapsedFileIds, toggleExpandedFile, toggleViewedFile, viewedFileIds } = fileVisibility;
   const commentSelection = useReviewCommentSelectionController({
+    reviewKey,
     environmentId,
     threadId,
     selectedSection,
@@ -627,6 +644,7 @@ export function ReviewSheet(props: ReviewSheetProps) {
     .join(" · ");
 
   const showChangedFilesPane =
+    !embedded &&
     !showConnectionNotice &&
     selectedSection !== null &&
     parsedDiff.kind === "files" &&
@@ -723,7 +741,7 @@ export function ReviewSheet(props: ReviewSheetProps) {
         fileFilter={fileFilter}
         onRefresh={handlePullToRefresh}
         onSelectSection={selectSection}
-        onReturnToThread={handleReturnToThread}
+        onReturnToThread={embedded ? undefined : handleReturnToThread}
       />
 
       <ScreenContent>

@@ -226,8 +226,8 @@ describe("review comment serialization", () => {
 
 describe("review comment selection store", () => {
   const changes = { id: "git:branch-range", content: "hash-1" };
-  const scope = reviewCommentSelectionScope(1, "env:thread", changes)!;
-  const otherScope = reviewCommentSelectionScope(1, "env:thread", {
+  const scope = reviewCommentSelectionScope("original-route", "env:thread", changes)!;
+  const otherScope = reviewCommentSelectionScope("original-route", "env:thread", {
     id: "turn:2",
     content: "diff",
   })!;
@@ -275,7 +275,7 @@ describe("review comment selection store", () => {
 
   it("reads as empty in a reopened review sheet", () => {
     setReviewCommentTarget(scope, target);
-    const reopenedScope = reviewCommentSelectionScope(2, "env:thread", changes);
+    const reopenedScope = reviewCommentSelectionScope("reopened-route", "env:thread", changes);
 
     expect(
       selectReviewCommentSelection(getReviewCommentSelection(), reopenedScope).target,
@@ -285,11 +285,11 @@ describe("review comment selection store", () => {
   it("reads as empty when the section disappears and comes back over a different diff", () => {
     setReviewCommentTarget(scope, target);
     // The working tree went clean, so the default showed; the section later returns.
-    const returned = reviewCommentSelectionScope(1, "env:thread", {
+    const returned = reviewCommentSelectionScope("original-route", "env:thread", {
       ...changes,
       content: "hash-2",
     });
-    const unchanged = reviewCommentSelectionScope(1, "env:thread", { ...changes });
+    const unchanged = reviewCommentSelectionScope("original-route", "env:thread", { ...changes });
 
     expect(selectReviewCommentSelection(getReviewCommentSelection(), returned).target).toBeNull();
     expect(selectReviewCommentSelection(getReviewCommentSelection(), unchanged).target).toBe(

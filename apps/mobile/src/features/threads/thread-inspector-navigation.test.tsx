@@ -8,13 +8,14 @@ import { expect, it, vi } from "vite-plus/test";
 
 const harness = vi.hoisted(() => ({
   dispatch: (_action: unknown) => {},
+  navigate: (_name: string, _params: object) => {},
   getState: (): unknown => undefined,
   getRoute: (): unknown => undefined,
   inspectorSupported: true,
 }));
 
 vi.mock("react-native", () => ({ Platform: { OS: "ios" } }));
-vi.mock("../layout/AdaptiveWorkspaceLayout", () => ({
+vi.mock("../layout/adaptive-workspace-context", () => ({
   useWorkspacePaneState: () => ({ fileInspector: { supported: harness.inspectorSupported } }),
 }));
 vi.mock("@react-navigation/native", async () => {
@@ -24,12 +25,23 @@ vi.mock("@react-navigation/native", async () => {
   );
   return {
     StackActions: requireNavigation("@react-navigation/routers").StackActions,
-    useNavigation: () => ({ dispatch: harness.dispatch, getState: harness.getState }),
+    useNavigation: () => ({
+      dispatch: harness.dispatch,
+      getState: harness.getState,
+      navigate: harness.navigate,
+      isFocused: () => true,
+    }),
     useRoute: () => harness.getRoute(),
   };
 });
 
-import { useOpenThreadInspector, useReturnToThread } from "./thread-inspector-navigation";
+import {
+  useInspectorOnExpand,
+  useOpenThreadInspector,
+  useOpenThreadReview,
+  useReturnToThread,
+  type ThreadInspectorTarget,
+} from "./thread-inspector-navigation";
 import { useOpenLinkedThread, useOpenLinkedThreadRead } from "./useOpenLinkedThread";
 
 const requireNavigation = NodeModule.createRequire(
@@ -52,6 +64,7 @@ function setup(fromAgents: boolean, fullscreen = false, inspectorSupported = tru
       "ThreadInspectorFullscreen",
       "LinkedThread",
       "ThreadReview",
+      "ThreadBrowserPreview",
       "GitConfirm",
     ],
     routeParamList: {},
@@ -64,6 +77,7 @@ function setup(fromAgents: boolean, fullscreen = false, inspectorSupported = tru
     state = router.getRehydratedState(next, options);
   };
   harness.dispatch = (action) => dispatch(action as Parameters<typeof dispatch>[0]);
+  harness.navigate = (name, params) => dispatch(StackActions.push(name, params));
   harness.getState = () => state;
   harness.getRoute = () => state.routes.at(-1);
   const source = { environmentId: "remote-environment", threadId: "parent" };
@@ -79,7 +93,10 @@ function setup(fromAgents: boolean, fullscreen = false, inspectorSupported = tru
   let openLinkedThread: ReturnType<typeof useOpenLinkedThread>;
   let openLinkedThreadRead: ReturnType<typeof useOpenLinkedThreadRead>;
   let returnToThread: ReturnType<typeof useReturnToThread>;
-  function Probe() {
+  let openReview: ReturnType<typeof useOpenThreadReview>;
+  function Probe({ preview }: { preview?: ThreadInspectorTarget }) {
+    useInspectorOnExpand(preview ?? null);
+    const review = useOpenThreadReview();
     const open = useOpenThreadInspector();
     const openLinked = useOpenLinkedThread();
     const openLinkedRead = useOpenLinkedThreadRead();
@@ -89,6 +106,7 @@ function setup(fromAgents: boolean, fullscreen = false, inspectorSupported = tru
       openLinkedThread = openLinked;
       openLinkedThreadRead = openLinkedRead;
       returnToThread = returnTo;
+      openReview = review;
     });
     return null;
   }
@@ -98,6 +116,18 @@ function setup(fromAgents: boolean, fullscreen = false, inspectorSupported = tru
     source,
     parentKey,
     dispatch,
+    review() {
+      act(() =>
+        openReview({
+          environmentId: EnvironmentId.make(source.environmentId),
+          threadId: ThreadId.make(source.threadId),
+        }),
+      );
+    },
+    resize(supported: boolean, preview: ThreadInspectorTarget) {
+      harness.inspectorSupported = supported;
+      act(() => root.render(<Probe preview={preview} />));
+    },
     get state() {
       return state;
     },
@@ -122,6 +152,47 @@ function setup(fromAgents: boolean, fullscreen = false, inspectorSupported = tru
     },
   };
 }
+
+it("moves a compact review into its original thread on expansion and keeps its line-selection scope", () => {
+  using screen = setup(false, false, false);
+  screen.review();
+  expect(screen.state.routes.at(-1)?.name).toBe("ThreadReview");
+  const target = {
+    type: "review",
+    ...screen.source,
+    reviewKey: screen.state.routes.at(-1)!.key,
+  } as const;
+  screen.resize(false, target);
+  screen.resize(true, target);
+  expect(screen.state.routes.map((route) => route.name)).toEqual(["Home", "Thread"]);
+  expect(screen.state.routes.at(-1)).toMatchObject({
+    key: screen.parentKey,
+    params: { ...screen.source, inspector: target, prompt: "retained prompt" },
+  });
+});
+
+it("retains a maximized browser until a resize and carries the tab selected on the compact screen", () => {
+  using screen = setup(false);
+  const first = { type: "browser", ...screen.source, tabId: "first" } as const;
+  screen.dispatch(StackActions.push("ThreadBrowserPreview", first));
+  screen.resize(true, first);
+  expect(screen.state.routes.at(-1)?.name).toBe("ThreadBrowserPreview");
+  const selected = { ...first, tabId: "second" };
+  screen.resize(false, selected);
+  screen.resize(true, selected);
+  expect(screen.state.routes.at(-1)).toMatchObject({
+    key: screen.parentKey,
+    params: { ...screen.source, inspector: selected },
+  });
+});
+
+it("leaves a standalone review in its environment when the underlying thread id matches elsewhere", () => {
+  using screen = setup(false, false, false);
+  const other = { type: "review", ...screen.source, environmentId: "another-environment" } as const;
+  screen.dispatch(StackActions.push("ThreadReview", other));
+  screen.resize(true, other);
+  expect(screen.state.routes.at(-1)).toMatchObject({ name: "ThreadReview", params: other });
+});
 
 it("opens a subagent from the Agents sheet without replacing the parent thread", () => {
   using screen = setup(true);

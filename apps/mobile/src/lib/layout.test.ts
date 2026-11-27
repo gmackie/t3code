@@ -142,6 +142,62 @@ describe("isPrimarySidebarPinned", () => {
 
 describe("deriveWorkspacePaneLayout", () => {
   it.each([
+    { width: 669, height: 951, inset: 0, scale: 1.49, hasColumn: true },
+    { width: 951, height: 669, inset: 76, scale: 1, hasColumn: true },
+    { width: 669, height: 951, inset: 90, scale: 1, hasColumn: false },
+    { width: 951, height: 669, inset: 76, scale: 1.5, hasColumn: false },
+  ])(
+    "fits a thread and review inside the Duo safe area at $width pt and text scale $scale",
+    ({ width, height, inset, scale, hasColumn }) => {
+      const nativeMetrics = {
+        width,
+        height,
+        hasHinge: true,
+        horizontalSizeClass: "regular" as const,
+        verticalBarEdge: inset > 0 ? ("left" as const) : ("none" as const),
+        safeArea: { top: 24, bottom: 20, left: inset, right: 0 },
+        reservedRegions: [],
+      };
+      const layout = deriveLayout({
+        width,
+        height,
+        nativeMetrics,
+        nativeWorkspace: true,
+        fontScale: scale,
+      });
+      const panes = deriveWorkspacePaneLayout({
+        layout,
+        viewportWidth: width,
+        horizontalSafeArea: inset,
+        nativeWorkspace: true,
+        nativeInspectorWidth: nativeInspectorColumnWidth({
+          viewportWidth: width,
+          horizontalSafeArea: inset,
+          fraction: 0.4,
+        }),
+        minimumMainWidth: 320,
+        primarySidebarPreferredVisible: true,
+        auxiliaryPanePreferredVisible: true,
+      });
+      expect(panes.auxiliaryPaneVisible).toBe(hasColumn);
+      if (scale >= 1.5) expect(panes.primarySidebarWhenExpanded).toBe(false);
+    },
+  );
+
+  it("resizes the inspector into the space released by the sidebar", () => {
+    const panes = deriveWorkspacePaneLayout({
+      layout: deriveLayout({ width: 800, height: 900 }),
+      viewportWidth: 800,
+      horizontalSafeArea: 28,
+      minimumMainWidth: 320,
+      primarySidebarPreferredVisible: true,
+      auxiliaryPanePreferredVisible: true,
+      auxiliaryPanePreferredWidth: 440,
+    });
+    expect(panes).toMatchObject({ primarySidebarVisible: false, auxiliaryPaneWidth: 440 });
+  });
+
+  it.each([
     { width: 1_194, height: 834, horizontalSafeArea: 0, fraction: 0.4, suppressed: false },
     { width: 1_032, height: 1_376, horizontalSafeArea: 0, fraction: 0.4, suppressed: true },
     // The unfolded Duo's system bar leaves no room for the sidebar beside even the narrowest inspector.

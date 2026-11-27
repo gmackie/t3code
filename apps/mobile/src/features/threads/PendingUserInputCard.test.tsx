@@ -15,10 +15,17 @@ type Children = { children?: ReactNode };
 
 vi.mock("react-native", () => ({
   Platform: { OS: "ios" },
+  Keyboard: { dismiss: () => {} },
   View: ({ children }: Children) => <div>{children}</div>,
   ScrollView: ({ children }: Children) => <div>{children}</div>,
-  Pressable: ({ children, onPress }: Children & { onPress?: () => void }) => (
-    <div onClick={onPress}>{children}</div>
+  Pressable: ({
+    children,
+    onPress,
+    accessibilityLabel,
+  }: Children & { onPress?: () => void; accessibilityLabel?: string }) => (
+    <div aria-label={accessibilityLabel} onClick={onPress}>
+      {children}
+    </div>
   ),
 }));
 vi.mock("react-native-reanimated", () => {
@@ -29,6 +36,8 @@ vi.mock("react-native-reanimated", () => {
     FadeInUp: animation,
     FadeOutDown: animation,
     useAnimatedStyle: () => ({}),
+    useAnimatedReaction: () => {},
+    useDerivedValue: (derive: () => number) => ({ value: derive() }),
     useSharedValue: (value: number) => ({ value, set: () => {} }),
   };
 });
@@ -36,7 +45,20 @@ vi.mock("../../components/ui/AppSymbol", () => ({ SymbolView: () => null }));
 vi.mock("../../components/ui/AppText", () => ({
   AppText: ({ children }: Children) => <span>{children}</span>,
 }));
-vi.mock("../../components/ui/ControlPill", () => ({ ControlPill: () => null }));
+vi.mock("../../components/ui/ControlPill", () => ({
+  ControlPill: (props: { accessibilityLabel: string; onPress: () => void }) => (
+    <button type="button" aria-label={props.accessibilityLabel} onClick={props.onPress} />
+  ),
+}));
+vi.mock("react-native-keyboard-controller", () => ({
+  useReanimatedKeyboardAnimation: () => ({ height: { value: 0 } }),
+}));
+vi.mock("../../state/preferences", async () => {
+  const { AsyncResult, Atom } = await import("effect/reactivity");
+  return {
+    mobilePreferencesAtom: Atom.make(AsyncResult.success({ questionNavigationEnabled: true })),
+  };
+});
 vi.mock("../../components/ui/Button", () => ({ Button: () => null }));
 vi.mock("./QuestionAttachments", () => ({ QuestionAttachments: () => null }));
 vi.mock("../files/FileMarkdownPreview", () => ({
@@ -68,7 +90,7 @@ vi.mock("@react-navigation/native", () => ({
   }),
 }));
 
-import { PendingUserInputCard } from "./PendingUserInputCard";
+import { PendingUserInputCard, usePendingUserInputPresentation } from "./PendingUserInputCard";
 
 function setup(questionMarkdown: string) {
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -90,30 +112,49 @@ function setup(questionMarkdown: string) {
   } as unknown as PendingUserInput;
   const container = document.createElement("div");
   const root = createRoot(container);
-  act(() =>
-    root.render(
-      <PendingUserInputCard
-        environmentId={"env-1" as EnvironmentId}
-        threadId={"thread-1" as ThreadId}
-        workspaceRoot="/repo"
-        canOperateThread
-        pendingUserInput={pendingUserInput}
-        maxHeight={{ value: 600 } as never}
-        cardProgress={{ value: 1, set: () => {} } as never}
-        cardCoverage={{ value: 0, set: () => {} } as never}
-        collapsed={false}
-        onToggleCollapsed={() => {}}
-        drafts={{}}
-        answers={null}
-        respondingUserInputId={null}
-        onSelectOption={() => {}}
-        onChangeCustomAnswer={() => {}}
-        onSubmit={async () => {}}
-        onDismiss={async () => {}}
-      />,
-    ),
-  );
+  function InputArea({ environmentId }: { environmentId: string }) {
+    const question = usePendingUserInputPresentation(
+      environmentId + ":thread-1",
+      pendingUserInput.requestId,
+    );
+    return (
+      <>
+        <input aria-label="Draft" hidden={question.replacesComposer} />
+        <PendingUserInputCard
+          environmentId={environmentId as EnvironmentId}
+          threadId={"thread-1" as ThreadId}
+          workspaceRoot="/repo"
+          canOperateThread
+          pendingUserInput={pendingUserInput}
+          maxHeight={{ value: 600 } as never}
+          cardProgress={{ value: 1, set: () => {} } as never}
+          cardCoverage={{ value: 0, set: () => {} } as never}
+          collapsed={question.collapsed}
+          onToggleCollapsed={question.toggleCollapsed}
+          drafts={{}}
+          answers={null}
+          respondingUserInputId={null}
+          onSelectOption={() => {}}
+          onChangeCustomAnswer={() => {}}
+          onSubmit={async () => {}}
+          onDismiss={async () => {}}
+        />
+      </>
+    );
+  }
+  const render = (environmentId: string) =>
+    act(() => root.render(<InputArea environmentId={environmentId} />));
+  render("env-1");
   return {
+    render,
+    draft: container.querySelector("input")!,
+    press(label: string) {
+      const element = Array.from(container.querySelectorAll<HTMLElement>("[aria-label]")).find(
+        (entry) => entry.ariaLabel === label,
+      );
+      if (!element) throw new Error("Missing action " + label);
+      act(() => element.click());
+    },
     async pressLink(label: string) {
       const link = [...container.querySelectorAll("button")].find(
         (button) => button.textContent === label,
@@ -139,4 +180,18 @@ it("opens a workspace file link in a question in the thread's file viewer", asyn
       { environmentId: "env-1", threadId: "thread-1", path: ["docs", "probe.md"], line: "12" },
     ],
   ]);
+});
+
+it("can return to a draft without answering, and a different environment opens its own question", () => {
+  using screen = setup("What should change?");
+  expect(screen.draft.hidden).toBe(true);
+  screen.press("Collapse user input");
+  expect(screen.draft.hidden).toBe(false);
+  screen.draft.value = "Keep this follow-up";
+  screen.press("Expand user input, 1 question");
+  expect(screen.draft.hidden).toBe(true);
+  screen.press("Collapse user input");
+  expect(screen.draft.value).toBe("Keep this follow-up");
+  screen.render("env-2");
+  expect(screen.draft.hidden).toBe(true);
 });

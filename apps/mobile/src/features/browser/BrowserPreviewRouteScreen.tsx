@@ -15,6 +15,7 @@ import { Menu } from "../../components/ui/Menu";
 import { useContentTopInset } from "../../components/ui/useBarInset";
 import { m } from "../../i18n/messages";
 import { useAppForeground } from "../../lib/appState";
+import { useInspectorOnExpand } from "../threads/thread-inspector-navigation";
 
 import { useThreadServerBrowserTabs } from "../../state/preview";
 import { usePreparedConnection } from "../../state/session";
@@ -71,15 +72,19 @@ function BrowserUnavailableScreen({ onClose }: { readonly onClose: () => void })
   );
 }
 
-function BrowserPreviewScreen({
+export function BrowserPreviewScreen({
   environmentId,
   threadId,
   initialTabId,
+  onSelectTab,
+  onMaximize,
   onClose,
 }: {
   readonly environmentId: EnvironmentId;
   readonly threadId: ThreadId;
   readonly initialTabId: string | null;
+  readonly onSelectTab?: (tabId: string) => void;
+  readonly onMaximize?: (tabId?: string) => void;
   readonly onClose: () => void;
 }) {
   const gt = useGT();
@@ -95,10 +100,17 @@ function BrowserPreviewScreen({
   const [canControl, setCanControl] = useState(false);
   const streamRef = useRef<PreviewStreamRef>(null);
   const { tabs, loaded } = useThreadServerBrowserTabs({ environmentId, threadId, enabled: true });
-  const tab = tabs.find((entry) => entry.tabId === selectedTabId) ?? latestBrowserTab(tabs);
+  const tab =
+    tabs.find((entry) => entry.tabId === (onSelectTab ? initialTabId : selectedTabId)) ??
+    latestBrowserTab(tabs);
   const pdfUri =
     tab?.navStatus._tag === "Success" ? previewPdfAssetUrl(tab.navStatus.url, httpBaseUrl) : null;
   const tabId = tab?.tabId ?? null;
+  useInspectorOnExpand(
+    onMaximize
+      ? null
+      : { type: "browser", environmentId, threadId, tabId: tabId ?? initialTabId ?? undefined },
+  );
   if (tabId !== null && tabId !== selectedTabId) {
     setPictureInPicture(NO_PICTURE_IN_PICTURE);
     setSelectedTabId(tabId);
@@ -113,7 +125,8 @@ function BrowserPreviewScreen({
   };
   const selectTab = (next: string) => {
     setPictureInPicture(NO_PICTURE_IN_PICTURE);
-    setSelectedTabId(next);
+    if (onSelectTab) onSelectTab(next);
+    else setSelectedTabId(next);
   };
   const live = (focused && foreground) || pictureInPicture.active;
 
@@ -128,17 +141,19 @@ function BrowserPreviewScreen({
   return (
     // The route spans the Duo's rail, so the screen insets its own sides.
     <SafeAreaView
-      edges={["left", "right"]}
+      edges={onMaximize ? [] : ["left", "right"]}
       style={{ flex: 1, backgroundColor: themeVariables["--color-sheet-solid"] }}
     >
       <BrowserChrome
         key={tab ? `address:${tab.tabId}` : "address"}
         scrollsUnderBar={false}
+        inPane={onMaximize !== undefined}
         bar={{
           url: tab ? browserTabUrl(tab) : "",
           editable: ready,
           canGoBack: ready && (tab?.canGoBack ?? false),
           onClose,
+          onMaximize: onMaximize ? () => onMaximize(tabId ?? undefined) : undefined,
           onBack: () => command({ type: "history", delta: -1 }),
           onReload: () => command({ type: "reload" }),
           onSubmit: (value) => {

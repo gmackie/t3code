@@ -187,7 +187,7 @@ import { ComputerUseCard } from "./ComputerUseCard";
 import { FreshSessionNotice } from "./FreshSessionNotice";
 import { ComposerFeedback } from "./ComposerFeedback";
 import { ComposerUsageLimits } from "./ComposerUsageLimits";
-import { PendingUserInputCard } from "./PendingUserInputCard";
+import { PendingUserInputCard, usePendingUserInputPresentation } from "./PendingUserInputCard";
 import { ProviderSubagentBar } from "./ProviderSubagentBar";
 import { ThreadCreationFailedCard } from "./ThreadCreationFailedCard";
 import {
@@ -461,11 +461,9 @@ function ThreadDetailBody(
   });
   const openBrowserPreview = (tabId?: string) => {
     Keyboard.dismiss();
-    navigation.navigate("ThreadBrowserPreview", {
-      environmentId: props.environmentId,
-      threadId: props.selectedThread.id,
-      ...(tabId === undefined ? {} : { tabId }),
-    });
+    const thread = { environmentId: props.environmentId, threadId: props.selectedThread.id };
+    if (openInspector(thread, { type: "browser", ...thread, tabId })) return;
+    navigation.navigate("ThreadBrowserPreview", { ...thread, tabId });
   };
   const isKeyboardVisible = useKeyboardState((state) => state.isVisible);
   const liveKeyboardHeight = useKeyboardState((state) => state.height);
@@ -982,15 +980,10 @@ function ThreadDetailBody(
     COMPOSER_COLLAPSED_CHROME +
       (!isProviderSubagent && (deviceType === "pad" || hasSidebarTabBar) ? 14 : 0) +
       composerBottomInset;
-  // The last collapse toggle; it only applies to the request it was made on.
-  const [userInputToggle, setUserInputToggle] = useState<{
-    readonly requestId: RuntimeRequestId;
-    readonly collapsed: boolean;
-  } | null>(null);
   const activeUserInputRequestId = props.activePendingUserInput?.requestId ?? null;
   const questionInFlow = Platform.OS === "android" && activeUserInputRequestId !== null;
-  const composerSlotHidden =
-    activeUserInputRequestId !== null || props.creationState?.kind === "failed";
+  const question = usePendingUserInputPresentation(selectedThreadKey, activeUserInputRequestId);
+  const composerSlotHidden = question.replacesComposer || props.creationState?.kind === "failed";
   const pendingMessageEditBlocked =
     queuedRunEditBlockedReason(
       { openQuestionCount: activeUserInputRequestId === null ? 0 : 1 },
@@ -1037,9 +1030,6 @@ function ThreadDetailBody(
     setUsageLimitsPanel((current) =>
       current !== null && current.threadKey === threadKey ? null : current,
     );
-  const userInputToggled =
-    userInputToggle !== null && userInputToggle.requestId === activeUserInputRequestId;
-  const userInputCollapsed = userInputToggled && userInputToggle.collapsed;
   // A height React sets from keyboard state lags the sticky translation by a Yoga pass and
   // flashes over the nav header on the way up, so the usage panel reserves the keyboard instead.
   const [lastKnownKeyboardHeight, setLastKnownKeyboardHeight] = useState(0);
@@ -1091,7 +1081,7 @@ function ThreadDetailBody(
     }),
   );
   // A question pads itself clear of the bottom inset, below the card's own height limit.
-  const questionBottomInset = activeUserInputRequestId !== null ? composerBottomInset : 0;
+  const questionBottomInset = question.replacesComposer ? composerBottomInset : 0;
   const composerPanelsHeightStyle = useAnimatedStyle(() => ({
     maxHeight: pendingUserInputMaxHeight.value + questionBottomInset,
     flexGrow: 0,
@@ -1140,11 +1130,7 @@ function ThreadDetailBody(
     ),
   );
   // A toggle animates the card; a new request starts expanded at once.
-  const userInputMotion = !userInputToggled
-    ? "fresh"
-    : userInputCollapsed
-      ? "collapsed"
-      : "expanded";
+  const userInputMotion = question.motion;
   const userInputCardProgress = useDerivedValue<number>(
     () =>
       userInputMotion === "fresh"
@@ -1218,17 +1204,6 @@ function ThreadDetailBody(
       finishThreadMessageJump(selectedThreadKey);
     };
   }, [selectedThreadKey]);
-  const handleToggleUserInputCollapsed = () => {
-    if (activeUserInputRequestId === null) {
-      return;
-    }
-    if (userInputCollapsed) {
-      setUserInputToggle({ requestId: activeUserInputRequestId, collapsed: false });
-    } else {
-      Keyboard.dismiss();
-      setUserInputToggle({ requestId: activeUserInputRequestId, collapsed: true });
-    }
-  };
   const showContent = props.showContent ?? true;
   // Showing the thread counts as viewing it, before its live shell arrives too.
   useAtomMount(
@@ -1825,7 +1800,7 @@ function ThreadDetailBody(
                         className="shrink-0 gap-3 px-4 pb-3"
                         style={
                           activeUserInputRequestId !== null
-                            ? { paddingBottom: composerBottomInset }
+                            ? { paddingBottom: questionBottomInset }
                             : undefined
                         }
                         onLayout={
@@ -1860,8 +1835,8 @@ function ThreadDetailBody(
                             canOperateThread={props.canOperateThread}
                             pendingUserInput={props.activePendingUserInput}
                             maxHeight={pendingUserInputMaxHeight}
-                            collapsed={userInputCollapsed}
-                            onToggleCollapsed={handleToggleUserInputCollapsed}
+                            collapsed={question.collapsed}
+                            onToggleCollapsed={question.toggleCollapsed}
                             onStopThread={props.onStopThread}
                             cardProgress={userInputCardProgress}
                             cardCoverage={userInputCardCoverage}
@@ -1938,7 +1913,9 @@ function ThreadDetailBody(
                             ? props.activePendingApproval.supportsFeedback
                               ? gt("Send feedback to decline this request")
                               : gt("Send a message to decline and redirect the agent")
-                            : gt("Ask anything")
+                            : props.activePendingUserInput
+                              ? gt("Draft a follow-up")
+                              : gt("Ask anything")
                         }
                         contentMaxWidth={contentMaxWidth}
                         draftControls={props.draftMode?.controls(draftViewportHeight)}
@@ -1969,17 +1946,19 @@ function ThreadDetailBody(
                           props.activePendingApprovals.length > 0 &&
                           props.activePendingUserInput === null
                         }
-                        canStopThread={props.canStopThread}
+                        canStopThread={props.canStopThread && !props.activePendingUserInput}
                         environmentId={props.environmentId}
                         projectCwd={props.threadCwd ?? props.projectWorkspaceRoot}
                         // Keep follow-ups in the draft until server creation succeeds, or rejection strands them in the outbox.
                         sendBlockedReason={
-                          props.draftMode
-                            ? props.draftMode.sendBlockedReason
-                            : props.creationState?.kind === "preparing" &&
-                                !props.creationState.serverOwned
-                              ? gt("Starting the task…")
-                              : null
+                          props.activePendingUserInput
+                            ? gt("Answer the pending question before sending")
+                            : props.draftMode
+                              ? props.draftMode.sendBlockedReason
+                              : props.creationState?.kind === "preparing" &&
+                                  !props.creationState.serverOwned
+                                ? gt("Starting the task…")
+                                : null
                         }
                         interactionLocked={props.draftMode?.interactionLocked}
                         draftKey={props.composerDraftKey ?? undefined}
@@ -2008,7 +1987,7 @@ function ThreadDetailBody(
                         onNativePasteText={props.onNativePasteText}
                         onRemoveDraftImage={props.onRemoveDraftImage}
                         onStopThread={props.onStopThread}
-                        onResumeQueue={props.onResumeQueue}
+                        onResumeQueue={props.activePendingUserInput ? null : props.onResumeQueue}
                         onSendMessage={handleSendMessage}
                         onShowUsageLimits={showUsageLimits}
                         canSwitchProvider={props.canSwitchThreadProvider}
