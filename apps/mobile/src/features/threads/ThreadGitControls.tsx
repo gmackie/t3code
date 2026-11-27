@@ -1,6 +1,7 @@
 import { msg, useGT, useMessages } from "gt-react-native";
 
 import * as Dialog from "../../components/ui/Dialog";
+import { useOpenThreadReview } from "./thread-inspector-navigation";
 import { useOpenPullRequest } from "../../native/useOpenPullRequest";
 import type { AppBarMenu } from "../../components/ui/AppBar.types";
 import {
@@ -131,6 +132,7 @@ function useThreadGitControlModel(props: ThreadGitMenuProps) {
   const gt = useGT();
   const messages = useMessages();
   const openPullRequest = useOpenPullRequest();
+  const openThreadReview = useOpenThreadReview();
   const environmentId = props.environmentId;
   const canWriteSourceControl = useEnvironmentScope(
     environmentId ? EnvironmentId.make(String(environmentId)) : null,
@@ -262,7 +264,7 @@ function useThreadGitControlModel(props: ThreadGitMenuProps) {
   };
 
   const openReview = () => {
-    navigation.navigate("ThreadReview", {
+    openThreadReview({
       environmentId: EnvironmentId.make(String(environmentId)),
       threadId: ThreadId.make(String(threadId)),
     });

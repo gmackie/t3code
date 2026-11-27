@@ -13,12 +13,14 @@ import { m } from "../../i18n/messages";
 import { useEnvironmentPreviewTunnelOff } from "../../state/entities";
 import { useEnvironments } from "../../state/environments";
 import { useAppearancePreferences } from "../settings/appearance/AppearancePreferencesProvider";
+import { useInspectorOnExpand } from "../threads/thread-inspector-navigation";
 import { BrowserChrome } from "./BrowserBar";
 import { loopbackUrlForDevice } from "./browserTabs";
 import { TunnelWebView, type TunnelNavigation, type TunnelWebViewRef } from "./TunnelWebView";
 
 type LocalPreviewRouteScreenProps = StaticScreenProps<{
   readonly environmentId: string;
+  readonly threadId?: string;
   readonly url: string;
 }>;
 
@@ -26,7 +28,9 @@ export function LocalPreviewRouteScreen({ route }: LocalPreviewRouteScreenProps)
   const navigation = useNavigation();
   return (
     <LocalPreviewScreen
+      key={`${route.params.environmentId}:${route.params.url}`}
       environmentId={EnvironmentId.make(route.params.environmentId)}
+      threadId={route.params.threadId}
       url={route.params.url}
       onClose={() => navigation.goBack()}
     />
@@ -39,13 +43,16 @@ export function LocalPreviewRouteScreen({ route }: LocalPreviewRouteScreenProps)
  */
 export function LocalPreviewScreen(props: {
   readonly environmentId: EnvironmentId;
+  readonly threadId?: string;
   readonly url: string;
   readonly onClose: () => void;
   readonly onMaximize?: (url: string) => void;
+  readonly onNavigate?: (url: string) => void;
 }) {
   const { environmentId, onMaximize } = props;
   const gt = useGT();
-  const initialUrl = forDevice(props.url);
+  // Updating the pane's saved address must not reload its currently open webview.
+  const [initialUrl] = useState(() => forDevice(props.url));
   const environmentLabel =
     useEnvironments().presentationById.get(environmentId)?.entry.target.label ??
     gt("the environment", { $context: "stands in for an environment name in a sentence" });
@@ -61,6 +68,11 @@ export function LocalPreviewScreen(props: {
   const [unsupported, setUnsupported] = useState<string | null>(null);
   // After a failed load the webview reports no URL, so the address stays on the one asked for.
   const current = (!failed && page?.url) || requested;
+  useInspectorOnExpand(
+    !onMaximize && props.threadId
+      ? { type: "localPreview", environmentId, threadId: props.threadId, url: current }
+      : null,
+  );
 
   const open = (value: string) => {
     const normalized = normalizedOrNull(value);
@@ -115,6 +127,8 @@ export function LocalPreviewScreen(props: {
               onNavigationChange={(next) => {
                 if (next.loading) setFailed(false);
                 setPage(next);
+                if (!next.loading && next.url && next.url !== props.url)
+                  props.onNavigate?.(next.url);
               }}
               onScrollDirection={onScrollDirection}
               onAccess={(available) => setDisconnected(!available)}

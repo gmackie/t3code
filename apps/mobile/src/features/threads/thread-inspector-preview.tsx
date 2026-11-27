@@ -3,6 +3,7 @@ import { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { type ReactNode } from "react";
 import { View } from "react-native";
 
+import { BrowserPreviewScreen } from "../browser/BrowserPreviewRouteScreen";
 import { LocalPreviewScreen } from "../browser/LocalPreviewRouteScreen";
 import { DevicePreviewScreen } from "../devices/DevicePreviewRouteScreen";
 import {
@@ -54,16 +55,34 @@ export function ThreadInspectorPreview(props: {
   return (
     <ThreadInspectorNavigationContext value={props.onOpen}>
       <InspectorContentScope>
-        {target.type === "localPreview" && target.url ? (
-          <LocalPreviewScreen
-            key={`${target.environmentId}:${target.url}`}
+        {target.type === "browser" ? (
+          <BrowserPreviewScreen
+            key={`${target.environmentId}:${target.threadId}`}
             environmentId={EnvironmentId.make(target.environmentId)}
-            url={target.url}
+            threadId={ThreadId.make(target.threadId)}
+            initialTabId={target.tabId ?? null}
+            onSelectTab={(tabId) => props.onOpen({ ...target, tabId })}
+            onMaximize={(tabId) =>
+              navigation.navigate("ThreadBrowserPreview", {
+                environmentId: target.environmentId,
+                threadId: target.threadId,
+                tabId,
+              })
+            }
+            onClose={props.onClose}
+          />
+        ) : target.type === "localPreview" && target.url ? (
+          <LocalPreviewScreen
+            key={`${target.environmentId}:${target.threadId}:${target.url}`}
+            environmentId={EnvironmentId.make(target.environmentId)}
+            url={target.currentUrl ?? target.url}
+            onNavigate={(currentUrl) => props.onOpen({ ...target, currentUrl })}
             onClose={props.onClose}
             onMaximize={(url) => {
-              props.onOpen({ ...target, url });
+              props.onOpen({ ...target, currentUrl: url });
               navigation.navigate("ThreadLocalPreview", {
                 environmentId: target.environmentId,
+                threadId: target.threadId,
                 url,
               });
             }}
@@ -79,7 +98,8 @@ export function ThreadInspectorPreview(props: {
             key={`${target.environmentId}:${target.threadId}`}
             environmentId={EnvironmentId.make(target.environmentId)}
             threadId={ThreadId.make(target.threadId)}
-            initialDeviceKey={target.deviceKey}
+            deviceKey={target.deviceKey}
+            onSelectDevice={(deviceKey) => props.onOpen({ ...target, deviceKey })}
             onClose={props.onClose}
             onMaximize={maximizeDevice}
           />

@@ -26,6 +26,8 @@ export function WorkspaceInspectorPane(props: {
   readonly onClose: () => void;
   readonly onClosed?: () => void;
   readonly panes: WorkspacePaneLayout;
+  readonly minimumMainWidth?: number;
+  readonly horizontalSafeArea: number;
   readonly content: InspectorContent | undefined;
   readonly setAuxiliaryPaneWidth: (width: number) => void;
 }) {
@@ -89,7 +91,8 @@ export function WorkspaceInspectorPane(props: {
     setAuxiliaryPaneWidth(
       constrainAuxiliaryPaneWidth({
         preferredWidth: resizeStartWidth.current + delta,
-        availableWidth: panes.contentPaneWidth,
+        availableWidth: panes.contentPaneWidth - props.horizontalSafeArea,
+        minimumMainWidth: props.minimumMainWidth,
       }),
     );
   };

@@ -31,6 +31,7 @@ import { m } from "../../i18n/messages";
 import { useBarOverlap } from "../../components/ui/useBarInset";
 import type { AppBarMenuItem } from "../../components/ui/AppBar.types";
 import { useAppForeground } from "../../lib/appState";
+import { useInspectorOnExpand } from "../threads/thread-inspector-navigation";
 import { useHardwareBack } from "../../lib/backHandler";
 import { deriveBottomControlInsets } from "../../lib/reserved-regions";
 import { useNativeColumnLayoutMetrics } from "../../native/native-layout-metrics";
@@ -59,8 +60,9 @@ type DevicePreviewRouteScreenProps = StaticScreenProps<{
 export function DevicePreviewRouteScreen({ route }: DevicePreviewRouteScreenProps) {
   const navigation = useNavigation();
   const onClose = () => navigation.goBack();
-  const { environmentId, threadId } = route.params;
+  const { environmentId, threadId, deviceKey } = route.params;
   const isBlankLink = environmentId.trim().length === 0 || threadId.trim().length === 0;
+  useInspectorOnExpand(isBlankLink ? null : { type: "device", environmentId, threadId, deviceKey });
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- pops a deep-linked route with a blank environment or thread off the navigator
   useEffect(() => {
     if (isBlankLink) onClose();
@@ -70,7 +72,8 @@ export function DevicePreviewRouteScreen({ route }: DevicePreviewRouteScreenProp
     <DevicePreviewScreen
       environmentId={EnvironmentId.make(environmentId)}
       threadId={ThreadId.make(threadId)}
-      initialDeviceKey={route.params.deviceKey}
+      deviceKey={deviceKey}
+      onSelectDevice={(deviceKey) => navigation.setParams({ deviceKey })}
       onClose={onClose}
     />
   );
@@ -81,13 +84,15 @@ export function DevicePreviewScreen({
   threadId,
   onClose,
   onMaximize,
-  initialDeviceKey,
+  deviceKey,
+  onSelectDevice,
 }: {
   readonly environmentId: EnvironmentId;
   readonly threadId: ThreadId;
   readonly onClose: () => void;
   readonly onMaximize?: (deviceKey: string | null) => void;
-  readonly initialDeviceKey?: string;
+  readonly deviceKey?: string;
+  readonly onSelectDevice: (deviceKey: string) => void;
 }) {
   const embedded = onMaximize !== undefined;
   const insets = useSafeAreaInsets();
@@ -98,7 +103,6 @@ export function DevicePreviewScreen({
   const { themeVariables } = useAppearancePreferences();
   const focused = useIsFocused();
   const foreground = useAppForeground();
-  const [selectedKey, setSelectedKey] = useState<string | null>(initialDeviceKey ?? null);
   const [inputConnected, setInputConnected] = useState(false);
   const gt = useGT();
   const [streamAttempt, setStreamAttempt] = useState(0);
@@ -109,7 +113,7 @@ export function DevicePreviewScreen({
   const streamRef = useRef<DeviceStreamRef>(null);
   const state = useEnvironmentQuery(deviceEnvironment.state({ environmentId, input: {} }));
   const previews = threadDevicePreviews(state.data, threadId);
-  const preview = selectedThreadDevicePreview(previews, selectedKey);
+  const preview = selectedThreadDevicePreview(previews, deviceKey ?? null);
   const onInputConnected = async (connected: boolean) => {
     setInputConnected(connected);
     if (!connected) setControlsVisible(true);
@@ -262,7 +266,7 @@ export function DevicePreviewScreen({
               title: device.name,
               subtitle: device.description,
               selected: device.key === preview?.key,
-              onPress: () => setSelectedKey(device.key),
+              onPress: () => onSelectDevice(device.key),
             })),
           },
         ]

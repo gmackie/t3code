@@ -316,14 +316,10 @@ describe("normalizeDesktopUpdateReleaseNotes", () => {
       ...pulls,
       "</ul>",
       '<p>Includes upstream nightly <a href="https://github.com/pingdotgg/t3code/releases/tag/v0.1.12-nightly.20261123.5138"><code>v0.1.12-nightly.20261123.5138</code></a>.</p>',
-      "<p><strong>Full Changelog</strong>: <a href=\"https://github.com/gmackie/t3code/compare/old...new\">old...new</a></p>",
+      '<p><strong>Full Changelog</strong>: <a href="https://github.com/gmackie/t3code/compare/old...new">old...new</a></p>',
     ].join("\n");
 
-    const result = normalizeDesktopUpdateReleaseNotes(
-      note,
-      "0.1.11-gmacko.202611241020",
-      "gmacko",
-    );
+    const result = normalizeDesktopUpdateReleaseNotes(note, "0.1.11-gmacko.202611241020", "gmacko");
 
     expect(result.releaseNotes).toEqual([
       {
@@ -348,7 +344,14 @@ describe("normalizeDesktopUpdateReleaseNotes", () => {
       upstreamBaseSha: "deadbeef",
       upstreamNightlyTag: null,
       changes: [
-        { kind: "pr", number: 151, title: "pin a dependency", sha: "a", commits: [], omittedCommits: 0 },
+        {
+          kind: "pr",
+          number: 151,
+          title: "pin a dependency",
+          sha: "a",
+          commits: [],
+          omittedCommits: 0,
+        },
         { kind: "commit", sha: "b", subject: "fix: direct lane commit" },
       ],
     };

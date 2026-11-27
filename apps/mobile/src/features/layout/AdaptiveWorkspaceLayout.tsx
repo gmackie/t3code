@@ -45,7 +45,6 @@ import Animated, {
 import { AsyncResult } from "effect/reactivity";
 
 import {
-  deriveFileInspectorPaneLayout,
   alignListPaneToHinge,
   deriveLayout,
   type VerticalHinge,
@@ -53,6 +52,7 @@ import {
   isPrimarySidebarPinned,
   isWorkspaceListPath,
   nativeInspectorColumnWidth,
+  NATIVE_INSPECTOR_MIN_MAIN_WIDTH,
 } from "../../lib/layout";
 import type { ThreadListFilters } from "../../persistence/mobile-preferences";
 import { appAtomRegistry } from "../../state/atom-registry";
@@ -286,7 +286,8 @@ function AdaptiveWorkspaceLayoutContent(
   const [fileInspectorPreferredVisible, setFileInspectorPreferredVisible] = useState(true);
   const [nativeInspectorWidthFraction, setNativeInspectorWidthFraction] = useState(0.4);
   const horizontalSafeArea =
-    (nativeMetrics?.safeArea.left ?? 0) + (nativeMetrics?.safeArea.right ?? 0);
+    (nativeMetrics?.safeArea.left ?? safeAreaInsets.left) +
+    (nativeMetrics?.safeArea.right ?? safeAreaInsets.right);
   const inspectorWidthFor = (fraction: number) =>
     nativeInspectorColumnWidth({ viewportWidth, horizontalSafeArea, fraction });
   const nativeInspectorWidth = inspectorWidthFor(nativeInspectorWidthFraction);
@@ -299,9 +300,16 @@ function AdaptiveWorkspaceLayoutContent(
   // objects here change the workspace context on every render, so every workspace screen
   // re-renders on any layout state change, and the inspector registration then loops: each
   // re-register re-renders its screen, which hands over a new inspector renderer.
+  const isThread = props.workspaceRouteName === "Thread";
+  const threadWindow = isThread || pathname.startsWith("/threads/");
+  const fontScale = threadWindow ? windowDimensions.fontScale : 1;
+  const minimumMainWidth =
+    isThread || props.workspaceRouteName === "ThreadReview"
+      ? NATIVE_INSPECTOR_MIN_MAIN_WIDTH
+      : undefined;
   const baseLayout = useMemo(
-    () => deriveLayout({ width: viewportWidth, height, nativeMetrics, nativeWorkspace }),
-    [height, viewportWidth, nativeMetrics, nativeWorkspace],
+    () => deriveLayout({ width: viewportWidth, height, nativeMetrics, nativeWorkspace, fontScale }),
+    [height, viewportWidth, nativeMetrics, nativeWorkspace, fontScale],
   );
   // The overlay sidebar closes when a page opens from it, and stays open on a list or on the
   // page a tab switch opened (`keepOpenFor`, set by that switch).
@@ -379,26 +387,6 @@ function AdaptiveWorkspaceLayoutContent(
   const width = viewportWidth - navigationRailWidth;
   // The sidebar stays mounted under a workspace page, so its list is ready on the way back.
   const shouldRenderPrimarySidebar = layout.usesSplitView;
-  const fileInspector = useMemo(
-    () =>
-      deriveFileInspectorPaneLayout({
-        layout,
-        viewportWidth: width,
-        preferredWidth: fileInspectorPreferredWidth ?? undefined,
-        reservedLeadingWidth:
-          shouldRenderPrimarySidebar && showPrimarySidebar && !sidebarFloats
-            ? (layout.listPaneWidth ?? 0) + (layout.listPaneGap ?? 0)
-            : 0,
-      }),
-    [
-      fileInspectorPreferredWidth,
-      layout,
-      showPrimarySidebar,
-      shouldRenderPrimarySidebar,
-      sidebarFloats,
-      width,
-    ],
-  );
   const [workspaceInspector, setWorkspaceInspector] = useState<{
     readonly content: InspectorContent;
     readonly active: boolean;
@@ -407,12 +395,6 @@ function AdaptiveWorkspaceLayoutContent(
   // Without a column the inspector is a sheet, opened only on request for the route on top, and
   // shown again when that route returns to the top.
   const [inspectorSheetRoute, setInspectorSheetRoute] = useState<string | null>(null);
-  const inspectorSheetOpen =
-    !fileInspector.supported &&
-    !workspacePage &&
-    inspectorSheetRoute !== null &&
-    workspaceInspector?.active === true &&
-    workspaceInspector.routeKey === inspectorSheetRoute;
   const inspectorActive = workspaceInspector?.active ?? false;
   const panes = useMemo(
     () =>
@@ -421,6 +403,7 @@ function AdaptiveWorkspaceLayoutContent(
         viewportWidth: width,
         horizontalSafeArea,
         nativeWorkspace,
+        minimumMainWidth,
         primarySidebarFloats: sidebarFloats,
         primarySidebarPreferredVisible: showPrimarySidebar,
         // Only a column a screen fills makes room, so a stale preference can't hide the sidebar.
@@ -431,6 +414,7 @@ function AdaptiveWorkspaceLayoutContent(
       }),
     [
       nativeInspectorWidth,
+      minimumMainWidth,
       horizontalSafeArea,
       fileInspectorPreferredVisible,
       fileInspectorPreferredWidth,
@@ -443,6 +427,20 @@ function AdaptiveWorkspaceLayoutContent(
       workspacePage,
     ],
   );
+  const fileInspector = useMemo(
+    () => ({
+      supported: panes.supportsAuxiliaryPane,
+      width: panes.auxiliaryPaneWidth,
+    }),
+    [panes.supportsAuxiliaryPane, panes.auxiliaryPaneWidth],
+  );
+  const inspectorSheetOpen =
+    !fileInspector.supported &&
+    !workspacePage &&
+    inspectorSheetRoute !== null &&
+    workspaceInspector?.active === true &&
+    workspaceInspector.routeKey === inspectorSheetRoute;
+  if (fileInspector.supported && inspectorSheetRoute !== null) setInspectorSheetRoute(null);
   // Routes still on the stack remember their reveal, so going back to one keeps the user's choice.
   const revealedInspectors = useRef<ReadonlyMap<string, string>>(new Map());
   const workspaceInspectorOwner = useRef<symbol | null>(null);
@@ -1151,6 +1149,8 @@ function AdaptiveWorkspaceLayoutContent(
           active={workspaceInspector?.active ?? false}
           panes={panes}
           content={workspaceInspector?.content}
+          minimumMainWidth={minimumMainWidth}
+          horizontalSafeArea={horizontalSafeArea}
           setAuxiliaryPaneWidth={setFileInspectorPreferredWidth}
           onClose={() => setFileInspectorPreferredVisible(false)}
           onClosed={handleWorkspaceInspectorClosed}

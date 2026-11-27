@@ -182,7 +182,7 @@ type ThreadRouteScreenRouteProps = StaticScreenProps<{
 interface ThreadRouteScreenProps extends ThreadRouteScreenRouteProps {
   readonly inspectorPresentation?: ThreadInspectorPresentation;
   readonly onReturnToThread?: () => void;
-  readonly renderInspector?: () => ReactNode;
+  readonly routeInspector?: { readonly kind: "files" | "review"; readonly render: () => ReactNode };
 }
 
 function ThreadUnavailableScreen(props: {
@@ -506,24 +506,28 @@ function ThreadRouteContent(
   // The chosen mode survives thread switches; "route" only applies while the route
   // supplies an inspector, which is also the default whenever it does.
   const [chosenInspectorMode, setChosenInspectorMode] = useState<ThreadInspectorMode | null>(null);
-  const previewTarget = props.inspectorPresentation ? undefined : params.inspector;
+  const requestedInspector = props.inspectorPresentation ? undefined : params.inspector;
+  const reviewRequested =
+    requestedInspector?.type === "review" &&
+    requestedInspector.environmentId === environmentId &&
+    requestedInspector.threadId === threadId;
+  const previewTarget = requestedInspector?.type === "review" ? undefined : requestedInspector;
   const inspectorMode = (() => {
     if (previewTarget) return "preview";
+    if (reviewRequested) return props.routeInspector?.kind === "review" ? "route" : null;
     const mode =
-      props.renderInspector === undefined
-        ? chosenInspectorMode === "route"
-          ? null
-          : chosenInspectorMode
-        : chosenInspectorMode === null || chosenInspectorMode === "route"
+      chosenInspectorMode === null || chosenInspectorMode === "route"
+        ? props.routeInspector
           ? "route"
-          : chosenInspectorMode;
+          : null
+        : chosenInspectorMode;
     return mode === "files" && selectedThreadCwd === null ? null : mode;
   })();
   const revealPreview = useEffectEvent(() => showInspector());
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- opens the workspace navigator's inspector pane when route params bring a preview target
   useEffect(() => {
-    if (previewTarget) revealPreview();
-  }, [previewTarget]);
+    if (requestedInspector && (previewTarget || reviewRequested)) revealPreview();
+  }, [requestedInspector, previewTarget, reviewRequested]);
   const routeEnvironmentRuntime = useRemoteEnvironmentRuntime(environmentId);
   const routeConnectionState =
     routeEnvironmentRuntime?.connectionState ?? (environmentId ? "available" : connectionState);
@@ -640,7 +644,7 @@ function ThreadRouteContent(
       return;
     }
     navigation.setParams({ inspector: undefined });
-    setChosenInspectorMode(props.renderInspector === undefined ? "files" : "route");
+    setChosenInspectorMode(props.routeInspector?.kind === "files" ? "route" : "files");
     showInspector();
   };
   const handleSelectInspectorFile = (path: string) => {
@@ -714,7 +718,10 @@ function ThreadRouteContent(
               : []),
             { key: "files", render: renderFilesInspector, prewarm: true },
             { key: "git", render: renderGitInspector, prewarm: true },
-            ...(props.renderInspector ? [{ key: "route", render: props.renderInspector }] : []),
+            ...(props.routeInspector &&
+            (props.routeInspector.kind === "files" || inspectorMode === "route")
+              ? [{ key: "route", render: props.routeInspector.render }]
+              : []),
           ],
         };
 
@@ -1195,9 +1202,10 @@ function ThreadRouteContent(
       {inspectorHeader}
       {!props.inspectorPresentation && inspectorContent ? (
         <Inspector
-          // A route's own inspector (files) opens once per thread; going back keeps the user's choice.
+          // A route's inspector opens once per thread. Resizing keeps the user's choice.
           revealKey={
-            props.renderInspector !== undefined && selectedThreadCwd !== null
+            props.routeInspector &&
+            (props.routeInspector.kind === "review" || selectedThreadCwd !== null)
               ? (routeThreadIdentity ?? undefined)
               : undefined
           }

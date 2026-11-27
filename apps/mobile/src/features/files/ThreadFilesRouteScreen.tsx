@@ -563,7 +563,7 @@ export function ThreadFilesTreeScreen(props: ThreadFilesRouteScreenProps) {
       return (
         <ThreadRouteScreen
           onReturnToThread={handleReturnToThread}
-          renderInspector={renderInspector}
+          routeInspector={{ kind: "files", render: renderInspector }}
           route={props.route}
         />
       );
@@ -592,7 +592,7 @@ export function ThreadFilesTreeScreen(props: ThreadFilesRouteScreenProps) {
     return (
       <ThreadRouteScreen
         onReturnToThread={handleReturnToThread}
-        renderInspector={renderInspector}
+        routeInspector={{ kind: "files", render: renderInspector }}
         route={props.route}
       />
     );

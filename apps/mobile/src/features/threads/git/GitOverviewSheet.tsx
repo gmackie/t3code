@@ -1,3 +1,4 @@
+import { useOpenThreadReview } from "../thread-inspector-navigation";
 import * as Dialog from "../../../components/ui/Dialog";
 import { useOpenPullRequest } from "../../../native/useOpenPullRequest";
 import {
@@ -10,12 +11,7 @@ import type { ThreadRepositorySection } from "@t3tools/client-runtime/state/thre
 import { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { sourceControlClients } from "@t3tools/client-runtime/source-control-clients";
 import { changeRequestTermKind } from "../../../lib/changeRequestTerm";
-import {
-  CommonActions,
-  StackActions,
-  useNavigation,
-  type StaticScreenProps,
-} from "@react-navigation/native";
+import { StackActions, useNavigation, type StaticScreenProps } from "@react-navigation/native";
 import { useGT, useMessages } from "gt-react-native";
 import { use, useEffect, useState } from "react";
 import { RefreshControl } from "../../../components/ui/RefreshControl";
@@ -81,6 +77,7 @@ function GitOverviewSheetContent(props: GitOverviewSheetProps) {
   const m = useMessages();
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
+  const openReview = useOpenThreadReview();
   const presentation = props.presentation ?? "sheet";
   const isInspector = presentation === "inspector";
   const closeInspectorSheet = use(InspectorSheetContext);
@@ -419,11 +416,9 @@ function GitOverviewSheetContent(props: GitOverviewSheetProps) {
                 onPress={() => {
                   const params = { environmentId, threadId };
                   if (presentation === "sheet") {
-                    navigation.dispatch(StackActions.replace("ThreadReview", params));
+                    openReview(params, true);
                   } else {
-                    presentRoute(() =>
-                      navigation.dispatch(CommonActions.navigate("ThreadReview", params)),
-                    );
+                    presentRoute(() => openReview(params));
                   }
                 }}
               />

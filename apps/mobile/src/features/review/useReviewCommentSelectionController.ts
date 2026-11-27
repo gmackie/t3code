@@ -1,5 +1,4 @@
 import { useGT } from "gt-react-native";
-import { useState } from "react";
 import type { NativeSyntheticEvent } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import * as Arr from "effect/Array";
@@ -14,7 +13,6 @@ import {
   completeReviewCommentRange,
   formatReviewSelectedRangeLabel,
   getSelectedReviewCommentLines,
-  nextReviewSheetId,
   reviewCommentSelectionScope,
   setReviewCommentTarget,
   startReviewCommentRange,
@@ -24,6 +22,7 @@ import type { NativeReviewDiffData } from "./nativeReviewDiffAdapter";
 import type { ReviewSectionItem } from "./reviewModel";
 
 export function useReviewCommentSelectionController(input: {
+  readonly reviewKey: string;
   readonly environmentId?: EnvironmentId;
   readonly threadId?: ThreadId;
   readonly selectedSection: ReviewSectionItem | null;
@@ -32,11 +31,9 @@ export function useReviewCommentSelectionController(input: {
   const { environmentId, nativeReviewDiffData, selectedSection, threadId } = input;
   const gt = useGT();
   const navigation = useNavigation();
-  const [sheetId] = useState(nextReviewSheetId);
-  // Scoping the selection to this sheet, thread, section and diff drops it when the sheet
-  // reopens, either changes, or a section comes back with different lines.
+  // The same review can move from full screen to its thread's column during a resize.
   const scope = reviewCommentSelectionScope(
-    sheetId,
+    input.reviewKey,
     environmentId && threadId ? scopedThreadKey(environmentId, threadId) : null,
     selectedSection === null
       ? null

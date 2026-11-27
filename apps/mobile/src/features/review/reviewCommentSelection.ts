@@ -87,22 +87,14 @@ export function getReviewCommentSelection(): ReviewCommentSelection {
   return selection;
 }
 
-let lastReviewSheetId = 0;
-
-/** A fresh id per mounted review sheet, so reopening the sheet starts without a selection. */
-export function nextReviewSheetId(): number {
-  lastReviewSheetId += 1;
-  return lastReviewSheetId;
-}
-
 export function reviewCommentSelectionScope(
-  sheetId: number,
+  reviewKey: string,
   threadKey: string | null,
   section: { readonly id: string; readonly content: string | null } | null,
 ): ReviewCommentSelectionScope | null {
   return threadKey === null || section === null
     ? null
-    : { key: JSON.stringify([sheetId, threadKey, section.id]), content: section.content };
+    : { key: JSON.stringify([reviewKey, threadKey, section.id]), content: section.content };
 }
 
 function isSameScope(
