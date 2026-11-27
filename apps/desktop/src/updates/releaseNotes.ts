@@ -205,7 +205,10 @@ function topLevelHtmlItems(section: string): string[] {
   return items;
 }
 
-function closeHtmlListItem(html: string, from: number): { readonly html: string; readonly end: number } {
+function closeHtmlListItem(
+  html: string,
+  from: number,
+): { readonly html: string; readonly end: number } {
   let depth = 0;
   let index = from;
   while (index < html.length) {
@@ -247,9 +250,9 @@ function notesFromGmackoManifest(manifest: GmackoChangelogManifest): ExtractedRe
 
 function notesFromRenderedGmackoChanges(note: string): ExtractedReleaseNoteItems {
   const section = gmackoChangesSection(note);
-  const labels = (section.includes("<li") ? topLevelHtmlItems(section) : topLevelMarkdownItems(section)).map(
-    labelGmackoChange,
-  );
+  const labels = (
+    section.includes("<li") ? topLevelHtmlItems(section) : topLevelMarkdownItems(section)
+  ).map(labelGmackoChange);
   return finishGmackoNotes(
     labels,
     includesUpstreamLine(section),

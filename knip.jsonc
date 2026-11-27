@@ -121,6 +121,7 @@
       // Worktree setup (scripts/setup-worktree.ts) runs this directly, and evidence
       // fixtures run under node.
       "entry": [
+        "src/epubPreviewMain.tsx!",
         "scripts/warm-dep-cache.ts",
         "test/fixtures/**/*.mjs",
         // kicad.html, a second Vite HTML input that mobile opens by URL, loads this module.

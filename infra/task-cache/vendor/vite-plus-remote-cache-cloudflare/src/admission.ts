@@ -1,4 +1,4 @@
-import { HttpError } from './errors.ts';
+import { HttpError } from "./errors.ts";
 
 export interface AdmissionOptions {
   stores: number;
@@ -50,16 +50,16 @@ export class Admission {
   async acquire(store: boolean, signal?: AbortSignal): Promise<() => void> {
     const until = Date.now() + (store ? this.options.storeWaitMs : this.options.readWaitMs);
     for (;;) {
-      if (signal?.aborted) throw new HttpError(503, 'deadline');
+      if (signal?.aborted) throw new HttpError(503, "deadline");
       const release = this.tryAcquire(store);
       if (release) return release;
-      if (Date.now() >= until) throw new HttpError(503, 'concurrency_limit');
+      if (Date.now() >= until) throw new HttpError(503, "concurrency_limit");
       await new Promise<void>((resolve) => {
         const timer = setTimeout(done, this.options.pollMs);
-        signal?.addEventListener('abort', done, { once: true });
+        signal?.addEventListener("abort", done, { once: true });
         function done() {
           clearTimeout(timer);
-          signal?.removeEventListener('abort', done);
+          signal?.removeEventListener("abort", done);
           resolve();
         }
       });

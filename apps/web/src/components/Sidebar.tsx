@@ -179,6 +179,7 @@ import { ProjectRowActions } from "./ProjectComboboxRow";
 import {
   buildDraftActionMenuItems,
   buildThreadActionMenuItems,
+  canMarkLatestRunUnread,
   isThreadTriageAction,
   threadActionRequiresOperate,
 } from "./threadActionMenu.logic";
@@ -1018,7 +1019,6 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
   const { handleNewThread } = newThreadContext;
   const primaryEnvironmentId = usePrimaryEnvironmentId();
   const clearSelection = useThreadSelectionStore((s) => s.clearSelection);
-  const setSelectionAnchor = useThreadSelectionStore((s) => s.setAnchor);
   const toggleThreadSelection = useThreadSelectionStore((s) => s.toggleThread);
   const rangeSelectTo = useThreadSelectionStore((s) => s.rangeSelectTo);
   const acknowledgeWoke = useAcknowledgeThreadWoke();
@@ -1513,7 +1513,6 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     if (useThreadSelectionStore.getState().selectedThreadKeys.size > 0) {
       clearSelection();
     }
-    setSelectionAnchor(scopedThreadKey(threadRef));
     if (isMobile) {
       setOpenMobile(false);
     }
@@ -1636,14 +1635,18 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     const isMac = isMacPlatform(navigator.platform);
     const isModClick = isMac ? event.metaKey : event.ctrlKey;
     const threadKey = scopedThreadKey(threadRef);
+    const openThreadKey =
+      routeRowThreadKey !== null && orderedThreadKeysRef.current.includes(routeRowThreadKey)
+        ? routeRowThreadKey
+        : null;
     if (isModClick) {
       event.preventDefault();
-      toggleThreadSelection(threadKey);
+      toggleThreadSelection(threadKey, openThreadKey);
       return;
     }
     if (event.shiftKey) {
       event.preventDefault();
-      rangeSelectTo(threadKey, orderedThreadKeysRef.current);
+      rangeSelectTo(threadKey, orderedThreadKeysRef.current, openThreadKey);
       return;
     }
     // macOS keeps counting quick clicks across rows, so only the open row's trailing click is a double-click.
@@ -2409,6 +2412,11 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
       const unpinMenuItem = buildBulkUnpinContextMenuItem({
         pinnedCount: pinnedSelectedThreads.length,
       });
+      // Same rule as the single-thread menu: only a settled, completed run can be marked unread.
+      const markUnreadThreads = selectedThreads.filter(
+        (thread) =>
+          canMarkLatestRunUnread(thread.latestRun) && threadRuntimeCanArchive(thread.runtime),
+      );
       // Presets sync across environments, so the first selected thread's stand for all.
       const menuOpenedAt = new Date();
       const snoozePresets = resolveSnoozePresets(
@@ -2460,7 +2468,14 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                   },
                 ]
               : []),
-            { id: "mark-unread", label: gt("Mark unread ({count})", { count }) },
+            ...(markUnreadThreads.length > 0
+              ? [
+                  {
+                    id: "mark-unread" as const,
+                    label: gt("Mark unread ({count})", { count: markUnreadThreads.length }),
+                  },
+                ]
+              : []),
             {
               id: "delete",
               label: gt("Delete ({count})", { count }),
@@ -2570,9 +2585,8 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
         return;
       }
       if (clicked.value === "mark-unread") {
-        for (const threadKey of threadKeys) {
-          const thread = threadByKeyRef.current.get(threadKey);
-          if (thread) markThreadUnread(scopeThreadRef(thread.environmentId, thread.id));
+        for (const thread of markUnreadThreads) {
+          markThreadUnread(scopeThreadRef(thread.environmentId, thread.id));
         }
         clearSelection();
         return;
@@ -2757,7 +2771,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
               canSnoozeNow: canSnooze(thread, { now: new Date().toISOString() }),
               isRegeneratingTitle,
               isRunning: !threadRuntimeCanArchive(thread.runtime),
-              hasCompletedRun: thread.latestRun?.completedAt != null,
+              hasCompletedRun: canMarkLatestRunUnread(thread.latestRun),
               canShareWithGuest: appAtomRegistry.get(
                 canShareWithGuestAtom(threadRef.environmentId),
               ),
