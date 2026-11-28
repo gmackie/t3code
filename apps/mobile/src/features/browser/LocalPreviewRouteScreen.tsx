@@ -15,7 +15,7 @@ import { useEnvironments } from "../../state/environments";
 import { useAppearancePreferences } from "../settings/appearance/AppearancePreferencesProvider";
 import { useInspectorOnExpand } from "../threads/thread-inspector-navigation";
 import { BrowserChrome } from "./BrowserBar";
-import { loopbackUrlForDevice } from "./browserTabs";
+import { localPreviewUrlForDevice } from "./browserTabs";
 import { TunnelWebView, type TunnelNavigation, type TunnelWebViewRef } from "./TunnelWebView";
 
 type LocalPreviewRouteScreenProps = StaticScreenProps<{
@@ -245,9 +245,9 @@ function hostOf(value: string): string {
   }
 }
 
-// The unspecified address would name the phone itself, so it becomes the environment's localhost.
+// A route URL that is not a web address opens the preview empty, ready for one to be typed.
 function forDevice(url: string): string {
-  return loopbackUrlForDevice(url) ?? url;
+  return localPreviewUrlForDevice(url) ?? "";
 }
 
 function normalizedOrNull(value: string): string | null {

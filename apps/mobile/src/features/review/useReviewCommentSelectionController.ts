@@ -1,4 +1,4 @@
-import { useGT } from "gt-react-native";
+import { useGT, useMessages } from "gt-react-native";
 import type { NativeSyntheticEvent } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import * as Arr from "effect/Array";
@@ -12,6 +12,7 @@ import {
   clearReviewCommentTarget,
   completeReviewCommentRange,
   formatReviewSelectedRangeLabel,
+  reviewCommentRangeText,
   getSelectedReviewCommentLines,
   reviewCommentSelectionScope,
   setReviewCommentTarget,
@@ -30,6 +31,7 @@ export function useReviewCommentSelectionController(input: {
 }) {
   const { environmentId, nativeReviewDiffData, selectedSection, threadId } = input;
   const gt = useGT();
+  const messages = useMessages();
   const navigation = useNavigation();
   // The same review can move from full screen to its thread's column during a resize.
   const scope = reviewCommentSelectionScope(
@@ -72,7 +74,10 @@ export function useReviewCommentSelectionController(input: {
   const selectionAction = hasRangeTarget
     ? {
         title: gt("Comment on {range}", {
-          range: formatReviewSelectedRangeLabel(activeCommentTarget),
+          range: reviewCommentRangeText(
+            formatReviewSelectedRangeLabel(activeCommentTarget),
+            messages,
+          ),
         }),
         onOpenComment: openReviewCommentSheet,
       }

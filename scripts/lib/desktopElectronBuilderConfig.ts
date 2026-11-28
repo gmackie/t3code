@@ -216,6 +216,10 @@ export function createDesktopElectronBuilderConfig(
     productName,
     artifactName: "T3-Code-${version}-${arch}.${ext}",
     electronLanguages: [...DESKTOP_ELECTRON_LANGUAGES],
+    electronFuses: {
+      enableNodeCliInspectArguments: false,
+      resetAdHocDarwinSignature: platform === "mac" && input.macSignScriptPath === undefined,
+    },
     files: [
       ...DESKTOP_FILE_EXCLUSIONS,
       ...(platform === "mac"

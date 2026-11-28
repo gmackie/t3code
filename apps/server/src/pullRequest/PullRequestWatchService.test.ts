@@ -14,7 +14,6 @@ import { describe, expect, it } from "@effect/vitest";
 import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import * as Option from "effect/Option";
 import * as Ref from "effect/Ref";
 
 import * as Orchestrator from "../orchestration-v2/Orchestrator.ts";
@@ -22,8 +21,6 @@ import {
   type PullRequestTestThread,
   v2PullRequestThread,
 } from "../orchestration-v2/testkit/pullRequestFixtures.ts";
-import * as ProjectService from "../project/ProjectService.ts";
-import * as RepositoryIdentityResolver from "../project/RepositoryIdentityResolver.ts";
 import * as PullRequestService from "./PullRequestService.ts";
 import * as PullRequestWatchService from "./PullRequestWatchService.ts";
 import type { PullRequestTarget } from "./pullRequestTarget.ts";
@@ -125,12 +122,6 @@ const makeHarness = Effect.fn("makePullRequestWatchHarness")(function* (
   const thread = options.thread === undefined ? makeThread([]) : options.thread;
   const project = options.project === undefined ? makeProject() : options.project;
   const dependencies = Layer.mergeAll(
-    Layer.mock(RepositoryIdentityResolver.RepositoryIdentityResolver)({
-      resolve: () => Effect.succeed(makeProject().repositoryIdentity ?? null),
-    }),
-    Layer.mock(ProjectService.ProjectService)({
-      getShell: () => Effect.succeed(Option.fromNullishOr(project)),
-    }),
     Layer.mock(Orchestrator.OrchestratorV2)({
       getThreadShell: (id) =>
         Effect.succeed(id === thread?.id ? v2PullRequestThread(thread) : null),
@@ -140,6 +131,15 @@ const makeHarness = Effect.fn("makePullRequestWatchHarness")(function* (
         ),
     }),
     Layer.mock(PullRequestService.PullRequestService)({
+      addressedProject: () =>
+        Effect.succeed(
+          project == null
+            ? undefined
+            : {
+                ...project,
+                repositoryIdentity: project.repositoryIdentity ?? makeProject().repositoryIdentity,
+              },
+        ),
       summary: (input) =>
         options.readFailure !== undefined
           ? Effect.fail(options.readFailure)

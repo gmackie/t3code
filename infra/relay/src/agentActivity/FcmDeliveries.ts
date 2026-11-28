@@ -22,7 +22,7 @@ import * as AgentActivityRows from "./AgentActivityRows.ts";
 import * as LiveActivities from "./LiveActivities.ts";
 import * as FcmDeliveryQueueSender from "./FcmDeliveryQueueSender.ts";
 import * as FcmClient from "./FcmClient.ts";
-import { androidActivityData, fitFcmData } from "./fcmPayloads.ts";
+import { androidActivityData, androidRecipientData, fitFcmData } from "./fcmPayloads.ts";
 import { makeAggregateState, statusForPhase } from "@t3tools/shared/agentActivityAggregate";
 import { isExpiredAgentActivityState } from "@t3tools/shared/agentActivityPayloads";
 import { notificationForActivity } from "./agentActivityPayloads.ts";
@@ -287,8 +287,7 @@ const make = Effect.gen(function* () {
       if (!displayedAggregate && !alert && !previousAggregate && job.state !== null) return;
       const data: Record<string, string> = {
         t3_kind: "agent_activity",
-        device_id: job.deviceId,
-        user_id: job.userId,
+        ...androidRecipientData(job.userId, job.deviceId, target.app_version),
         updated_at: String(now.epochMilliseconds),
         ...androidActivityData(displayedAggregate),
         ...alert,
