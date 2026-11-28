@@ -69,6 +69,8 @@ export class RelayConfiguration extends Context.Service<
     readonly oidcIssuer?: string;
     readonly oidcAudience?: string;
     readonly oidcAllowedSubject?: string;
+    /** Verifies Clerk `user.deleted` webhooks; unset leaves the webhook route disabled. */
+    readonly clerkWebhookSigningSecret?: Redacted.Redacted<string>;
     readonly apnsDeliveryJobSigningSecret: Redacted.Redacted<string>;
     readonly cloudMintPrivateKey: Redacted.Redacted<string>;
     readonly cloudMintPublicKey: string;

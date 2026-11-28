@@ -4,6 +4,7 @@
  * median-rep p95/p99 stay within max(noise + 10%, noise + 2 ms) with no SQLITE_BUSY. Run `node
  * apps/server/scripts/engine-contention-bench.ts [--commits 1000] [--reps 5]`.
  */
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeRuntime from "@effect/platform-node/NodeRuntime";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import {
@@ -247,4 +248,8 @@ const program = Effect.gen(function* () {
   );
 });
 
-program.pipe(Effect.scoped, Effect.provide(NodeServices.layer), NodeRuntime.runMain);
+program.pipe(
+  Effect.scoped,
+  Effect.provide(Layer.merge(NodeServices.layer, NodeCrypto.layerDigest)),
+  NodeRuntime.runMain,
+);

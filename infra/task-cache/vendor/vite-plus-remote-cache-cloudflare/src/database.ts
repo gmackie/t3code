@@ -1,7 +1,7 @@
 // @effect-diagnostics cryptoRandomUUID:off globalConsole:off - vendored upstream protocol, not an Effect service.
-import { HttpError, unavailable } from './errors.ts';
-import { GRACE_SECONDS, LEASE_SECONDS } from './limits.ts';
-import { measured, type Observations } from './observations.ts';
+import { HttpError, unavailable } from "./errors.ts";
+import { GRACE_SECONDS, LEASE_SECONDS } from "./limits.ts";
+import { measured, type Observations } from "./observations.ts";
 
 export interface Scope {
   scope_id: string;
@@ -24,9 +24,13 @@ export interface Generation {
   blob_size: number;
 }
 export interface Selection extends Generation {
-  kind: 'exact' | 'fallback';
+  kind: "exact" | "fallback";
   key: number[];
 }
+export type Entries =
+  | { kind: "exact"; entries: Generation[] }
+  | { kind: "fallback"; key: Uint8Array }
+  | null;
 
 // Preserve empty and non-UTF-8 keys as BLOBs, without text or hash conversions.
 export function binary(bytes: Uint8Array): ArrayBuffer {
@@ -48,43 +52,53 @@ export async function getScope(db: D1Database, id: string, stats?: Observations)
   } catch {
     unavailable();
   }
-  if (!scope) throw new HttpError(404, 'unknown_scope');
+  if (!scope) throw new HttpError(404, "unknown_scope");
   return scope;
 }
 
-export async function selectEntry(
+export async function selectEntries(
   db: D1Database,
   scope: string,
   key: Uint8Array,
   secondary: Uint8Array,
   stats?: Observations,
-): Promise<Selection | null> {
-  // Both branches use indexed identities in one SQLite snapshot.
+): Promise<Entries> {
+  // One statement reads the key's newest live entries and the association in one SQLite snapshot.
+  // The association is used only when the key has no live entry.
+  let results: Selection[];
   try {
-    const { results } = await measured(
+    ({ results } = await measured(
       db
         .prepare(`
-      SELECT g.*, e.key, 'exact' AS kind, 0 AS priority
-      FROM entries e JOIN generations g ON g.generation_id = e.generation_id
-      JOIN scopes s ON s.scope_id = e.scope_id CROSS JOIN deployment d
-      WHERE e.scope_id = ?1 AND e.key = ?2 AND g.state = 'ready' AND g.expires_at > unixepoch()
-        AND s.enabled = 1 AND d.enabled = 1
+      SELECT * FROM (
+        SELECT g.*, e.key, 'exact' AS kind, 0 AS priority, e.seq
+        FROM entries e JOIN generations g ON g.generation_id = e.generation_id
+        JOIN scopes s ON s.scope_id = e.scope_id CROSS JOIN deployment d
+        WHERE e.scope_id = ?1 AND e.key = ?2 AND g.state = 'ready' AND g.expires_at > unixepoch()
+          AND s.enabled = 1 AND d.enabled = 1
+        ORDER BY e.seq DESC
+        LIMIT (SELECT entries_per_key FROM scopes WHERE scope_id = ?1))
       UNION ALL
-      SELECT g.*, e.key, 'fallback' AS kind, 1 AS priority
-      FROM associations a JOIN entries e ON e.scope_id = a.scope_id AND e.key = a.target_key
-      JOIN generations g ON g.generation_id = e.generation_id
-      JOIN scopes s ON s.scope_id = e.scope_id CROSS JOIN deployment d
-      WHERE a.scope_id = ?1 AND a.secondary_key = ?3 AND g.state = 'ready' AND g.expires_at > unixepoch()
-        AND s.enabled = 1 AND d.enabled = 1
-      ORDER BY priority LIMIT 1`)
+      SELECT * FROM (
+        SELECT g.*, e.key, 'fallback' AS kind, 1 AS priority, e.seq
+        FROM associations a JOIN entries e ON e.scope_id = a.scope_id AND e.key = a.target_key
+        JOIN generations g ON g.generation_id = e.generation_id
+        JOIN scopes s ON s.scope_id = e.scope_id CROSS JOIN deployment d
+        WHERE a.scope_id = ?1 AND a.secondary_key = ?3 AND g.state = 'ready' AND g.expires_at > unixepoch()
+          AND s.enabled = 1 AND d.enabled = 1
+        LIMIT 1)
+      ORDER BY priority, seq DESC`)
         .bind(scope, binary(key), binary(secondary))
         .all<Selection>(),
       stats,
-    );
-    return results[0] ?? null;
+    ));
   } catch {
     unavailable();
   }
+  const exact = results.filter((row) => row.kind === "exact");
+  if (exact.length) return { kind: "exact", entries: exact };
+  const fallback = results[0];
+  return fallback ? { kind: "fallback", key: new Uint8Array(fallback.key) } : null;
 }
 
 export async function selectBlob(
@@ -184,7 +198,7 @@ export async function publish(
       db.batch([
         db
           .prepare(`UPDATE generations SET state = 'ready', key = ?, secondary_key = ?, blob_id = ?,
-      value_size = ?, blob_size = ?, charged_bytes = ?,
+      value_size = ?, blob_size = ?, charged_bytes = ?, upload_id = NULL,
       expires_at = unixepoch() + (SELECT retention_seconds FROM scopes WHERE scope_id = generations.scope_id),
       gc_after = unixepoch() + (SELECT retention_seconds FROM scopes WHERE scope_id = generations.scope_id)
       WHERE generation_id = ? AND state = 'uploading' AND lease_until > unixepoch() AND token_exp > unixepoch()
@@ -209,7 +223,7 @@ export async function publish(
   } catch {
     unavailable();
   }
-  if (results[0]?.results.length !== 1) throw new HttpError(503, 'publication_guard');
+  if (results[0]?.results.length !== 1) throw new HttpError(503, "publication_guard");
 }
 
 export async function abandon(db: D1Database, id: string): Promise<void> {
@@ -221,10 +235,16 @@ export async function abandon(db: D1Database, id: string): Promise<void> {
     .run();
 }
 
+// R2 binding errors read "<operation>: <message> (<code>)". Code 10024 (NoSuchUpload) means the
+// multipart upload no longer exists.
+function uploadGone(error: unknown): boolean {
+  return error instanceof Error && error.message.endsWith("(10024)");
+}
+
 export async function cleanup(env: Env): Promise<void> {
   const limit = Number(env.GC_BATCH_SIZE);
   if (!Number.isInteger(limit) || limit < 1 || limit > 256)
-    throw new Error('Invalid GC batch size');
+    throw new Error("Invalid GC batch size");
   const claim = crypto.randomUUID();
   const claimed =
     await env.INDEX.prepare(`UPDATE generations SET state = 'deleting', gc_claim = ?, gc_after = unixepoch() + 600
@@ -240,11 +260,15 @@ export async function cleanup(env: Env): Promise<void> {
   let deleted = 0;
   for (const generation of claimed.results) {
     try {
+      // A recorded upload may already be complete, aborted, or gone: R2 doesn't check that a
+      // resumed upload still exists. Only an error that confirms this lets deletion go on. Any
+      // other failure keeps the generation, its charge, and its upload ID for the next retry.
       if (generation.upload_id)
-        await env.ARTIFACTS.resumeMultipartUpload(
-          generation.blob_object,
-          generation.upload_id,
-        ).abort();
+        await env.ARTIFACTS.resumeMultipartUpload(generation.blob_object, generation.upload_id)
+          .abort()
+          .catch((error: unknown) => {
+            if (!uploadGone(error)) throw error;
+          });
       await env.ARTIFACTS.delete([generation.value_object, generation.blob_object]);
       // FK deletion only removes entries still selecting this generation.
       await env.INDEX.prepare(
@@ -256,15 +280,15 @@ export async function cleanup(env: Env): Promise<void> {
     } catch {
       console.warn(
         JSON.stringify({
-          operation: 'cleanup',
-          error: 'deletion_failed',
+          operation: "cleanup",
+          error: "deletion_failed",
           generation: generation.generation_id,
         }),
       );
     }
   }
   await cleanAssociations(env.INDEX, limit);
-  console.log(JSON.stringify({ operation: 'cleanup', claimed: claimed.results.length, deleted }));
+  console.log(JSON.stringify({ operation: "cleanup", claimed: claimed.results.length, deleted }));
 }
 
 async function cleanAssociations(db: D1Database, limit: number): Promise<void> {
@@ -285,7 +309,7 @@ async function cleanAssociations(db: D1Database, limit: number): Promise<void> {
       AND NOT EXISTS (SELECT 1 FROM entries e WHERE e.scope_id = associations.scope_id AND e.key = associations.target_key)`)
       .bind(limit),
     db
-      .prepare('UPDATE maintenance SET scope_id = ?, secondary_key = ? WHERE id = 1')
-      .bind(last?.scope_id ?? '', binary(new Uint8Array(last?.secondary_key ?? []))),
+      .prepare("UPDATE maintenance SET scope_id = ?, secondary_key = ? WHERE id = 1")
+      .bind(last?.scope_id ?? "", binary(new Uint8Array(last?.secondary_key ?? []))),
   ]);
 }

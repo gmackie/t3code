@@ -87,7 +87,6 @@
       "ignoreDependencies": [
         "@effect/platform-node-shared",
         "@t3tools/web",
-        "@napi-rs/keyring",
         "ffi-rs",
         "transcribe-cpp",
         "@ubjs/node",
@@ -97,6 +96,7 @@
       // Electron loads these bundles by filename rather than importing them.
       "entry": [
         "gnome-extension/extension.js!",
+        "src/backend/DesktopBackendRecoveryWorker.ts!",
         "src/electron/WindowsForegroundFocusWorker.ts!",
         "src/snapShot/GlobalShiftShortcutWorker.ts!",
         "src/snapShot/RegionSnapShotWorker.ts!",
@@ -120,6 +120,7 @@
       // Worktree setup (scripts/setup-worktree.ts) runs this directly, and evidence
       // fixtures run under node.
       "entry": [
+        "src/epubPreviewMain.tsx!",
         "scripts/warm-dep-cache.ts",
         "test/fixtures/**/*.mjs",
         // kicad.html, a second Vite HTML input that mobile opens by URL, loads this module.

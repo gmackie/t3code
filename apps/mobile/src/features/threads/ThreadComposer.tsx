@@ -5,6 +5,9 @@ import { useAppearancePreferences } from "../settings/appearance/AppearancePrefe
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/shell";
 import { settlePromise, squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
 import { AsyncResult } from "effect/reactivity";
+import { isSkillReloadCommand } from "@t3tools/client-runtime/providerSkills";
+import { serverEnvironment } from "../../state/server";
+import { useAtomCommand } from "../../state/use-atom-command";
 import { useAtomValue } from "@effect/atom-react";
 import { clampFileAttachmentUploadBytes } from "@t3tools/client-runtime/state/attachments";
 import { pastedTextDisposition, replaceTextSelection } from "@t3tools/client-runtime/text-paste";
@@ -131,6 +134,7 @@ import {
 import { useVoiceInputController } from "../voice-input/useVoiceInputController";
 import { resolveVoiceComposerPresentation } from "../voice-input/voiceInputPresentation";
 import type { ExistingThreadSettingsRouteParams } from "./ThreadSettingsSheet";
+import { perfProbe } from "../development/perf-probe-hooks";
 import {
   useThreadSettingsSheetPresentation,
   type NavigationWithFinishTransitioning,
@@ -383,6 +387,9 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
     });
   };
   const { onSendMessage, onChangeDraftMessage, onShowUsageLimits } = props;
+  const refreshProviders = useAtomCommand(serverEnvironment.refreshProviders, {
+    reportFailure: false,
+  });
   const usageLimitsOffered =
     selectedProviderStatus !== null &&
     hasProviderUsageLimits(
@@ -471,6 +478,7 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
     label: props.selectedThread.title || gt("Untitled thread"),
     readDraftMessage: () => getComposerDraftSnapshot(composerDraftKey).text,
     selection: composerMenu.selection,
+    hidden: props.hidden,
     onChangeDraftMessage: (text) => setComposerDraftText(composerDraftKey, text),
     onChangeSelection: composerMenu.onSelectionChange,
   });
@@ -582,7 +590,7 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
       submitComposer(
         threadKey,
         inputRef.current,
-        (isCurrent) => {
+        async (isCurrent) => {
           const draftAtSend = getComposerDraftSnapshot(composerDraftKey);
           const stillSendable = () => {
             const draft = getComposerDraftSnapshot(composerDraftKey);
@@ -597,7 +605,18 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
               )
             );
           };
-          return onSendMessage(followUp, stillSendable);
+          const messageId = await onSendMessage(followUp, stillSendable);
+          if (messageId !== null && isSkillReloadCommand(draftAtSend.text) && props.projectCwd) {
+            void refreshProviders({
+              environmentId: props.environmentId,
+              input: {
+                instanceId: currentModelSelection.instanceId,
+                cwd: props.projectCwd,
+                fresh: true,
+              },
+            });
+          }
+          return messageId;
         },
         () => activeDraftKeyRef.current === composerDraftKey && navigation.isFocused(),
       ),
@@ -926,6 +945,7 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
                   skills={composerMenu.skills}
                   selection={composerMenu.selection}
                   onChangeText={(text) => {
+                    perfProbe?.key();
                     if (!isSubmissionLocked) props.onChangeDraftMessage(text);
                   }}
                   onSelectionChange={composerMenu.onSelectionChange}

@@ -2,6 +2,7 @@ import { useGT } from "gt-react-native";
 import {
   WorkspaceColumnsRendererContext,
   WorkspacePresentationHostContext,
+  WorkspaceVisibleRouteContext,
 } from "./workspace-presentation-context";
 import { useAndroidFloatingTabs } from "../settings/appearance/AppearancePreferencesProvider";
 import { SafeAreaInsetsContext, useSafeAreaInsets } from "react-native-safe-area-context";
@@ -16,7 +17,12 @@ import { threadSelectionDeferral } from "./deferred-navigation";
 import { uuidv4 } from "../../lib/uuid";
 import { EnvironmentId, ThreadId, type SidebarProjectGroupingMode } from "@t3tools/contracts";
 import { useAtomValue } from "@effect/atom-react";
-import { NavigationContext, NavigationRouteContext, useNavigation } from "@react-navigation/native";
+import {
+  CommonActions,
+  NavigationContext,
+  NavigationRouteContext,
+  useNavigation,
+} from "@react-navigation/native";
 import {
   use,
   useEffect,
@@ -46,6 +52,7 @@ import { AsyncResult } from "effect/reactivity";
 
 import {
   alignListPaneToHinge,
+  constrainAuxiliaryPaneWidth,
   deriveLayout,
   type VerticalHinge,
   deriveWorkspacePaneLayout,
@@ -139,6 +146,7 @@ export function Inspector(props: {
   const { registerWorkspaceInspector } = useAdaptiveWorkspaceLayout();
   const navigation = use(NavigationContext);
   const route = use(NavigationRouteContext);
+  const visibleWorkspaceRoute = use(WorkspaceVisibleRouteContext);
   const content: InspectorContent = {
     ...props.content,
     resetKeys: [route?.key, ...(props.content.resetKeys ?? [])],
@@ -163,6 +171,13 @@ export function Inspector(props: {
     }
     deactivateRef.current = registerWorkspaceInspector(content, route?.key, props.revealKey);
   });
+  // An overlay (a maximized thread, a sheet) blurs the route but leaves it the visible workspace
+  // page, so the column stays registered and the sidebar doesn't shift behind the overlay.
+  const handleBlur = useEffectEvent(() => {
+    if (route !== undefined && visibleWorkspaceRoute === route.key) return;
+    focusedRef.current = false;
+    syncRegistration();
+  });
 
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Navigation focus events own the inspector registration lifetime.
   useEffect(() => {
@@ -172,13 +187,9 @@ export function Inspector(props: {
       focusedRef.current = true;
       syncRegistration();
     };
-    const blur = () => {
-      focusedRef.current = false;
-      syncRegistration();
-    };
     if (navigation.isFocused()) focus();
     const unsubscribeFocus = navigation.addListener("focus", focus);
-    const unsubscribeBlur = navigation.addListener("blur", blur);
+    const unsubscribeBlur = navigation.addListener("blur", handleBlur);
     return () => {
       unsubscribeFocus();
       unsubscribeBlur();
@@ -307,6 +318,14 @@ function AdaptiveWorkspaceLayoutContent(
     isThread || props.workspaceRouteName === "ThreadReview"
       ? NATIVE_INSPECTOR_MIN_MAIN_WIDTH
       : undefined;
+  const setInspectorWidth = (preferredWidth: number) =>
+    setFileInspectorPreferredWidth(
+      constrainAuxiliaryPaneWidth({
+        preferredWidth,
+        availableWidth: viewportWidth - horizontalSafeArea,
+        minimumMainWidth,
+      }),
+    );
   const baseLayout = useMemo(
     () => deriveLayout({ width: viewportWidth, height, nativeMetrics, nativeWorkspace, fontScale }),
     [height, viewportWidth, nativeMetrics, nativeWorkspace, fontScale],
@@ -635,23 +654,27 @@ function AdaptiveWorkspaceLayoutContent(
         .filter((environment) => environment.connectionState === "connected")
         .map((environment) => environment.environmentId),
     );
-    handleSelectThreadRoute(
-      newTaskDestination({
-        projects,
-        requestId: uuidv4(),
-        useLastProject: saved?.useLastProjectForNewThreads,
-        currentProject: environmentId && projectId ? { environmentId, projectId } : undefined,
-        filteredProject: filteredScope
-          ? newTaskFilteredProject(
-              filteredScope,
-              listEnvironmentId,
-              connectedEnvironmentIds,
-              saved?.lastThreadProject,
-            )
-          : undefined,
-        lastProject: saved?.lastThreadProject,
-      }),
-    );
+    const destination = newTaskDestination({
+      projects,
+      requestId: uuidv4(),
+      useLastProject: saved?.useLastProjectForNewThreads,
+      currentProject: environmentId && projectId ? { environmentId, projectId } : undefined,
+      filteredProject: filteredScope
+        ? newTaskFilteredProject(
+            filteredScope,
+            listEnvironmentId,
+            connectedEnvironmentIds,
+            saved?.lastThreadProject,
+          )
+        : undefined,
+      lastProject: saved?.lastThreadProject,
+    });
+    // Without a project the draft would only push the picker over itself a frame later; open it directly.
+    if (destination.draft.projectId === undefined) {
+      navigation.dispatch(CommonActions.navigate("NewTaskProject"));
+      return;
+    }
+    handleSelectThreadRoute(destination);
   };
 
   useHardwareKeyboardCommand("newTask", () => {
@@ -953,7 +976,7 @@ function AdaptiveWorkspaceLayoutContent(
     revealPrimarySidebar,
     setPrimarySidebarVisible,
     openWorkspaceTab,
-    setAuxiliaryPaneWidth: setFileInspectorPreferredWidth,
+    setAuxiliaryPaneWidth: setInspectorWidth,
     setNativeInspectorWidth: (width: number) =>
       setNativeInspectorWidthFraction(inspectorWidthFor(width / viewportWidth) / viewportWidth),
   });
@@ -1151,7 +1174,7 @@ function AdaptiveWorkspaceLayoutContent(
           content={workspaceInspector?.content}
           minimumMainWidth={minimumMainWidth}
           horizontalSafeArea={horizontalSafeArea}
-          setAuxiliaryPaneWidth={setFileInspectorPreferredWidth}
+          setAuxiliaryPaneWidth={setInspectorWidth}
           onClose={() => setFileInspectorPreferredVisible(false)}
           onClosed={handleWorkspaceInspectorClosed}
         />
