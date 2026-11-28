@@ -1,3 +1,4 @@
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import { assert, it } from "@effect/vitest";
 import {
   EventId,
@@ -20,7 +21,10 @@ import * as Tracer from "effect/Tracer";
 import * as Persistence from "../persistence/Sqlite.ts";
 import * as ProjectionStore from "./ProjectionStore.ts";
 
-const layer = ProjectionStore.layer.pipe(Layer.provideMerge(Persistence.layerMemory));
+const layer = ProjectionStore.layer.pipe(
+  Layer.provideMerge(Persistence.layerMemory),
+  Layer.provide(NodeCrypto.layerDigest),
+);
 const now = DateTime.makeUnsafe("2026-10-10T12:00:00Z");
 const later = DateTime.add(now, { minutes: 1 });
 const threadId = ThreadId.make("thread:bounded-shell");

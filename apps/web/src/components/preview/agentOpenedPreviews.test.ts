@@ -238,6 +238,7 @@ describe("floatBrowserSurface", () => {
 
 describe("floatPanelSurfaceOnClose", () => {
   const browser = browserMiniPlayerSource("tab_panel");
+  const computer = { kind: "computer" } as const;
   const previewState = {
     ...previewStateTesting.EMPTY_THREAD_PREVIEW_STATE,
     sessions: {
@@ -254,6 +255,14 @@ describe("floatPanelSurfaceOnClose", () => {
 
   it.each([
     { name: "floats a browser", source: browser, autoShow: true, before: null, after: browser },
+    { name: "floats a computer", source: computer, autoShow: true, before: null, after: computer },
+    {
+      name: "floats no computer with Auto-show off",
+      source: computer,
+      autoShow: false,
+      before: null,
+      after: undefined,
+    },
     {
       name: "floats no browser with Auto-show off",
       source: browser,

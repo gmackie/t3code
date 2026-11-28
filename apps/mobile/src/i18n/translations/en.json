@@ -5883,5 +5883,8 @@
   "bb9866823586b67a": "Usage database and Go key",
   "8380d6f1828fe191": "Conversation history",
   "1f2036cf25caaf16": "Account usage from Cursor",
-  "51aa7700c1f967d2": "Session history"
+  "51aa7700c1f967d2": "Session history",
+  "287c30f8300f49f8": "Clear selection",
+  "0d51ece7ddb86fb7": "Draft a follow-up",
+  "be93081f621cb8a5": "Answer the pending question before sending"
 }

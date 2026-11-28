@@ -590,7 +590,7 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
       submitComposer(
         threadKey,
         inputRef.current,
-        (isCurrent) => {
+        async (isCurrent) => {
           const draftAtSend = getComposerDraftSnapshot(composerDraftKey);
           const stillSendable = () => {
             const draft = getComposerDraftSnapshot(composerDraftKey);
@@ -605,7 +605,18 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
               )
             );
           };
-          return onSendMessage(followUp, stillSendable);
+          const messageId = await onSendMessage(followUp, stillSendable);
+          if (messageId !== null && isSkillReloadCommand(draftAtSend.text) && props.projectCwd) {
+            void refreshProviders({
+              environmentId: props.environmentId,
+              input: {
+                instanceId: currentModelSelection.instanceId,
+                cwd: props.projectCwd,
+                fresh: true,
+              },
+            });
+          }
+          return messageId;
         },
         () => activeDraftKeyRef.current === composerDraftKey && navigation.isFocused(),
       ),
@@ -616,16 +627,6 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
       return;
     }
     if (sent.value === null) return;
-    if (isSkillReloadCommand(draftAtSend.text) && props.projectCwd) {
-      void refreshProviders({
-        environmentId: props.environmentId,
-        input: {
-          instanceId: currentModelSelection.instanceId,
-          cwd: props.projectCwd,
-          fresh: true,
-        },
-      });
-    }
     // Arm after send so preference reads and native Activity startup do not delay tap-frame feedback.
     armAgentAwarenessLiveActivityForLocalWork({
       environmentId: props.environmentId,

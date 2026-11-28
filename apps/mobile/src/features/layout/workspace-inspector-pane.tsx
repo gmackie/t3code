@@ -10,7 +10,7 @@ import Animated, {
   type SharedValue,
 } from "react-native-reanimated";
 
-import type { WorkspacePaneLayout } from "../../lib/layout";
+import { constrainAuxiliaryPaneWidth, type WorkspacePaneLayout } from "../../lib/layout";
 import { WORKSPACE_PANE_TIMING } from "./workspace-pane-animation";
 import { WorkspacePaneDivider } from "./workspace-pane-divider";
 import { InspectorPanes } from "./inspector-host";

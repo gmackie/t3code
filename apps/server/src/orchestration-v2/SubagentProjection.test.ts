@@ -286,7 +286,12 @@ it.effect("a provider subagent thread settles when its subagent completes", () =
     });
     assert.equal(settledAt && DateTime.formatIso(settledAt), DateTime.formatIso(completedAt));
   }).pipe(
-    Effect.provide(ProjectionStore.layer.pipe(Layer.provideMerge(SqlitePersistence.layerMemory))),
+    Effect.provide(
+      ProjectionStore.layer.pipe(
+        Layer.provideMerge(SqlitePersistence.layerMemory),
+        Layer.provide(NodeCrypto.layerDigest),
+      ),
+    ),
   ),
 );
 

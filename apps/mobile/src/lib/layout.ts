@@ -304,7 +304,9 @@ export function deriveFileInspectorPaneLayout(input: {
   const viewportWidth = Math.max(0, input.viewportWidth);
   const usableWidth = viewportWidth - (input.horizontalSafeArea ?? 0);
   const requiredWidth =
-    input.minimumMainWidth === undefined ? 820 : input.minimumMainWidth + AUXILIARY_PANE_MIN_WIDTH;
+    input.minimumMainWidth === undefined
+      ? FILE_INSPECTOR_MIN_VIEWPORT_WIDTH
+      : input.minimumMainWidth + AUXILIARY_PANE_MIN_WIDTH;
   const supported = input.layout.usesSplitView && usableWidth >= requiredWidth;
 
   return {

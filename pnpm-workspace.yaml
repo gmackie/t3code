@@ -140,7 +140,7 @@ overrides:
   app-builder-lib: 26.16.1
   electron-updater: 6.8.9
   expo-modules-core: 58.1.0
-  expo-modules-autolinking: 58.0.17
+  expo-modules-autolinking: 58.1.0
   "@ubjs/node": "catalog:"
   # Keep jsdom's optional peer consistent so Vite+ has one test-runner instance.
   "@exodus/bytes>@noble/hashes": "1.8.0"
@@ -285,7 +285,7 @@ patchedDependencies:
   "@muse-code/sdk@1.4.6": patches/@muse-code__sdk@1.4.6.patch
   app-builder-lib@26.16.1: patches/app-builder-lib@26.16.1.patch
   "@ubjs/node@0.31.0-3": patches/@ubjs__node@0.31.0-3.patch
-  expo-modules-autolinking@58.0.17: patches/expo-modules-autolinking@58.0.17.patch
+  expo-modules-autolinking@58.1.0: patches/expo-modules-autolinking@58.1.0.patch
   # The spawner takes an injected spawn function (and uses it for taskkill) so Windows launches
   # can run on worker threads: apps/server/src/process/SpawnWorker.ts.
   "@effect/platform-node-shared@4.1.6": patches/@effect__platform-node-shared@4.1.6.patch
