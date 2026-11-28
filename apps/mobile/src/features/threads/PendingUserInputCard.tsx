@@ -12,6 +12,8 @@ import { AsyncResult } from "effect/reactivity";
 import { useState } from "react";
 import {
   Keyboard,
+  KeyboardAvoidingView,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -19,7 +21,8 @@ import {
   type LayoutChangeEvent,
 } from "react-native";
 import { useReanimatedKeyboardAnimation } from "react-native-keyboard-controller";
-import { useNavigation } from "@react-navigation/native";
+import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
+import { useIsFocused, useNavigation } from "@react-navigation/native";
 import { Plural, T, useGT, Var } from "gt-react-native";
 import Animated, {
   useAnimatedStyle,
@@ -61,6 +64,7 @@ export interface PendingUserInputCardProps {
   readonly canOperateThread: boolean;
   readonly pendingUserInput: PendingUserInput;
   readonly maxHeight: DerivedValue<number>;
+  readonly expandInPane: boolean;
   readonly collapsed: boolean;
   readonly onToggleCollapsed: () => void;
   /** A stop control where the question owns the input area. */
@@ -183,7 +187,9 @@ export function PendingUserInputCard(props: PendingUserInputCardProps) {
       ])
       .join(" "),
   );
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(true);
+  const showExpandedModal = expanded && !props.expandInPane;
+  const focused = useIsFocused();
   const [questionIndex, setQuestionIndex] = useState(0);
   const activeQuestionIndex = Math.min(questionIndex, Math.max(0, questionCount - 1));
   const question = props.pendingUserInput.questions[activeQuestionIndex];
@@ -239,7 +245,7 @@ export function PendingUserInputCard(props: PendingUserInputCardProps) {
   const cardCoverage = props.cardCoverage;
   const barHeight = useSharedValue(0);
   useAnimatedReaction(
-    () => Math.max(0, cardHeight.value - barHeight.value),
+    () => (showExpandedModal ? 0 : Math.max(0, cardHeight.value - barHeight.value)),
     (coverage) => {
       cardCoverage.set(coverage);
     },
@@ -324,23 +330,17 @@ export function PendingUserInputCard(props: PendingUserInputCardProps) {
       {stopButton}
     </View>
   );
-  const card = (
-    // The surface is opaque on purpose: the card floats over the thread
-    // feed with no blur behind it, so a translucent background renders
-    // the questions on top of whatever message happens to sit underneath.
-    <Animated.View
-      onLayout={(event) => measuredCardHeight.set(event.nativeEvent.layout.height)}
-      pointerEvents={props.collapsed ? "none" : "auto"}
-      accessibilityElementsHidden={props.collapsed}
-      importantForAccessibility={props.collapsed ? "no-hide-descendants" : "auto"}
-      className="overflow-hidden gap-2.5 rounded-[20px] border border-border bg-card-alt p-4"
-      style={[heightStyle, cardAnimatedStyle]}
-    >
+  const content = (
+    <>
       <View className="flex-row items-start gap-2">
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={
-            expanded ? gt("Lower to compact questions") : gt("Expand questions to full screen")
+            expanded
+              ? gt("Lower to compact questions")
+              : props.expandInPane
+                ? gt("Expand")
+                : gt("Expand questions to full screen")
           }
           accessibilityState={{ expanded }}
           onPress={toggleExpanded}
@@ -369,136 +369,123 @@ export function PendingUserInputCard(props: PendingUserInputCardProps) {
           </View>
         </Pressable>
         {stopButton}
-        {!expanded ? (
-          <ControlPill
-            accessibilityLabel={gt("Collapse user input")}
-            icon="chevron.down"
-            className="h-11 w-11"
-            onPress={props.onToggleCollapsed}
-          />
-        ) : null}
+        <ControlPill
+          accessibilityLabel={gt("Collapse user input")}
+          icon="chevron.down"
+          className="h-11 w-11"
+          onPress={props.onToggleCollapsed}
+        />
       </View>
-      <ScrollView
-        key={paginated ? question?.id : "scroll"}
-        bounces={false}
-        className={cn("min-h-0", expanded && "flex-1")}
-        contentContainerClassName="gap-2.5 pb-1"
-        keyboardShouldPersistTaps="handled"
-        nestedScrollEnabled
-        showsVerticalScrollIndicator
-        style={{ flexShrink: 1 }}
-      >
-        {!canRespond ? (
-          <Text className="font-sans text-sm leading-5 text-foreground-muted">
-            <T>
-              The provider process for this request is no longer available. Interrupt or restart the
-              run to continue.
-            </T>
-          </Text>
-        ) : null}
-        {visibleQuestions.map((question) => {
-          const draft = props.drafts[question.id];
-          return (
-            <View key={question.id} className="gap-2 pt-1">
-              <Text
-                className="font-t3-bold text-xs uppercase tracking-[1px] text-foreground-muted"
-                style={proseDirectionStyle(question.header, setDirection)}
-              >
-                {question.header}
-              </Text>
-              <QuestionText
-                markdown={question.question}
-                environmentId={props.environmentId}
-                threadId={props.threadId}
-                workspaceRoot={props.workspaceRoot}
-                setDirection={setDirection}
-                preserveSoftBreaks
-              />
-              <View className="gap-2">
-                {question.options.map((option) => {
-                  const optionValue = option.value ?? option.label.trim();
-                  const selected = isPendingUserInputOptionSelected(question, draft, optionValue);
-                  const description =
-                    option.description !== option.label ? option.description : undefined;
-                  return (
-                    <View key={optionValue} className="gap-1.5">
-                      <Pressable
-                        accessibilityRole={question.multiSelect ? "checkbox" : "radio"}
-                        accessibilityState={{ checked: selected, disabled: responseDisabled }}
-                        disabled={responseDisabled}
-                        className={cn(
-                          "min-h-12 w-full rounded-2xl border px-3.5 py-3",
-                          selected ? "border-primary bg-primary/10" : "border-border bg-input",
-                        )}
-                        onPress={() =>
-                          props.onSelectOption(
-                            props.pendingUserInput.requestId,
-                            question,
-                            optionValue,
-                          )
-                        }
-                      >
-                        <View className="min-w-0 flex-1 gap-0.5">
+      {!canRespond ? (
+        <Text className="font-sans text-sm leading-5 text-foreground-muted">
+          <T>
+            The provider process for this request is no longer available. Interrupt or restart the
+            run to continue.
+          </T>
+        </Text>
+      ) : null}
+      {visibleQuestions.map((question) => {
+        const draft = props.drafts[question.id];
+        return (
+          <View key={question.id} className="gap-2 pt-1">
+            <Text
+              className="font-t3-bold text-xs uppercase tracking-[1px] text-foreground-muted"
+              style={proseDirectionStyle(question.header, setDirection)}
+            >
+              {question.header}
+            </Text>
+            <QuestionText
+              markdown={question.question}
+              environmentId={props.environmentId}
+              threadId={props.threadId}
+              workspaceRoot={props.workspaceRoot}
+              setDirection={setDirection}
+              preserveSoftBreaks
+            />
+            <View className="gap-2">
+              {question.options.map((option) => {
+                const optionValue = option.value ?? option.label.trim();
+                const selected = isPendingUserInputOptionSelected(question, draft, optionValue);
+                const description =
+                  option.description !== option.label ? option.description : undefined;
+                return (
+                  <View key={optionValue} className="gap-1.5">
+                    <Pressable
+                      accessibilityRole={question.multiSelect ? "checkbox" : "radio"}
+                      accessibilityState={{ checked: selected, disabled: responseDisabled }}
+                      disabled={responseDisabled}
+                      className={cn(
+                        "min-h-12 w-full rounded-2xl border px-3.5 py-3",
+                        selected ? "border-primary bg-primary/10" : "border-border bg-input",
+                      )}
+                      onPress={() =>
+                        props.onSelectOption(
+                          props.pendingUserInput.requestId,
+                          question,
+                          optionValue,
+                        )
+                      }
+                    >
+                      <View className="min-w-0 flex-1 gap-0.5">
+                        <Text
+                          className={cn(
+                            "font-t3-bold text-sm",
+                            selected ? "text-foreground" : "text-foreground-secondary",
+                          )}
+                          style={proseDirectionStyle(option.label, setDirection)}
+                        >
+                          {option.label}
+                        </Text>
+                        {description ? (
                           <Text
-                            className={cn(
-                              "font-t3-bold text-sm",
-                              selected ? "text-foreground" : "text-foreground-secondary",
-                            )}
-                            style={proseDirectionStyle(option.label, setDirection)}
+                            className="font-sans text-sm leading-5 text-foreground-muted"
+                            style={proseDirectionStyle(description, setDirection)}
                           >
-                            {option.label}
+                            {description}
                           </Text>
-                          {description ? (
-                            <Text
-                              className="font-sans text-sm leading-5 text-foreground-muted"
-                              style={proseDirectionStyle(description, setDirection)}
-                            >
-                              {description}
-                            </Text>
-                          ) : null}
-                        </View>
-                      </Pressable>
-                      {option.preview ? (
-                        <View className="px-3.5">
-                          <QuestionText
-                            markdown={option.preview}
-                            environmentId={props.environmentId}
-                            threadId={props.threadId}
-                            workspaceRoot={props.workspaceRoot}
-                            setDirection={setDirection}
-                            preserveSoftBreaks
-                          />
-                        </View>
-                      ) : null}
-                    </View>
-                  );
-                })}
-              </View>
-              {question.allowCustomAnswer !== false ? (
-                <QuestionAttachments
-                  key={`${props.pendingUserInput.requestId}:${question.id}`}
-                  requestId={props.pendingUserInput.requestId}
-                  question={question}
-                  questions={props.pendingUserInput.questions}
-                  disabled={responseDisabled}
-                  value={draft?.customAnswer ?? ""}
-                  onChangeText={(value) =>
-                    props.onChangeCustomAnswer(props.pendingUserInput.requestId, question.id, value)
-                  }
-                  onInputFocusChange={props.onInputFocusChange}
-                />
-              ) : null}
+                        ) : null}
+                      </View>
+                    </Pressable>
+                    {option.preview ? (
+                      <View className="px-3.5">
+                        <QuestionText
+                          markdown={option.preview}
+                          environmentId={props.environmentId}
+                          threadId={props.threadId}
+                          workspaceRoot={props.workspaceRoot}
+                          setDirection={setDirection}
+                          preserveSoftBreaks
+                        />
+                      </View>
+                    ) : null}
+                  </View>
+                );
+              })}
             </View>
-          );
-        })}
-        {paginated && isLastQuestion && props.answers === null ? (
-          <Text className="font-sans text-xs text-foreground-muted">
-            {questionCount > 1
-              ? gt("Answer every question before submitting. Use Back to review earlier answers.")
-              : gt("Choose an option or enter an answer before submitting.")}
-          </Text>
-        ) : null}
-      </ScrollView>
+            {question.allowCustomAnswer !== false ? (
+              <QuestionAttachments
+                key={`${props.pendingUserInput.requestId}:${question.id}`}
+                requestId={props.pendingUserInput.requestId}
+                question={question}
+                questions={props.pendingUserInput.questions}
+                disabled={responseDisabled}
+                value={draft?.customAnswer ?? ""}
+                onChangeText={(value) =>
+                  props.onChangeCustomAnswer(props.pendingUserInput.requestId, question.id, value)
+                }
+                onInputFocusChange={props.onInputFocusChange}
+              />
+            ) : null}
+          </View>
+        );
+      })}
+      {paginated && isLastQuestion && props.answers === null ? (
+        <Text className="font-sans text-xs text-foreground-muted">
+          {questionCount > 1
+            ? gt("Answer every question before submitting. Use Back to review earlier answers.")
+            : gt("Choose an option or enter an answer before submitting.")}
+        </Text>
+      ) : null}
       <View className="flex-row gap-3">
         {paginated && questionCount > 1 ? (
           <View className="flex-1">
@@ -543,6 +530,59 @@ export function PendingUserInputCard(props: PendingUserInputCardProps) {
           <T>This connection cannot submit answers.</T>
         </Text>
       ) : null}
+    </>
+  );
+  if (showExpandedModal) {
+    return (
+      <View onLayout={props.onLayout}>
+        {bar}
+        <Modal
+          visible={focused && !props.collapsed}
+          presentationStyle="fullScreen"
+          supportedOrientations={["portrait", "landscape-left", "landscape-right"]}
+          onRequestClose={props.onToggleCollapsed}
+        >
+          <View className="flex-1 bg-card-alt">
+            <SafeAreaProvider>
+              <SafeAreaView style={{ flex: 1 }}>
+                <KeyboardAvoidingView
+                  style={{ flex: 1 }}
+                  behavior={Platform.OS === "ios" ? "padding" : undefined}
+                >
+                  <ScrollView
+                    key={paginated ? question?.id : "scroll"}
+                    className="flex-1"
+                    contentContainerClassName="gap-2.5 p-4"
+                    keyboardShouldPersistTaps="handled"
+                  >
+                    {content}
+                  </ScrollView>
+                </KeyboardAvoidingView>
+              </SafeAreaView>
+            </SafeAreaProvider>
+          </View>
+        </Modal>
+      </View>
+    );
+  }
+  const card = (
+    <Animated.View
+      onLayout={(event) => measuredCardHeight.set(event.nativeEvent.layout.height)}
+      pointerEvents={props.collapsed ? "none" : "auto"}
+      accessibilityElementsHidden={props.collapsed}
+      importantForAccessibility={props.collapsed ? "no-hide-descendants" : "auto"}
+      className="overflow-hidden gap-2.5 rounded-[20px] border border-border bg-card-alt p-4"
+      style={[heightStyle, cardAnimatedStyle]}
+    >
+      <ScrollView
+        key={paginated ? question?.id : "scroll"}
+        className="min-h-0"
+        contentContainerClassName="gap-2.5 pb-1"
+        keyboardShouldPersistTaps="handled"
+        nestedScrollEnabled
+      >
+        {content}
+      </ScrollView>
     </Animated.View>
   );
   return (

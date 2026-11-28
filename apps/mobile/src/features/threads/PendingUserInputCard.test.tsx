@@ -7,6 +7,7 @@ import { expect, it, vi } from "vite-plus/test";
 import type { PendingUserInput } from "../../lib/threadActivity";
 
 const harness = vi.hoisted(() => ({
+  focused: true,
   navigate: [] as Array<[string, object | undefined]>,
   openedUrls: [] as string[],
 }));
@@ -16,6 +17,13 @@ type Children = { children?: ReactNode };
 vi.mock("react-native", () => ({
   Platform: { OS: "ios" },
   Keyboard: { dismiss: () => {} },
+  KeyboardAvoidingView: ({ children }: Children) => <div>{children}</div>,
+  Modal: (props: Children & { visible: boolean; presentationStyle: string }) =>
+    props.visible ? (
+      <div role="dialog" data-presentation={props.presentationStyle}>
+        {props.children}
+      </div>
+    ) : null,
   View: ({ children }: Children) => <div>{children}</div>,
   ScrollView: ({ children }: Children) => <div>{children}</div>,
   Pressable: ({
@@ -27,6 +35,10 @@ vi.mock("react-native", () => ({
       {children}
     </div>
   ),
+}));
+vi.mock("react-native-safe-area-context", () => ({
+  SafeAreaProvider: ({ children }: Children) => <div>{children}</div>,
+  SafeAreaView: ({ children }: Children) => <div>{children}</div>,
 }));
 vi.mock("react-native-reanimated", () => {
   const animation = { duration: () => ({ easing: () => ({}) }) };
@@ -85,6 +97,7 @@ vi.mock("../../native/useOpenPullRequest", () => ({
   },
 }));
 vi.mock("@react-navigation/native", () => ({
+  useIsFocused: () => harness.focused,
   useNavigation: () => ({
     navigate: (name: string, params?: object) => harness.navigate.push([name, params]),
   }),
@@ -94,6 +107,7 @@ import { PendingUserInputCard, usePendingUserInputPresentation } from "./Pending
 
 function setup(questionMarkdown: string) {
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+  harness.focused = true;
   harness.navigate = [];
   harness.openedUrls = [];
 
@@ -112,7 +126,13 @@ function setup(questionMarkdown: string) {
   } as unknown as PendingUserInput;
   const container = document.createElement("div");
   const root = createRoot(container);
-  function InputArea({ environmentId }: { environmentId: string }) {
+  function InputArea({
+    environmentId,
+    expandInPane,
+  }: {
+    environmentId: string;
+    expandInPane: boolean;
+  }) {
     const question = usePendingUserInputPresentation(
       environmentId + ":thread-1",
       pendingUserInput.requestId,
@@ -125,6 +145,7 @@ function setup(questionMarkdown: string) {
           threadId={"thread-1" as ThreadId}
           workspaceRoot="/repo"
           canOperateThread
+          expandInPane={expandInPane}
           pendingUserInput={pendingUserInput}
           maxHeight={{ value: 600 } as never}
           cardProgress={{ value: 1, set: () => {} } as never}
@@ -142,11 +163,14 @@ function setup(questionMarkdown: string) {
       </>
     );
   }
-  const render = (environmentId: string) =>
-    act(() => root.render(<InputArea environmentId={environmentId} />));
+  const render = (environmentId: string, expandInPane = false) =>
+    act(() => root.render(<InputArea environmentId={environmentId} expandInPane={expandInPane} />));
   render("env-1");
   return {
     render,
+    get dialog() {
+      return container.querySelector('[role="dialog"]');
+    },
     draft: container.querySelector("input")!,
     press(label: string) {
       const element = Array.from(container.querySelectorAll<HTMLElement>("[aria-label]")).find(
@@ -194,4 +218,20 @@ it("can return to a draft without answering, and a different environment opens i
   expect(screen.draft.value).toBe("Keep this follow-up");
   screen.render("env-2");
   expect(screen.draft.hidden).toBe(true);
+});
+
+it("moves the open question between a compact phone modal and the thread pane on resize", () => {
+  using screen = setup("What should change?");
+  expect(screen.dialog?.getAttribute("data-presentation")).toBe("fullScreen");
+  screen.render("env-1", true);
+  expect(screen.dialog).toBeNull();
+  expect(screen.draft.hidden).toBe(true);
+  screen.press("Lower to compact questions");
+  screen.press("Expand");
+  expect(screen.dialog).toBeNull();
+  screen.render("env-1", false);
+  expect(screen.dialog?.getAttribute("data-presentation")).toBe("fullScreen");
+  harness.focused = false;
+  screen.render("env-1");
+  expect(screen.dialog).toBeNull();
 });

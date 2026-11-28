@@ -125,6 +125,7 @@ import {
   useWorkspaceSettledContentWidth,
 } from "../layout/workspace-content-width";
 import { useNativeWorkspaceColumnsSupported } from "../../native/NativeWorkspaceColumns";
+import { isDuoDevice } from "../../lib/device-type";
 import { useDeviceType, useNativeColumnLayoutMetrics } from "../../native/native-layout-metrics";
 import { useAppearancePreferences } from "../settings/appearance/AppearancePreferencesProvider";
 import { collectProviderUsageLimits } from "@t3tools/shared/usageLimits";
@@ -1835,6 +1836,7 @@ function ThreadDetailBody(
                             canOperateThread={props.canOperateThread}
                             pendingUserInput={props.activePendingUserInput}
                             maxHeight={pendingUserInputMaxHeight}
+                            expandInPane={isSplitLayout || isDuoDevice(deviceType)}
                             collapsed={question.collapsed}
                             onToggleCollapsed={question.toggleCollapsed}
                             onStopThread={props.onStopThread}
